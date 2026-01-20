@@ -4,14 +4,13 @@
       <!-- Left Column: Login Form -->
       <div class="login-left">
         <div class="login-form-wrapper">
-          <div class="brand-header mb-8 d-flex align-center">
-            <v-img src="@/assets/img/Aleflogo.png" max-width="60" class="mr-3" />
-            <h1 class="brand-title">Alef Company</h1>
+          <div class="brand-header d-flex align-center">
+            <v-img src="@/assets/img/logoinv.png" max-width="250" class="mt-1" />
           </div>
 
           <div class="login-card">
             <VForm @submit.prevent="submit" class="login-form">
-              <div class="mb-4">
+              <div class="mb-0">
                 <VTextField v-model="email" placeholder="Email" variant="outlined" bg-color="transparent"
                   class="custom-input" hide-details="auto" :rules="[ruleRequired, ruleEmail]"></VTextField>
               </div>
@@ -26,16 +25,7 @@
                 INICIAR SESIÓN
               </VBtn>
 
-              <div class="text-center">
-                <NuxtLink to="/reset-password" class="text-caption text-grey-lighten-1 text-decoration-none">¿Olvidaste
-                  tu
-                  contraseña?</NuxtLink>
-              </div>
 
-              <div class="text-center mt-4">
-                <span class="text-caption text-grey-darken-1">¿No tienes una cuenta? <NuxtLink to="/signup"
-                    class="text-white font-weight-bold text-decoration-none">Regístrate</NuxtLink></span>
-              </div>
             </VForm>
           </div>
         </div>
@@ -44,7 +34,7 @@
       <!-- Right Column: Visual -->
       <div class="login-right hidden-md-and-down">
         <div class="brain-visual">
-          <v-img src="@/assets/img/futuristic_brain_login.png" cover class="h-100 w-100"></v-img>
+          <v-img src="@/assets/img/futuristic_brain_login.jpeg" cover class="h-100 w-100"></v-img>
           <!-- Overlay removed to match reference pure image look -->
         </div>
       </div>

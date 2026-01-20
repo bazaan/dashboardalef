@@ -2055,6 +2055,7 @@ html.dark body {
 .login-form-wrapper {
   width: 100%;
   max-width: 480px;
+  margin-top: -5rem !important;
   /* Increased to fit card */
   /* padding removed from here, moved to card */
 }
@@ -2067,8 +2068,7 @@ html.dark body {
   /* Blue-grey border (slate-700) */
   border-radius: 16px;
   padding: 3rem 2.5rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
+
 }
 
 /* --- FONTS --- */
@@ -2082,9 +2082,11 @@ html.dark body {
 .brand-header {
   display: flex;
   justify-content: center;
-  /* Center logo/title */
-  margin-bottom: 2rem !important;
-  /* Move it up relative to form */
+  align-items: center;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+  /* Reduced space */
+  width: 100%;
 }
 
 .brand-title {
@@ -2129,11 +2131,11 @@ html.dark body {
   /* Sky-400 (Blueish-Grey hint) */
   color: #fff !important;
   border-radius: 50px !important;
-  box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+  box-shadow: 0 0 15px rgba(56, 191, 248, 0.096) !important;
   /* Reduced glow */
-  transition: all 0.3s ease;
-  letter-spacing: 1px;
-  font-weight: 600;
+  transition: all 0.5s ease;
+  letter-spacing: 0.2px;
+  font-weight: 100;
 }
 
 .neon-btn:hover {
@@ -2145,4 +2147,17 @@ html.dark body {
 .brain-visual {
   width: 100%;
   height: 100%;
+  position: relative;
+}
+
+.brain-visual::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #050505 0%, rgba(5, 5, 5, 0.8) 15%, rgba(5, 5, 5, 0) 50%);
+  pointer-events: none;
+  z-index: 1;
 }

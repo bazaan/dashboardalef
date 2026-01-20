@@ -16,6 +16,15 @@ export default defineNuxtConfig({
   plugins: ['~/plugins/apexcharts.client.ts'],
   devtools: { enabled: true },
 
+  runtimeConfig: {
+    // Las claves privadas solo están disponibles en el servidor
+    n8nApiKey: process.env.N8N_API_KEY,
+    n8nBaseUrl: process.env.N8N_BASE_URL,
+    public: {
+      // Claves públicas (si fueran necesarias)
+    }
+  },
+
   // enable takeover mode
   typescript: { shim: false },
 

@@ -142,7 +142,12 @@ const submit = async () => {
 
       if (emailLower === "bazanjuanpa@gmail.com") {
         router.push('/pruebas/HealUp');
-      } else if (emailLower === "elroby75@hotmail.com") {
+      } else if (
+        emailLower === "elroby75@hotmail.com" ||
+        emailLower === "maquiav288@gmail.com" ||
+        emailLower === "bradaperfumes@gmail.com" ||
+        emailLower === "danmp1219@gmail.com"
+      ) {
         router.push('/pruebas/BradaPerfumes');
       } else {
         router.push('/pruebas/AlefCompany');

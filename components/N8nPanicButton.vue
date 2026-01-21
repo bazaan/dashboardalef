@@ -24,14 +24,21 @@ const labelText = computed(() => {
 })
 
 const toggleWorkflow = async () => {
+    console.log('Botón presionado. Estado actual:', isActive.value)
     const newState = !isActive.value // Invertimos el estado actual
     const actionName = newState ? 'ACTIVAR' : 'APAGAR'
+    console.log('Nuevo estado deseado:', newState, 'Acción:', actionName)
 
-    if (!confirm(`¿Seguro deseas ${actionName} el sistema para ${props.label}?`)) return
+    if (!confirm(`¿Seguro deseas ${actionName} el sistema para ${props.label}?`)) {
+        console.log('Usuario canceló la confirmación.')
+        return
+    }
 
     loading.value = true
+    console.log('Iniciando llamada a API...')
     try {
-        const { error } = await useFetch('/api/n8n/toggle-workflow', {
+        // Usamos $fetch en lugar de useFetch para acciones disparadas por el usuario
+        const response: any = await $fetch('/api/n8n/toggle-workflow', {
             method: 'POST',
             body: {
                 clientKey: props.clientKey, // Aquí enviamos la clave
@@ -39,16 +46,24 @@ const toggleWorkflow = async () => {
             }
         })
 
-        if (error.value) throw error.value
+        console.log('Respuesta API:', response)
+        if (!response) {
+            throw new Error('Respuesta vacía del servidor')
+        }
 
         isActive.value = newState
         alert(`Sistema ${props.label}: ${newState ? 'ENCENDIDO' : 'APAGADO'}`)
 
-    } catch (e) {
+    } catch (e: any) {
         alert('Error al conectar con el servidor')
-        console.error(e)
+        console.error('Excepción frontend:', e)
+        // Check for specific error message if available
+        if (e.data?.statusMessage) {
+            console.error('Mensaje del servidor:', e.data.statusMessage)
+        }
     } finally {
         loading.value = false
+        console.log('Finalizado loading.')
     }
 }
 </script>

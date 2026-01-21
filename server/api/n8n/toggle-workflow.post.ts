@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
     console.log("=== INICIO DE DIAGNÓSTICO ===")
 
     // 1. Verificar qué está llegando del Frontend
-    console.log("Empresa solicitada:", body.company)
+    console.log("Empresa solicitada:", body.clientKey)
     console.log("Estado solicitado (active):", body.active)
 
     // 2. Verificar si las variables de entorno existen (SIN MOSTRAR LA CLAVE REAL)
@@ -17,18 +17,19 @@ export default defineEventHandler(async (event) => {
     console.log("¿Existe API Key?:", config.n8nApiKey ? "SÍ (Longitud: " + config.n8nApiKey.length + ")" : "NO - ESTÁ VACÍA")
 
     // 3. Verificar si encuentra el ID del workflow
-    const targetId = config.n8nWorkflows[body.company as keyof typeof config.n8nWorkflows]
-    console.log(`ID encontrado para '${body.company}':`, targetId ? targetId : "NO ENCONTRADO/UNDEFINED")
+    const targetId = config.n8nWorkflows[body.clientKey as keyof typeof config.n8nWorkflows]
+    console.log(`ID encontrado para '${body.clientKey}':`, targetId ? targetId : "NO ENCONTRADO/UNDEFINED")
 
     if (!targetId) {
         console.error("ERROR: No se encontró ID para la empresa solicitada.")
         throw createError({ statusCode: 400, statusMessage: "ID de empresa no configurado" })
     }
 
-    // 4. Construir la URL final para ver si es válida
+    // 4. Construir la URL final dinámicamente
     // NOTA: Asegúrate de que n8nBaseUrl no tenga slash al final o lo duplicarás
     const cleanBaseUrl = config.n8nBaseUrl.replace(/\/$/, "")
-    const finalUrl = `${cleanBaseUrl}/workflows/${targetId}/activate`
+    const action = body.active ? 'activate' : 'deactivate'
+    const finalUrl = `${cleanBaseUrl}/workflows/${targetId}/${action}`
 
     console.log("Intentando conectar a URL:", finalUrl)
 

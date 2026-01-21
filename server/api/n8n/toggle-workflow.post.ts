@@ -2,50 +2,33 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 
 export default defineEventHandler(async (event) => {
-    const config = useRuntimeConfig()
-    const body = await readBody(event)
+  const config = useRuntimeConfig()
+  const body = await readBody(event) // Esperamos { company: 'brada', active: true }
 
-    // 1. Recibimos qué cliente es y qué acción quiere
-    const { clientKey, active } = body
-    const action = active ? 'activate' : 'deactivate'
+  // 1. Validar que la empresa existe en tu configuración
+  // Usamos el string que llega del frontend para buscar en el objeto n8nWorkflows
+  const workflowId = config.n8nWorkflows[body.company]
 
-    // 2. Buscamos el ID en nuestro diccionario de config
-    // config.n8nWorkflows es el objeto que definimos en el paso 2
-    // Usamos "as any" para evitar que TypeScript se queje si el diccionario es dinámico
-    const workflowsDict = config.n8nWorkflows as any
-    const targetId = workflowsDict[clientKey]
+  if (!workflowId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Error: No existe configuración para la empresa '${body.company}'`
+    })
+  }
 
-    // 3. Validación de seguridad
-    if (!targetId) {
-        throw createError({
-            statusCode: 400,
-            statusMessage: `Error: No existe configuración para el cliente '${clientKey}'`
-        })
-    }
-
-    try {
-        // 4. Ejecutamos la llamada a n8n con el ID específico encontrado
-        const response: any = await $fetch(`${config.n8nBaseUrl}/workflows/${targetId}/${action}`, {
-            method: 'POST',
-            body: {}, // Enviar body vacío asegura Content-Type: application/json
-            headers: {
-                'X-N8N-API-KEY': config.n8nApiKey
-            }
-        })
-
-        // console.log('n8n response:', response) // Debug log
-
-        return {
-            success: true,
-            client: clientKey,
-            active: response.active // Estado real devuelto por n8n
-        }
-
-    } catch (error: any) {
-        console.error(`Error n8n cliente ${clientKey}:`, error)
-        throw createError({
-            statusCode: 500,
-            statusMessage: 'Error de conexión con n8n'
-        })
-    }
+  // 2. Ejecutar la llamada a N8N
+  try {
+    const response = await $fetch(`${config.n8nBaseUrl}/workflows/${workflowId}/activate`, {
+      method: 'POST',
+      headers: {
+        'X-N8N-API-KEY': config.n8nApiKey,
+        'Content-Type': 'application/json'
+      },
+      body: { active: body.active }
+    })
+    return response
+  } catch (error: any) {
+    // ... manejo de errores ...
+    throw createError({ statusCode: 500, statusMessage: error.message })
+  }
 })

@@ -138,12 +138,20 @@
     <div class="main-content">
       <!-- ==========  VISTA: DASHBOARD  ========== -->
       <div v-if="activeView === 'dashboard'" class="view-container">
+
+
         <header class="top-header">
           <h1>Dashboard</h1>
-          <button class="btn-primary" @click="fetchContribuyentes">
-            <v-icon icon="mdi-refresh" size="16" />
-            <span>Actualizar</span>
-          </button>
+
+          <div style="display: flex; gap: 10px; align-items: center;">
+
+            <N8nPanicButton client-key="brada" label="IA Brada" />
+
+            <button class="btn-primary" @click="fetchContribuyentes">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
         </header>
 
         <div class="content-area">
@@ -455,15 +463,15 @@
               </div>
             </div>
             <div class="stat-card">
-              <div class="stat-value">{{ coldLeadsCount }}</div>
+              <div class="stat-value" style="color: #3b82f6">{{ coldLeadsCount }}</div>
               <div class="stat-title">Leads Fríos</div>
             </div>
             <div class="stat-card">
-              <div class="stat-value">{{ warmLeadsCount }}</div>
+              <div class="stat-value" style="color: #f59e0b">{{ warmLeadsCount }}</div>
               <div class="stat-title">Leads Tibios</div>
             </div>
             <div class="stat-card">
-              <div class="stat-value">{{ hotLeadsCount }}</div>
+              <div class="stat-value" style="color: #ef4444">{{ hotLeadsCount }}</div>
               <div class="stat-title">Leads Calientes</div>
             </div>
             <div class="stat-card">
@@ -562,8 +570,19 @@
           <div class="two-column-grid" style="grid-template-columns: 2fr 1fr;">
             <!-- Give more space to Revenue chart -->
             <div class="chart-section" style="height: auto;">
-              <div class="chart-header">
+              <div class="chart-header" style="display: flex; align-items: center; justify-content: space-between;">
                 <h2>Tendencia de Facturación (Diaria)</h2>
+                <div class="zoom-controls" style="display: flex; align-items: center; gap: 8px;">
+                  <button class="icon-btn" @click="handleRevenueZoom('out')" title="Zoom Out (-)">
+                    <v-icon icon="mdi-magnify-minus-outline" size="20" />
+                  </button>
+                  <span class="text-caption font-weight-bold" style="min-width: 60px; text-align: center;">
+                    {{ activeRevenueZoomLabel }}
+                  </span>
+                  <button class="icon-btn" @click="handleRevenueZoom('in')" title="Zoom In (+)">
+                    <v-icon icon="mdi-magnify-plus-outline" size="20" />
+                  </button>
+                </div>
               </div>
               <client-only>
                 <apexchart type="area" height="350" :options="revenueChartOptions" :series="revenueChartSeries" />
@@ -591,7 +610,7 @@
                 <apexchart type="bar" height="350" :options="categoryChartOptions" :series="salesByCategorySeries" />
               </client-only>
             </div>
-            <div class="table-section" style="height: auto; max-height: 480px; overflow-y: auto;">
+            <div class="chart-section" style="height: auto; max-height: 480px; overflow-y: auto;">
               <div class="chart-header mb-2">
                 <h2>Últimas Compras</h2>
               </div>
@@ -1340,6 +1359,33 @@ const currentUser = computed(() => {
   }
 })
 
+// Variables reactivas
+const n8nLoading = ref(false)
+
+// Función para llamar a TU servidor (que a su vez llama a n8n)
+const toggleN8nWorkflow = async (turnOn: boolean) => {
+  if (!confirm(`¿Confirmas que deseas ${turnOn ? 'ACTIVAR' : 'DESACTIVAR'} la IA?`)) return
+
+  n8nLoading.value = true
+  try {
+    // Llamamos al archivo que creamos en server/api/n8n/toggle-workflow
+    const { data, error } = await useFetch('/api/n8n/toggle-workflow', {
+      method: 'POST',
+      body: { active: turnOn }
+    })
+
+    if (error.value) throw error.value
+
+    alert(`Éxito: El sistema ahora está ${turnOn ? 'ACTIVO' : 'INACTIVO'}`)
+
+  } catch (err) {
+    console.error(err)
+    alert('Error al comunicarse con el servidor. Revisa la consola.')
+  } finally {
+    n8nLoading.value = false
+  }
+}
+
 /* ---------------- Tipos ---------------- */
 type Stat = {
   title: string
@@ -1753,26 +1799,78 @@ const convertedLeadsCountReal = computed(() => {
 })
 
 
-// --- GRATÍCOS FACTURACIÓN ---
+// --- GRÁFICOS FACTURACIÓN ---
 
-// A. Gráfico de Ingresos Diarios (Mes Actual)
-const revenueChartSeries = computed(() => {
-  // Inicializar días del mes con 0
+// Estado del Zoom
+const revenueZoomLevels = ['Semana', 'Mes', '3 Meses', 'Año', 'Todo']
+const activeRevenueZoomIndex = ref(1) // Default: 'Mes'
+const activeRevenueZoomLabel = computed(() => revenueZoomLevels[activeRevenueZoomIndex.value])
+
+function handleRevenueZoom(direction: 'in' | 'out') {
+  if (direction === 'in') {
+    if (activeRevenueZoomIndex.value > 0) activeRevenueZoomIndex.value--
+  } else {
+    if (activeRevenueZoomIndex.value < revenueZoomLevels.length - 1) activeRevenueZoomIndex.value++
+  }
+}
+
+// Datos Filtrados según Zoom
+const comprasFilteredForChart = computed(() => {
   const now = new Date()
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const dailyRevenue = new Array(daysInMonth).fill(0)
+  const zoom = revenueZoomLevels[activeRevenueZoomIndex.value]
+  let startTime = 0
 
-  comprasMesActual.value.forEach(c => {
-    const d = new Date(c.created_at)
-    const dayIndex = d.getDate() - 1 // 0-indexed
-    if (dayIndex >= 0 && dayIndex < daysInMonth) {
-      dailyRevenue[dayIndex] += parseCurrency(c.precio)
-    }
+  if (zoom === 'Semana') {
+    startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).getTime()
+  } else if (zoom === 'Mes') {
+    startTime = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+  } else if (zoom === '3 Meses') {
+    startTime = new Date(now.getFullYear(), now.getMonth() - 2, 1).getTime()
+  } else if (zoom === 'Año') {
+    startTime = new Date(now.getFullYear(), 0, 1).getTime()
+  } else {
+    startTime = 0 // Todo
+  }
+
+  // Filtrar y ordenar por fecha ascendente
+  return compras.value
+    .filter(c => {
+      const t = new Date(c.created_at).getTime()
+      return t >= startTime
+    })
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+})
+
+// A. Gráfico de Ingresos (Dinámico)
+const revenueChartSeries = computed(() => {
+  const dataPoints: { x: number; y: number }[] = []
+
+  // Agrupar por día
+  const groupedData = new Map<number, number>()
+
+  comprasFilteredForChart.value.forEach(c => {
+    // Normalizar a inicio del día para agrupar
+    const date = new Date(c.created_at)
+    date.setHours(0, 0, 0, 0)
+    const key = date.getTime()
+
+    const amount = parseCurrency(c.precio)
+    groupedData.set(key, (groupedData.get(key) || 0) + amount)
+  })
+
+  // Convertir a formato serie ApexCharts [timestamp, value]
+  // Llenar huecos de días sin ventas si es 'Mes' o 'Semana' para que se vea continuo
+  // Para 'Año' o 'Todo' puede ser denso, así que mejor solo puntos existentes si son muchos.
+  // Simplificación: usaremos puntos existentes ordenados.
+
+  const sortedKeys = Array.from(groupedData.keys()).sort((a, b) => a - b)
+  sortedKeys.forEach(key => {
+    dataPoints.push({ x: key, y: groupedData.get(key) || 0 })
   })
 
   return [{
-    name: 'Ingresos Diarios',
-    data: dailyRevenue
+    name: 'Ingresos',
+    data: dataPoints
   }]
 })
 
@@ -1782,22 +1880,49 @@ const revenueChartOptions = computed<ApexOptions>(() => ({
     height: 350,
     fontFamily: 'inherit',
     toolbar: { show: false },
-    background: 'transparent'
+    background: 'transparent',
+    zoom: { enabled: false }
   },
   xaxis: {
-    categories: Array.from({ length: new Date().getDate() }, (_, i) => i + 1), // Solo mostrar hasta el día actual
-    labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } },
-    tooltip: { enabled: false }
+    type: 'datetime',
+    labels: {
+      style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' },
+      datetimeFormatter: {
+        year: 'yyyy',
+        month: "MMM 'yy",
+        day: 'dd MMM'
+      }
+    },
+    tooltip: { enabled: false },
+    axisBorder: { show: false },
+    axisTicks: { show: false }
   },
   yaxis: {
-    labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' }, formatter: (val) => `S/ ${val.toFixed(0)}` }
+    labels: {
+      style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' },
+      formatter: (val) => `S/ ${val.toLocaleString('es-PE', { maximumFractionDigits: 0 })}`
+    }
   },
   dataLabels: { enabled: false },
   stroke: { curve: 'smooth', width: 2 },
   colors: ['#10b981'], // Emerald green
   grid: { borderColor: isDark.value ? '#3f3f46' : '#e5e7eb', strokeDashArray: 4 },
-  fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.1, stops: [0, 90, 100] } },
-  theme: { mode: isDark.value ? 'dark' : 'light' }
+  fill: {
+    type: 'gradient',
+    gradient: {
+      shadeIntensity: 1,
+      opacityFrom: 0.7,
+      opacityTo: 0.1,
+      stops: [0, 90, 100]
+    }
+  },
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  tooltip: {
+    theme: isDark.value ? 'dark' : 'light',
+    x: {
+      format: 'dd MMM yyyy'
+    }
+  }
 }))
 
 // B. Gráfico de Conversión (Pie Chart)

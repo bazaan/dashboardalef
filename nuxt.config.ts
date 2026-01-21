@@ -17,11 +17,22 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
 
   runtimeConfig: {
-    // Las claves privadas solo están disponibles en el servidor
+    // --- Lado del Servidor (Privado) ---
     n8nApiKey: process.env.N8N_API_KEY,
     n8nBaseUrl: process.env.N8N_BASE_URL,
+
+    // Aquí registramos tu "Diccionario de Empresas"
+    // Nuxt leerá las variables que pusiste en el archivo .env
+    n8nWorkflows: {
+      brada: process.env.N8N_ID_BRADA,   // Se conecta con la variable del .env
+      healup: process.env.N8N_ID_HEALUP  // Se conecta con la variable del .env
+    },
+
+    // --- Lado del Cliente (Público) ---
     public: {
-      // Claves públicas (si fueran necesarias)
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseKey: process.env.SUPABASE_KEY
+      // Nota: NUNCA pongas las de n8n aquí abajo
     }
   },
 

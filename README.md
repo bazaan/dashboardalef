@@ -2,7 +2,7 @@
 
 Bienvenido al repositorio oficial del **Dashboard Avanzado de Alef Company**. Este sistema está diseñado para la gestión integral de las operaciones de la empresa y sus marcas asociadas, incluyendo **Brada Perfumes** y **Healup**.
 
-![Alef Company Logo](./assets/img/aleflogo%20oscuro.png)
+![Alef Company Logo](./assets/img/Aleflogo.png)
 
 ## 🚀 Características Principales
 

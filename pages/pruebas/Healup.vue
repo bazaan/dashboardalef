@@ -2720,10 +2720,20 @@ function loadMedicalHistoryFromLocalStorage() {
 }
 
 onMounted(() => {
+  // Access Control
+  const userEmail = currentUser.value.email?.toLowerCase()
+
+  if (!canAccessHealup(userEmail)) {
+    alert('No tienes permiso para acceder a este dashboard.')
+    return navigateTo('/')
+  }
+
   applyTheme()
   fetchPacientesWpp()
   fetchPacientesFbIg()
-  handleZoom('one_month')
+  fetchCompras()
+  fetchLeads()
+  handleZoom('Mes')
   loadEventsFromLocalStorage()
   loadProceduresFromLocalStorage()
   loadMedicalHistoryFromLocalStorage()

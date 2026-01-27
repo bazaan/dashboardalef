@@ -812,10 +812,17 @@
       <div v-else-if="activeView === 'historialClinico'" class="view-container">
         <header class="top-header">
           <h1>Historial Clínico</h1>
-          <button class="btn-primary" @click="openMedicalHistoryDialog()">
-            <v-icon icon="mdi-file-document-plus" size="16" />
-            <span>Añadir Historial</span>
-          </button>
+          <div style="display: flex; gap: 10px;">
+            <button v-if="selectedMedicalHistory.length > 0" class="btn-primary"
+              style="background-color: #ef4444; color: white;" @click="deleteMultipleMedicalHistory">
+              <v-icon icon="mdi-delete" size="16" />
+              <span>Eliminar ({{ selectedMedicalHistory.length }})</span>
+            </button>
+            <button class="btn-primary" @click="openMedicalHistoryDialog()">
+              <v-icon icon="mdi-file-document-plus" size="16" />
+              <span>Añadir Historial</span>
+            </button>
+          </div>
         </header>
 
 
@@ -849,8 +856,9 @@
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
               <v-data-table :headers="medicalHistoryHeaders" :items="medicalHistoryEntries"
-                :search="medicalHistorySearch" :items-per-page="10" class="elevation-0"
-                style="flex: 1; overflow-y: auto;" no-data-text="No hay historiales médicos registrados">
+                :search="medicalHistorySearch" :items-per-page="10" class="elevation-0" show-select
+                v-model="selectedMedicalHistory" return-object style="flex: 1; overflow-y: auto;"
+                no-data-text="No hay historiales médicos registrados">
                 <template v-slot:item.attachment="{ item }">
                   <v-menu v-if="item.attachmentName">
                     <template v-slot:activator="{ props }">
@@ -2530,6 +2538,7 @@ interface MedicalHistoryEntry {
 
 /* ---------------- Medical History State ---------------- */
 const medicalHistoryEntries = ref<MedicalHistoryEntry[]>([])
+const selectedMedicalHistory = ref<MedicalHistoryEntry[]>([])
 const medicalHistorySearch = ref('')
 const showMedicalHistoryDialog = ref(false)
 const editingMedicalHistory = ref<MedicalHistoryEntry | null>(null)
@@ -2659,6 +2668,17 @@ async function saveMedicalHistory() {
 
   saveMedicalHistoryToLocalStorage()
   closeMedicalHistoryDialog()
+}
+
+function deleteMultipleMedicalHistory() {
+  if (selectedMedicalHistory.value.length === 0) return
+
+  if (confirm(`¿Estás seguro de que deseas eliminar ${selectedMedicalHistory.value.length} registros?`)) {
+    const selectedIds = new Set(selectedMedicalHistory.value.map(e => e.id))
+    medicalHistoryEntries.value = medicalHistoryEntries.value.filter(entry => !selectedIds.has(entry.id))
+    selectedMedicalHistory.value = [] // Clear selection
+    saveMedicalHistoryToLocalStorage()
+  }
 }
 
 function deleteMedicalHistory(id: string) {

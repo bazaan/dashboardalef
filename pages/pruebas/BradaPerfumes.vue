@@ -1336,10 +1336,32 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import type { ApexOptions } from 'apexcharts'
-import { isSuperAdmin, dashboards } from '@/utils/permissions'
+import { isSuperAdmin, canAccessBrada, dashboards } from '@/utils/permissions'
 
 definePageMeta({
   middleware: 'auth-dashboard'
+})
+
+// ...
+
+// ... (skipping down to onMounted)
+
+onMounted(() => {
+  // Access Control
+  const userEmail = currentUser.value.email?.toLowerCase()
+
+  if (!canAccessBrada(userEmail)) {
+    alert('No tienes permiso para acceder a este dashboard.')
+    return navigateTo('/')
+  }
+
+  applyTheme()
+  fetchStockData('perfumes')
+  fetchStockData('decants')
+  fetchStockData('sets')
+  fetchLeads()
+  fetchCompras()
+  handleZoom('one_month')
 })
 
 // Recuperar datos del usuario desde la cookie para mostrar el nombre real

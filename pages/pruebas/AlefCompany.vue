@@ -1036,7 +1036,7 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import type { ApexOptions } from 'apexcharts'
-import { isSuperAdmin, dashboards } from '@/utils/permissions'
+import { isSuperAdmin, canAccessAlef, dashboards } from '@/utils/permissions'
 
 definePageMeta({
   middleware: 'auth-dashboard'
@@ -1170,7 +1170,21 @@ function applyTheme() {
 
 watch(isDark, applyTheme, { immediate: true })
 
+
+
+// ...
+
+// ... (skipping down to onMounted)
+
 onMounted(() => {
+  // Access Control
+  const userEmail = currentUser.value.email?.toLowerCase()
+
+  if (!canAccessAlef(userEmail)) {
+    alert('No tienes permiso para acceder a este dashboard. Contacta a un administrador.')
+    return navigateTo('/')
+  }
+
   applyTheme()
   fetchContribuyentes()
   handleZoom('one_month')

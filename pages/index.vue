@@ -44,17 +44,17 @@
 
 <script setup>
 import { ref } from 'vue';
-import { isSuperAdmin } from '@/utils/permissions';
+import { isSuperAdmin, healupUsers, bradaUsers } from '@/utils/permissions';
 const client = useSupabaseClient();
 const router = useRouter();
 
-// Estado del formulario
+// ... existing state ref ...
 const email = ref("");
 const password = ref("");
 const loading = ref(false);
 const errorMsg = ref("");
 
-// Reglas de validación
+// ... existing rules ...
 const ruleRequired = (v) => !!v || 'Requerido';
 const ruleEmail = (v) => /.+@.+\..+/.test(v) || 'Email inválido';
 const rulePassLen = (v) => (v && v.length >= 6) || 'Mínimo 6 caracteres';
@@ -141,25 +141,26 @@ const submit = async () => {
       // Redirigir según el correo
       const emailLower = email.value.toLowerCase();
 
-      // Chequeo de Super Admin
+      // 1. Super Admin -> Hub
       if (isSuperAdmin(emailLower)) {
         router.push('/admin-hub');
         return;
       }
 
-      // Chequeo de usuarios regulares
-      if (emailLower === "laguilar@headhuntinglab.com" || emailLower === "healupaestheticlab@gmail.com") {
-        router.push('/pruebas/HealUp');
-      } else if (
-        emailLower === "elroby75@hotmail.com" ||
-        emailLower === "maquiav288@gmail.com" ||
-        emailLower === "bradaperfumes@gmail.com" ||
-        emailLower === "danmp1219@gmail.com"
-      ) {
-        router.push('/pruebas/BradaPerfumes');
-      } else {
-        router.push('/pruebas/AlefCompany');
+      // 2. Healup Users -> Healup Dashboard
+      if (healupUsers.includes(emailLower)) {
+        router.push('/pruebas/Healup');
+        return;
       }
+
+      // 3. Brada Users -> Brada Dashboard
+      if (bradaUsers.includes(emailLower)) {
+        router.push('/pruebas/BradaPerfumes');
+        return;
+      }
+
+      // 4. Fallback -> Alef (Protected)
+      router.push('/pruebas/AlefCompany');
     } else {
       alert("No se pudo iniciar sesión. Verifique sus credenciales.");
     }

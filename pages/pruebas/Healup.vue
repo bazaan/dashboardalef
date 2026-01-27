@@ -1227,11 +1227,17 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import type { ApexOptions } from 'apexcharts'
-import { isSuperAdmin, dashboards } from '@/utils/permissions'
+import { isSuperAdmin, canAccessHealup, dashboards } from '@/utils/permissions'
 
 definePageMeta({
   middleware: 'auth-dashboard'
 })
+
+// ...
+
+// ... (skipping down to onMounted)
+
+
 
 // Recuperar datos del usuario desde la cookie para mostrar el nombre real
 /* ---------------- DEFINICIÓN DE TIPO ---------------- */
@@ -1513,26 +1519,7 @@ function applyTheme() {
 
 watch(isDark, applyTheme, { immediate: true })
 
-onMounted(() => {
-  // Access Control
-  const allowedEmails = ['laguilar@headhuntinglab.com', 'healupaestheticlab@gmail.com']
-  const userEmail = currentUser.value.email?.toLowerCase()
 
-  if (!allowedEmails.includes(userEmail) && !isSuperAdmin(userEmail)) {
-    alert('No tienes permiso para acceder a este dashboard.')
-    return navigateTo('/')
-  }
-
-  applyTheme()
-  fetchPacientesWpp()
-  fetchPacientesFbIg()
-  fetchCompras()
-  fetchLeads()
-  handleZoom('Mes')
-  loadEventsFromLocalStorage()
-  loadProceduresFromLocalStorage()
-  loadMedicalHistoryFromLocalStorage()
-})
 
 function logout() {
   // 1. Borrar la cookie que mantiene la sesión abierta

@@ -24,7 +24,8 @@ export const bradaUsers = [
 export const dashboards = [
     { name: 'Healup', path: '/pruebas/Healup', icon: 'mdi-medical-bag', logo: 'healupLOGO.png' },
     { name: 'Brada Perfumes', path: '/pruebas/BradaPerfumes', icon: 'mdi-bottle-tonic', logo: 'bradalogo.jpg' },
-    { name: 'Alef Company', path: '/pruebas/AlefCompany', icon: 'mdi-domain', logo: 'aleflogo oscuro.png' }
+    { name: 'Alef Company', path: '/pruebas/AlefCompany', icon: 'mdi-domain', logo: 'aleflogo oscuro.png' },
+    { name: 'Origitec', path: '/pruebas/Origitec', icon: 'mdi-alpha-o-circle', logo: 'Logo_Origitec_Trans.png' }
 ]
 
 // Helpers de Verificación
@@ -44,6 +45,11 @@ export function canAccessHealup(email: string | undefined | null): boolean {
 export function canAccessBrada(email: string | undefined | null): boolean {
     const e = normalize(email)
     return bradaUsers.includes(e) || superAdmins.includes(e)
+}
+
+export function canAccessOrigitec(email: string | undefined | null): boolean {
+    const e = normalize(email)
+    return superAdmins.includes(e)
 }
 
 // Por defecto, AlefCompany lo dejamos solo para SuperAdmins por ahora, o abierto si no se especifica.

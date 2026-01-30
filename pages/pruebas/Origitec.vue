@@ -162,7 +162,7 @@
 
           <div style="display: flex; gap: 10px; align-items: center;">
 
-            <N8nPanicButton client-key="brada" label="IA Brada" />
+            <!-- <N8nPanicButton client-key="brada" label="IA Brada" /> -->
 
             <button class="btn-primary" @click="fetchContribuyentes">
               <v-icon icon="mdi-refresh" size="16" />

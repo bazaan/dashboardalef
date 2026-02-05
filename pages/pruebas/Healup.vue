@@ -1378,8 +1378,8 @@
 
             <v-row>
               <v-col cols="12" sm="6">
-                <v-text-field v-model="patientFormData.precio" label="Precio" type="number" prefix="S/"
-                  variant="outlined" density="compact"></v-text-field>
+                <v-text-field v-model="patientFormData.precio" label="Precio de reserva de cita" type="number"
+                  prefix="S/" variant="outlined" density="compact"></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
                 <v-text-field v-model="patientFormData.precio_tratamiento" label="Precio Tratamiento" type="number"

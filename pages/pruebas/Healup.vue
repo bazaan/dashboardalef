@@ -1726,13 +1726,19 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
 
   if (item) {
     // Edit mode: copy data
+    // Logic: Database stores "Remaining Balance" in precio_tratamiento.
+    // User expects to see "Total Price". So we add back the reservation amount.
+    const savedPrecio = parseCurrency(item.precio || '0')
+    const savedTratamiento = parseCurrency(item.precio_tratamiento || '0')
+    const totalTratamiento = savedTratamiento + savedPrecio
+
     patientFormData.value = {
       nombre: item.nombre || '',
       dni: item.dni || '',
       numero: item.numero || '',
       red_social: item.red_social || '',
       precio: item.precio || '',
-      precio_tratamiento: item.precio_tratamiento || '',
+      precio_tratamiento: totalTratamiento.toString(), // Show Total to user
       procedimiento: item.procedimiento || '',
       fecha_agendamiento: item.fecha_agendamiento ? new Date(item.fecha_agendamiento).toISOString().slice(0, 16) : '',
       estado: item.estado || 'Activo',
@@ -1778,12 +1784,22 @@ const savePatient = async () => {
       formattedDate = new Date(patientFormData.value.fecha_agendamiento).toISOString()
     }
 
+    // Logic: User inputs Total Price. Database stores Remaining Balance.
+    const inputReserva = parseCurrency(patientFormData.value.precio)
+    const inputTotalTratamiento = parseCurrency(patientFormData.value.precio_tratamiento)
+
+    // Automatic subtraction if reservation > 0
+    let finalPrecioTratamiento = inputTotalTratamiento
+    if (inputReserva > 0) {
+      finalPrecioTratamiento = inputTotalTratamiento - inputReserva
+    }
+
     const commonPayload = {
       nombre: patientFormData.value.nombre,
       dni: patientFormData.value.dni,
       numero: patientFormData.value.numero,
-      precio: parseCurrency(patientFormData.value.precio),
-      precio_tratamiento: parseCurrency(patientFormData.value.precio_tratamiento),
+      precio: inputReserva, // Save reservation as is
+      precio_tratamiento: finalPrecioTratamiento, // Save remaining balance
       procedimiento: patientFormData.value.procedimiento,
       fecha_agendamiento: formattedDate,
       estado: patientFormData.value.estado,

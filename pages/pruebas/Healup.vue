@@ -206,14 +206,44 @@
             </div>
             <v-card flat class="custom-data-table">
 
-              <!-- TABLE: COMPRAS (Was Outline) -->
-              <div v-if="activeTab === 'compras'">
+              <!-- TABLE: PACIENTES DASHBOARD (Was Compras) -->
+              <div v-if="activeTab === 'pacientes_dashboard'">
+                <!-- WhatsApp Table -->
                 <v-card-title class="table-search-bar">
-                  <span class="table-title">Últimas Compras</span>
+                  <span class="table-title">Últimos 10 Pacientes WhatsApp</span>
                 </v-card-title>
-                <v-data-table :headers="headersComprasDashboard" :items="compras.slice(0, 10)" class="elevation-0"
-                  no-data-text="No hay compras recientes" :items-per-page="10">
-                  <template v-slot:bottom></template> <!-- Hide footer if desired -->
+                <v-data-table :headers="headersDashboardWpp" :items="pacientesWpp.slice(0, 10)" class="elevation-0"
+                  no-data-text="No hay pacientes recientes en WhatsApp" :items-per-page="10">
+                  <template v-slot:item.precio="{ item }">
+                    S/ {{ item.precio }}
+                  </template>
+                  <template v-slot:item.estado="{ item }">
+                    <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
+                      <span class="status-dot" />
+                      {{ item.estado }}
+                    </span>
+                  </template>
+                  <template v-slot:bottom></template>
+                </v-data-table>
+
+                <div style="height: 2rem;"></div>
+
+                <!-- FB/IG Table -->
+                <v-card-title class="table-search-bar">
+                  <span class="table-title">Últimos 10 Pacientes Facebook e Instagram</span>
+                </v-card-title>
+                <v-data-table :headers="headersDashboardFbIg" :items="pacientesFbIg.slice(0, 10)" class="elevation-0"
+                  no-data-text="No hay pacientes recientes en FB/IG" :items-per-page="10">
+                  <template v-slot:item.precio="{ item }">
+                    S/ {{ item.precio }}
+                  </template>
+                  <template v-slot:item.estado="{ item }">
+                    <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
+                      <span class="status-dot" />
+                      {{ item.estado }}
+                    </span>
+                  </template>
+                  <template v-slot:bottom></template>
                 </v-data-table>
               </div>
 
@@ -597,13 +627,29 @@
           <!-- KPI Stats Grid -->
           <div class="stats-grid">
             <div class="stat-card">
-              <div class="stat-title">Ingresos (Mes Actual)</div>
+              <div class="stat-title">Ingresos Totales</div>
               <div class="stat-value">S/ {{ revenueCurrentMonth.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
               </div>
-              <div :class="['stat-change', revenueGrowth >= 0 ? 'up' : 'down']">
-                <v-icon :icon="revenueGrowth >= 0 ? 'mdi-trending-up' : 'mdi-trending-down'" size="12" />
-                {{ Math.abs(revenueGrowth).toFixed(1) }}% vs mes anterior
+              <div class="stat-subtitle">Histórico Acumulado</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-title">Total Reservas</div>
+              <div class="stat-value" style="color: #3b82f6;">S/ {{ revenueReservaCurrentMonth.toLocaleString('es-PE', {
+                minimumFractionDigits: 2
+              }) }}
               </div>
+              <div class="stat-subtitle">Precio base</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-title">Total Tratamientos</div>
+              <div class="stat-value" style="color: #8b5cf6;">S/ {{
+                revenueTratamientoCurrentMonth.toLocaleString('es-PE', {
+                  minimumFractionDigits: 2
+                }) }}
+              </div>
+              <div class="stat-subtitle">Precio procedimientos</div>
             </div>
 
             <div class="stat-card">
@@ -635,7 +681,7 @@
             <!-- Revenue chart -->
             <div class="chart-section" style="height: auto;">
               <div class="chart-header">
-                <h2>Tendencia de Facturación (Diaria)</h2>
+                <h2>Tendencia de Facturación (Semanal)</h2>
               </div>
               <client-only>
                 <apexchart type="area" height="350" :options="revenueChartOptions" :series="revenueChartSeries" />
@@ -679,7 +725,12 @@
                   <v-list-item-subtitle>{{ paciente.procedimiento || 'Procedimiento General' }}</v-list-item-subtitle>
                   <template v-slot:append>
                     <div class="text-right">
-                      <div class="font-weight-bold text-primary">S/ {{ paciente.precio }}</div>
+                      <div class="font-weight-bold text-primary">S/ {{ (parseCurrency(paciente.precio) +
+                        parseCurrency(paciente.precio_tratamiento)).toFixed(2) }}</div>
+                      <div style="font-size: 11px; color: #666;">
+                        <span style="color: #3b82f6;">Res: S/{{ parseCurrency(paciente.precio) }}</span> |
+                        <span style="color: #8b5cf6;">Trat: S/{{ parseCurrency(paciente.precio_tratamiento) }}</span>
+                      </div>
                       <div class="text-caption text-medium-emphasis">{{ paciente.fecha_agendamiento ? new
                         Date(paciente.fecha_agendamiento).toLocaleDateString() : '-' }}</div>
                     </div>
@@ -1226,7 +1277,8 @@
               </div>
               <v-file-input v-model="medicalHistoryFormData.file"
                 :label="editingMedicalHistory && medicalHistoryFormData.existingFileName ? 'Cambiar archivo (Opcional)' : 'Seleccionar archivo (PDF o Imagen)'"
-                accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp" variant="outlined" density="compact" prepend-icon="mdi-paperclip" show-size
+                accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp" variant="outlined" density="compact"
+                prepend-icon="mdi-paperclip" show-size
                 :rules="[v => !v || v.length === 0 || v[0].type === 'application/pdf' || v[0].type.startsWith('image/') || 'Solo se permiten PDF o Imágenes']"></v-file-input>
             </div>
           </v-form>
@@ -1314,8 +1366,8 @@
             <v-select v-model="patientFormData.procedimiento" label="Procedimiento" :items="procedures"
               item-title="name" item-value="name" variant="outlined" density="compact"></v-select>
 
-            <v-text-field v-model="patientFormData.fecha_agendamiento" label="Fecha de Agendamiento" type="datetime-local"
-              variant="outlined" density="compact"></v-text-field>
+            <v-text-field v-model="patientFormData.fecha_agendamiento" label="Fecha de Agendamiento"
+              type="datetime-local" variant="outlined" density="compact"></v-text-field>
 
             <v-select v-model="patientFormData.estado" label="Estado"
               :items="['Activo', 'Pendiente', 'Finalizado', 'Cancelado']" variant="outlined" density="compact"
@@ -1490,6 +1542,7 @@ const fetchPacientesWpp = async () => {
     const { data, error } = await client
       .from('PacientesBDwppHEALUP')
       .select('*')
+      .order('id', { ascending: false })
 
     if (error) throw error
 
@@ -1507,6 +1560,7 @@ const fetchPacientesFbIg = async () => {
     const { data, error } = await client
       .from('PacientesBDfbigHEALUP')
       .select('*')
+      .order('id', { ascending: false })
 
     if (error) throw error
 
@@ -1521,9 +1575,9 @@ const fetchPacientesFbIg = async () => {
 const fetchCompras = async () => {
   loading.value = true
   try {
-    const { data, error } = await client
+    const { data, error } = await (client
       .from('comprasBDwppBRADA')
-      .select('*')
+      .select('*') as any)
       .order('created_at', { ascending: false })
 
     if (error) throw error
@@ -1538,9 +1592,9 @@ const fetchCompras = async () => {
 
 const fetchLeadsWpp = async () => {
   try {
-    const { data, error } = await client
+    const { data, error } = await (client
       .from('GeneralBDwppHEALUP')
-      .select('*')
+      .select('*') as any)
       .order('id', { ascending: false })
 
     if (error) throw error
@@ -1552,9 +1606,9 @@ const fetchLeadsWpp = async () => {
 
 const fetchLeadsFbIg = async () => {
   try {
-    const { data, error } = await client
+    const { data, error } = await (client
       .from('GeneralBDfbigHEALUP')
-      .select('*')
+      .select('*') as any)
       .order('id', { ascending: false })
 
     if (error) throw error
@@ -1671,40 +1725,54 @@ const savePatient = async () => {
   loading.value = true
   try {
     const tableName = selectedPatientType.value === 'wpp' ? 'PacientesBDwppHEALUP' : 'PacientesBDfbigHEALUP'
-    
+
     // Format date for Supabase (timestamptz)
     let formattedDate = null
     if (patientFormData.value.fecha_agendamiento) {
       formattedDate = new Date(patientFormData.value.fecha_agendamiento).toISOString()
     }
 
-    const payload = {
+    const commonPayload = {
       nombre: patientFormData.value.nombre,
       dni: patientFormData.value.dni,
       numero: patientFormData.value.numero,
-      red_social: patientFormData.value.red_social, // Might be unused in Wpp table, but safe to send if schema allows or ignored
-      precio: patientFormData.value.precio || 0,
-      precio_tratamiento: patientFormData.value.precio_tratamiento || 0,
+      precio: parseCurrency(patientFormData.value.precio),
+      precio_tratamiento: parseCurrency(patientFormData.value.precio_tratamiento),
       procedimiento: patientFormData.value.procedimiento,
       fecha_agendamiento: formattedDate,
       estado: patientFormData.value.estado
     }
 
-    if (editingPatient.value) {
-      // Update
-      const { error } = await client
-        .from(tableName)
-        .update(payload)
-        .eq('id', editingPatient.value.id)
+    if (selectedPatientType.value === 'wpp') {
+      const payload = commonPayload
 
-      if (error) throw error
+      if (editingPatient.value) {
+        const { error } = await (client
+          .from('PacientesBDwppHEALUP') as any)
+          .update(payload)
+          .eq('id', editingPatient.value.id)
+        if (error) throw error
+      } else {
+        const { error } = await client
+          .from('PacientesBDwppHEALUP')
+          .insert(payload as any)
+        if (error) throw error
+      }
     } else {
-      // Insert
-      const { error } = await client
-        .from(tableName)
-        .insert(payload)
+      const payload = { ...commonPayload, red_social: patientFormData.value.red_social }
 
-      if (error) throw error
+      if (editingPatient.value) {
+        const { error } = await (client
+          .from('PacientesBDfbigHEALUP') as any)
+          .update(payload)
+          .eq('id', editingPatient.value.id)
+        if (error) throw error
+      } else {
+        const { error } = await client
+          .from('PacientesBDfbigHEALUP')
+          .insert(payload as any)
+        if (error) throw error
+      }
     }
 
     // Refresh data
@@ -1730,9 +1798,9 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
   try {
     const tableName = type === 'wpp' ? 'PacientesBDwppHEALUP' : 'PacientesBDfbigHEALUP'
 
-    const { error } = await client
+    const { error } = await (client
       .from(tableName)
-      .delete()
+      .delete() as any)
       .eq('id', item.id)
 
     if (error) throw error
@@ -1866,24 +1934,51 @@ const pacientesMesAnterior = computed(() => {
   })
 })
 
-const revenueCurrentMonth = computed(() => {
-  return pacientesMesActual.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
+const revenueReservaCurrentMonth = computed(() => {
+  return allPacientes.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
 })
 
-const revenuePreviousMonth = computed(() => {
+const revenueTratamientoCurrentMonth = computed(() => {
+  return allPacientes.value.reduce((sum, item) => sum + parseCurrency(item.precio_tratamiento), 0)
+})
+
+const revenueCurrentMonth = computed(() => {
+  return revenueReservaCurrentMonth.value + revenueTratamientoCurrentMonth.value
+})
+
+// Keep Previous Month logic as is for comparison, or disable it if "Global" comparison doesn't make sense vs "Last Month". 
+// User wants to see the sum of the tables. 
+// I will repurpose 'revenuePreviousMonth' to be 0 or effectively hide the "growth" if it's confusing, 
+// BUT the request is specifically about the "0" value. 
+// Let's keep the specific monthly/historical logic separate if possible?
+// The user request "En total de reservas... tiene que hacer la suma de las columnas... de lista de pacientes..."
+// implied the card should match the table. The table is ALL patients. So the card should be ALL patients.
+
+const revenueReservaPreviousMonth = computed(() => {
   return pacientesMesAnterior.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
 })
 
-const revenueGrowth = computed(() => {
-  if (revenuePreviousMonth.value === 0) return revenueCurrentMonth.value > 0 ? 100 : 0
-  return ((revenueCurrentMonth.value - revenuePreviousMonth.value) / revenuePreviousMonth.value) * 100
+const revenueTratamientoPreviousMonth = computed(() => {
+  return pacientesMesAnterior.value.reduce((sum, item) => sum + parseCurrency(item.precio_tratamiento), 0)
 })
 
-const salesCountCurrentMonth = computed(() => pacientesMesActual.value.length)
+const revenuePreviousMonth = computed(() => {
+  return revenueReservaPreviousMonth.value + revenueTratamientoPreviousMonth.value
+})
+
+const revenueGrowth = computed(() => {
+  // Comparing Total All Time vs Last Month doesn't make sense for "This Month Growth".
+  // I will hide the growth indicator in the template or make this 0.
+  // Or better, I'll calculate growth based on actual Current Month vs Last Month for the "Growth" pill, 
+  // but the MAIN VALUE should be Total.
+  // However, reusing the variable names might be cleaner for minimal code change.
+  return 0
+})
+
+const salesCountCurrentMonth = computed(() => allPacientes.value.length)
 const salesCountPreviousMonth = computed(() => pacientesMesAnterior.value.length)
 const salesGrowth = computed(() => {
-  if (salesCountPreviousMonth.value === 0) return salesCountCurrentMonth.value > 0 ? 100 : 0
-  return ((salesCountCurrentMonth.value - salesCountPreviousMonth.value) / salesCountPreviousMonth.value) * 100
+  return 0
 })
 
 const averageOrderValue = computed(() => {
@@ -1891,7 +1986,7 @@ const averageOrderValue = computed(() => {
   return revenueCurrentMonth.value / salesCountCurrentMonth.value
 })
 
-const totalComprasCount = computed(() => compras.value.length) // Legacy ref
+const totalComprasCount = computed(() => compras.value.length)
 const totalRevenue = computed(() => revenueCurrentMonth.value)
 
 // Tasa de Conversión Real (Leads que se convierten en Pacientes)
@@ -1909,36 +2004,74 @@ const realConversionRate = computed(() => {
   return (count / leads.value.length) * 100
 })
 
-// --- GRÁFICOS FACTURACIÓN ---
-
-// A. Ingresos Diarios (Mes Actual)
-const revenueChartSeries = computed(() => {
+// A. Ingresos (Tendencia Semanal - Últimas 8 Semanas)
+const revenueChartDataRaw = computed(() => {
+  const weeks = 8
   const now = new Date()
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const dailyRevenue = new Array(daysInMonth).fill(0)
+  const weeklyData: { start: number; end: number; label: string; reservas: number; tratamientos: number }[] = []
 
-  pacientesMesActual.value.forEach(p => {
+  // Generate last 8 weeks buckets
+  for (let i = weeks - 1; i >= 0; i--) {
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (i * 7))
+    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6)
+
+    // Set to start/end of days
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+
+    const label = `${start.getDate()}/${start.getMonth() + 1} - ${end.getDate()}/${end.getMonth() + 1}`
+
+    weeklyData.push({
+      start: start.getTime(),
+      end: end.getTime(),
+      label,
+      reservas: 0,
+      tratamientos: 0
+    })
+  }
+
+  // Populate data
+  allPacientes.value.forEach(p => {
     if (!p.fecha_agendamiento) return
-    const d = new Date(p.fecha_agendamiento)
-    const dayIndex = d.getDate() - 1
-    if (dayIndex >= 0 && dayIndex < daysInMonth) {
-      dailyRevenue[dayIndex] += parseCurrency(p.precio)
+    const t = new Date(p.fecha_agendamiento).getTime()
+
+    // Find matching week
+    const week = weeklyData.find(w => t >= w.start && t <= w.end)
+    if (week) {
+      week.reservas += parseCurrency(p.precio)
+      week.tratamientos += parseCurrency(p.precio_tratamiento)
     }
   })
 
-  return [{ name: 'Ingresos Diarios', data: dailyRevenue }]
+  return weeklyData
+})
+
+const revenueChartSeries = computed(() => {
+  return [
+    { name: 'Reservas', data: revenueChartDataRaw.value.map(w => w.reservas) },
+    { name: 'Tratamientos', data: revenueChartDataRaw.value.map(w => w.tratamientos) }
+  ]
 })
 
 const revenueChartOptions = computed<ApexOptions>(() => ({
   chart: { type: 'area', height: 350, fontFamily: 'inherit', toolbar: { show: false }, background: 'transparent' },
-  xaxis: { categories: Array.from({ length: new Date().getDate() }, (_, i) => i + 1), labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } }, tooltip: { enabled: false } },
+  xaxis: {
+    categories: revenueChartDataRaw.value.map(w => w.label),
+    labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } },
+    tooltip: { enabled: false }
+  },
   yaxis: { labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' }, formatter: (val) => `S/ ${val.toFixed(0)}` } },
   dataLabels: { enabled: false },
   stroke: { curve: 'smooth', width: 2 },
-  colors: ['#10b981'],
+  colors: ['#3b82f6', '#8b5cf6'],
   grid: { borderColor: isDark.value ? '#3f3f46' : '#e5e7eb', strokeDashArray: 4 },
   fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.1, stops: [0, 90, 100] } },
-  theme: { mode: isDark.value ? 'dark' : 'light' }
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  legend: { position: 'top', horizontalAlign: 'right', labels: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } },
+  tooltip: {
+    y: { formatter: (val) => `S/ ${val.toFixed(2)}` },
+    theme: isDark.value ? 'dark' : 'light'
+  }
 }))
 
 // B. Gráfico de Conversión
@@ -2187,12 +2320,20 @@ const stats = computed<Stat[]>(() => [
 
 /* ---------------- Tabs ---------------- */
 const tabs = ref<Tab[]>([
-  { label: 'Compras', value: 'compras' },
+  { label: 'Pacientes', value: 'pacientes_dashboard' },
   { label: 'Leads', value: 'leads' },
   { label: 'Próximos Eventos', value: 'events' }
 ])
 
-const activeTab = ref('compras') // Changed default to compras from outline
+const activeTab = ref('pacientes_dashboard') // Changed default to pacientes_dashboard from outline
+
+const headersDashboardWpp = computed(() => {
+  return headersPacientesWpp.value.filter(h => h.key !== 'actions')
+})
+
+const headersDashboardFbIg = computed(() => {
+  return headersPacientesFbIg.value.filter(h => h.key !== 'actions')
+})
 
 const headersComprasDashboard = computed(() => {
   return headersCompras.value.slice(0, 10)
@@ -2615,7 +2756,11 @@ function editSelectedEvent() {
   if (!selectedEvent.value) return
 
   editingEvent.value = selectedEvent.value
-  eventFormData.value = { ...selectedEvent.value }
+  eventFormData.value = {
+    ...selectedEvent.value,
+    clientPhone: selectedEvent.value.clientPhone || '',
+    clientEmail: selectedEvent.value.clientEmail || ''
+  }
   closeEventDetailDialog()
   showEventDialog.value = true
 }

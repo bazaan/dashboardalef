@@ -404,11 +404,23 @@
                 <template v-slot:item.precio="{ item }">
                   S/ {{ item.precio }}
                 </template>
+                <template v-slot:item.precio_tratamiento="{ item }">
+                  S/ {{ item.precio_tratamiento }}
+                </template>
                 <template v-slot:item.estado="{ item }">
                   <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
                     <span class="status-dot" />
                     {{ item.estado }}
                   </span>
+                </template>
+                <template v-slot:item.agendamiento="{ item }">
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-icon v-bind="props" :icon="item.agendamiento === 'IA' ? 'mdi-robot' : 'mdi-account'"
+                        :color="item.agendamiento === 'IA' ? 'primary' : 'success'" size="24"></v-icon>
+                    </template>
+                    <span>{{ item.agendamiento === 'IA' ? 'Inteligencia Artificial' : 'Agente Humano' }}</span>
+                  </v-tooltip>
                 </template>
                 <template v-slot:item.actions="{ item }">
                   <button class="icon-btn" @click="openPatientForm(item, 'wpp')">
@@ -432,11 +444,23 @@
                 <template v-slot:item.precio="{ item }">
                   S/ {{ item.precio }}
                 </template>
+                <template v-slot:item.precio_tratamiento="{ item }">
+                  S/ {{ item.precio_tratamiento }}
+                </template>
                 <template v-slot:item.estado="{ item }">
                   <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
                     <span class="status-dot" />
                     {{ item.estado }}
                   </span>
+                </template>
+                <template v-slot:item.agendamiento="{ item }">
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-icon v-bind="props" :icon="item.agendamiento === 'IA' ? 'mdi-robot' : 'mdi-account'"
+                        :color="item.agendamiento === 'IA' ? 'primary' : 'success'" size="24"></v-icon>
+                    </template>
+                    <span>{{ item.agendamiento === 'IA' ? 'Inteligencia Artificial' : 'Agente Humano' }}</span>
+                  </v-tooltip>
                 </template>
                 <template v-slot:item.actions="{ item }">
                   <button class="icon-btn" @click="openPatientForm(item, 'fbig')">
@@ -1373,6 +1397,25 @@
               :items="['Activo', 'Pendiente', 'Finalizado', 'Cancelado']" variant="outlined" density="compact"
               :rules="[v => !!v || 'El estado es requerido']"></v-select>
 
+            <v-select v-model="patientFormData.agendamiento" label="Agendado por" :items="['IA', 'Agente']"
+              variant="outlined" density="compact" :rules="[v => !!v || 'Campo requerido']">
+              <template v-slot:selection="{ item }">
+                <div class="d-flex align-center">
+                  <v-icon :icon="item.raw === 'IA' ? 'mdi-robot' : 'mdi-account'" class="mr-2"
+                    :color="item.raw === 'IA' ? 'primary' : 'success'" size="20"></v-icon>
+                  {{ item.raw }}
+                </div>
+              </template>
+              <template v-slot:item="{ props, item }">
+                <v-list-item v-bind="props">
+                  <template v-slot:prepend>
+                    <v-icon :icon="item.raw === 'IA' ? 'mdi-robot' : 'mdi-account'"
+                      :color="item.raw === 'IA' ? 'primary' : 'success'"></v-icon>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
+
           </v-form>
         </v-card-text>
 
@@ -1466,29 +1509,29 @@ const headers = ref([
 
 /* Headers específicos para Pacientes */
 const headersPacientesWpp = ref([
-  { title: 'ID', key: 'id', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'DNI', key: 'dni', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
-  { title: 'Precio', key: 'precio', sortable: true },
+  { title: 'Precio de reserva', key: 'precio', sortable: true },
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
   { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
   { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
   { title: 'Estado', key: 'estado', sortable: true },
+  { title: 'Agendado por', key: 'agendamiento', sortable: true },
   { title: 'Actions', key: 'actions', sortable: false }
 ])
 
 const headersPacientesFbIg = ref([
-  { title: 'ID', key: 'id', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'DNI', key: 'dni', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
   { title: 'Red Social', key: 'red_social', sortable: true },
-  { title: 'Precio', key: 'precio', sortable: true },
+  { title: 'Precio de reserva', key: 'precio', sortable: true },
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
   { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
   { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
   { title: 'Estado', key: 'estado', sortable: true },
+  { title: 'Agendado por', key: 'agendamiento', sortable: true },
   { title: 'Actions', key: 'actions', sortable: false }
 ])
 
@@ -1663,7 +1706,8 @@ const patientFormData = ref({
   precio_tratamiento: '',
   procedimiento: '',
   fecha_agendamiento: '',
-  estado: 'Activo'
+  estado: 'Activo',
+  agendamiento: 'IA'
 })
 
 const openPatientTypeDialog = () => {
@@ -1691,7 +1735,8 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
       precio_tratamiento: item.precio_tratamiento || '',
       procedimiento: item.procedimiento || '',
       fecha_agendamiento: item.fecha_agendamiento ? new Date(item.fecha_agendamiento).toISOString().slice(0, 16) : '',
-      estado: item.estado || 'Activo'
+      estado: item.estado || 'Activo',
+      agendamiento: item.agendamiento || 'IA'
     }
   } else {
     // Create mode: reset data
@@ -1704,7 +1749,8 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
       precio_tratamiento: '',
       procedimiento: '',
       fecha_agendamiento: new Date().toISOString().slice(0, 16),
-      estado: 'Activo'
+      estado: 'Activo',
+      agendamiento: 'IA'
     }
   }
   showPatientFormDialog.value = true
@@ -1740,7 +1786,8 @@ const savePatient = async () => {
       precio_tratamiento: parseCurrency(patientFormData.value.precio_tratamiento),
       procedimiento: patientFormData.value.procedimiento,
       fecha_agendamiento: formattedDate,
-      estado: patientFormData.value.estado
+      estado: patientFormData.value.estado,
+      agendamiento: patientFormData.value.agendamiento
     }
 
     if (selectedPatientType.value === 'wpp') {

@@ -2826,6 +2826,8 @@ async function fetchEvents() {
       clientName: e.client_name,
       clientSurname: e.client_surname,
       clientDNI: e.client_dni,
+      clientPhone: e.client_phone,
+      clientEmail: e.client_email,
       eventReason: e.event_reason,
       // color is purely frontend derivation from procedureId, so handled by getProcedureColor
     }))

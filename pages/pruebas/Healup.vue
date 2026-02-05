@@ -339,7 +339,7 @@
       <div v-else-if="activeView === 'pacientes'" class="view-container">
         <header class="top-header">
           <h1>Pacientes</h1>
-          <button class="btn-primary">
+          <button class="btn-primary" @click="openPatientTypeDialog">
             <v-icon icon="mdi-account-plus" size="16" />
             <span>Nuevo Paciente</span>
           </button>
@@ -381,10 +381,10 @@
                   </span>
                 </template>
                 <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="editItem(item)">
+                  <button class="icon-btn" @click="openPatientForm(item, 'wpp')">
                     <v-icon icon="mdi-pencil" size="16" />
                   </button>
-                  <button class="icon-btn" @click="deleteItem(item)">
+                  <button class="icon-btn" @click="deletePatient(item, 'wpp')">
                     <v-icon icon="mdi-delete" size="16" />
                   </button>
                 </template>
@@ -409,10 +409,10 @@
                   </span>
                 </template>
                 <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="editItem(item)">
+                  <button class="icon-btn" @click="openPatientForm(item, 'fbig')">
                     <v-icon icon="mdi-pencil" size="16" />
                   </button>
-                  <button class="icon-btn" @click="deleteItem(item)">
+                  <button class="icon-btn" @click="deletePatient(item, 'fbig')">
                     <v-icon icon="mdi-delete" size="16" />
                   </button>
                 </template>
@@ -996,6 +996,17 @@
                   :rules="[v => !!v || 'El DNI es requerido']"></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
+                <v-text-field v-model="eventFormData.clientPhone" label="Número de Teléfono" variant="outlined"
+                  density="compact" :rules="[v => !!v || 'El número es requerido']"></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="eventFormData.clientEmail" label="Correo Electrónico (Opcional)"
+                  variant="outlined" density="compact" type="email"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
                 <v-select v-model="eventFormData.eventReason" label="Razón del Evento" :items="eventReasons"
                   variant="outlined" density="compact" :rules="[v => !!v || 'La razón es requerida']"></v-select>
               </v-col>
@@ -1214,9 +1225,9 @@
                 <v-chip size="x-small" color="success" variant="flat">Archivo actual</v-chip>
               </div>
               <v-file-input v-model="medicalHistoryFormData.file"
-                :label="editingMedicalHistory && medicalHistoryFormData.existingFileName ? 'Cambiar archivo (Opcional)' : 'Seleccionar archivo PDF'"
-                accept="application/pdf" variant="outlined" density="compact" prepend-icon="mdi-paperclip" show-size
-                :rules="[v => !v || v.length === 0 || v[0].type === 'application/pdf' || 'Solo se permiten archivos PDF']"></v-file-input>
+                :label="editingMedicalHistory && medicalHistoryFormData.existingFileName ? 'Cambiar archivo (Opcional)' : 'Seleccionar archivo (PDF o Imagen)'"
+                accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp" variant="outlined" density="compact" prepend-icon="mdi-paperclip" show-size
+                :rules="[v => !v || v.length === 0 || v[0].type === 'application/pdf' || v[0].type.startsWith('image/') || 'Solo se permiten PDF o Imágenes']"></v-file-input>
             </div>
           </v-form>
         </v-card-text>
@@ -1225,6 +1236,98 @@
           <v-spacer></v-spacer>
           <v-btn color="grey" variant="text" @click="closeMedicalHistoryDialog">Cancelar</v-btn>
           <v-btn color="primary" variant="elevated" @click="saveMedicalHistory">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  PATIENT TYPE SELECTION DIALOG  ========== -->
+    <v-dialog v-model="showPatientTypeDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="text-h5 text-center pa-4">
+          Seleccionar Origen del Paciente
+        </v-card-title>
+        <v-card-text class="pa-4">
+          <v-row>
+            <v-col cols="6">
+              <v-card hover @click="selectPatientType('wpp')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
+                <v-icon icon="mdi-whatsapp" size="48" color="success"></v-icon>
+                <span class="text-h6">WhatsApp</span>
+              </v-card>
+            </v-col>
+            <v-col cols="6">
+              <v-card hover @click="selectPatientType('fbig')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
+                <v-icon icon="mdi-facebook" size="48" color="primary"></v-icon>
+                <span class="text-h6">FB / IG</span>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  PATIENT FORM DIALOG  ========== -->
+    <v-dialog v-model="showPatientFormDialog" max-width="600px" persistent>
+      <v-card>
+        <v-card-title class="event-dialog-title">
+          <span>{{ editingPatient ? 'Editar Paciente' : 'Nuevo Paciente' }} ({{ selectedPatientType === 'wpp' ?
+            'WhatsApp' : 'FB / IG' }})</span>
+          <v-btn icon="mdi-close" variant="text" @click="closePatientForm"></v-btn>
+        </v-card-title>
+
+        <v-card-text>
+          <v-form ref="patientFormRef">
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="patientFormData.nombre" label="Nombre Completo" variant="outlined"
+                  density="compact" :rules="[v => !!v || 'El nombre es requerido']"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="patientFormData.dni" label="DNI" variant="outlined" density="compact"
+                  :rules="[v => !!v || 'El DNI es requerido']"></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="patientFormData.numero" label="Número de Teléfono" variant="outlined"
+                  density="compact" :rules="[v => !!v || 'El número es requerido']"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6" v-if="selectedPatientType === 'fbig'">
+                <v-text-field v-model="patientFormData.red_social" label="Red Social (Link/User)" variant="outlined"
+                  density="compact"></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="patientFormData.precio" label="Precio" type="number" prefix="S/"
+                  variant="outlined" density="compact"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="patientFormData.precio_tratamiento" label="Precio Tratamiento" type="number"
+                  prefix="S/" variant="outlined" density="compact"></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-select v-model="patientFormData.procedimiento" label="Procedimiento" :items="procedures"
+              item-title="name" item-value="name" variant="outlined" density="compact"></v-select>
+
+            <v-text-field v-model="patientFormData.fecha_agendamiento" label="Fecha de Agendamiento" type="datetime-local"
+              variant="outlined" density="compact"></v-text-field>
+
+            <v-select v-model="patientFormData.estado" label="Estado"
+              :items="['Activo', 'Pendiente', 'Finalizado', 'Cancelado']" variant="outlined" density="compact"
+              :rules="[v => !!v || 'El estado es requerido']"></v-select>
+
+          </v-form>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="closePatientForm">Cancelar</v-btn>
+          <v-btn color="primary" variant="elevated" @click="savePatient">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1317,7 +1420,9 @@ const headersPacientesWpp = ref([
   { title: 'Número', key: 'numero', sortable: true },
   { title: 'Precio', key: 'precio', sortable: true },
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
+  { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
   { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Estado', key: 'estado', sortable: true },
   { title: 'Actions', key: 'actions', sortable: false }
 ])
 
@@ -1329,7 +1434,9 @@ const headersPacientesFbIg = ref([
   { title: 'Red Social', key: 'red_social', sortable: true },
   { title: 'Precio', key: 'precio', sortable: true },
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
+  { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
   { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Estado', key: 'estado', sortable: true },
   { title: 'Actions', key: 'actions', sortable: false }
 ])
 
@@ -1487,15 +1594,161 @@ const toggleN8nWorkflow = async (turnOn: boolean) => {
 }
 
 /* ---------------- CRUD Operations ---------------- */
-const editItem = (item: any) => {
-  console.log('Editar:', item)
-  // Implementa tu lógica de edición aquí
+const showPatientTypeDialog = ref(false)
+const showPatientFormDialog = ref(false)
+const selectedPatientType = ref<'wpp' | 'fbig'>('wpp')
+const editingPatient = ref<any>(null)
+const patientFormRef = ref<any>(null)
+
+const patientFormData = ref({
+  nombre: '',
+  dni: '',
+  numero: '',
+  red_social: '',
+  precio: '',
+  precio_tratamiento: '',
+  procedimiento: '',
+  fecha_agendamiento: '',
+  estado: 'Activo'
+})
+
+const openPatientTypeDialog = () => {
+  showPatientTypeDialog.value = true
 }
 
-const deleteItem = async (item: any) => {
-  // Nota: Esto requeriría saber de qué tabla borrar (Wpp o FbIg)
-  // Por simplicidad, alertamos que no está implementado o intentamos borrar de ambas si el ID coincide (riesgoso)
-  alert("La eliminación directa desde la tabla combinada requiere lógica adicional para saber la fuente. Implementar según necesidad.")
+const selectPatientType = (type: 'wpp' | 'fbig') => {
+  selectedPatientType.value = type
+  showPatientTypeDialog.value = false
+  openPatientForm(null, type)
+}
+
+const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
+  selectedPatientType.value = type
+  editingPatient.value = item
+
+  if (item) {
+    // Edit mode: copy data
+    patientFormData.value = {
+      nombre: item.nombre || '',
+      dni: item.dni || '',
+      numero: item.numero || '',
+      red_social: item.red_social || '',
+      precio: item.precio || '',
+      precio_tratamiento: item.precio_tratamiento || '',
+      procedimiento: item.procedimiento || '',
+      fecha_agendamiento: item.fecha_agendamiento ? new Date(item.fecha_agendamiento).toISOString().slice(0, 16) : '',
+      estado: item.estado || 'Activo'
+    }
+  } else {
+    // Create mode: reset data
+    patientFormData.value = {
+      nombre: '',
+      dni: '',
+      numero: '',
+      red_social: '',
+      precio: '',
+      precio_tratamiento: '',
+      procedimiento: '',
+      fecha_agendamiento: new Date().toISOString().slice(0, 16),
+      estado: 'Activo'
+    }
+  }
+  showPatientFormDialog.value = true
+}
+
+const closePatientForm = () => {
+  showPatientFormDialog.value = false
+  editingPatient.value = null
+}
+
+const savePatient = async () => {
+  // Validate
+  if (!patientFormData.value.nombre || !patientFormData.value.dni || !patientFormData.value.numero) {
+    alert('Por favor complete los campos obligatorios (Nombre, DNI, Número)')
+    return
+  }
+
+  loading.value = true
+  try {
+    const tableName = selectedPatientType.value === 'wpp' ? 'PacientesBDwppHEALUP' : 'PacientesBDfbigHEALUP'
+    
+    // Format date for Supabase (timestamptz)
+    let formattedDate = null
+    if (patientFormData.value.fecha_agendamiento) {
+      formattedDate = new Date(patientFormData.value.fecha_agendamiento).toISOString()
+    }
+
+    const payload = {
+      nombre: patientFormData.value.nombre,
+      dni: patientFormData.value.dni,
+      numero: patientFormData.value.numero,
+      red_social: patientFormData.value.red_social, // Might be unused in Wpp table, but safe to send if schema allows or ignored
+      precio: patientFormData.value.precio || 0,
+      precio_tratamiento: patientFormData.value.precio_tratamiento || 0,
+      procedimiento: patientFormData.value.procedimiento,
+      fecha_agendamiento: formattedDate,
+      estado: patientFormData.value.estado
+    }
+
+    if (editingPatient.value) {
+      // Update
+      const { error } = await client
+        .from(tableName)
+        .update(payload)
+        .eq('id', editingPatient.value.id)
+
+      if (error) throw error
+    } else {
+      // Insert
+      const { error } = await client
+        .from(tableName)
+        .insert(payload)
+
+      if (error) throw error
+    }
+
+    // Refresh data
+    if (selectedPatientType.value === 'wpp') {
+      await fetchPacientesWpp()
+    } else {
+      await fetchPacientesFbIg()
+    }
+
+    closePatientForm()
+  } catch (error) {
+    console.error('Error saving patient:', error)
+    alert('Error al guardar el paciente. Verifique la consola para más detalles.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
+  if (!confirm(`¿Estás seguro de que deseas eliminar a ${item.nombre}?`)) return
+
+  loading.value = true
+  try {
+    const tableName = type === 'wpp' ? 'PacientesBDwppHEALUP' : 'PacientesBDfbigHEALUP'
+
+    const { error } = await client
+      .from(tableName)
+      .delete()
+      .eq('id', item.id)
+
+    if (error) throw error
+
+    // Refresh data
+    if (type === 'wpp') {
+      await fetchPacientesWpp()
+    } else {
+      await fetchPacientesFbIg()
+    }
+  } catch (error) {
+    console.error('Error deleting patient:', error)
+    alert('Error al eliminar el paciente.')
+  } finally {
+    loading.value = false
+  }
 }
 
 /* ---------------- Estado General ---------------- */
@@ -2066,6 +2319,8 @@ interface CalendarEvent {
   clientName: string
   clientSurname: string
   clientDNI: string
+  clientPhone?: string
+  clientEmail?: string
   eventReason: string
   color?: string
 }
@@ -2104,6 +2359,8 @@ const eventFormData = ref({
   clientName: '',
   clientSurname: '',
   clientDNI: '',
+  clientPhone: '',
+  clientEmail: '',
   eventReason: ''
 })
 
@@ -2274,6 +2531,8 @@ function openCreateEventDialog(date?: string) {
     clientName: '',
     clientSurname: '',
     clientDNI: '',
+    clientPhone: '',
+    clientEmail: '',
     eventReason: ''
   }
   showEventDialog.value = true
@@ -2294,6 +2553,7 @@ async function saveEvent() {
     eventFormData.value.clientName &&
     eventFormData.value.clientSurname &&
     eventFormData.value.clientDNI &&
+    eventFormData.value.clientPhone &&
     eventFormData.value.eventReason
 
   if (!isValid) {
@@ -2311,6 +2571,8 @@ async function saveEvent() {
       client_name: eventFormData.value.clientName,
       client_surname: eventFormData.value.clientSurname,
       client_dni: eventFormData.value.clientDNI,
+      client_phone: eventFormData.value.clientPhone,
+      client_email: eventFormData.value.clientEmail,
       event_reason: eventFormData.value.eventReason
     }
 

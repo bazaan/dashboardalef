@@ -407,6 +407,19 @@
                 <template v-slot:item.precio_tratamiento="{ item }">
                   S/ {{ item.precio_tratamiento }}
                 </template>
+                <template v-slot:item.metodo_de_pago="{ item }">
+                  <div class="d-flex align-center">
+                    <v-icon v-if="item.metodo_de_pago === 'Yape'" color="purple-darken-1" size="small"
+                      class="mr-1">mdi-cellphone-marker</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago === 'Transferencia'" color="blue-darken-2" size="small"
+                      class="mr-1">mdi-bank-transfer-out</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago === 'Efectivo'" color="green" size="small"
+                      class="mr-1">mdi-cash</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago && item.metodo_de_pago.includes('Tarjeta')" color="orange"
+                      size="small" class="mr-1">mdi-credit-card</v-icon>
+                    <span>{{ item.metodo_de_pago }}</span>
+                  </div>
+                </template>
                 <template v-slot:item.estado="{ item }">
                   <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
                     <span class="status-dot" />
@@ -446,6 +459,19 @@
                 </template>
                 <template v-slot:item.precio_tratamiento="{ item }">
                   S/ {{ item.precio_tratamiento }}
+                </template>
+                <template v-slot:item.metodo_de_pago="{ item }">
+                  <div class="d-flex align-center">
+                    <v-icon v-if="item.metodo_de_pago === 'Yape'" color="purple-darken-1" size="small"
+                      class="mr-1">mdi-cellphone-marker</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago === 'Transferencia'" color="blue-darken-2" size="small"
+                      class="mr-1">mdi-bank-transfer-out</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago === 'Efectivo'" color="green" size="small"
+                      class="mr-1">mdi-cash</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago && item.metodo_de_pago.includes('Tarjeta')" color="orange"
+                      size="small" class="mr-1">mdi-credit-card</v-icon>
+                    <span>{{ item.metodo_de_pago }}</span>
+                  </div>
                 </template>
                 <template v-slot:item.estado="{ item }">
                   <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
@@ -1291,6 +1317,9 @@
             <v-text-field v-model="medicalHistoryFormData.email" label="Correo electrónico (Opcional)"
               variant="outlined" density="compact" type="email"></v-text-field>
 
+            <v-text-field v-model="medicalHistoryFormData.dateAdded" label="Fecha" variant="outlined" density="compact"
+              type="date" :rules="[v => !!v || 'La fecha es requerida']" class="mt-2"></v-text-field>
+
             <div class="file-upload-section mt-4">
               <label class="form-label mb-2 d-block">Documento Médico (PDF)</label>
               <div v-if="editingMedicalHistory && medicalHistoryFormData.existingFileName"
@@ -1392,6 +1421,10 @@
 
             <v-text-field v-model="patientFormData.fecha_agendamiento" label="Fecha de Agendamiento"
               type="datetime-local" variant="outlined" density="compact"></v-text-field>
+
+            <v-select v-model="patientFormData.metodo_de_pago" label="Método de pago"
+              :items="['Yape', 'Transferencia', 'Efectivo', 'Tarjeta crédito/débito', 'Ninguno']" variant="outlined"
+              density="compact"></v-select>
 
             <v-select v-model="patientFormData.estado" label="Estado"
               :items="['Activo', 'Pendiente', 'Finalizado', 'Cancelado']" variant="outlined" density="compact"
@@ -1516,8 +1549,9 @@ const headersPacientesWpp = ref([
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
   { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
   { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Método de pago', key: 'metodo_de_pago', sortable: true },
   { title: 'Estado', key: 'estado', sortable: true },
-  { title: 'Agendado por', key: 'agendamiento', sortable: true },
+  { title: 'Agendado por', key: 'agendamiento', sortable: true, align: 'center' as const },
   { title: 'Actions', key: 'actions', sortable: false }
 ])
 
@@ -1530,8 +1564,9 @@ const headersPacientesFbIg = ref([
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
   { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
   { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Método de pago', key: 'metodo_de_pago', sortable: true },
   { title: 'Estado', key: 'estado', sortable: true },
-  { title: 'Agendado por', key: 'agendamiento', sortable: true },
+  { title: 'Agendado por', key: 'agendamiento', sortable: true, align: 'center' as const },
   { title: 'Actions', key: 'actions', sortable: false }
 ])
 
@@ -1706,6 +1741,7 @@ const patientFormData = ref({
   precio_tratamiento: '',
   procedimiento: '',
   fecha_agendamiento: '',
+  metodo_de_pago: 'Ninguno',
   estado: 'Activo',
   agendamiento: 'IA'
 })
@@ -1741,6 +1777,7 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
       precio_tratamiento: totalTratamiento.toString(), // Show Total to user
       procedimiento: item.procedimiento || '',
       fecha_agendamiento: item.fecha_agendamiento ? new Date(item.fecha_agendamiento).toISOString().slice(0, 16) : '',
+      metodo_de_pago: item.metodo_de_pago || 'Ninguno',
       estado: item.estado || 'Activo',
       agendamiento: item.agendamiento || 'IA'
     }
@@ -1755,6 +1792,7 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
       precio_tratamiento: '',
       procedimiento: '',
       fecha_agendamiento: new Date().toISOString().slice(0, 16),
+      metodo_de_pago: 'Ninguno',
       estado: 'Activo',
       agendamiento: 'IA'
     }
@@ -1803,7 +1841,8 @@ const savePatient = async () => {
       procedimiento: patientFormData.value.procedimiento,
       fecha_agendamiento: formattedDate,
       estado: patientFormData.value.estado,
-      agendamiento: patientFormData.value.agendamiento
+      agendamiento: patientFormData.value.agendamiento,
+      metodo_de_pago: patientFormData.value.metodo_de_pago
     }
 
     if (selectedPatientType.value === 'wpp') {
@@ -1843,6 +1882,85 @@ const savePatient = async () => {
       await fetchPacientesWpp()
     } else {
       await fetchPacientesFbIg()
+    }
+
+    // Automatic Medical History Creation for NEW patients
+    if (!editingPatient.value) {
+      try {
+        const fullName = patientFormData.value.nombre.trim()
+        const firstSpaceIndex = fullName.indexOf(' ')
+        let name = fullName
+        let surname = ''
+
+        if (firstSpaceIndex > 0) {
+          name = fullName.substring(0, firstSpaceIndex)
+          surname = fullName.substring(firstSpaceIndex + 1)
+        }
+
+        const historyPayload = {
+          name: name,
+          surname: surname,
+          dni: patientFormData.value.dni,
+          phone: patientFormData.value.numero,
+          email: '',
+          date_added: new Date().toISOString().slice(0, 10),
+          attachment_name: '',
+          attachment_data: ''
+        }
+
+        const { error: historyError } = await (client
+          .from('healup_medical_history') as any)
+          .insert(historyPayload)
+
+        if (historyError) {
+          console.error('Error creating automatic medical history:', historyError)
+        } else {
+          if (activeView.value === 'historialClinico') {
+            await fetchMedicalHistory()
+          }
+        }
+      } catch (err) {
+        console.error('Error in automatic history creation logic:', err)
+      }
+
+    } else {
+      // UPDATE Medical History logic for EDITED patients
+      try {
+        const oldDni = editingPatient.value.dni
+        const fullName = patientFormData.value.nombre.trim()
+        const firstSpaceIndex = fullName.indexOf(' ')
+        let name = fullName
+        let surname = ''
+
+        if (firstSpaceIndex > 0) {
+          name = fullName.substring(0, firstSpaceIndex)
+          surname = fullName.substring(firstSpaceIndex + 1)
+        }
+
+        const historyPayload = {
+          name: name,
+          surname: surname,
+          dni: patientFormData.value.dni, // Update to new DNI
+          phone: patientFormData.value.numero
+        }
+
+        // Update ALL records matching the old DNI
+        const { error: historyUpdateError } = await (client
+          .from('healup_medical_history') as any)
+          .update(historyPayload)
+          .eq('dni', oldDni)
+
+        if (historyUpdateError) {
+          console.error('Error syncing medical history:', historyUpdateError)
+        } else {
+          console.log('Synced medical history for DNI:', oldDni)
+          if (activeView.value === 'historialClinico') {
+            await fetchMedicalHistory()
+          }
+        }
+      } catch (err) {
+        console.error('Error in sync history logic:', err)
+      }
     }
 
     closePatientForm()
@@ -3073,6 +3191,7 @@ const medicalHistoryFormData = ref({
   dni: '',
   phone: '',
   email: '',
+  dateAdded: '',
   file: [] as any,
   existingFileName: ''
 })
@@ -3082,6 +3201,7 @@ const medicalHistoryHeaders = [
   { title: 'Nombre', key: 'name', sortable: true },
   { title: 'Apellido', key: 'surname', sortable: true },
   { title: 'DNI', key: 'dni', sortable: true },
+  { title: 'Email', key: 'email', sortable: true },
   { title: 'Documento', key: 'attachment', sortable: false },
   { title: 'Acciones', key: 'actions', sortable: false }
 ]
@@ -3095,6 +3215,7 @@ function openMedicalHistoryDialog() {
     dni: '',
     phone: '',
     email: '',
+    dateAdded: new Date().toISOString().slice(0, 10),
     file: [],
     existingFileName: ''
   }
@@ -3109,6 +3230,7 @@ function editMedicalHistory(item: MedicalHistoryEntry) {
     dni: item.dni,
     phone: item.phone,
     email: item.email || '',
+    dateAdded: item.dateAdded ? new Date(item.dateAdded).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
     file: [],
     existingFileName: item.attachmentName || ''
   }
@@ -3166,7 +3288,7 @@ async function saveMedicalHistory() {
       dni: medicalHistoryFormData.value.dni,
       phone: medicalHistoryFormData.value.phone,
       email: medicalHistoryFormData.value.email,
-      date_added: editingMedicalHistory.value ? undefined : new Date().toLocaleDateString(), // Only set on create if desired, or keep original
+      date_added: medicalHistoryFormData.value.dateAdded,
       attachment_name: attachmentName,
       attachment_data: attachmentData
     }
@@ -3184,8 +3306,7 @@ async function saveMedicalHistory() {
       const { error } = await (client
         .from('healup_medical_history') as any)
         .insert({
-          ...payload,
-          date_added: new Date().toLocaleDateString()
+          ...payload
         })
 
       if (error) throw error

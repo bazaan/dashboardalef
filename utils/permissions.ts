@@ -11,7 +11,8 @@ export const superAdmins = [
 
 export const healupUsers = [
     'healupaestheticlab@gmail.com',
-    'laguilar@headhuntinglab.com'
+    'laguilar@headhuntinglab.com',
+    'carlosvizalv@gmail.com'
 ]
 
 export const bradaUsers = [

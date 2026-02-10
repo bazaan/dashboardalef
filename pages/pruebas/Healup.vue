@@ -676,6 +676,22 @@
         <div class="content-area">
           <!-- KPI Stats Grid -->
           <div class="stats-grid">
+            <!-- New Cards -->
+            <div class="stat-card">
+              <div class="stat-title">Ganancias Mes Actual</div>
+              <div class="stat-value">S/ {{ revenueMonthActual.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              </div>
+              <div class="stat-subtitle">{{ revenueCurrentMonthName }}</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-title">Ganancias Mes Pasado</div>
+              <div class="stat-value">S/ {{ revenuePreviousMonth.toLocaleString('es-PE', { minimumFractionDigits: 2 })
+              }}
+              </div>
+              <div class="stat-subtitle">{{ revenuePrevMonthName }}</div>
+            </div>
+
             <div class="stat-card">
               <div class="stat-title">Ingresos Totales</div>
               <div class="stat-value">S/ {{ revenueCurrentMonth.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
@@ -731,7 +747,13 @@
             <!-- Revenue chart -->
             <div class="chart-section" style="height: auto;">
               <div class="chart-header">
-                <h2>Tendencia de Facturación (Semanal)</h2>
+                <h2>Tendencia de Facturación ({{ revenueZoom }})</h2>
+                <div class="time-filters">
+                  <button v-for="option in revenueZoomOptions" :key="option"
+                    :class="['time-btn', { active: revenueZoom === option }]" @click="revenueZoom = option">
+                    {{ option }}
+                  </button>
+                </div>
               </div>
               <client-only>
                 <apexchart type="area" height="350" :options="revenueChartOptions" :series="revenueChartSeries" />
@@ -918,6 +940,10 @@
               style="background-color: #ef4444; color: white;" @click="deleteMultipleMedicalHistory">
               <v-icon icon="mdi-delete" size="16" />
               <span>Eliminar ({{ selectedMedicalHistory.length }})</span>
+            </button>
+            <button class="btn-secondary" @click="syncMissingMedicalHistory" :disabled="syncLoading">
+              <v-icon icon="mdi-sync" size="16" :class="{ 'mdi-spin': syncLoading }" />
+              <span>{{ syncLoading ? 'Sincronizando...' : 'Sincronizar Pacientes' }}</span>
             </button>
             <button class="btn-primary" @click="openMedicalHistoryDialog()">
               <v-icon icon="mdi-file-document-plus" size="16" />
@@ -1944,16 +1970,41 @@ const savePatient = async () => {
           phone: patientFormData.value.numero
         }
 
-        // Update ALL records matching the old DNI
-        const { error: historyUpdateError } = await (client
+        // 1. Try to UPDATE existing records matching the old DNI
+        const { data: updatedData, error: historyUpdateError } = await (client
           .from('healup_medical_history') as any)
           .update(historyPayload)
           .eq('dni', oldDni)
+          .select()
 
         if (historyUpdateError) {
           console.error('Error syncing medical history:', historyUpdateError)
         } else {
-          console.log('Synced medical history for DNI:', oldDni)
+          // 2. If NO records were updated, it means it doesn't exist. create it.
+          if (!updatedData || updatedData.length === 0) {
+            console.log('No medical history found for DNI:', oldDni, '. Creating new record...')
+
+            const newHistoryPayload = {
+              ...historyPayload,
+              email: '',
+              date_added: new Date().toISOString().slice(0, 10),
+              attachment_name: '',
+              attachment_data: ''
+            }
+
+            const { error: insertError } = await (client
+              .from('healup_medical_history') as any)
+              .insert(newHistoryPayload)
+
+            if (insertError) {
+              console.error('Error creating medical history on patient edit:', insertError)
+            } else {
+              console.log('Created new medical history for:', name)
+            }
+          } else {
+            console.log('Synced medical history for DNI:', oldDni)
+          }
+
           if (activeView.value === 'historialClinico') {
             await fetchMedicalHistory()
           }
@@ -2127,6 +2178,18 @@ const revenueCurrentMonth = computed(() => {
   return revenueReservaCurrentMonth.value + revenueTratamientoCurrentMonth.value
 })
 
+const revenueReservaMonthActual = computed(() => {
+  return pacientesMesActual.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
+})
+
+const revenueTratamientoMonthActual = computed(() => {
+  return pacientesMesActual.value.reduce((sum, item) => sum + parseCurrency(item.precio_tratamiento), 0)
+})
+
+const revenueMonthActual = computed(() => {
+  return revenueReservaMonthActual.value + revenueTratamientoMonthActual.value
+})
+
 // Keep Previous Month logic as is for comparison, or disable it if "Global" comparison doesn't make sense vs "Last Month". 
 // User wants to see the sum of the tables. 
 // I will repurpose 'revenuePreviousMonth' to be 0 or effectively hide the "growth" if it's confusing, 
@@ -2186,21 +2249,62 @@ const realConversionRate = computed(() => {
 })
 
 // A. Ingresos (Tendencia Semanal - Últimas 8 Semanas)
+// A. Ingresos (Tendencia Semanal - Últimas 8 Semanas)
+const revenueZoom = ref('Mes') // Default to Month view as it is often most useful
+const revenueZoomOptions = ['Día', 'Semana', 'Mes', 'Año']
+
 const revenueChartDataRaw = computed(() => {
-  const weeks = 8
   const now = new Date()
   const weeklyData: { start: number; end: number; label: string; reservas: number; tratamientos: number }[] = []
 
-  // Generate last 8 weeks buckets
-  for (let i = weeks - 1; i >= 0; i--) {
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (i * 7))
-    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6)
+  // Configuration based on Zoom
+  let iterations = 8
+  let intervalType = 'week' // 'day', 'week', 'month', 'year'
 
-    // Set to start/end of days
+  if (revenueZoom.value === 'Día') {
+    iterations = 30
+    intervalType = 'day'
+  } else if (revenueZoom.value === 'Semana') {
+    iterations = 12
+    intervalType = 'week'
+  } else if (revenueZoom.value === 'Mes') {
+    iterations = 12
+    intervalType = 'month'
+  } else if (revenueZoom.value === 'Año') {
+    iterations = 5
+    intervalType = 'year'
+  }
+
+  // Generate buckets
+  for (let i = iterations - 1; i >= 0; i--) {
+    let start = new Date(now)
+    let end = new Date(now)
+    let label = ''
+
+    if (intervalType === 'day') {
+      start.setDate(now.getDate() - i)
+      end = new Date(start) // Same day
+      label = `${start.getDate()}/${start.getMonth() + 1}`
+    } else if (intervalType === 'week') {
+      // Logic for weeks: similar to before
+      const endSeed = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (i * 7))
+      end = new Date(endSeed)
+      start = new Date(endSeed.getFullYear(), endSeed.getMonth(), endSeed.getDate() - 6)
+      label = `${start.getDate()}/${start.getMonth() + 1} - ${end.getDate()}/${end.getMonth() + 1}`
+    } else if (intervalType === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      end = new Date(start.getFullYear(), start.getMonth() + 1, 0) // End of month
+      const monthNamesShort = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+      label = `${monthNamesShort[start.getMonth()]} ${start.getFullYear().toString().slice(-2)}`
+    } else if (intervalType === 'year') {
+      start = new Date(now.getFullYear() - i, 0, 1)
+      end = new Date(now.getFullYear() - i, 11, 31)
+      label = `${start.getFullYear()}`
+    }
+
+    // Set boundaries
     start.setHours(0, 0, 0, 0)
     end.setHours(23, 59, 59, 999)
-
-    const label = `${start.getDate()}/${start.getMonth() + 1} - ${end.getDate()}/${end.getMonth() + 1}`
 
     weeklyData.push({
       start: start.getTime(),
@@ -2216,11 +2320,11 @@ const revenueChartDataRaw = computed(() => {
     if (!p.fecha_agendamiento) return
     const t = new Date(p.fecha_agendamiento).getTime()
 
-    // Find matching week
-    const week = weeklyData.find(w => t >= w.start && t <= w.end)
-    if (week) {
-      week.reservas += parseCurrency(p.precio)
-      week.tratamientos += parseCurrency(p.precio_tratamiento)
+    // Find matching bucket
+    const bucket = weeklyData.find(w => t >= w.start && t <= w.end)
+    if (bucket) {
+      bucket.reservas += parseCurrency(p.precio)
+      bucket.tratamientos += parseCurrency(p.precio_tratamiento)
     }
   })
 
@@ -2464,40 +2568,76 @@ const contribuyentesGrowth = computed(() => {
 })
 
 // Stats Array para el Dashboard
-const stats = computed<Stat[]>(() => [
-  {
-    title: 'Ganancia Total',
-    value: `S/ ${totalRevenue.value.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`,
-    change: `${revenueGrowth.value >= 0 ? '+' : ''}${revenueGrowth.value.toFixed(1)}%`,
-    trend: revenueGrowth.value >= 0 ? 'up' : 'down',
-    subtitle: 'vs mes anterior',
-    description: 'Ingresos totales del mes actual'
-  },
-  {
-    title: 'Total Leads',
-    value: totalLeadsCount.value.toLocaleString(),
-    change: `${leadsGrowthStat.value >= 0 ? '+' : ''}${leadsGrowthStat.value.toFixed(1)}%`,
-    trend: leadsGrowthStat.value >= 0 ? 'up' : 'down',
-    subtitle: 'vs mes anterior',
-    description: 'Total acumulado'
-  },
-  {
-    title: 'Total Pacientes',
-    value: allPacientes.value.length.toLocaleString(),
-    change: '',
-    trend: 'up',
-    subtitle: 'Histórico',
-    description: 'Pedidos procesados exitosamente'
-  },
-  {
-    title: 'Subida de Leads',
-    value: `${leadsGrowthStat.value.toFixed(1)}%`,
-    change: leadsGrowthStat.value >= 0 ? 'Subiendo' : 'Bajando',
-    trend: leadsGrowthStat.value >= 0 ? 'up' : 'down',
-    subtitle: 'Crecimiento mensual',
-    description: 'Comparativa con el mes pasado'
-  }
-])
+// Helper for month names
+const monthNamesList = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+]
+
+const revenueCurrentMonthName = computed(() => {
+  return monthNamesList[new Date().getMonth()]
+})
+
+const revenuePrevMonthName = computed(() => {
+  const now = new Date()
+  let prev = now.getMonth() - 1
+  if (prev < 0) prev = 11
+  return monthNamesList[prev]
+})
+
+// Stats Array para el Dashboard
+const stats = computed<Stat[]>(() => {
+  return [
+    {
+      title: `Ganancias ${revenueCurrentMonthName.value}`,
+      value: `S/ ${revenueMonthActual.value.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`,
+      change: '',
+      trend: 'up',
+      subtitle: 'Mes Actual',
+      description: 'Ingresos totales del mes actual'
+    },
+    {
+      title: `Ganancias ${revenuePrevMonthName.value}`,
+      value: `S/ ${revenuePreviousMonth.value.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`,
+      change: '',
+      trend: 'up',
+      subtitle: 'Mes Anterior',
+      description: 'Ingresos totales del mes anterior'
+    },
+    {
+      title: 'Ganancia Total',
+      value: `S/ ${totalRevenue.value.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`,
+      change: `${revenueGrowth.value >= 0 ? '+' : ''}${revenueGrowth.value.toFixed(1)}%`,
+      trend: revenueGrowth.value >= 0 ? 'up' : 'down',
+      subtitle: 'vs mes anterior',
+      description: 'Ingresos totales del mes actual'
+    },
+    {
+      title: 'Total Leads',
+      value: totalLeadsCount.value.toLocaleString(),
+      change: `${leadsGrowthStat.value >= 0 ? '+' : ''}${leadsGrowthStat.value.toFixed(1)}%`,
+      trend: leadsGrowthStat.value >= 0 ? 'up' : 'down',
+      subtitle: 'vs mes anterior',
+      description: 'Total acumulado'
+    },
+    {
+      title: 'Total Pacientes',
+      value: allPacientes.value.length.toLocaleString(),
+      change: '',
+      trend: 'up',
+      subtitle: 'Histórico',
+      description: 'Pedidos procesados exitosamente'
+    },
+    {
+      title: 'Subida de Leads',
+      value: `${leadsGrowthStat.value.toFixed(1)}%`,
+      change: leadsGrowthStat.value >= 0 ? 'Subiendo' : 'Bajando',
+      trend: leadsGrowthStat.value >= 0 ? 'up' : 'down',
+      subtitle: 'Crecimiento mensual',
+      description: 'Comparativa con el mes pasado'
+    }
+  ]
+})
 
 /* ---------------- Tabs ---------------- */
 const tabs = ref<Tab[]>([
@@ -3388,6 +3528,81 @@ function downloadMedicalAttachment(item: MedicalHistoryEntry) {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+}
+
+// --- ONE-TIME SYNC UTILITY ---
+const syncLoading = ref(false)
+
+async function syncMissingMedicalHistory() {
+  try {
+    syncLoading.value = true
+    console.log('Starting sync...')
+
+    // 1. Fetch current History
+    const { data: historyData, error: historyError } = await client
+      .from('healup_medical_history')
+      .select('dni')
+
+    if (historyError) throw historyError
+    const existingDnis = new Set(historyData?.map((h: any) => h.dni) || [])
+    console.log('Existing History DNIs:', existingDnis)
+
+    // 2. Fetch All Patients (refresh to be safe)
+    await fetchPacientesWpp()
+    await fetchPacientesFbIg()
+
+    // 3. Filter Missing
+    const missingPatients = allPacientes.value.filter(p => {
+      if (!p.dni) return false
+      return !existingDnis.has(p.dni)
+    })
+
+    console.log(`Found ${missingPatients.length} missing patients.`)
+
+    if (missingPatients.length === 0) {
+      alert('No faltan pacientes en el historial.')
+      syncLoading.value = false
+      return
+    }
+
+    // 4. Prepare Inserts
+    const newHistoryEntries = missingPatients.map((p: any) => {
+      // Split name safely
+      const rawName = p.nombre || ''
+      const nameParts = rawName.split(' ')
+      const newName = nameParts[0] || 'Sin Nombre'
+      const newSurname = nameParts.slice(1).join(' ') || ''
+      const now = new Date().toISOString()
+
+      return {
+        name: newName,
+        surname: newSurname,
+        dni: p.dni,
+        phone: p.numero,
+        email: p.email || '',
+        date_added: now,
+        attachment_name: null,
+        attachment_data: null
+      }
+    })
+
+    // 5. Insert
+    const { error: insertError } = await (client
+      .from('healup_medical_history') as any)
+      .insert(newHistoryEntries)
+
+    if (insertError) throw insertError
+
+    // 6. Refresh
+    await fetchMedicalHistory()
+    alert(`Se sincronizaron ${newHistoryEntries.length} pacientes al historial.`)
+
+  } catch (err) {
+    console.error('Error syncing history:', err)
+    alert('Error al sincronizar historial. Revisa la consola.')
+  } finally {
+    syncLoading.value = false
+  }
 }
 
 /* ---------------- Medical History Supabase ---------------- */

@@ -44,7 +44,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import { isSuperAdmin, healupUsers, bradaUsers } from '@/utils/permissions';
+import { isSuperAdmin, healupUsers, bradaUsers, clinicaArroyoUsers } from '@/utils/permissions';
 const client = useSupabaseClient();
 const router = useRouter();
 
@@ -159,7 +159,13 @@ const submit = async () => {
         return;
       }
 
-      // 4. Fallback -> Alef (Protected)
+      // 4. Clinica Arroyo Users -> Clinica Arroyo Dashboard
+      if (clinicaArroyoUsers.includes(emailLower)) {
+        router.push('/pruebas/ClinicaArroyo');
+        return;
+      }
+
+      // 5. Fallback -> Alef (Protected)
       router.push('/pruebas/AlefCompany');
     } else {
       alert("No se pudo iniciar sesión. Verifique sus credenciales.");

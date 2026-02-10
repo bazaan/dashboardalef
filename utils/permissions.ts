@@ -21,12 +21,17 @@ export const bradaUsers = [
     'danmp1219@gmail.com'
 ]
 
+export const clinicaArroyoUsers = [
+    'jzumaeta05@gmail.com'
+]
+
 // Definición de Dashboards
 export const dashboards = [
     { name: 'Healup', path: '/pruebas/Healup', icon: 'mdi-medical-bag', logo: 'healupLOGO.png' },
     { name: 'Brada Perfumes', path: '/pruebas/BradaPerfumes', icon: 'mdi-bottle-tonic', logo: 'bradalogo.jpg' },
     { name: 'Alef Company', path: '/pruebas/AlefCompany', icon: 'mdi-domain', logo: 'aleflogo oscuro.png' },
-    { name: 'Origitec', path: '/pruebas/Origitec', icon: 'mdi-alpha-o-circle', logo: 'Logo_Origitec_Trans.png' }
+    { name: 'Origitec', path: '/pruebas/Origitec', icon: 'mdi-alpha-o-circle', logo: 'Logo_Origitec_Trans.png' },
+    { name: 'Clinica Arroyo', path: '/pruebas/ClinicaArroyo', icon: 'mdi-hospital-building', logo: 'arroyoLOGO.jpg' }
 ]
 
 // Helpers de Verificación
@@ -58,4 +63,9 @@ export function canAccessOrigitec(email: string | undefined | null): boolean {
 export function canAccessAlef(email: string | undefined | null): boolean {
     const e = normalize(email)
     return superAdmins.includes(e)
+}
+
+export function canAccessClinicaArroyo(email: string | undefined | null): boolean {
+    const e = normalize(email)
+    return clinicaArroyoUsers.includes(e) || superAdmins.includes(e)
 }

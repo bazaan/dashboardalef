@@ -24,6 +24,7 @@ export default defineNuxtConfig({
     // Aquí registramos tu "Diccionario de Empresas"
     // Nuxt leerá las variables que pusiste en el archivo .env
     n8nWorkflows: {
+      alegrated: process.env.N8N_ID_ALEGRATED, // Se conecta con la variable del .env
       brada: process.env.N8N_ID_BRADA,   // Se conecta con la variable del .env
       healup: process.env.N8N_ID_HEALUP  // Se conecta con la variable del .env
     },

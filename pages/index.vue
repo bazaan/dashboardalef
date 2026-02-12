@@ -44,7 +44,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import { isSuperAdmin, healupUsers, bradaUsers, clinicaArroyoUsers } from '@/utils/permissions';
+import { isSuperAdmin, healupUsers, bradaUsers, clinicaArroyoUsers, alegratedUsers } from '@/utils/permissions';
 const client = useSupabaseClient();
 const router = useRouter();
 
@@ -162,6 +162,12 @@ const submit = async () => {
       // 4. Clinica Arroyo Users -> Clinica Arroyo Dashboard
       if (clinicaArroyoUsers.includes(emailLower)) {
         router.push('/pruebas/ClinicaArroyo');
+        return;
+      }
+
+      // 5. Alegrated Users -> Alegrated Dashboard
+      if (alegratedUsers.includes(emailLower)) {
+        router.push('/pruebas/Alegrated');
         return;
       }
 

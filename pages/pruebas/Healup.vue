@@ -1346,6 +1346,13 @@
             <v-text-field v-model="medicalHistoryFormData.dateAdded" label="Fecha" variant="outlined" density="compact"
               type="date" :rules="[v => !!v || 'La fecha es requerida']" class="mt-2"></v-text-field>
 
+            <v-textarea v-model="medicalHistoryFormData.returnNote" label="Notas de devolución" variant="outlined"
+              density="compact" rows="3" class="mt-2"></v-textarea>
+
+            <v-select v-model="medicalHistoryFormData.status" label="Estado"
+              :items="['Activo', 'Pendiente', 'Finalizado', 'Cancelado']" variant="outlined" density="compact"
+              class="mt-2" :rules="[v => !!v || 'El estado es requerido']"></v-select>
+
             <div class="file-upload-section mt-4">
               <label class="form-label mb-2 d-block">Documento Médico (PDF)</label>
               <div v-if="editingMedicalHistory && medicalHistoryFormData.existingFileName"
@@ -3316,6 +3323,8 @@ interface MedicalHistoryEntry {
   dateAdded: string
   attachmentName?: string
   attachmentData?: string // Base64 string for demo purposes
+  returnNote?: string
+  status?: string
 }
 
 /* ---------------- Medical History State ---------------- */
@@ -3333,7 +3342,9 @@ const medicalHistoryFormData = ref({
   email: '',
   dateAdded: '',
   file: [] as any,
-  existingFileName: ''
+  existingFileName: '',
+  returnNote: '',
+  status: 'Activo'
 })
 
 const medicalHistoryHeaders = [
@@ -3342,6 +3353,8 @@ const medicalHistoryHeaders = [
   { title: 'Apellido', key: 'surname', sortable: true },
   { title: 'DNI', key: 'dni', sortable: true },
   { title: 'Email', key: 'email', sortable: true },
+  { title: 'Estado', key: 'status', sortable: true },
+  { title: 'Notas de devolución', key: 'returnNote', sortable: true },
   { title: 'Documento', key: 'attachment', sortable: false },
   { title: 'Acciones', key: 'actions', sortable: false }
 ]
@@ -3357,7 +3370,9 @@ function openMedicalHistoryDialog() {
     email: '',
     dateAdded: new Date().toISOString().slice(0, 10),
     file: [],
-    existingFileName: ''
+    existingFileName: '',
+    returnNote: '',
+    status: 'Activo'
   }
   showMedicalHistoryDialog.value = true
 }
@@ -3372,7 +3387,9 @@ function editMedicalHistory(item: MedicalHistoryEntry) {
     email: item.email || '',
     dateAdded: item.dateAdded ? new Date(item.dateAdded).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
     file: [],
-    existingFileName: item.attachmentName || ''
+    existingFileName: item.attachmentName || '',
+    returnNote: item.returnNote || '',
+    status: item.status || 'Activo'
   }
   showMedicalHistoryDialog.value = true
 }
@@ -3430,7 +3447,9 @@ async function saveMedicalHistory() {
       email: medicalHistoryFormData.value.email,
       date_added: medicalHistoryFormData.value.dateAdded,
       attachment_name: attachmentName,
-      attachment_data: attachmentData
+      attachment_data: attachmentData,
+      nota_de_devolucion: medicalHistoryFormData.value.returnNote,
+      estado: medicalHistoryFormData.value.status
     }
 
     if (editingMedicalHistory.value) {
@@ -3624,7 +3643,9 @@ async function fetchMedicalHistory() {
       email: e.email,
       dateAdded: e.date_added,
       attachmentName: e.attachment_name,
-      attachmentData: e.attachment_data
+      attachmentData: e.attachment_data,
+      returnNote: e.nota_de_devolucion,
+      status: e.estado
     }))
   } catch (error) {
     console.error('Error loading medical history:', error)

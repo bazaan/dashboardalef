@@ -73,7 +73,8 @@ export function canAccessClinicaArroyo(email: string | undefined | null): boolea
 }
 
 export const alegratedUsers = [
-    'elroby28@hotmail.com'
+    'elroby28@hotmail.com',
+    'jefersonalexis27@gmail.com'
 ]
 
 export function canAccessAlegrated(email: string | undefined | null): boolean {

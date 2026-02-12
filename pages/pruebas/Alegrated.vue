@@ -233,6 +233,14 @@
                 </v-card-title>
                 <v-data-table :headers="headersComprasLima" :items="comprasLima.slice(0, 10)" class="elevation-0 mb-4"
                   no-data-text="No hay compras recientes en Lima" :items-per-page="5">
+                  <template v-slot:item.actions="{ item }">
+                    <v-icon size="small" class="me-2" @click="editCompra(item, 'Lima')">
+                      mdi-pencil
+                    </v-icon>
+                    <v-icon size="small" @click="deleteCompra(item, 'Lima')">
+                      mdi-delete
+                    </v-icon>
+                  </template>
                   <template v-slot:bottom></template>
                 </v-data-table>
 
@@ -242,6 +250,14 @@
                 </v-card-title>
                 <v-data-table :headers="headersComprasProvincia" :items="comprasProvincia.slice(0, 10)"
                   class="elevation-0 mb-4" no-data-text="No hay compras recientes en Provincia" :items-per-page="5">
+                  <template v-slot:item.actions="{ item }">
+                    <v-icon size="small" class="me-2" @click="editCompra(item, 'Provincia')">
+                      mdi-pencil
+                    </v-icon>
+                    <v-icon size="small" @click="deleteCompra(item, 'Provincia')">
+                      mdi-delete
+                    </v-icon>
+                  </template>
                   <template v-slot:bottom></template>
                 </v-data-table>
 
@@ -251,6 +267,14 @@
                 </v-card-title>
                 <v-data-table :headers="headersComprasExtranjero" :items="comprasExtranjero.slice(0, 10)"
                   class="elevation-0" no-data-text="No hay compras recientes en Extranjero" :items-per-page="5">
+                  <template v-slot:item.actions="{ item }">
+                    <v-icon size="small" class="me-2" @click="editCompra(item, 'Extranjero')">
+                      mdi-pencil
+                    </v-icon>
+                    <v-icon size="small" @click="deleteCompra(item, 'Extranjero')">
+                      mdi-delete
+                    </v-icon>
+                  </template>
                   <template v-slot:bottom></template>
                 </v-data-table>
               </div>
@@ -441,6 +465,14 @@
                   <template v-slot:item.created_at="{ item }">
                     {{ new Date(item.created_at).toLocaleDateString() }}
                   </template>
+                  <template v-slot:item.actions="{ item }">
+                    <v-icon size="small" class="me-2" @click="editCompra(item, 'Lima')">
+                      mdi-pencil
+                    </v-icon>
+                    <v-icon size="small" @click="deleteCompra(item, 'Lima')">
+                      mdi-delete
+                    </v-icon>
+                  </template>
                 </v-data-table>
               </v-card>
 
@@ -455,6 +487,14 @@
                   <template v-slot:item.created_at="{ item }">
                     {{ new Date(item.created_at).toLocaleDateString() }}
                   </template>
+                  <template v-slot:item.actions="{ item }">
+                    <v-icon size="small" class="me-2" @click="editCompra(item, 'Provincia')">
+                      mdi-pencil
+                    </v-icon>
+                    <v-icon size="small" @click="deleteCompra(item, 'Provincia')">
+                      mdi-delete
+                    </v-icon>
+                  </template>
                 </v-data-table>
               </v-card>
 
@@ -468,6 +508,14 @@
                   :items-per-page="15" :items-per-page-options="itemsPerPageOptions">
                   <template v-slot:item.created_at="{ item }">
                     {{ new Date(item.created_at).toLocaleDateString() }}
+                  </template>
+                  <template v-slot:item.actions="{ item }">
+                    <v-icon size="small" class="me-2" @click="editCompra(item, 'Extranjero')">
+                      mdi-pencil
+                    </v-icon>
+                    <v-icon size="small" @click="deleteCompra(item, 'Extranjero')">
+                      mdi-delete
+                    </v-icon>
                   </template>
                 </v-data-table>
               </v-card>
@@ -1305,51 +1353,113 @@
     </v-dialog>
 
     <!-- ==========  NEW PURCHASE DIALOG  ========== -->
-    <v-dialog v-model="showCompraDialog" max-width="600px">
+    <v-dialog v-model="showCompraDialog" max-width="700px">
       <v-card>
         <v-card-title class="event-dialog-title">
-          <span>Nueva Compra</span>
+          <span>Nueva Compra - {{ compraFormData.targetTable }}</span>
           <v-btn icon="mdi-close" variant="text" @click="showCompraDialog = false"></v-btn>
         </v-card-title>
         <v-card-text>
           <v-form ref="compraForm" @submit.prevent="saveCompra">
             <v-select v-model="compraFormData.targetTable" label="Destino" :items="['Lima', 'Provincia', 'Extranjero']"
-              variant="outlined" density="compact" :rules="[v => !!v || 'Seleccione un destino']"></v-select>
+              variant="outlined" density="compact" :rules="[v => !!v || 'Seleccione un destino']"
+              class="mb-4"></v-select>
 
+            <!-- CAMPOS COMUNES -->
             <v-row>
-              <v-col cols="6">
-                <v-text-field v-model="compraFormData.nombre" label="Nombre" variant="outlined" density="compact"
-                  :rules="[v => !!v || 'Requerido']"></v-text-field>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="compraFormData.nombre_completo" label="Nombre Completo" variant="outlined"
+                  density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
               </v-col>
-              <v-col cols="6">
-                <v-text-field v-model="compraFormData.apellidos" label="Apellidos" variant="outlined" density="compact"
-                  :rules="[v => !!v || 'Requerido']"></v-text-field>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="compraFormData.telefono" label="Teléfono / Celular" variant="outlined"
+                  density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
               </v-col>
             </v-row>
 
-            <v-text-field v-model="compraFormData.productos" label="Productos Comprados" variant="outlined"
-              density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+            <!-- CAMPOS LIMA -->
+            <div v-if="compraFormData.targetTable === 'Lima'">
+              <v-row>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.distrito" label="Distrito" variant="outlined" density="compact"
+                    :rules="[v => !!v || 'Requerido']"></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.referencia" label="Referencia" variant="outlined"
+                    density="compact"></v-text-field>
+                </v-col>
+              </v-row>
+              <v-text-field v-model="compraFormData.direccion_exacta" label="Dirección Exacta" variant="outlined"
+                density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+            </div>
+
+            <!-- CAMPOS PROVINCIA -->
+            <div v-if="compraFormData.targetTable === 'Provincia'">
+              <v-row>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.dni" label="DNI" variant="outlined" density="compact"
+                    :rules="[v => !!v || 'Requerido']"></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.region" label="Región" variant="outlined" density="compact"
+                    :rules="[v => !!v || 'Requerido']"></v-text-field>
+                </v-col>
+              </v-row>
+              <v-row>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.provincia" label="Provincia" variant="outlined"
+                    density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.distrito" label="Distrito" variant="outlined" density="compact"
+                    :rules="[v => !!v || 'Requerido']"></v-text-field>
+                </v-col>
+              </v-row>
+              <v-text-field v-model="compraFormData.agencia_shalom" label="Agencia Shalom" variant="outlined"
+                density="compact"></v-text-field>
+            </div>
+
+            <!-- CAMPOS EXTRANJERO -->
+            <div v-if="compraFormData.targetTable === 'Extranjero'">
+              <v-row>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.pais" label="País" variant="outlined" density="compact"
+                    :rules="[v => !!v || 'Requerido']"></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.ciudad" label="Ciudad" variant="outlined" density="compact"
+                    :rules="[v => !!v || 'Requerido']"></v-text-field>
+                </v-col>
+              </v-row>
+              <v-row>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.codigo_postal" label="Código Postal" variant="outlined"
+                    density="compact"></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field v-model="compraFormData.email" label="Email" variant="outlined" density="compact"
+                    type="email"></v-text-field>
+                </v-col>
+              </v-row>
+              <v-text-field v-model="compraFormData.direccion_completa" label="Dirección Completa" variant="outlined"
+                density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+            </div>
+
+            <v-divider class="my-4"></v-divider>
+
+            <!-- PRODUCTOS Y PRECIO (COMUNES) -->
+            <v-textarea v-model="compraFormData.productos" label="Productos Comprados" variant="outlined"
+              density="compact" rows="2" :rules="[v => !!v || 'Requerido']"></v-textarea>
 
             <v-row>
               <v-col cols="6">
-                <v-text-field v-model="compraFormData.precio" label="Precio (S/)" prefix="S/" type="number"
+                <v-text-field v-model="compraFormData.precio" label="Precio Total" prefix="S/" type="number"
                   variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
               </v-col>
               <v-col cols="6">
                 <v-select v-model="compraFormData.status" label="Estado"
                   :items="['Entregado', 'Pendiente', 'Cancelado']" variant="outlined" density="compact"
                   :rules="[v => !!v || 'Requerido']"></v-select>
-              </v-col>
-            </v-row>
-
-            <v-row>
-              <v-col cols="6">
-                <v-text-field v-model="compraFormData.celular" label="Celular" variant="outlined"
-                  density="compact"></v-text-field>
-              </v-col>
-              <v-col cols="6">
-                <v-text-field v-model="compraFormData.dni" label="DNI" variant="outlined"
-                  density="compact"></v-text-field>
               </v-col>
             </v-row>
 
@@ -1494,6 +1604,7 @@ const headersComprasLima = ref([
   { title: 'Distrito', key: 'distrito', sortable: true },
   { title: 'Dirección Exacta', key: 'direccion_exacta', sortable: true },
   { title: 'Referencia', key: 'referencia', sortable: true },
+  { title: 'Acciones', key: 'actions', sortable: false },
 ])
 
 const headersComprasProvincia = ref([
@@ -1504,6 +1615,7 @@ const headersComprasProvincia = ref([
   { title: 'Provincia', key: 'provincia', sortable: true },
   { title: 'Distrito', key: 'distrito', sortable: true },
   { title: 'Agencia Shalom', key: 'agencia_shalom', sortable: true },
+  { title: 'Acciones', key: 'actions', sortable: false },
 ])
 
 const headersComprasExtranjero = ref([
@@ -1514,6 +1626,7 @@ const headersComprasExtranjero = ref([
   { title: 'País', key: 'pais', sortable: true },
   { title: 'Teléfono', key: 'telefono', sortable: true },
   { title: 'Email', key: 'email', sortable: true },
+  { title: 'Acciones', key: 'actions', sortable: false },
 ])
 
 const headersCompras = ref([
@@ -1626,30 +1739,110 @@ const deleteItem = async (item: any) => {
 
 /* ---------------- Nueva Compra Logic ---------------- */
 const showCompraDialog = ref(false)
+const editingCompraId = ref<number | null>(null) // Track editing state
 const compraForm = ref<any>(null)
 const compraFormData = ref({
   targetTable: 'Lima',
-  nombre: '',
-  apellidos: '',
+  nombre_completo: '',
+  telefono: '',
   productos: '',
   precio: '',
   status: 'Entregado',
-  celular: '',
-  dni: ''
+  // Lima
+  distrito: '',
+  direccion_exacta: '',
+  referencia: '',
+  // Provincia
+  dni: '',
+  region: '',
+  provincia: '',
+  agencia_shalom: '',
+  // Extranjero
+  direccion_completa: '',
+  ciudad: '',
+  codigo_postal: '',
+  pais: '',
+  email: ''
 })
 
 function openCompraDialog() {
   compraFormData.value = {
     targetTable: 'Lima',
-    nombre: '',
-    apellidos: '',
+    nombre_completo: '',
+    telefono: '',
     productos: '',
     precio: '',
     status: 'Entregado',
-    celular: '',
-    dni: ''
+    distrito: '',
+    direccion_exacta: '',
+    referencia: '',
+    dni: '',
+    region: '',
+    provincia: '',
+    agencia_shalom: '',
+    direccion_completa: '',
+    ciudad: '',
+    codigo_postal: '',
+    pais: '',
+    email: ''
+  }
+  editingCompraId.value = null // Reset editing state
+  showCompraDialog.value = true
+}
+
+function editCompra(item: any, category: string) {
+  editingCompraId.value = item.id
+  compraFormData.value = {
+    targetTable: category,
+    nombre_completo: item.nombre_completo,
+    telefono: item.telefono,
+    productos: item.productos_comprados,
+    precio: item.precio,
+    status: item.estado,
+    // Lima
+    distrito: item.distrito || '',
+    direccion_exacta: item.direccion_exacta || '',
+    referencia: item.referencia || '',
+    // Provincia
+    dni: item.dni || '',
+    region: item.region || '',
+    provincia: item.provincia || '',
+    agencia_shalom: item.agencia_shalom || '',
+    // Extranjero
+    direccion_completa: item.direccion_completa || '',
+    ciudad: item.ciudad || '',
+    codigo_postal: item.codigo_postal || '',
+    pais: item.pais || '',
+    email: item.email || ''
   }
   showCompraDialog.value = true
+}
+
+async function deleteCompra(item: any, category: string) {
+  if (!confirm(`¿Estás seguro de eliminar la compra de ${item.nombre_completo}?`)) return
+
+  loading.value = true
+  try {
+    let tableName = ''
+    if (category === 'Lima') tableName = 'compraswpplimaalegrated'
+    else if (category === 'Provincia') tableName = 'compraswppprovinciaalegrated'
+    else if (category === 'Extranjero') tableName = 'compraswppextranjeroalegrated'
+
+    const { error } = await client
+      .from(tableName)
+      .delete()
+      .eq('id', item.id)
+
+    if (error) throw error
+
+    await fetchCompras()
+    alert('Compra eliminada exitosamente')
+  } catch (error) {
+    console.error('Error deleting compra:', error)
+    alert('Error al eliminar: ' + (error as any).message)
+  } finally {
+    loading.value = false
+  }
 }
 
 async function saveCompra() {
@@ -1659,30 +1852,78 @@ async function saveCompra() {
   loading.value = true
   try {
     let tableName = ''
-    if (compraFormData.value.targetTable === 'Lima') tableName = 'ventas_lima_alegrated'
-    else if (compraFormData.value.targetTable === 'Provincia') tableName = 'ventas_provincia_alegrated'
-    else if (compraFormData.value.targetTable === 'Extranjero') tableName = 'ventas_extranjero_alegrated'
+    let payload: any = {}
 
-    const payload = {
-      nombre: compraFormData.value.nombre,
-      apellidos: compraFormData.value.apellidos,
+    // Common fields
+    const commonPayload = {
+      nombre_completo: compraFormData.value.nombre_completo,
+      telefono: compraFormData.value.telefono,
       productos_comprados: compraFormData.value.productos,
       precio: compraFormData.value.precio,
-      celular: compraFormData.value.celular,
-      dni: compraFormData.value.dni,
-      status: compraFormData.value.status
-      // created_at is automatic usually
+      estado: compraFormData.value.status // Assuming 'estado' as per general headers
     }
 
-    const { error } = await (client.from(tableName) as any).insert(payload)
-    if (error) throw error
+    if (compraFormData.value.targetTable === 'Lima') {
+      tableName = 'compraswpplimaalegrated'
+      payload = {
+        ...commonPayload,
+        distrito: compraFormData.value.distrito,
+        direccion_exacta: compraFormData.value.direccion_exacta,
+        referencia: compraFormData.value.referencia
+      }
+    } else if (compraFormData.value.targetTable === 'Provincia') {
+      tableName = 'compraswppprovinciaalegrated'
+      payload = {
+        ...commonPayload,
+        dni: compraFormData.value.dni,
+        region: compraFormData.value.region,
+        provincia: compraFormData.value.provincia,
+        distrito: compraFormData.value.distrito,
+        agencia_shalom: compraFormData.value.agencia_shalom
+      }
+    } else if (compraFormData.value.targetTable === 'Extranjero') {
+      tableName = 'compraswppextranjeroalegrated'
+      payload = {
+        ...commonPayload,
+        direccion_completa: compraFormData.value.direccion_completa,
+        ciudad: compraFormData.value.ciudad,
+        codigo_postal: compraFormData.value.codigo_postal,
+        pais: compraFormData.value.pais,
+        email: compraFormData.value.email
+      }
+    }
 
-    alert('Compra registrada exitosamente')
+    // Workaround: Calcular ID manual para evitar error de secuencia desincronizada
+    const { data: maxIdData } = await client
+      .from(tableName)
+      .select('id')
+      .order('id', { ascending: false })
+      .limit(1)
+      .single()
+
+    const nextId = ((maxIdData as any)?.id || 0) + 1
+
+    if (editingCompraId.value) {
+      // Update
+      const { error } = await (client.from(tableName) as any)
+        .update(payload)
+        .eq('id', editingCompraId.value)
+
+      if (error) throw error
+      alert('Compra actualizada exitosamente')
+    } else {
+      // Insert
+      const { error } = await (client.from(tableName) as any).insert({ ...payload, id: nextId })
+      if (error) throw error
+      alert('Compra registrada exitosamente')
+    }
+
     showCompraDialog.value = false
+    editingCompraId.value = null // Reset
     await fetchCompras() // Refresh lists
   } catch (error) {
     console.error('Error saving compra:', error)
-    alert('Error al guardar la compra')
+    alert('Error al guardar la compra: ' + (error as any).message)
   } finally {
     loading.value = false
   }

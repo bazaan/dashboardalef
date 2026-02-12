@@ -395,7 +395,7 @@
       <div v-else-if="activeView === 'compras'" class="view-container">
         <header class="top-header">
           <h1>Compras</h1>
-          <button class="btn-primary">
+          <button class="btn-primary" @click="openCompraDialog">
             <v-icon icon="mdi-cart-plus" size="16" />
             <span>Nueva Compra</span>
           </button>
@@ -1304,6 +1304,65 @@
       </v-card>
     </v-dialog>
 
+    <!-- ==========  NEW PURCHASE DIALOG  ========== -->
+    <v-dialog v-model="showCompraDialog" max-width="600px">
+      <v-card>
+        <v-card-title class="event-dialog-title">
+          <span>Nueva Compra</span>
+          <v-btn icon="mdi-close" variant="text" @click="showCompraDialog = false"></v-btn>
+        </v-card-title>
+        <v-card-text>
+          <v-form ref="compraForm" @submit.prevent="saveCompra">
+            <v-select v-model="compraFormData.targetTable" label="Destino" :items="['Lima', 'Provincia', 'Extranjero']"
+              variant="outlined" density="compact" :rules="[v => !!v || 'Seleccione un destino']"></v-select>
+
+            <v-row>
+              <v-col cols="6">
+                <v-text-field v-model="compraFormData.nombre" label="Nombre" variant="outlined" density="compact"
+                  :rules="[v => !!v || 'Requerido']"></v-text-field>
+              </v-col>
+              <v-col cols="6">
+                <v-text-field v-model="compraFormData.apellidos" label="Apellidos" variant="outlined" density="compact"
+                  :rules="[v => !!v || 'Requerido']"></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-text-field v-model="compraFormData.productos" label="Productos Comprados" variant="outlined"
+              density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+
+            <v-row>
+              <v-col cols="6">
+                <v-text-field v-model="compraFormData.precio" label="Precio (S/)" prefix="S/" type="number"
+                  variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              </v-col>
+              <v-col cols="6">
+                <v-select v-model="compraFormData.status" label="Estado"
+                  :items="['Entregado', 'Pendiente', 'Cancelado']" variant="outlined" density="compact"
+                  :rules="[v => !!v || 'Requerido']"></v-select>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="6">
+                <v-text-field v-model="compraFormData.celular" label="Celular" variant="outlined"
+                  density="compact"></v-text-field>
+              </v-col>
+              <v-col cols="6">
+                <v-text-field v-model="compraFormData.dni" label="DNI" variant="outlined"
+                  density="compact"></v-text-field>
+              </v-col>
+            </v-row>
+
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="showCompraDialog = false">Cancelar</v-btn>
+          <v-btn color="primary" variant="elevated" @click="saveCompra" :loading="loading">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </div>
 </template>
 
@@ -1562,6 +1621,70 @@ const deleteItem = async (item: any) => {
     await fetchContribuyentes()
   } catch (error) {
     console.error('Error al eliminar:', error)
+  }
+}
+
+/* ---------------- Nueva Compra Logic ---------------- */
+const showCompraDialog = ref(false)
+const compraForm = ref<any>(null)
+const compraFormData = ref({
+  targetTable: 'Lima',
+  nombre: '',
+  apellidos: '',
+  productos: '',
+  precio: '',
+  status: 'Entregado',
+  celular: '',
+  dni: ''
+})
+
+function openCompraDialog() {
+  compraFormData.value = {
+    targetTable: 'Lima',
+    nombre: '',
+    apellidos: '',
+    productos: '',
+    precio: '',
+    status: 'Entregado',
+    celular: '',
+    dni: ''
+  }
+  showCompraDialog.value = true
+}
+
+async function saveCompra() {
+  const { valid } = await compraForm.value.validate()
+  if (!valid) return
+
+  loading.value = true
+  try {
+    let tableName = ''
+    if (compraFormData.value.targetTable === 'Lima') tableName = 'ventas_lima_alegrated'
+    else if (compraFormData.value.targetTable === 'Provincia') tableName = 'ventas_provincia_alegrated'
+    else if (compraFormData.value.targetTable === 'Extranjero') tableName = 'ventas_extranjero_alegrated'
+
+    const payload = {
+      nombre: compraFormData.value.nombre,
+      apellidos: compraFormData.value.apellidos,
+      productos_comprados: compraFormData.value.productos,
+      precio: compraFormData.value.precio,
+      celular: compraFormData.value.celular,
+      dni: compraFormData.value.dni,
+      status: compraFormData.value.status
+      // created_at is automatic usually
+    }
+
+    const { error } = await (client.from(tableName) as any).insert(payload)
+    if (error) throw error
+
+    alert('Compra registrada exitosamente')
+    showCompraDialog.value = false
+    await fetchCompras() // Refresh lists
+  } catch (error) {
+    console.error('Error saving compra:', error)
+    alert('Error al guardar la compra')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -2208,7 +2331,7 @@ const chatsItems = [
     icon: 'mdi-message-reply',
     label: 'Conversaciones',
     id: 'chatwoot',
-    url: 'https://chats.alef.company/app/accounts/8/dashboard'
+    url: 'https://chats.alef.company/app/accounts/7/dashboard'
   }
 ]
 

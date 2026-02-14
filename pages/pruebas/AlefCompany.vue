@@ -303,61 +303,147 @@
       </div>
 
       <!-- ==========  VISTA: PACIENTES  ========== -->
-      <div v-else-if="activeView === 'pacientes'" class="view-container">
+      <!-- ==========  VISTA: ACTIVIDADES (Anteriormente PACIENTES)  ========== -->
+      <div v-else-if="activeView === 'actividades'" class="view-container">
         <header class="top-header">
-          <h1>Pacientes</h1>
-          <button class="btn-primary">
-            <v-icon icon="mdi-account-plus" size="16" />
-            <span>Nuevo Paciente</span>
+          <h1>Actividades</h1>
+          <button class="btn-primary" @click="openActivityDialog()">
+            <v-icon icon="mdi-plus" size="16" />
+            <span>Nueva Actividad</span>
           </button>
         </header>
 
         <div class="content-area">
-          <div class="stats-grid mini">
-            <div class="stat-card">
-              <div class="stat-value">1,234</div>
-              <div class="stat-title">Total Pacientes</div>
+          <!-- Charts Section -->
+          <div class="charts-row">
+            <div class="chart-card">
+              <h3>Rendimiento por Agente</h3>
+              <client-only>
+                <apexchart type="bar" height="200" :options="agentChartOptions" :series="agentSeries" />
+              </client-only>
             </div>
-            <div class="stat-card">
-              <div class="stat-value">89</div>
-              <div class="stat-title">Nuevos (Mes)</div>
+            <div class="chart-card">
+              <h3>Estado de Actividades</h3>
+              <client-only>
+                <apexchart type="donut" height="200" :options="statusChartOptions" :series="statusSeries" />
+              </client-only>
             </div>
-            <div class="stat-card">
-              <div class="stat-value">456</div>
-              <div class="stat-title">Activos</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value">23</div>
-              <div class="stat-title">Consultas Hoy</div>
-            </div>
-          </div>
-
-          <div class="two-column-grid">
-            <div class="placeholder-card chart">
-              <h3>Estadísticas de Pacientes</h3>
-              <div class="placeholder-chart">
-                <v-icon icon="mdi-chart-line" size="48" />
-                <p>Gráfica de tendencias de pacientes</p>
-              </div>
-            </div>
-
-            <div class="placeholder-card chart">
-              <h3>Distribución por Edad</h3>
-              <div class="placeholder-chart">
-                <v-icon icon="mdi-chart-bar" size="48" />
-                <p>Gráfica de distribución demográfica</p>
-              </div>
+            <div class="chart-card">
+              <h3>Puntos Bono Acumulados</h3>
+              <client-only>
+                <apexchart type="bar" height="200" :options="bonusChartOptions" :series="bonusSeries" />
+              </client-only>
             </div>
           </div>
 
-          <div class="table-section">
-            <div class="placeholder-card">
-              <h3>Lista de Pacientes</h3>
-              <div class="placeholder-table">
-                <p>Tabla de pacientes con filtros y búsqueda</p>
+          <!-- Kanban Board -->
+          <div class="kanban-board">
+            <!-- Pendientes -->
+            <div class="kanban-column pending">
+              <div class="column-header">
+                <h3>Pendientes</h3>
+                <span class="count">{{ pendingActivities.length }}</span>
+              </div>
+              <div class="kanban-list">
+                <div v-for="task in pendingActivities" :key="task.id" class="kanban-card" :class="'priority-' + task.priority">
+                  <div class="card-header">
+                    <span class="task-type">{{ task.type }}</span>
+                    <div class="card-actions">
+                      <button class="icon-btn xs" @click="openActivityDialog(task)"><v-icon icon="mdi-pencil" size="14" /></button>
+                    </div>
+                  </div>
+                  <h4 class="task-title">{{ task.title }}</h4>
+                  <p class="task-desc" v-if="task.description">{{ task.description }}</p>
+                  
+                  <div class="task-meta">
+                    <div class="assigned-to">
+                       <v-icon icon="mdi-account" size="14" /> {{ task.assigned_to }}
+                    </div>
+                    <div class="bonus-points">
+                       <v-icon icon="mdi-star" size="14" color="amber" /> {{ task.bonus_points }} pts
+                    </div>
+                  </div>
+
+                  <div class="task-dates">
+                    <span><v-icon icon="mdi-calendar-start" size="12"/> {{ formatDateShort(task.start_date) }}</span>
+                    <span><v-icon icon="mdi-calendar-end" size="12" color="error"/> {{ formatDateShort(task.due_date) }}</span>
+                  </div>
+
+                  <button class="action-btn start-btn" @click="updateActivityStatus(task, 'en_progreso')">
+                    Iniciar Tarea <v-icon icon="mdi-arrow-right" size="14" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- En Progreso -->
+            <div class="kanban-column progress">
+              <div class="column-header">
+                <h3>En Progreso</h3>
+                <span class="count">{{ inProgressActivities.length }}</span>
+              </div>
+               <div class="kanban-list">
+                <div v-for="task in inProgressActivities" :key="task.id" class="kanban-card" :class="'priority-' + task.priority">
+                  <div class="card-header">
+                    <span class="task-type">{{ task.type }}</span>
+                    <div class="card-actions">
+                      <button class="icon-btn xs" @click="openActivityDialog(task)"><v-icon icon="mdi-pencil" size="14" /></button>
+                    </div>
+                  </div>
+                  <h4 class="task-title">{{ task.title }}</h4>
+                  
+                  <div class="task-meta">
+                    <div class="assigned-to">
+                       <v-icon icon="mdi-account" size="14" /> {{ task.assigned_to }}
+                    </div>
+                    <div class="bonus-points">
+                       <v-icon icon="mdi-star" size="14" color="amber" /> {{ task.bonus_points }} pts
+                    </div>
+                  </div>
+
+                  <div class="task-dates">
+                    <span><v-icon icon="mdi-calendar-end" size="12" color="error"/> Vence: {{ formatDateShort(task.due_date) }}</span>
+                  </div>
+
+                  <div class="task-actions-row">
+                     <button class="action-btn back-btn" @click="updateActivityStatus(task, 'pendiente')">
+                        <v-icon icon="mdi-arrow-left" size="14" />
+                     </button>
+                     <button class="action-btn finish-btn" @click="updateActivityStatus(task, 'finalizada')">
+                        Finalizar <v-icon icon="mdi-check" size="14" />
+                     </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+             <!-- Finalizadas -->
+            <div class="kanban-column done">
+              <div class="column-header">
+                <h3>Finalizadas</h3>
+                <span class="count">{{ completedActivities.length }}</span>
+              </div>
+               <div class="kanban-list">
+                <div v-for="task in completedActivities" :key="task.id" class="kanban-card done-card" :class="'priority-' + task.priority">
+                  <div class="card-header">
+                     <span class="task-type">{{ task.type }}</span>
+                     <span class="completed-date"><v-icon icon="mdi-check-circle" size="12" color="success"/> {{ formatDateShort(task.completed_at) }}</span>
+                  </div>
+                  <h4 class="task-title">{{ task.title }}</h4>
+                  
+                  <div class="task-meta">
+                    <div class="assigned-to">
+                       <v-icon icon="mdi-account" size="14" /> {{ task.assigned_to }}
+                    </div>
+                    <div class="bonus-points">
+                       <v-icon icon="mdi-star" size="14" color="amber" /> {{ task.bonus_points }} pts
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
+
         </div>
       </div>
 
@@ -1029,6 +1115,69 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <!-- ==========  ACTIVITY CREATION/EDIT DIALOG  ========== -->
+    <v-dialog v-model="showActivityDialog" max-width="600px" persistent>
+      <v-card>
+        <v-card-title class="event-dialog-title">
+          <span>{{ editingActivity ? 'Editar Actividad' : 'Nueva Actividad' }}</span>
+          <v-btn icon="mdi-close" variant="text" @click="closeActivityDialog"></v-btn>
+        </v-card-title>
+
+        <v-card-text>
+          <v-form ref="activityForm">
+            <v-text-field v-model="activityFormData.title" label="Título de la Actividad" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+            
+            <v-textarea v-model="activityFormData.description" label="Descripción" variant="outlined" density="compact" rows="2"></v-textarea>
+
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-select v-model="activityFormData.assigned_to" label="Asignar a" :items="['Julio', 'Juanpa', 'Roberto', 'Piero']" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-select>
+              </v-col>
+               <v-col cols="12" sm="6">
+                <v-select v-model="activityFormData.type" label="Tipo" :items="['diaria', 'semanal']" variant="outlined" density="compact"></v-select>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="activityFormData.start_date" label="Fecha Inicio" type="date" variant="outlined" density="compact"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model="activityFormData.due_date" label="Fecha Vencimiento" type="date" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-select v-model="activityFormData.priority" label="Nivel de Importancia" :items="['rojo', 'amarillo', 'verde']" variant="outlined" density="compact">
+                   <template v-slot:selection="{ item }">
+                     <v-chip :color="item.raw === 'rojo' ? 'error' : item.raw === 'amarillo' ? 'warning' : 'success'" size="small" label>{{ item.raw.toUpperCase() }}</v-chip>
+                   </template>
+                   <template v-slot:item="{ props, item }">
+                     <v-list-item v-bind="props">
+                        <template v-slot:prepend>
+                          <v-icon icon="mdi-circle" :color="item.raw === 'rojo' ? 'error' : item.raw === 'amarillo' ? 'warning' : 'success'" size="12" class="mr-2" />
+                        </template>
+                     </v-list-item>
+                   </template>
+                </v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model.number="activityFormData.bonus_points" label="Puntos Bono" type="number" variant="outlined" density="compact" prepend-inner-icon="mdi-star"></v-text-field>
+              </v-col>
+            </v-row>
+
+          </v-form>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="closeActivityDialog">Cancelar</v-btn>
+           <v-btn color="error" variant="text" v-if="editingActivity" @click="deleteActivity(editingActivity.id)">Eliminar</v-btn>
+          <v-btn color="primary" variant="elevated" @click="saveActivity">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -1203,7 +1352,7 @@ function logout() {
 const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
-  { icon: 'mdi-account-group', label: 'Pacientes', id: 'pacientes' },
+  { icon: 'mdi-clipboard-list', label: 'Actividades', id: 'actividades' },
   { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'conversaciones' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' }
 ]
@@ -2070,4 +2219,493 @@ async function fetchMedicalHistory() {
     console.error('Error loading history:', error)
   }
 }
+
+/* ---------------- Activities System ---------------- */
+interface Activity {
+  id: string
+  title: string
+  description: string
+  assigned_to: string
+  start_date: string
+  due_date: string
+  status: 'pendiente' | 'en_progreso' | 'finalizada'
+  priority: 'rojo' | 'amarillo' | 'verde'
+  bonus_points: number
+  type: 'diaria' | 'semanal'
+  created_at: string
+  completed_at?: string
+}
+
+const activities = ref<Activity[]>([])
+const showActivityDialog = ref(false)
+const editingActivity = ref<Activity | null>(null)
+const activityForm = ref<any>(null)
+const activityFormData = ref({
+  title: '',
+  description: '',
+  assigned_to: '',
+  start_date: new Date().toISOString().split('T')[0],
+  due_date: '',
+  status: 'pendiente',
+  priority: 'verde',
+  bonus_points: 0,
+  type: 'diaria'
+})
+
+// Computed Lists
+const pendingActivities = computed(() => activities.value.filter(a => a.status === 'pendiente'))
+const inProgressActivities = computed(() => activities.value.filter(a => a.status === 'en_progreso'))
+const completedActivities = computed(() => activities.value.filter(a => a.status === 'finalizada'))
+
+// Chart Data Computed
+const agentChartOptions = computed<ApexOptions>(() => ({
+  chart: { type: 'bar', toolbar: { show: false }, background: 'transparent', foreColor: '#aaa' },
+  plotOptions: { bar: { borderRadius: 4, horizontal: false } },
+  xaxis: { categories: ['Julio', 'Juanpa', 'Roberto', 'Piero'] },
+  colors: ['#3b82f6'],
+  grid: { borderColor: '#333' }
+}))
+
+const agentSeries = computed(() => {
+  const counts = { Julio: 0, Juanpa: 0, Roberto: 0, Piero: 0 }
+  completedActivities.value.forEach(a => {
+    if (counts[a.assigned_to as keyof typeof counts] !== undefined) {
+      counts[a.assigned_to as keyof typeof counts]++
+    }
+  })
+  return [{ name: 'Tareas Completadas', data: [counts.Julio, counts.Juanpa, counts.Roberto, counts.Piero] }]
+})
+
+const statusChartOptions = computed<ApexOptions>(() => ({
+  chart: { type: 'donut', background: 'transparent', foreColor: '#aaa' },
+  labels: ['Pendiente', 'En Progreso', 'Finalizada'],
+  colors: ['#4b5563', '#3b82f6', '#10b981'],
+  plotOptions: { 
+    pie: { 
+      donut: { 
+        size: '75%',
+        labels: {
+          show: true,
+          total: {
+            show: true,
+            label: 'Total',
+            color: '#fff',
+            fontSize: '14px',
+            fontWeight: 600
+          },
+          value: {
+            color: '#fff',
+            fontSize: '20px',
+            fontWeight: 700
+          }
+        }
+      } 
+    } 
+  },
+  dataLabels: { enabled: false },
+  legend: { position: 'bottom', fontSize: '12px' },
+  stroke: { show: false }, // No borders for smoother look
+  tooltip: { theme: 'dark' }
+}))
+
+const statusSeries = computed(() => [
+  pendingActivities.value.length,
+  inProgressActivities.value.length,
+  completedActivities.value.length
+])
+
+const bonusChartOptions = computed<ApexOptions>(() => ({
+  chart: { type: 'bar', toolbar: { show: false }, background: 'transparent', foreColor: '#aaa' },
+  plotOptions: { bar: { borderRadius: 4, horizontal: true } },
+  xaxis: { categories: ['Julio', 'Juanpa', 'Roberto', 'Piero'] },
+  colors: ['#f59e0b'],
+  grid: { borderColor: '#333' }
+}))
+
+const bonusSeries = computed(() => {
+  const points = { Julio: 0, Juanpa: 0, Roberto: 0, Piero: 0 }
+  activities.value.forEach(a => {
+    // Count points for all tasks or just completed? Usually earned when completed.
+    if (a.status === 'finalizada' && points[a.assigned_to as keyof typeof points] !== undefined) {
+      points[a.assigned_to as keyof typeof points] += (a.bonus_points || 0)
+    }
+  })
+  return [{ name: 'Puntos Bono', data: [points.Julio, points.Juanpa, points.Roberto, points.Piero] }]
+})
+
+// Functions
+async function fetchActivities() {
+  try {
+    const { data, error } = await client
+      .from('alef_activities')
+      .select('*')
+      .order('created_at', { ascending: false })
+    
+    if (error) {
+       console.error('Error fetching activities:', error)
+       return
+    }
+    
+    activities.value = data || []
+  } catch (e) {
+    console.error('Exception fetching activities:', e)
+  }
+}
+
+function openActivityDialog(activity?: Activity) {
+  if (activity) {
+    editingActivity.value = activity
+    activityFormData.value = {
+      title: activity.title,
+      description: activity.description || '',
+      assigned_to: activity.assigned_to,
+      start_date: activity.start_date ? activity.start_date.split('T')[0] : '',
+      due_date: activity.due_date ? activity.due_date.split('T')[0] : '',
+      status: activity.status || 'pendiente',
+      priority: activity.priority as any || 'verde',
+      bonus_points: activity.bonus_points || 0,
+      type: activity.type as any || 'diaria'
+    }
+  } else {
+    editingActivity.value = null
+    activityFormData.value = {
+      title: '',
+      description: '',
+      assigned_to: '',
+      start_date: new Date().toISOString().split('T')[0],
+      due_date: '',
+      status: 'pendiente',
+      priority: 'verde',
+      bonus_points: 0,
+      type: 'diaria'
+    }
+  }
+  showActivityDialog.value = true
+}
+
+function closeActivityDialog() {
+  showActivityDialog.value = false
+  editingActivity.value = null
+}
+
+async function saveActivity() {
+  if (!activityFormData.value.title || !activityFormData.value.assigned_to || !activityFormData.value.due_date) {
+    alert('Por favor complete los campos requeridos (Título, Asignado a, Fecha Vencimiento)')
+    return
+  }
+
+  const payload = {
+    title: activityFormData.value.title,
+    description: activityFormData.value.description,
+    assigned_to: activityFormData.value.assigned_to,
+    start_date: activityFormData.value.start_date,
+    due_date: activityFormData.value.due_date,
+    status: editingActivity.value ? editingActivity.value.status : 'pendiente', // Keep status on edit unless changed elsewhere
+    priority: activityFormData.value.priority,
+    bonus_points: activityFormData.value.bonus_points,
+    type: activityFormData.value.type
+  }
+
+  try {
+    if (editingActivity.value) {
+      const { error } = await (client
+        .from('alef_activities') as any)
+        .update(payload)
+        .eq('id', editingActivity.value.id)
+      if (error) throw error
+    } else {
+      const { error } = await (client
+        .from('alef_activities') as any)
+        .insert(payload)
+      if (error) throw error
+    }
+    await fetchActivities()
+    closeActivityDialog()
+  } catch (e) {
+    console.error('Error saving activity:', e)
+    alert('Error al guardar la actividad')
+  }
+}
+
+async function updateActivityStatus(activity: Activity, newStatus: string) {
+  try {
+    const updates: any = { status: newStatus }
+    if (newStatus === 'finalizada') {
+      updates.completed_at = new Date().toISOString()
+    }
+    
+    const { error } = await (client
+      .from('alef_activities') as any)
+      .update(updates)
+      .eq('id', activity.id)
+      
+    if (error) throw error
+    
+    // Optimistic update
+    const idx = activities.value.findIndex(a => a.id === activity.id)
+    if (idx !== -1) {
+      activities.value[idx].status = newStatus as any
+       if (newStatus === 'finalizada') {
+          activities.value[idx].completed_at = updates.completed_at
+       }
+    }
+    await fetchActivities() // Sync just in case
+  } catch (e) {
+    console.error('Error updating status:', e)
+  }
+}
+
+async function deleteActivity(id: string) {
+  if(!confirm('¿Eliminar esta actividad?')) return
+  try {
+    const { error } = await (client.from('alef_activities') as any).delete().eq('id', id)
+    if (error) throw error
+    await fetchActivities()
+    closeActivityDialog()
+  } catch (e) {
+     alert('Error al eliminar')
+  }
+}
+
+function formatDateShort(dateStr?: string) {
+  if (!dateStr) return '-'
+  return new Date(dateStr).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })
+}
+
+// Add fetchActivities to onMounted
+onMounted(() => {
+    fetchActivities()
+})
 </script>
+
+<style scoped>
+/* Activities Charts */
+.charts-row {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.chart-card {
+  flex: 1;
+  min-width: 300px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+  backdrop-filter: blur(10px);
+}
+
+.chart-card h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: #fff;
+  opacity: 0.9;
+}
+
+/* Kanban Board */
+.kanban-board {
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+  align-items: flex-start;
+  min-height: 500px;
+}
+
+.kanban-column {
+  flex: 1;
+  min-width: 320px;
+  max-width: 400px;
+  background: rgba(20, 20, 20, 0.6);
+  border-radius: 16px;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.column-header h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.kanban-column.pending .column-header h3 { color: #9ca3af; }
+.kanban-column.progress .column-header h3 { color: #3b82f6; }
+.kanban-column.done .column-header h3 { color: #10b981; }
+
+.count {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.kanban-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  max-height: 700px;
+  padding-right: 4px;
+}
+
+/* Scrollbar for kanban list */
+.kanban-list::-webkit-scrollbar {
+  width: 4px;
+}
+.kanban-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.kanban-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.kanban-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+  border-left: 4px solid transparent;
+}
+
+.kanban-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.kanban-card.priority-rojo { border-left-color: #ef4444; }
+.kanban-card.priority-amarillo { border-left-color: #f59e0b; }
+.kanban-card.priority-verde { border-left-color: #10b981; }
+
+.kanban-card.done-card {
+  opacity: 0.7;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.task-type {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #ccc;
+}
+
+.task-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.task-desc {
+  font-size: 0.85rem;
+  color: #999;
+  margin-bottom: 1rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.task-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #bbb;
+  margin-bottom: 0.8rem;
+}
+
+.assigned-to, .bonus-points {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-dates {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 1rem;
+  background: rgba(0,0,0,0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.task-dates span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-btn {
+  width: 100%;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ddd;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.start-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.finish-btn:hover {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border-color: #10b981;
+}
+
+.task-actions-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.back-btn {
+  width: 32px;
+  flex: 0 0 auto;
+}
+</style>

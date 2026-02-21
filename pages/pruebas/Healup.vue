@@ -8,7 +8,7 @@
             <v-img src="@/assets/img/healupLOGO.png" alt="Alef Company Logo" style="width: 100%; height: 100%;" />
           </div>
 
-          <template v-if="isSuperAdmin(currentUser?.email)">
+          <template v-if="isSuperAdmin(currentUser)">
             <v-menu v-model="showDashboardMenu">
               <template v-slot:activator="{ props }">
                 <div v-bind="props" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
@@ -67,19 +67,17 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="footer-item">
+        <button class="footer-item" @click="activeView = 'settings'">
           <v-icon icon="mdi-cog" size="18" />
-          <span>Settings</span>
+          <span>Configuración</span>
         </button>
+
         <a href="https://wa.me/51936196001?text=Hola%20necesito%20soporte" target="_blank" class="footer-item"
           style="text-decoration: none; color: inherit;">
           <v-icon icon="mdi-help-circle" size="18" />
           <span>Contacta con Alef</span>
         </a>
-        <button class="footer-item">
-          <v-icon icon="mdi-magnify" size="18" />
-          <span>Search</span>
-        </button>
+
         <button class="footer-item" @click="toggleTheme">
           <v-icon :icon="isDark ? 'mdi-weather-night' : 'mdi-weather-sunny'" size="18" />
           <span>{{ isDark ? 'Dark' : 'Light' }}</span>
@@ -286,6 +284,10 @@
         </div>
       </div>
 
+
+      <!-- ==========  VISTA: SETTINGS  ========== -->
+      <SettingsView v-else-if="activeView === 'settings'" company-id="Heal up" :current-user-role="currentUser?.role" />
+
       <!-- ==========  VISTA: CALENDARIO  ========== -->
       <div v-else-if="activeView === 'calendario'" class="view-container">
         <header class="top-header">
@@ -426,6 +428,9 @@
                     {{ item.estado }}
                   </span>
                 </template>
+                <template v-slot:item.fecha_agendamiento="{ item }">
+                  {{ formatDateAgendamiento(item.fecha_agendamiento) }}
+                </template>
                 <template v-slot:item.agendamiento="{ item }">
                   <v-tooltip location="top">
                     <template v-slot:activator="{ props }">
@@ -478,6 +483,9 @@
                     <span class="status-dot" />
                     {{ item.estado }}
                   </span>
+                </template>
+                <template v-slot:item.fecha_agendamiento="{ item }">
+                  {{ formatDateAgendamiento(item.fecha_agendamiento) }}
                 </template>
                 <template v-slot:item.agendamiento="{ item }">
                   <v-tooltip location="top">
@@ -687,7 +695,7 @@
             <div class="stat-card">
               <div class="stat-title">Ganancias Mes Pasado</div>
               <div class="stat-value">S/ {{ revenuePreviousMonth.toLocaleString('es-PE', { minimumFractionDigits: 2 })
-              }}
+                }}
               </div>
               <div class="stat-subtitle">{{ revenuePrevMonthName }}</div>
             </div>
@@ -803,8 +811,7 @@
                         <span style="color: #3b82f6;">Res: S/{{ parseCurrency(paciente.precio) }}</span> |
                         <span style="color: #8b5cf6;">Trat: S/{{ parseCurrency(paciente.precio_tratamiento) }}</span>
                       </div>
-                      <div class="text-caption text-medium-emphasis">{{ paciente.fecha_agendamiento ? new
-                        Date(paciente.fecha_agendamiento).toLocaleDateString() : '-' }}</div>
+                      <div class="text-caption text-medium-emphasis">{{ formatDateAgendamiento(paciente.fecha_agendamiento) }}</div>
                     </div>
                   </template>
                 </v-list-item>
@@ -1055,6 +1062,8 @@
       </div>
 
     </div>
+
+    <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
 
     <!-- ==========  EVENT CREATION/EDIT DIALOG  ========== -->
     <v-dialog v-model="showEventDialog" max-width="600px" persistent>
@@ -1498,8 +1507,23 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
+import { useActivityLogger } from '@/composables/useActivityLogger'
+
+const { logActivity } = useActivityLogger()
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessHealup, dashboards } from '@/utils/permissions'
+import SettingsView from '@/components/Settings/SettingsView.vue'
+
+const formatDateAgendamiento = (dateString: string | null | undefined) => {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return '-'
+  const day = date.getDate().toString().padStart(2, '0')
+  const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+  const month = monthNames[date.getMonth()]
+  const year = date.getFullYear().toString().slice(-2)
+  return `${day}-${month}-${year}`
+}
 
 definePageMeta({
   middleware: 'auth-dashboard'
@@ -1561,6 +1585,8 @@ const leadsFbIg = ref<any[]>([])
 const leads = computed(() => [...leadsWpp.value, ...leadsFbIg.value])
 const loadingLeads = ref(false)
 const leadsSearch = ref('')
+const showCreateUserDialog = ref(false)
+const showSettingsDialog = ref(false)
 
 /* Headers de la tabla - ajusta según tu tabla 'contribuyentes' */
 const headers = ref([
@@ -2090,6 +2116,7 @@ watch(isDark, applyTheme, { immediate: true })
 
 
 function logout() {
+  logActivity('Cerró sesión')
   // 1. Borrar la cookie que mantiene la sesión abierta
   const session = useCookie('dashboard_session')
   session.value = null
@@ -3654,12 +3681,14 @@ async function fetchMedicalHistory() {
 
 onMounted(() => {
   // Access Control
-  const userEmail = currentUser.value.email?.toLowerCase()
+  // const userEmail = currentUser.value.email?.toLowerCase() // Deprecated
 
-  if (!canAccessHealup(userEmail)) {
+  // Verificamos pasando el objeto completo de sesión (currentUser.value)
+  if (!canAccessHealup(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }
+
 
   applyTheme()
   fetchPacientesWpp()

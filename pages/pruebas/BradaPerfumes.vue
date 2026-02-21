@@ -8,7 +8,7 @@
             <v-img src="@/assets/img/bradalogo.jpg" alt="Alef Company Logo" style="width: 100%; height: 100%;" />
           </div>
 
-          <template v-if="isSuperAdmin(currentUser?.email)">
+          <template v-if="isSuperAdmin(currentUser)">
             <v-menu v-model="showDashboardMenu">
               <template v-slot:activator="{ props }">
                 <div v-bind="props" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
@@ -87,19 +87,16 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="footer-item">
+        <button class="footer-item" @click="activeView = 'settings'">
           <v-icon icon="mdi-cog" size="18" />
-          <span>Settings</span>
+          <span>Configuración</span>
         </button>
         <a href="https://wa.me/51936196001?text=Hola%20necesito%20soporte" target="_blank" class="footer-item"
           style="text-decoration: none; color: inherit;">
           <v-icon icon="mdi-help-circle" size="18" />
           <span>Contacta con Alef</span>
         </a>
-        <button class="footer-item">
-          <v-icon icon="mdi-magnify" size="18" />
-          <span>Search</span>
-        </button>
+
         <button class="footer-item" @click="toggleTheme">
           <v-icon :icon="isDark ? 'mdi-weather-night' : 'mdi-weather-sunny'" size="18" />
           <span>{{ isDark ? 'Dark' : 'Light' }}</span>
@@ -273,6 +270,10 @@
           </div>
         </div>
       </div>
+
+
+      <!-- ==========  VISTA: SETTINGS  ========== -->
+      <SettingsView v-else-if="activeView === 'settings'" company-id="Brada" :current-user-role="currentUser?.role" />
 
       <!-- ==========  VISTA: CALENDARIO  ========== -->
       <div v-else-if="activeView === 'calendario'" class="view-container">
@@ -629,13 +630,13 @@
                     </v-avatar>
                   </template>
                   <v-list-item-title class="font-weight-bold">{{ compra.nombre }} {{ compra.apellidos
-                  }}</v-list-item-title>
+                    }}</v-list-item-title>
                   <v-list-item-subtitle>{{ compra.productos_comprados }}</v-list-item-subtitle>
                   <template v-slot:append>
                     <div class="text-right">
                       <div class="font-weight-bold text-primary">{{ compra.precio }}</div>
                       <div class="text-caption text-medium-emphasis">{{ new Date(compra.created_at).toLocaleDateString()
-                      }}</div>
+                        }}</div>
                     </div>
                   </template>
                 </v-list-item>
@@ -1329,14 +1330,21 @@
       </v-card>
     </v-dialog>
 
+    <!-- ==========  CREATE USER DIALOG  ========== -->
+    <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
+import { useActivityLogger } from '@/composables/useActivityLogger'
+
+const { logActivity } = useActivityLogger()
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessBrada, dashboards } from '@/utils/permissions'
+
+import SettingsView from '@/components/Settings/SettingsView.vue'
 
 definePageMeta({
   middleware: 'auth-dashboard'
@@ -1348,9 +1356,8 @@ definePageMeta({
 
 onMounted(() => {
   // Access Control
-  const userEmail = currentUser.value.email?.toLowerCase()
-
-  if (!canAccessBrada(userEmail)) {
+  // Access Control
+  if (!canAccessBrada(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }
@@ -1373,6 +1380,7 @@ interface UserSession {
   email: string
   full_name: string
   role: string
+  company_id?: string
 }
 
 /* ---------------- LÓGICA DE SESIÓN ---------------- */
@@ -1385,7 +1393,8 @@ const currentUser = computed(() => {
     full_name: 'Usuario Invitado',
     email: '',
     id: '',
-    role: ''
+    role: '',
+    company_id: ''
   }
 })
 
@@ -1630,6 +1639,8 @@ async function fetchStockData(type: 'perfumes' | 'decants' | 'sets') {
 const leads = ref<any[]>([])
 const loadingLeads = ref(false)
 const leadsSearch = ref('')
+const showCreateUserDialog = ref(false)
+//const showSettingsDialog = ref(false)
 
 // Headers provided by user: id, nombre, numero, lead_status, reason_ia_qualification, producto_interes
 const headersLeads = ref([
@@ -2198,7 +2209,7 @@ onMounted(() => {
   // Access Control
   const userEmail = currentUser.value.email?.toLowerCase()
 
-  if (!canAccessBrada(userEmail)) {
+  if (!canAccessBrada(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }
@@ -2251,6 +2262,7 @@ async function runDiagnostics() {
 }
 
 function logout() {
+  logActivity('Cerró sesión')
   // 1. Borrar la cookie que mantiene la sesión abierta
   const session = useCookie('dashboard_session')
   session.value = null
@@ -3217,9 +3229,13 @@ async function fetchMedicalHistory() {
 }
 
 onMounted(() => {
-  applyTheme()
-  fetchContribuyentes()
-  handleZoom('one_month')
+  // Access Control
+  // const userEmail = currentUser.value.email?.toLowerCase()
+
+  if (!canAccessBrada(currentUser.value)) {
+    alert('No tienes permiso para acceder a este dashboard.')
+    return navigateTo('/')
+  }
 
 })
 </script>

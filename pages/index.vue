@@ -44,9 +44,10 @@
 
 <script setup>
 import { ref } from 'vue';
-import { isSuperAdmin, healupUsers, bradaUsers, clinicaArroyoUsers, alegratedUsers } from '@/utils/permissions';
+import { isSuperAdmin, getDashboardPathByCompanyId } from '@/utils/permissions';
 const client = useSupabaseClient();
 const router = useRouter();
+const { logActivity } = useActivityLogger();
 
 // ... existing state ref ...
 const email = ref("");
@@ -97,35 +98,64 @@ const submit = async () => {
           id: authData.user.id,
           email: authData.user.email,
           full_name: profileData?.full_name || profileData?.nombre || 'Usuario Verificado',
-          role: profileData?.role || 'authenticated'
+          role: profileData?.role || 'authenticated',
+          company_id: profileData?.company_id
         };
       }
     } else {
       console.log("Login nativo falló, intentando RPC legacy...");
 
-      // 2. Si falla Auth nativo, intentar validar con el sistema antiguo (RPC)
-      const { data: rpcData, error: rpcError } = await client.rpc('login_dashboard', {
+      // 2. Si falla Auth nativo, intentar validar con el sistema antiguo (RPC) O API
+      console.log("Login nativo falló, intentando verificación legacy...");
+
+      let legacyUser = null;
+
+      // Intentar primero con RPC (por compatibilidad histórica estricta)
+      const { data: rpcResult, error: rpcError } = await client.rpc('login_dashboard', {
         p_email: email.value,
         p_password: password.value
       });
 
-      if (rpcData) {
-        console.log("RPC legacy exitoso. Intentando migración automática a Supabase Auth...");
-        finalSession = rpcData;
+      if (rpcResult) {
+        legacyUser = rpcResult;
+      } else {
+        console.log("RPC falló o devolvió null. Intentando verificación API Manual (bcrypt)...");
+        try {
+          const apiRes = await $fetch('/api/auth/verify-legacy', {
+            method: 'POST',
+            body: { email: email.value, password: password.value }
+          });
+
+          if (apiRes && apiRes.success && apiRes.user) {
+            console.log("Verificación API manual exitosa");
+            legacyUser = apiRes.user;
+          }
+        } catch (errApi) {
+          console.error("API Legacy check failed:", errApi);
+        }
+      }
+
+      if (legacyUser) {
+        console.log("Login legacy exitoso. Intentando descripción finalSession...");
+        finalSession = legacyUser;
 
         // 3. MIGRACION AUTOMÁTICA (Auto-SignUp)
+        // Intentamos registrar al usuario en Auth para que la próxima entre directo
         const { data: signUpData, error: signUpError } = await client.auth.signUp({
           email: email.value,
           password: password.value,
           options: {
             data: {
-              full_name: rpcData.nombre || rpcData.full_name
+              full_name: legacyUser.nombre || legacyUser.full_name
             }
           }
         });
 
         if (!signUpError && signUpData?.session) {
+          console.log("Auto-migration to Supabase Auth success");
           await client.auth.setSession(signUpData.session);
+        } else {
+          console.warn("Auto-migration skipped or failed:", signUpError);
         }
 
       } else {
@@ -134,45 +164,56 @@ const submit = async () => {
     }
 
     if (finalSession) {
+      // Ensure company_id and role are loaded if missing (Safety check for RPC)
+      if ((!finalSession.company_id || !finalSession.role) && finalSession.email) {
+        const { data: profileData } = await client
+          .from('dashboardlogin')
+          .select('company_id, role')
+          .eq('email', finalSession.email)
+          .single();
+
+        if (profileData) {
+          console.log("Profile data fetched separately:", profileData);
+          if (!finalSession.company_id) finalSession.company_id = profileData.company_id;
+          if (!finalSession.role) finalSession.role = profileData.role;
+        }
+      }
+
       // Login exitoso
       const userSession = useCookie('dashboard_session');
       userSession.value = finalSession;
+      
+      // Registrar la actividad de inicio de sesión
+      logActivity('Inició sesión');
 
-      // Redirigir según el correo
-      const emailLower = email.value.toLowerCase();
+      // Redirigir según el correo y ROL
+      // const emailLower = email.value.toLowerCase(); // Ya no dependemos del email para la logica
+      const userRole = finalSession?.role?.toLowerCase();
+      const companyId = finalSession?.company_id;
 
-      // 1. Super Admin -> Hub
-      if (isSuperAdmin(emailLower)) {
+      console.log("Login User Role:", userRole);
+      console.log("Login Company ID:", companyId);
+
+      // 1. SUPERADMIN -> Hub (Access to everything)
+      if (userRole === 'superadmin') {
+        console.log("Redirecting Superadmin to Hub");
         router.push('/admin-hub');
         return;
       }
 
-      // 2. Healup Users -> Healup Dashboard
-      if (healupUsers.includes(emailLower)) {
-        router.push('/pruebas/Healup');
-        return;
+      // 2. ADMIN or AGENT -> Specific Company Dashboard
+      if (companyId && (userRole === 'admin' || userRole === 'agent' || userRole === 'agente')) {
+        const targetPath = getDashboardPathByCompanyId(companyId)
+        if (targetPath && targetPath !== '/') {
+          console.log(`Redirecting ${userRole} to ${targetPath}`);
+          router.push(targetPath)
+          return
+        }
       }
 
-      // 3. Brada Users -> Brada Dashboard
-      if (bradaUsers.includes(emailLower)) {
-        router.push('/pruebas/BradaPerfumes');
-        return;
-      }
+      // 3. Fallback General
+      alert("No se encontró un dashboard asignado a este usuario.");
 
-      // 4. Clinica Arroyo Users -> Clinica Arroyo Dashboard
-      if (clinicaArroyoUsers.includes(emailLower)) {
-        router.push('/pruebas/ClinicaArroyo');
-        return;
-      }
-
-      // 5. Alegrated Users -> Alegrated Dashboard
-      if (alegratedUsers.includes(emailLower)) {
-        router.push('/pruebas/Alegrated');
-        return;
-      }
-
-      // 5. Fallback -> Alef (Protected)
-      router.push('/pruebas/AlefCompany');
     } else {
       alert("No se pudo iniciar sesión. Verifique sus credenciales.");
     }

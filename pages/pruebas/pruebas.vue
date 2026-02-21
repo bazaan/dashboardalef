@@ -44,16 +44,13 @@
       <div class="sidebar-footer">
         <button class="footer-item">
           <v-icon icon="mdi-cog" size="18"></v-icon>
-          <span>Settings</span>
+          <span>Configuración</span>
         </button>
         <button class="footer-item">
           <v-icon icon="mdi-help-circle" size="18"></v-icon>
           <span>Get Help</span>
         </button>
-        <button class="footer-item">
-          <v-icon icon="mdi-magnify" size="18"></v-icon>
-          <span>Search</span>
-        </button>
+
         <button class="footer-item" @click="toggleTheme">
           <v-icon :icon="isDark ? 'mdi-weather-night' : 'mdi-weather-sunny'" size="18"></v-icon>
           <span>{{ isDark ? 'Dark' : 'Light' }}</span>

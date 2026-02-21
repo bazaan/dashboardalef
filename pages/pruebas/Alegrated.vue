@@ -8,7 +8,7 @@
             <v-img src="@/assets/img/alegratedLOGO.jpg" alt="Alef Company Logo" style="width: 100%; height: 100%;" />
           </div>
 
-          <template v-if="isSuperAdmin(currentUser?.email)">
+          <template v-if="isSuperAdmin(currentUser)">
             <v-menu v-model="showDashboardMenu">
               <template v-slot:activator="{ props }">
                 <div v-bind="props" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
@@ -87,19 +87,16 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="footer-item">
+        <button class="footer-item" @click="activeView = 'settings'">
           <v-icon icon="mdi-cog" size="18" />
-          <span>Settings</span>
+          <span>Configuración</span>
         </button>
         <a href="https://wa.me/51936196001?text=Hola%20necesito%20soporte" target="_blank" class="footer-item"
           style="text-decoration: none; color: inherit;">
           <v-icon icon="mdi-help-circle" size="18" />
           <span>Contacta con Alef</span>
         </a>
-        <button class="footer-item">
-          <v-icon icon="mdi-magnify" size="18" />
-          <span>Search</span>
-        </button>
+
         <button class="footer-item" @click="toggleTheme">
           <v-icon :icon="isDark ? 'mdi-weather-night' : 'mdi-weather-sunny'" size="18" />
           <span>{{ isDark ? 'Dark' : 'Light' }}</span>
@@ -335,6 +332,10 @@
           </div>
         </div>
       </div>
+
+      <!-- ==========  VISTA: SETTINGS  ========== -->
+      <SettingsView v-else-if="activeView === 'settings'" company-id="Alegrated"
+        :current-user-role="currentUser?.role" />
 
       <!-- ==========  VISTA: CALENDARIO  ========== -->
       <div v-else-if="activeView === 'calendario'" class="view-container">
@@ -1473,6 +1474,8 @@
       </v-card>
     </v-dialog>
 
+    <!-- ==========  CREATE USER DIALOG  ========== -->
+    <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
   </div>
 </template>
 
@@ -1482,9 +1485,13 @@ import { useTheme } from 'vuetify'
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessAlegrated, dashboards } from '@/utils/permissions'
 
+import SettingsView from '@/components/Settings/SettingsView.vue'
+
 definePageMeta({
   middleware: 'auth-dashboard'
 })
+
+const { logActivity } = useActivityLogger()
 
 // ...
 
@@ -1494,7 +1501,7 @@ onMounted(() => {
   // Access Control
   const userEmail = currentUser.value.email?.toLowerCase()
 
-  if (!canAccessAlegrated(userEmail)) {
+  if (!canAccessAlegrated(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }
@@ -1515,6 +1522,7 @@ interface UserSession {
   email: string
   full_name: string
   role: string
+  company_id?: string
 }
 
 /* ---------------- LÓGICA DE SESIÓN ---------------- */
@@ -1527,7 +1535,8 @@ const currentUser = computed(() => {
     full_name: 'Usuario Invitado',
     email: '',
     id: '',
-    role: ''
+    role: '',
+    company_id: ''
   }
 })
 
@@ -1979,6 +1988,8 @@ const leadsFbig = ref<any[]>([])
 const leads = computed(() => [...leadsWpp.value, ...leadsFbig.value])
 const loadingLeads = ref(false)
 const leadsSearch = ref('')
+const showCreateUserDialog = ref(false)
+//const showSettingsDialog = ref(false)
 
 const headersLeadsWpp = ref([
   { title: 'Nombre', key: 'nombre', sortable: true },
@@ -2493,9 +2504,9 @@ watch(isDark, applyTheme, { immediate: true })
 
 onMounted(() => {
   // Access Control
-  const userEmail = currentUser.value.email?.toLowerCase()
+  // const userEmail = currentUser.value.email?.toLowerCase()
 
-  if (!canAccessAlegrated(userEmail)) {
+  if (!canAccessAlegrated(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }
@@ -2546,6 +2557,7 @@ async function runDiagnostics() {
 }
 
 function logout() {
+  logActivity('Cerró sesión')
   // 1. Borrar la cookie que mantiene la sesión abierta
   const session = useCookie('dashboard_session')
   session.value = null

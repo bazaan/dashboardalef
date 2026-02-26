@@ -221,13 +221,13 @@
             </div>
             <v-card flat class="custom-data-table">
 
-              <!-- TABLE: COMPRAS (Was Outline) -->
+              <!-- TABLE: VENTAS -->
               <div v-if="activeTab === 'compras'">
                 <v-card-title class="table-search-bar">
-                  <span class="table-title">Últimas Compras</span>
+                  <span class="table-title">Últimas Ventas</span>
                 </v-card-title>
                 <v-data-table :headers="headersComprasDashboard" :items="compras.slice(0, 10)" class="elevation-0"
-                  no-data-text="No hay compras recientes" :items-per-page="10">
+                  no-data-text="No hay ventas recientes" :items-per-page="10">
                   <template v-slot:bottom></template> <!-- Hide footer if desired -->
                 </v-data-table>
               </div>
@@ -354,14 +354,18 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: COMPRAS (antes Pacientes)  ========== -->
+      <!-- ==========  VISTA: VENTAS  ========== -->
       <div v-else-if="activeView === 'compras'" class="view-container">
         <header class="top-header">
-          <h1>Compras</h1>
-          <button class="btn-primary">
-            <v-icon icon="mdi-cart-plus" size="16" />
-            <span>Nueva Compra</span>
-          </button>
+          <h1>Ventas</h1>
+          <div class="d-flex align-center" style="gap: 10px;">
+            <v-select v-model="selectedListaVentas" :items="listaVentasOptions" density="compact" variant="outlined"
+              hide-details style="width: 250px; background-color: var(--card-bg);"></v-select>
+            <button class="btn-primary">
+              <v-icon icon="mdi-cart-plus" size="16" />
+              <span>Nueva Venta</span>
+            </button>
+          </div>
         </header>
 
         <div class="content-area">
@@ -372,7 +376,7 @@
             </div>
             <div class="stat-card">
               <div class="stat-value">{{ comprasMesActual.length }}</div>
-              <div class="stat-title">Compras este Mes</div>
+              <div class="stat-title">Ventas este Mes</div>
               <div class="stat-change" :class="growthPercentage >= 0 ? 'up' : 'down'">
                 {{ growthPercentage >= 0 ? '+' : '' }}{{ growthPercentage.toFixed(1) }}% vs mes anterior
               </div>
@@ -382,13 +386,13 @@
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de Compras</span>
+                <span class="table-title">Lista de Ventas</span>
                 <v-spacer></v-spacer>
                 <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
                   density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
               <v-data-table :headers="headersCompras" :items="compras" :search="search" :loading="loading"
-                class="elevation-0" no-data-text="No hay ordenes de compra">
+                class="elevation-0" no-data-text="No hay ordenes de venta">
                 <template v-slot:item.created_at="{ item }">
                   {{ new Date(item.created_at).toLocaleDateString() }}
                 </template>
@@ -460,6 +464,8 @@
         <header class="top-header">
           <h1>Leads</h1>
           <div class="d-flex align-center" style="gap: 10px">
+            <v-select v-model="selectedListaLeads" :items="listaLeadsOptions" density="compact" variant="outlined"
+              hide-details style="width: 250px; background-color: var(--card-bg);"></v-select>
             <button class="btn-primary">
               <v-icon icon="mdi-account-plus" size="16" />
               <span>Nuevo Lead</span>
@@ -619,7 +625,7 @@
             </div>
             <div class="chart-section" style="height: auto; max-height: 480px; overflow-y: auto;">
               <div class="chart-header mb-2">
-                <h2>Últimas Compras</h2>
+                <h2>Últimas Ventas</h2>
               </div>
               <v-list density="compact">
                 <v-list-item v-for="compra in comprasMesActual.slice(0, 6)" :key="compra.id" lines="two"
@@ -630,13 +636,13 @@
                     </v-avatar>
                   </template>
                   <v-list-item-title class="font-weight-bold">{{ compra.nombre }} {{ compra.apellidos
-                    }}</v-list-item-title>
+                  }}</v-list-item-title>
                   <v-list-item-subtitle>{{ compra.productos_comprados }}</v-list-item-subtitle>
                   <template v-slot:append>
                     <div class="text-right">
                       <div class="font-weight-bold text-primary">{{ compra.precio }}</div>
                       <div class="text-caption text-medium-emphasis">{{ new Date(compra.created_at).toLocaleDateString()
-                        }}</div>
+                      }}</div>
                     </div>
                   </template>
                 </v-list-item>
@@ -1020,9 +1026,9 @@
                   :rules="[v => !!v || 'El DNI es requerido']"></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
-                <v-select v-model="eventFormData.eventReason" label="Tipo de compra" :items="eventReasons"
+                <v-select v-model="eventFormData.eventReason" label="Tipo de venta" :items="eventReasons"
                   variant="outlined" density="compact"
-                  :rules="[v => !!v || 'El tipo de compra es requerido']"></v-select>
+                  :rules="[v => !!v || 'El tipo de venta es requerido']"></v-select>
               </v-col>
             </v-row>
           </v-form>
@@ -1091,7 +1097,7 @@
             <div class="detail-row">
               <v-icon icon="mdi-information" class="detail-icon" />
               <div>
-                <div class="detail-label">Tipo de Compra</div>
+                <div class="detail-label">Tipo de Venta</div>
                 <div class="detail-value">{{ selectedEvent.eventReason }}</div>
               </div>
             </div>
@@ -1371,6 +1377,8 @@ onMounted(() => {
   handleZoom('one_month')
 })
 
+
+
 // Recuperar datos del usuario desde la cookie para mostrar el nombre real
 const showDashboardMenu = ref(false)
 /* ---------------- DEFINICIÓN DE TIPO ---------------- */
@@ -1444,6 +1452,8 @@ const search = ref('')
 const loading = ref(false)
 const contribuyentes = ref<any[]>([])
 const compras = ref<any[]>([])
+const selectedListaVentas = ref('Lista de ventas')
+const listaVentasOptions = ['Lista de ventas', 'Lista de ventas publicidad']
 
 /* Headers de la tabla - ajusta según tu tabla 'contribuyentes' */
 const headers = ref([
@@ -1495,8 +1505,12 @@ const fetchContribuyentes = async () => {
 const fetchCompras = async () => {
   loading.value = true
   try {
+    const tableToFetch = selectedListaVentas.value === 'Lista de ventas publicidad'
+      ? 'comprasBDwppBRADA24_7'
+      : 'comprasBDwppBRADA'
+
     const { data, error } = await client
-      .from('comprasBDwppBRADA')
+      .from(tableToFetch)
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -1504,11 +1518,15 @@ const fetchCompras = async () => {
 
     compras.value = data as any[]
   } catch (error) {
-    console.error('Error al cargar compras:', error)
+    console.error('Error al cargar ventas:', error)
   } finally {
     loading.value = false
   }
 }
+
+watch(selectedListaVentas, () => {
+  fetchCompras()
+})
 
 // Stats para Compras
 const comprasMesActual = computed(() => {
@@ -1642,6 +1660,9 @@ const leadsSearch = ref('')
 const showCreateUserDialog = ref(false)
 //const showSettingsDialog = ref(false)
 
+const selectedListaLeads = ref('Lista de leads')
+const listaLeadsOptions = ['Lista de leads', 'Leads publicidad']
+
 // Headers provided by user: id, nombre, numero, lead_status, reason_ia_qualification, producto_interes
 const headersLeads = ref([
   { title: 'ID', key: 'id', sortable: true },
@@ -1655,8 +1676,12 @@ const headersLeads = ref([
 const fetchLeads = async () => {
   loadingLeads.value = true
   try {
+    const tableToFetch = selectedListaLeads.value === 'Leads publicidad'
+      ? 'GeneralBDwppBRADA24_7'
+      : 'GeneralBDwppBRADA'
+
     const { data, error } = await client
-      .from('GeneralBDwppBRADA')
+      .from(tableToFetch)
       .select('*') // We assume created_at exists for stats, otherwise we just fetch what's there
       .order('id', { ascending: false })
 
@@ -1670,6 +1695,10 @@ const fetchLeads = async () => {
     loadingLeads.value = false
   }
 }
+
+watch(selectedListaLeads, () => {
+  fetchLeads()
+})
 
 // Computed Stats for Leads
 const totalLeads = computed(() => leads.value.length)
@@ -2275,7 +2304,7 @@ function logout() {
 const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
-  { icon: 'mdi-cart', label: 'Compras', id: 'compras' },
+  { icon: 'mdi-cart', label: 'Ventas', id: 'compras' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' }
 ]
 
@@ -2356,7 +2385,7 @@ const stats = computed<Stat[]>(() => [
     description: 'Total acumulado'
   },
   {
-    title: 'Total Compras',
+    title: 'Total Ventas',
     value: totalComprasCount.value.toLocaleString(),
     change: '', // Podríamos calcular crecimiento de compras total si quisieramos, o dejarlo vacío
     trend: 'up',
@@ -2376,7 +2405,7 @@ const stats = computed<Stat[]>(() => [
 /* ---------------- Tabs ---------------- */
 /* ---------------- Tabs ---------------- */
 const tabs: Tab[] = [
-  { label: 'Compras', value: 'compras' },
+  { label: 'Ventas', value: 'compras' },
   { label: 'Leads', value: 'leads' },
   { label: 'Próximos Eventos', value: 'events' }
 ]

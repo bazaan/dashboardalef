@@ -221,13 +221,13 @@
             </div>
             <v-card flat class="custom-data-table">
 
-              <!-- TABLE: COMPRAS (Was Outline) -->
-              <div v-if="activeTab === 'compras'">
+              <!-- TABLE: VENTAS -->
+              <div v-if="activeTab === 'ventas'">
                 <v-card-title class="table-search-bar">
-                  <span class="table-title">Últimas Compras</span>
+                  <span class="table-title">Últimas Ventas</span>
                 </v-card-title>
-                <v-data-table :headers="headersComprasDashboard" :items="compras.slice(0, 10)" class="elevation-0"
-                  no-data-text="No hay compras recientes" :items-per-page="10">
+                <v-data-table :headers="headersVentas" :items="compras.slice(0, 10)" class="elevation-0"
+                  no-data-text="No hay ventas recientes" :items-per-page="10">
                   <template v-slot:bottom></template> <!-- Hide footer if desired -->
                 </v-data-table>
               </div>
@@ -354,13 +354,13 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: COMPRAS (antes Pacientes)  ========== -->
-      <div v-else-if="activeView === 'compras'" class="view-container">
+      <!-- ==========  VISTA: VENTAS  ========== -->
+      <div v-else-if="activeView === 'ventas'" class="view-container">
         <header class="top-header">
-          <h1>Compras</h1>
+          <h1>Ventas</h1>
           <button class="btn-primary">
             <v-icon icon="mdi-cart-plus" size="16" />
-            <span>Nueva Compra</span>
+            <span>Nueva Venta</span>
           </button>
         </header>
 
@@ -372,7 +372,7 @@
             </div>
             <div class="stat-card">
               <div class="stat-value">{{ comprasMesActual.length }}</div>
-              <div class="stat-title">Compras este Mes</div>
+              <div class="stat-title">Ventas este Mes</div>
               <div class="stat-change" :class="growthPercentage >= 0 ? 'up' : 'down'">
                 {{ growthPercentage >= 0 ? '+' : '' }}{{ growthPercentage.toFixed(1) }}% vs mes anterior
               </div>
@@ -382,16 +382,13 @@
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de Compras</span>
+                <span class="table-title">Lista de Ventas</span>
                 <v-spacer></v-spacer>
-                <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
-                  density="compact" variant="outlined" class="search-field"></v-text-field>
+                <v-text-field v-model="ventasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
+                  hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersCompras" :items="compras" :search="search" :loading="loading"
-                class="elevation-0" no-data-text="No hay ordenes de compra">
-                <template v-slot:item.created_at="{ item }">
-                  {{ new Date(item.created_at).toLocaleDateString() }}
-                </template>
+              <v-data-table :headers="headersVentas" :items="compras" :search="ventasSearch" :loading="loading"
+                class="elevation-0" no-data-text="No hay datos de ventas">
               </v-data-table>
             </v-card>
           </div>
@@ -573,29 +570,23 @@
           <!-- KPI Stats Grid -->
           <div class="stats-grid">
             <div class="stat-card">
-              <div class="stat-title">Ingresos (Mes Actual)</div>
-              <div class="stat-value">S/ {{ revenueCurrentMonth.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              <div class="stat-title">Ingresos Totales</div>
+              <div class="stat-value">S/ {{ totalRevenue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
               </div>
-              <div :class="['stat-change', revenueGrowth >= 0 ? 'up' : 'down']">
-                <v-icon :icon="revenueGrowth >= 0 ? 'mdi-trending-up' : 'mdi-trending-down'" size="12" />
-                {{ Math.abs(revenueGrowth).toFixed(1) }}% vs mes anterior
-              </div>
+              <div class="stat-subtitle">Histórico de todas las ventas</div>
             </div>
 
             <div class="stat-card">
-              <div class="stat-title">Ventas (Cantidad)</div>
-              <div class="stat-value">{{ salesCountCurrentMonth }}</div>
-              <div :class="['stat-change', salesGrowth >= 0 ? 'up' : 'down']">
-                <v-icon :icon="salesGrowth >= 0 ? 'mdi-trending-up' : 'mdi-trending-down'" size="12" />
-                {{ Math.abs(salesGrowth).toFixed(1) }}%
-              </div>
+              <div class="stat-title">Ventas Totales</div>
+              <div class="stat-value">{{ compras.length }}</div>
+              <div class="stat-subtitle">Total de ventas registradas</div>
             </div>
 
             <div class="stat-card">
               <div class="stat-title">Ticket Promedio (AOV)</div>
               <div class="stat-value">S/ {{ averageOrderValue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
               </div>
-              <div class="stat-subtitle">Promedio por venta este mes</div>
+              <div class="stat-subtitle">Promedio por venta histórico</div>
             </div>
 
             <div class="stat-card">
@@ -610,7 +601,7 @@
             <!-- Give more space to Revenue chart -->
             <div class="chart-section" style="height: auto;">
               <div class="chart-header">
-                <h2>Tendencia de Facturación (Diaria)</h2>
+                <h2>Tendencia de Facturación (Últimos 30 días)</h2>
               </div>
               <client-only>
                 <apexchart type="area" height="350" :options="revenueChartOptions" :series="revenueChartSeries" />
@@ -643,7 +634,7 @@
                 <h2>Últimas Compras</h2>
               </div>
               <v-list density="compact">
-                <v-list-item v-for="compra in comprasMesActual.slice(0, 6)" :key="compra.id" lines="two"
+                <v-list-item v-for="compra in compras.slice(0, 6)" :key="compra.id" lines="two"
                   style="border-bottom: 1px solid var(--border);">
                   <template v-slot:prepend>
                     <v-avatar color="primary" variant="tonal" size="36">
@@ -784,16 +775,12 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: STOCK CELULARES  ========== -->
-      <div v-else-if="activeView === 'stock-celulares'" class="view-container">
+      <!-- ==========  VISTA: STOCK  ========== -->
+      <div v-else-if="activeView === 'stock'" class="view-container">
         <header class="top-header">
-          <h1>Stock: Celulares</h1>
+          <h1>Stock de Productos</h1>
           <div class="header-actions">
-            <button class="btn-primary" @click="openStockDialog('celulares')">
-              <v-icon icon="mdi-plus" size="16" />
-              <span>Nuevo Celular</span>
-            </button>
-            <button class="btn-warning ml-2" @click="fetchStockData('celulares')">
+            <button class="btn-warning ml-2" @click="fetchStock">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Actualizar</span>
             </button>
@@ -804,117 +791,15 @@
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Celulares</span>
+                <span class="table-title">Inventario</span>
                 <v-spacer></v-spacer>
                 <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersCelulares" :items="stockCelulares" :search="stockSearch"
-                :loading="loadingStock" class="elevation-0" no-data-text="No hay datos de celulares">
+              <v-data-table :headers="headersStock" :items="stockItems" :search="stockSearch" :loading="loadingStock"
+                class="elevation-0" no-data-text="No hay datos de stock">
                 <template v-slot:item.precio="{ item }">
                   S/ {{ item.precio }}
-                </template>
-                <template v-slot:item.actions="{ item }">
-                  <div class="d-flex">
-                    <button class="icon-btn mr-1" @click="openStockDialog('celulares', item)">
-                      <v-icon icon="mdi-pencil" size="16" />
-                    </button>
-                    <button class="icon-btn" @click="deleteStock('celulares', item.id)">
-                      <v-icon icon="mdi-delete" size="16" />
-                    </button>
-                  </div>
-                </template>
-              </v-data-table>
-            </v-card>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==========  VISTA: STOCK LAPTOPS  ========== -->
-      <div v-else-if="activeView === 'stock-laptops'" class="view-container">
-        <header class="top-header">
-          <h1>Stock: Laptops / Tablets</h1>
-          <div class="header-actions">
-            <button class="btn-primary" @click="openStockDialog('laptops')">
-              <v-icon icon="mdi-plus" size="16" />
-              <span>Nueva Laptop/Tablet</span>
-            </button>
-            <button class="btn-warning ml-2" @click="fetchStockData('laptops')">
-              <v-icon icon="mdi-refresh" size="16" />
-              <span>Actualizar</span>
-            </button>
-          </div>
-        </header>
-
-        <div class="content-area">
-          <div class="table-section">
-            <v-card flat class="custom-data-table">
-              <v-card-title class="table-search-bar">
-                <span class="table-title">Laptops / Tablets</span>
-                <v-spacer></v-spacer>
-                <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
-                  hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
-              </v-card-title>
-              <v-data-table :headers="headersLaptops" :items="stockLaptops" :search="stockSearch"
-                :loading="loadingStock" class="elevation-0" no-data-text="No hay datos de laptops">
-                <template v-slot:item.precio="{ item }">
-                  S/ {{ item.precio }}
-                </template>
-                <template v-slot:item.actions="{ item }">
-                  <div class="d-flex">
-                    <button class="icon-btn mr-1" @click="openStockDialog('laptops', item)">
-                      <v-icon icon="mdi-pencil" size="16" />
-                    </button>
-                    <button class="icon-btn" @click="deleteStock('laptops', item.id)">
-                      <v-icon icon="mdi-delete" size="16" />
-                    </button>
-                  </div>
-                </template>
-              </v-data-table>
-            </v-card>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==========  VISTA: STOCK ACCESORIOS  ========== -->
-      <div v-else-if="activeView === 'stock-accesorios'" class="view-container">
-        <header class="top-header">
-          <h1>Stock: Accesorios</h1>
-          <div class="header-actions">
-            <button class="btn-primary" @click="openStockDialog('accesorios')">
-              <v-icon icon="mdi-plus" size="16" />
-              <span>Nuevo Accesorio</span>
-            </button>
-            <button class="btn-warning ml-2" @click="fetchStockData('accesorios')">
-              <v-icon icon="mdi-refresh" size="16" />
-              <span>Actualizar</span>
-            </button>
-          </div>
-        </header>
-
-        <div class="content-area">
-          <div class="table-section">
-            <v-card flat class="custom-data-table">
-              <v-card-title class="table-search-bar">
-                <span class="table-title">Accesorios</span>
-                <v-spacer></v-spacer>
-                <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
-                  hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
-              </v-card-title>
-              <v-data-table :headers="headersAccesorios" :items="stockAccesorios" :search="stockSearch"
-                :loading="loadingStock" class="elevation-0" no-data-text="No hay datos de accesorios">
-                <template v-slot:item.price="{ item }">
-                  S/ {{ item.price }}
-                </template>
-                <template v-slot:item.actions="{ item }">
-                  <div class="d-flex">
-                    <button class="icon-btn mr-1" @click="openStockDialog('accesorios', item)">
-                      <v-icon icon="mdi-pencil" size="16" />
-                    </button>
-                    <button class="icon-btn" @click="deleteStock('accesorios', item.id)">
-                      <v-icon icon="mdi-delete" size="16" />
-                    </button>
-                  </div>
                 </template>
               </v-data-table>
             </v-card>
@@ -1378,11 +1263,10 @@ onMounted(() => {
   }
 
   applyTheme()
-  fetchStockData('celulares')
-  fetchStockData('laptops')
-  fetchStockData('accesorios')
+  fetchStock()
   fetchLeads()
   fetchCompras()
+
   handleZoom('one_month')
   fetchEvents()
   fetchProcedures()
@@ -1466,6 +1350,21 @@ const loading = ref(false)
 const contribuyentes = ref<any[]>([])
 const compras = ref<any[]>([])
 
+const ventasSearch = ref('')
+const headersVentas = ref([
+  { title: 'Nombre', key: 'nombre', sortable: true },
+  { title: 'Apellidos', key: 'apellidos', sortable: true },
+  { title: 'DNI', key: 'dni', sortable: true },
+  { title: 'Teléfono', key: 'numero', sortable: true },
+  { title: 'Productos', key: 'productos_comprados', sortable: true },
+  { title: 'Ciudad/Provincia', key: 'ciudad/provincia', sortable: true },
+  { title: 'Agencia', key: 'Nombre_agencia_shalom', sortable: true },
+  { title: 'Dirección', key: 'direccion_exacta', sortable: true },
+  { title: 'Precio', key: 'precio', sortable: true },
+  { title: 'Categoría', key: 'categoria', sortable: true },
+  { title: 'Cantidad', key: 'cantidad', sortable: true },
+])
+
 /* Headers de la tabla - ajusta según tu tabla 'contribuyentes' */
 const headers = ref([
   { title: 'ID', key: 'id', sortable: true },
@@ -1513,6 +1412,24 @@ const fetchContribuyentes = async () => {
   }
 }
 
+const fetchStock = async () => {
+  loadingStock.value = true
+  try {
+    const { data, error } = await client
+      .from('bsale_origitec_stock')
+      .select('nombre_producto, cantidad_disponible, sucursal_id, precio')
+      .eq('sucursal_id', '1')
+
+    if (error) throw error
+
+    stockItems.value = (data || []) as any[]
+  } catch (error) {
+    console.error('Error al cargar stock:', error)
+  } finally {
+    loadingStock.value = false
+  }
+}
+
 const fetchCompras = async () => {
   loading.value = true
   try {
@@ -1538,7 +1455,7 @@ const comprasMesActual = computed(() => {
   const currentYear = now.getFullYear()
 
   return compras.value.filter(c => {
-    const d = new Date(c.created_at)
+    const d = new Date(c.created_at || c.fecha || now)
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear
   })
 })
@@ -1554,7 +1471,7 @@ const comprasMesAnterior = computed(() => {
   }
 
   return compras.value.filter(c => {
-    const d = new Date(c.created_at)
+    const d = new Date(c.created_at || c.fecha || new Date())
     return d.getMonth() === prevMonth && d.getFullYear() === prevYear
   })
 })
@@ -1592,65 +1509,20 @@ const deleteItem = async (item: any) => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
-const activeTab = ref('compras')
+const activeTab = ref('ventas')
 const showUserMenu = ref(false)
 const stockMenuOpen = ref(false)
 
 /* ---------------- Stock Logic ---------------- */
 const stockSearch = ref('')
 const loadingStock = ref(false)
-const stockCelulares = ref<any[]>([])
-const stockLaptops = ref<any[]>([])
-const stockAccesorios = ref<any[]>([])
+const stockItems = ref<any[]>([])
 
-const headersCelulares = [
-  { title: 'Nombre', key: 'nombre', sortable: true },
-  { title: 'Precio', key: 'precio', sortable: true },
-  { title: 'Stock', key: 'stock', sortable: true },
-  { title: 'Acciones', key: 'actions', sortable: false },
-]
-const headersLaptops = [
-  { title: 'Nombre', key: 'nombre', sortable: true },
-  { title: 'Precio', key: 'precio', sortable: true },
-  { title: 'Stock', key: 'stock', sortable: true },
-  { title: 'Acciones', key: 'actions', sortable: false },
-]
-const headersAccesorios = [
-  { title: 'Nombre', key: 'nombre', sortable: true },
-  { title: 'Precio', key: 'precio', sortable: true },
-  { title: 'Stock', key: 'stock', sortable: true },
-  { title: 'Acciones', key: 'actions', sortable: false },
-]
-
-async function fetchStockData(type: 'celulares' | 'laptops' | 'accesorios') {
-  loadingStock.value = true
-  console.log(`[Origitec] Fetching stock data for: ${type}`)
-  try {
-    let tableName = ''
-    if (type === 'celulares') tableName = 'Stock_celulares'
-    else if (type === 'laptops') tableName = 'Stock_laptops_tablets'
-    else if (type === 'accesorios') tableName = 'Stock_accesorios'
-
-    console.log(`[Origitec] Querying table: ${tableName}`)
-    const { data, error } = await client.from(tableName).select('*')
-
-    if (error) {
-      console.error(`[Origitec] Supabase error for ${tableName}:`, error)
-      throw error
-    }
-
-    console.log(`[Origitec] Data received for ${tableName}:`, data)
-
-    if (type === 'celulares') stockCelulares.value = data as any[]
-    else if (type === 'laptops') stockLaptops.value = data as any[]
-    else if (type === 'accesorios') stockAccesorios.value = data as any[]
-
-  } catch (error) {
-    console.error(`Error fetching ${type}:`, error)
-  } finally {
-    loadingStock.value = false
-  }
-}
+const headersStock = ref([
+  { title: 'Producto', key: 'nombre_producto', sortable: true },
+  { title: 'Disponibilidad', key: 'cantidad_disponible', sortable: true },
+  { title: 'Precio de venta', key: 'precio', sortable: true },
+])
 
 /* ---------------- LEADS LOGIC ---------------- */
 // ... (Leads Logic remains unchanged, skipping context lines for brevity if possible, but I must replace contiguous block.
@@ -1843,7 +1715,8 @@ const leadsChartOptions = computed<ApexOptions>(() => {
 /* ---------------- FACTURACIÓN LOGIC ---------------- */
 
 // Helper para parsear moneda "S/ 1,200.00" -> 1200.00
-const parseCurrency = (val: string | number) => {
+const parseCurrency = (val: string | number | undefined | null) => {
+  if (val === undefined || val === null) return 0
   if (typeof val === 'number') return val
   if (!val) return 0
   // Remueve todo excepto números, puntos y signo negativo
@@ -1873,10 +1746,11 @@ const salesGrowth = computed(() => {
   return ((salesCountCurrentMonth.value - salesCountPreviousMonth.value) / salesCountPreviousMonth.value) * 100
 })
 
-// 4. Ticket Promedio (AOV)
+// 4. Ticket Promedio (AOV) histórico total
 const averageOrderValue = computed(() => {
-  if (salesCountCurrentMonth.value === 0) return 0
-  return revenueCurrentMonth.value / salesCountCurrentMonth.value
+  if (compras.value.length === 0) return 0
+  const totalRev = compras.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
+  return totalRev / compras.value.length
 })
 
 // 5. Tasa de Conversión Real (Leads que compran)
@@ -1909,7 +1783,7 @@ const revenueChartSeries = computed(() => {
   const dailyRevenue = new Array(daysInMonth).fill(0)
 
   comprasMesActual.value.forEach(c => {
-    const d = new Date(c.created_at)
+    const d = new Date(c.created_at || c.fecha || new Date())
     const dayIndex = d.getDate() - 1 // 0-indexed
     if (dayIndex >= 0 && dayIndex < daysInMonth) {
       dailyRevenue[dayIndex] += parseCurrency(c.precio)
@@ -2135,7 +2009,7 @@ async function saveStock() {
     } else {
       console.log("Guardado exitoso:", data);
       showStockDialog.value = false;
-      await fetchStockData(type);
+      await fetchStock();
     }
   } catch (err: any) {
     console.error("Error inesperado:", err);
@@ -2169,7 +2043,7 @@ async function deleteStock(type: 'celulares' | 'laptops' | 'accesorios', id: str
     }
 
     // Si todo sale bien, recargamos la tabla
-    await fetchStockData(type);
+    await fetchStock();
     console.log('Eliminado con éxito');
 
   } catch (error: any) {
@@ -2182,9 +2056,7 @@ async function deleteStock(type: 'celulares' | 'laptops' | 'accesorios', id: str
 
 // Watch activeView to fetch data when switching tabs
 watch(activeView, (newVal) => {
-  if (newVal === 'stock-celulares' && stockCelulares.value.length === 0) fetchStockData('celulares')
-  else if (newVal === 'stock-laptops' && stockLaptops.value.length === 0) fetchStockData('laptops')
-  else if (newVal === 'stock-accesorios' && stockAccesorios.value.length === 0) fetchStockData('accesorios')
+  if (newVal === 'stock' && stockItems.value.length === 0) fetchStock()
   else if (newVal === 'leads' && leads.value.length === 0) fetchLeads()
 })
 
@@ -2219,14 +2091,8 @@ const triggerStockNotification = (type: string, action: string) => {
 
 // Watchers simulan detección de cambios.
 // En una app real, esto deberia ser vía Realtime de Supabase, pero aquí detectamos cambios locales tras fetch/edit
-watch(() => stockCelulares.value.length, (newVal, oldVal) => {
-  if (oldVal > 0 && newVal !== oldVal) triggerStockNotification('Celulares', newVal > oldVal ? 'Agregado' : 'Eliminado')
-})
-watch(() => stockLaptops.value.length, (newVal, oldVal) => {
-  if (oldVal > 0 && newVal !== oldVal) triggerStockNotification('Laptops', newVal > oldVal ? 'Agregado' : 'Eliminado')
-})
-watch(() => stockAccesorios.value.length, (newVal, oldVal) => {
-  if (oldVal > 0 && newVal !== oldVal) triggerStockNotification('Accesorios', newVal > oldVal ? 'Agregado' : 'Eliminado')
+watch(() => stockItems.value.length, (newVal, oldVal) => {
+  if (oldVal > 0 && newVal !== oldVal) triggerStockNotification('Stock', newVal > oldVal ? 'Agregado' : 'Eliminado')
 })
 
 
@@ -2303,7 +2169,7 @@ function logout() {
 const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
-  { icon: 'mdi-cart', label: 'Compras', id: 'compras' },
+  { icon: 'mdi-cart', label: 'Ventas', id: 'ventas' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' }
 ]
 
@@ -2322,17 +2188,12 @@ const chatsItems = [
 ]
 
 
-const documentItems = [
+const documentItems: Array<{ icon: string; label: string; id: string; children?: any[] }> = [
   // { icon: 'mdi-arrow-right-bold-circle', label: 'Procedimientos', id: 'procedimientos' },
   {
     icon: 'mdi-folder',
     label: 'Stock',
-    id: 'stock',
-    children: [
-      { label: 'Celulares', id: 'stock-celulares' },
-      { label: 'Laptops / Tablets', id: 'stock-laptops' },
-      { label: 'Accesorios', id: 'stock-accesorios' },
-    ]
+    id: 'stock'
   },
   { icon: 'mdi-robot-mower', label: 'Meta', id: 'meta' }
 ]
@@ -2404,7 +2265,7 @@ const stats = computed<Stat[]>(() => [
 /* ---------------- Tabs ---------------- */
 /* ---------------- Tabs ---------------- */
 const tabs: Tab[] = [
-  { label: 'Compras', value: 'compras' },
+  { label: 'Ventas', value: 'ventas' },
   { label: 'Leads', value: 'leads' },
   { label: 'Próximos Eventos', value: 'events' }
 ]
@@ -2818,7 +2679,7 @@ async function saveEvent() {
     if (editingEvent.value) {
       // Update
       const { error } = await (client
-        .from('brada_calendar_events') as any)
+        .from('ORIGITEC_calendar_events') as any)
         .update(payload)
         .eq('id', editingEvent.value.id)
 
@@ -2826,7 +2687,7 @@ async function saveEvent() {
     } else {
       // Create
       const { error } = await (client
-        .from('brada_calendar_events') as any)
+        .from('ORIGITEC_calendar_events') as any)
         .insert(payload)
 
       if (error) throw error
@@ -2871,7 +2732,7 @@ function confirmDeleteEvent() {
 async function deleteEvent(eventId: string) {
   try {
     const { error } = await client
-      .from('brada_calendar_events')
+      .from('ORIGITEC_calendar_events')
       .delete()
       .eq('id', eventId)
 
@@ -2897,7 +2758,7 @@ function openEventDetailFromDay(event: CalendarEvent) {
 async function fetchEvents() {
   try {
     const { data, error } = await client
-      .from('brada_calendar_events')
+      .from('ORIGITEC_calendar_events')
       .select('*')
 
     if (error) throw error

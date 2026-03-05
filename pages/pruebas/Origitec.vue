@@ -358,17 +358,22 @@
       <div v-else-if="activeView === 'ventas'" class="view-container">
         <header class="top-header">
           <h1>Ventas</h1>
-          <button class="btn-primary">
-            <v-icon icon="mdi-cart-plus" size="16" />
-            <span>Nueva Venta</span>
-          </button>
+          <div style="display: flex; gap: 15px; align-items: center;">
+            <v-select v-model="tipoVentaSeleccionada"
+              :items="['Ventas Motorizado', 'Ventas Courier', 'Ventas Recojo en tienda']" variant="outlined"
+              density="compact" hide-details style="min-width: 250px;"></v-select>
+            <button class="btn-primary">
+              <v-icon icon="mdi-cart-plus" size="16" />
+              <span>Nueva Venta</span>
+            </button>
+          </div>
         </header>
 
         <div class="content-area">
           <div class="stats-grid mini two-columns">
             <div class="stat-card center-content">
               <div class="stat-value">{{ compras.length }}</div>
-              <div class="stat-title">Total Histórico</div>
+              <div class="stat-title">Total Histórico ({{ tipoVentaSeleccionada }})</div>
             </div>
             <div class="stat-card">
               <div class="stat-value">{{ comprasMesActual.length }}</div>
@@ -389,6 +394,64 @@
               </v-card-title>
               <v-data-table :headers="headersVentas" :items="compras" :search="ventasSearch" :loading="loading"
                 class="elevation-0" no-data-text="No hay datos de ventas">
+
+                <template v-slot:item.metodo_pago="{ item }">
+                  <v-chip :color="item.metodo_pago?.toLowerCase().includes('yape') ? '#743484' :
+                    item.metodo_pago?.toLowerCase().includes('plin') ? '#00e5ff' :
+                      item.metodo_pago?.toLowerCase().includes('efectivo') ? '#4caf50' :
+                        item.metodo_pago?.toLowerCase().includes('tarjeta') ? '#1976d2' : 'grey'"
+                    :text-color="item.metodo_pago?.toLowerCase().includes('yape') ? 'white' : 'black'" size="small"
+                    class="font-weight-bold">
+                    {{ item.metodo_pago || 'Desconocido' }}
+                  </v-chip>
+                </template>
+
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========  VISTA: RESERVAS  ========== -->
+      <div v-else-if="activeView === 'reservas'" class="view-container">
+        <header class="top-header">
+          <h1>Reservas (Recojo en Tienda)</h1>
+          <button class="btn-primary" @click="fetchReservas">
+            <v-icon icon="mdi-refresh" size="16" />
+            <span>Actualizar</span>
+          </button>
+        </header>
+
+        <div class="content-area">
+          <div class="stats-grid mini">
+            <div class="stat-card center-content" style="max-width: 300px;">
+              <div class="stat-value">{{ reservas.length }}</div>
+              <div class="stat-title">Total Reservas Registradas</div>
+            </div>
+          </div>
+
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Lista de Reservas</span>
+                <v-spacer></v-spacer>
+                <v-text-field v-model="reservasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
+                  hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
+              </v-card-title>
+              <v-data-table :headers="headersReservas" :items="reservas" :search="reservasSearch"
+                :loading="loadingReservas" class="elevation-0" no-data-text="No hay datos de reservas">
+
+                <template v-slot:item.metodo_pago_reserva="{ item }">
+                  <v-chip :color="item.metodo_pago_reserva?.toLowerCase().includes('yape') ? '#743484' :
+                    item.metodo_pago_reserva?.toLowerCase().includes('plin') ? '#00e5ff' :
+                      item.metodo_pago_reserva?.toLowerCase().includes('efectivo') ? '#4caf50' :
+                        item.metodo_pago_reserva?.toLowerCase().includes('tarjeta') ? '#1976d2' : 'grey'"
+                    :text-color="item.metodo_pago_reserva?.toLowerCase().includes('yape') ? 'white' : 'black'"
+                    size="small" class="font-weight-bold">
+                    {{ item.metodo_pago_reserva || 'Desconocido' }}
+                  </v-chip>
+                </template>
+
               </v-data-table>
             </v-card>
           </div>
@@ -659,59 +722,139 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: CONTABILIDAD  ========== -->
+      <!-- ==========  VISTA: CONTABILIDAD GLOBAL  ========== -->
       <div v-else-if="activeView === 'contabilidad'" class="view-container">
         <header class="top-header">
-          <h1>Facturación</h1>
-          <button class="btn-primary">
-            <v-icon icon="mdi-file-chart" size="16" />
-            <span>Generar Reporte</span>
+          <h1>Contabilidad Global</h1>
+          <button class="btn-primary" @click="fetchGlobalAccounting">
+            <v-icon icon="mdi-refresh" size="16" />
+            <span>Actualizar Datos</span>
           </button>
         </header>
 
         <div class="content-area">
-          <div class="two-column-grid">
-            <div class="placeholder-card">
-              <h3>Balance General</h3>
-              <div class="balance-sheet">
-                <div class="balance-item">
-                  <span class="label">Activos:</span>
-                  <span class="value">$250,000</span>
-                </div>
-                <div class="balance-item">
-                  <span class="label">Pasivos:</span>
-                  <span class="value">$120,000</span>
-                </div>
-                <div class="balance-item total">
-                  <span class="label">Patrimonio:</span>
-                  <span class="value">$130,000</span>
-                </div>
+          <!-- KPI Stats Grid Global -->
+          <div class="stats-grid">
+            <div class="stat-card" style="border-top: 4px solid #a78bfa;">
+              <div class="stat-title">Ingresos Totales (S/)</div>
+              <div class="stat-value">S/ {{ totalGlobalRevenue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
               </div>
+              <div class="stat-subtitle">Suma de todos los canales</div>
             </div>
 
-            <div class="placeholder-card chart">
-              <h3>Flujo de Caja</h3>
-              <div class="placeholder-chart">
-                <v-icon icon="mdi-chart-line" size="48" />
-                <p>Gráfica de flujo de caja mensual</p>
-              </div>
+            <div class="stat-card" style="border-top: 4px solid #a78bfa;">
+              <div class="stat-title">Ventas Totales (Unidades)</div>
+              <div class="stat-value">{{ totalGlobalSales }}</div>
+              <div class="stat-subtitle">Total de productos vendidos</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-title">Ticket Promedio Global</div>
+              <div class="stat-value">S/ {{ totalGlobalSales > 0 ? (totalGlobalRevenue /
+                totalGlobalSales).toLocaleString('es-PE', { minimumFractionDigits: 2 }) : 0 }}</div>
+              <div class="stat-subtitle">Promedio por unidad histórica</div>
             </div>
           </div>
 
-          <div class="placeholder-card large">
-            <h2>Análisis Financiero</h2>
-            <div class="placeholder-chart">
-              <v-icon icon="mdi-finance" size="64" />
-              <p>Dashboard de métricas financieras y KPIs</p>
-            </div>
+          <!-- Desglose Por Canal en Línea -->
+          <div style="margin-top: 2rem; margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 1rem; color: #fff; font-size: 1.25rem;">Desglose por Canal de Venta</h2>
+            <v-row>
+              <!-- Motorizado -->
+              <v-col cols="12" md="3">
+                <v-card class="pa-4"
+                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #4ade80;">
+                  <h3 style="color: #4ade80; margin-bottom: 10px;">Motorizado</h3>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span style="color: #a0aec0;">Ingresos:</span>
+                    <strong style="color: #fff;">S/ {{ globalMotorizadoRevenue.toLocaleString('es-PE', {
+                      minimumFractionDigits: 2 }) }}</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #a0aec0;">Unidades:</span>
+                    <strong style="color: #fff;">{{ globalMotorizadoSales }}</strong>
+                  </div>
+                </v-card>
+              </v-col>
+              <!-- Courier -->
+              <v-col cols="12" md="3">
+                <v-card class="pa-4"
+                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #60a5fa;">
+                  <h3 style="color: #60a5fa; margin-bottom: 10px;">Courier</h3>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span style="color: #a0aec0;">Ingresos:</span>
+                    <strong style="color: #fff;">S/ {{ globalCourierRevenue.toLocaleString('es-PE', {
+                      minimumFractionDigits:
+                      2 }) }}</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #a0aec0;">Unidades:</span>
+                    <strong style="color: #fff;">{{ globalCourierSales }}</strong>
+                  </div>
+                </v-card>
+              </v-col>
+              <!-- Tienda -->
+              <v-col cols="12" md="3">
+                <v-card class="pa-4"
+                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #f472b6;">
+                  <h3 style="color: #f472b6; margin-bottom: 10px;">Recojo en Tienda</h3>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span style="color: #a0aec0;">Ingresos:</span>
+                    <strong style="color: #fff;">S/ {{ globalTiendaRevenue.toLocaleString('es-PE', {
+                      minimumFractionDigits:
+                      2 }) }}</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #a0aec0;">Unidades:</span>
+                    <strong style="color: #fff;">{{ globalTiendaSales }}</strong>
+                  </div>
+                </v-card>
+              </v-col>
+              <!-- Reservas -->
+              <v-col cols="12" md="3">
+                <v-card class="pa-4"
+                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #fbbf24;">
+                  <h3 style="color: #fbbf24; margin-bottom: 10px;">Reservas</h3>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span style="color: #a0aec0;">Ingresos:</span>
+                    <strong style="color: #fff;">S/ {{ globalReservasRevenue.toLocaleString('es-PE', {
+                      minimumFractionDigits: 2 }) }}</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #a0aec0;">Unidades:</span>
+                    <strong style="color: #fff;">{{ globalReservasSales }}</strong>
+                  </div>
+                </v-card>
+              </v-col>
+            </v-row>
           </div>
 
-          <div class="table-section">
-            <div class="placeholder-card">
-              <h3>Reportes Contables</h3>
-              <div class="placeholder-table">
-                <p>Tabla de reportes generados, libro diario, mayor, etc.</p>
+          <!-- Charts Grid -->
+          <div class="two-column-grid" style="grid-template-columns: 1fr 1fr; margin-top: 2rem;">
+            <!-- Revenue Chart (Donut) -->
+            <div class="chart-section" style="height: auto;">
+              <div class="chart-header">
+                <h2>Ingresos por Canal (%)</h2>
               </div>
+              <client-only>
+                <div v-if="loadingGlobalAccounting" style="padding: 2rem; text-align: center; color: #a0aec0;">Cargando
+                  gráficos...</div>
+                <apexchart v-else type="donut" height="350" :options="accountingRevenueOptions"
+                  :series="accountingRevenueSeries" />
+              </client-only>
+            </div>
+
+            <!-- Quantity Chart (Bar) -->
+            <div class="chart-section" style="height: auto;">
+              <div class="chart-header">
+                <h2>Volumen de Productos Vendidos</h2>
+              </div>
+              <client-only>
+                <div v-if="loadingGlobalAccounting" style="padding: 2rem; text-align: center; color: #a0aec0;">Cargando
+                  gráficos...</div>
+                <apexchart v-else type="bar" height="350" :options="accountingQuantityOptions"
+                  :series="accountingQuantitySeries" />
+              </client-only>
             </div>
           </div>
         </div>
@@ -1266,6 +1409,8 @@ onMounted(() => {
   fetchStock()
   fetchLeads()
   fetchCompras()
+  fetchReservas()
+  fetchGlobalAccounting()
 
   handleZoom('one_month')
   fetchEvents()
@@ -1350,20 +1495,76 @@ const loading = ref(false)
 const contribuyentes = ref<any[]>([])
 const compras = ref<any[]>([])
 
-const ventasSearch = ref('')
-const headersVentas = ref([
-  { title: 'Nombre', key: 'nombre', sortable: true },
-  { title: 'Apellidos', key: 'apellidos', sortable: true },
+// Reservas
+const reservas = ref<any[]>([])
+const loadingReservas = ref(false)
+const reservasSearch = ref('')
+
+const headersReservas = ref([
+  { title: 'Nombre Completo', key: 'nombre_completo', sortable: true },
   { title: 'DNI', key: 'dni', sortable: true },
-  { title: 'Teléfono', key: 'numero', sortable: true },
-  { title: 'Productos', key: 'productos_comprados', sortable: true },
-  { title: 'Ciudad/Provincia', key: 'ciudad/provincia', sortable: true },
-  { title: 'Agencia', key: 'Nombre_agencia_shalom', sortable: true },
-  { title: 'Dirección', key: 'direccion_exacta', sortable: true },
-  { title: 'Precio', key: 'precio', sortable: true },
-  { title: 'Categoría', key: 'categoria', sortable: true },
+  { title: 'Nº Celular', key: 'numero_celular', sortable: true },
+  { title: 'Correo', key: 'correo', sortable: true },
+  { title: 'Local Deseado', key: 'local_deseado', sortable: true },
+  { title: 'Fecha Reserva', key: 'fecha_reserva', sortable: true },
+  { title: 'Hora Reserva', key: 'hora_reserva', sortable: true },
+  { title: 'Producto', key: 'producto_reservado', sortable: true },
   { title: 'Cantidad', key: 'cantidad', sortable: true },
+  { title: 'Método Pago', key: 'metodo_pago_reserva', sortable: true },
+  { title: 'Descripción', key: 'descripcion', sortable: true },
 ])
+
+const ventasSearch = ref('')
+const tipoVentaSeleccionada = ref('Ventas Motorizado')
+
+const headersVentas = computed(() => {
+  if (tipoVentaSeleccionada.value === 'Ventas Motorizado') {
+    return [
+      { title: 'Nombre Completo', key: 'nombre_completo', sortable: true },
+      { title: 'DNI', key: 'dni', sortable: true },
+      { title: 'Nº Celular', key: 'numero_celular', sortable: true },
+      { title: 'Correo', key: 'correo', sortable: true },
+      { title: 'Dirección Exacta', key: 'direccion_exacta', sortable: true },
+      { title: 'Producto', key: 'producto', sortable: true },
+      { title: 'Cantidad', key: 'cantidad', sortable: true },
+      { title: 'Precio', key: 'precio', sortable: true },
+      { title: 'Método Pago', key: 'metodo_pago', sortable: true },
+    ]
+  } else if (tipoVentaSeleccionada.value === 'Ventas Courier') {
+    return [
+      { title: 'Nombre Completo', key: 'nombre_completo', sortable: true },
+      { title: 'DNI', key: 'dni', sortable: true },
+      { title: 'Nº Celular', key: 'numero_celular', sortable: true },
+      { title: 'Correo', key: 'correo', sortable: true },
+      { title: 'Courier', key: 'courier', sortable: true },
+      { title: 'Agencia', key: 'nombre_agencia', sortable: true },
+      { title: 'Producto', key: 'producto', sortable: true },
+      { title: 'Cantidad', key: 'cantidad', sortable: true },
+      { title: 'Precio', key: 'precio', sortable: true },
+      { title: 'Método Pago', key: 'metodo_pago', sortable: true },
+    ]
+  } else {
+    // Recojo en tienda
+    return [
+      { title: 'Nombre Completo', key: 'nombre_completo', sortable: true },
+      { title: 'DNI', key: 'dni', sortable: true },
+      { title: 'Nº Celular', key: 'numero_celular', sortable: true },
+      { title: 'Correo', key: 'correo', sortable: true },
+      { title: 'Local Deseado', key: 'local_deseado', sortable: true },
+      { title: 'Fecha Reserva', key: 'fecha_reserva', sortable: true },
+      { title: 'Hora Reserva', key: 'hora_reserva', sortable: true },
+      { title: 'Producto', key: 'producto', sortable: true },
+      { title: 'Cantidad', key: 'cantidad', sortable: true },
+      { title: 'Precio', key: 'precio', sortable: true },
+      { title: 'Método Pago', key: 'metodo_pago', sortable: true },
+    ]
+  }
+})
+
+// React to dropdown changes by refetching data
+watch(tipoVentaSeleccionada, () => {
+  fetchCompras()
+})
 
 /* Headers de la tabla - ajusta según tu tabla 'contribuyentes' */
 const headers = ref([
@@ -1432,9 +1633,17 @@ const fetchStock = async () => {
 
 const fetchCompras = async () => {
   loading.value = true
+
+  let tableName = 'pago_completo_motorizado'
+  if (tipoVentaSeleccionada.value === 'Ventas Courier') {
+    tableName = 'pago_completo_courier'
+  } else if (tipoVentaSeleccionada.value === 'Ventas Recojo en tienda') {
+    tableName = 'pago_completo_recojo_tienda'
+  }
+
   try {
     const { data, error } = await client
-      .from('comprasBDwppORIGITEC')
+      .from(tableName)
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -1447,6 +1656,120 @@ const fetchCompras = async () => {
     loading.value = false
   }
 }
+
+const fetchReservas = async () => {
+  loadingReservas.value = true
+  try {
+    const { data, error } = await client
+      .from('reserva_recojo_tienda')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    reservas.value = data as any[]
+  } catch (error) {
+    console.error('Error al cargar reservas:', error)
+  } finally {
+    loadingReservas.value = false
+  }
+}
+
+// ======================== GLOBAL ACCOUNTING ========================
+const globalMotorizado = ref<any[]>([])
+const globalCourier = ref<any[]>([])
+const globalTienda = ref<any[]>([])
+const globalReservas = ref<any[]>([])
+const loadingGlobalAccounting = ref(false)
+
+const parsePrice = (priceStr: any): number => {
+  if (!priceStr) return 0
+  const str = String(priceStr).replace(/[^0-9.-]+/g, "")
+  const val = parseFloat(str)
+  return isNaN(val) ? 0 : val
+}
+
+const parseQuantity = (qty: any): number => {
+  if (!qty) return 0
+  const val = parseInt(String(qty), 10)
+  return isNaN(val) ? 0 : val
+}
+
+const fetchGlobalAccounting = async () => {
+  loadingGlobalAccounting.value = true
+  try {
+    const [resMot, resCou, resTie, resRes] = await Promise.all([
+      client.from('pago_completo_motorizado').select('precio, cantidad'),
+      client.from('pago_completo_courier').select('precio, cantidad'),
+      client.from('pago_completo_recojo_tienda').select('precio, cantidad'),
+      client.from('reserva_recojo_tienda').select('precio, cantidad')
+    ])
+
+    globalMotorizado.value = resMot.data || []
+    globalCourier.value = resCou.data || []
+    globalTienda.value = resTie.data || []
+    globalReservas.value = resRes.data || []
+  } catch (e) {
+    console.error("Error loading global accounting:", e)
+  } finally {
+    loadingGlobalAccounting.value = false
+  }
+}
+
+// Global Metrics Computed Properties
+const globalMotorizadoRevenue = computed(() => globalMotorizado.value.reduce((acc, curr) => acc + parsePrice(curr.precio), 0))
+const globalCourierRevenue = computed(() => globalCourier.value.reduce((acc, curr) => acc + parsePrice(curr.precio), 0))
+const globalTiendaRevenue = computed(() => globalTienda.value.reduce((acc, curr) => acc + parsePrice(curr.precio), 0))
+const globalReservasRevenue = computed(() => globalReservas.value.reduce((acc, curr) => acc + parsePrice(curr.precio), 0))
+
+const totalGlobalRevenue = computed(() => globalMotorizadoRevenue.value + globalCourierRevenue.value + globalTiendaRevenue.value + globalReservasRevenue.value)
+
+const globalMotorizadoSales = computed(() => globalMotorizado.value.reduce((acc, curr) => acc + parseQuantity(curr.cantidad), 0))
+const globalCourierSales = computed(() => globalCourier.value.reduce((acc, curr) => acc + parseQuantity(curr.cantidad), 0))
+const globalTiendaSales = computed(() => globalTienda.value.reduce((acc, curr) => acc + parseQuantity(curr.cantidad), 0))
+const globalReservasSales = computed(() => globalReservas.value.reduce((acc, curr) => acc + parseQuantity(curr.cantidad), 0))
+
+const totalGlobalSales = computed(() => globalMotorizadoSales.value + globalCourierSales.value + globalTiendaSales.value + globalReservasSales.value)
+
+// Updated Charts Configuration based on global data
+const accountingRevenueSeries = computed(() => [
+  globalMotorizadoRevenue.value,
+  globalCourierRevenue.value,
+  globalTiendaRevenue.value,
+  globalReservasRevenue.value
+])
+
+const accountingRevenueOptions = ref<ApexOptions>({
+  chart: { type: 'donut', background: 'transparent' },
+  labels: ['Motorizado', 'Courier', 'Tienda', 'Reservas'],
+  colors: ['#4ade80', '#60a5fa', '#f472b6', '#fbbf24'],
+  theme: { mode: 'dark' },
+  dataLabels: { enabled: true },
+  stroke: { show: false },
+  legend: { position: 'bottom' }
+})
+
+const accountingQuantitySeries = computed(() => [
+  {
+    name: 'Productos Vendidos',
+    data: [
+      globalMotorizadoSales.value,
+      globalCourierSales.value,
+      globalTiendaSales.value,
+      globalReservasSales.value
+    ]
+  }
+])
+
+const accountingQuantityOptions = ref<ApexOptions>({
+  chart: { type: 'bar', background: 'transparent', toolbar: { show: false } },
+  xaxis: { categories: ['Motorizado', 'Courier', 'Tienda', 'Reservas'] },
+  colors: ['#a78bfa', '#facc15', '#38bdf8', '#fb7185'],
+  theme: { mode: 'dark' },
+  plotOptions: { bar: { borderRadius: 4, distributed: true } },
+  dataLabels: { enabled: true }
+})
+// =================================================================
 
 // Stats para Compras
 const comprasMesActual = computed(() => {
@@ -2170,7 +2493,8 @@ const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
   { icon: 'mdi-cart', label: 'Ventas', id: 'ventas' },
-  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' }
+  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
+  { icon: 'mdi-calendar-clock', label: 'Reservas', id: 'reservas' }
 ]
 
 const financiasItems = [

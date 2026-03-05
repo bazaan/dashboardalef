@@ -695,7 +695,7 @@
             <div class="stat-card">
               <div class="stat-title">Ganancias Mes Pasado</div>
               <div class="stat-value">S/ {{ revenuePreviousMonth.toLocaleString('es-PE', { minimumFractionDigits: 2 })
-                }}
+              }}
               </div>
               <div class="stat-subtitle">{{ revenuePrevMonthName }}</div>
             </div>
@@ -811,7 +811,8 @@
                         <span style="color: #3b82f6;">Res: S/{{ parseCurrency(paciente.precio) }}</span> |
                         <span style="color: #8b5cf6;">Trat: S/{{ parseCurrency(paciente.precio_tratamiento) }}</span>
                       </div>
-                      <div class="text-caption text-medium-emphasis">{{ formatDateAgendamiento(paciente.fecha_agendamiento) }}</div>
+                      <div class="text-caption text-medium-emphasis">{{
+                        formatDateAgendamiento(paciente.fecha_agendamiento) }}</div>
                     </div>
                   </template>
                 </v-list-item>
@@ -2970,7 +2971,9 @@ function formatDateToISO(date: Date): string {
 }
 
 function formatEventDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00')
+  // Use T12:00:00 to force local timezone safely into the middle of the day 
+  // avoiding any UTC offsets pushing it to the previous day
+  const date = new Date(dateStr + 'T12:00:00')
   const day = date.getDate()
   const month = monthNames[date.getMonth()]
   const year = date.getFullYear()
@@ -3170,20 +3173,22 @@ async function fetchEvents() {
 
     if (error) throw error
 
+    console.log('Raw Supabase Events:', data)
+
     // Map snake_case to camelCase
     events.value = (data || []).map((e: any) => ({
       id: e.id,
-      date: e.date,
-      time: e.time,
-      subject: e.subject,
-      description: e.description,
+      date: e.date ? e.date.split('T')[0] : '', // Asegurar que sea 'YYYY-MM-DD'
+      time: e.time ? e.time.substring(0, 5) : '', // '18:30:00' -> '18:30'
+      subject: e.subject || '',
+      description: e.description || '',
       procedureId: e.procedure_id,
-      clientName: e.client_name,
-      clientSurname: e.client_surname,
-      clientDNI: e.client_dni,
-      clientPhone: e.client_phone,
-      clientEmail: e.client_email,
-      eventReason: e.event_reason,
+      clientName: e.client_name || '',
+      clientSurname: e.client_surname || '',
+      clientDNI: e.client_dni || '',
+      clientPhone: e.client_phone || '',
+      clientEmail: e.client_email || '',
+      eventReason: e.event_reason || '',
       // color is purely frontend derivation from procedureId, so handled by getProcedureColor
     }))
   } catch (error) {
@@ -3679,6 +3684,21 @@ async function fetchMedicalHistory() {
   }
 }
 
+/* ---------------- Realtime Subscriptions ---------------- */
+function setupRealtime() {
+  client
+    .channel('healup_calendar_events_changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'healup_calendar_events' },
+      (payload) => {
+        console.log('Realtime update on calendar events:', payload)
+        fetchEvents()
+      }
+    )
+    .subscribe()
+}
+
 onMounted(() => {
   // Access Control
   // const userEmail = currentUser.value.email?.toLowerCase() // Deprecated
@@ -3699,5 +3719,6 @@ onMounted(() => {
   fetchEvents()
   fetchProcedures()
   fetchMedicalHistory()
+  setupRealtime()
 })
 </script>

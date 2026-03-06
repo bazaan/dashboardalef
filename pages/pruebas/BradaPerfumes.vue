@@ -799,6 +799,13 @@
                 <template v-slot:item.precio="{ item }">
                   S/ {{ item.precio }}
                 </template>
+                <template v-slot:item.link="{ item }">
+                  <a v-if="item.link" href="#" @click.prevent="openImageViewer(item.link)"
+                    style="color: #3b82f6; text-decoration: underline; cursor: pointer;">
+                    Ver imagen
+                  </a>
+                  <span v-else>-</span>
+                </template>
                 <template v-slot:item.actions="{ item }">
                   <div class="d-flex">
                     <button class="icon-btn mr-1" @click="openStockDialog('perfumes', item)">
@@ -1284,6 +1291,8 @@
                     variant="outlined" density="compact"></v-text-field>
                 </v-col>
               </v-row>
+              <v-text-field v-model="stockFormData.link" label="Enlace / Link" variant="outlined" density="compact"
+                class="mb-2 mt-2"></v-text-field>
             </template>
 
             <template v-if="currentStockType === 'decants'">
@@ -1333,6 +1342,17 @@
             {{ editingStockId ? 'Actualizar' : 'Guardar' }}
           </v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  IMAGE VIEWER DIALOG  ========== -->
+    <v-dialog v-model="showImageViewerDialog" width="auto">
+      <v-card color="transparent" elevation="0" style="position: relative; overflow: visible;">
+        <v-btn icon="mdi-close" size="small" color="white" variant="flat"
+          style="position: absolute; top: -16px; right: -16px; z-index: 10; background-color: rgba(0, 0, 0, 0.7);"
+          @click="showImageViewerDialog = false"></v-btn>
+        <img :src="currentImageUrl"
+          style="max-height: 90vh; max-width: 90vw; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: block;" />
       </v-card>
     </v-dialog>
 
@@ -1605,6 +1625,7 @@ const headersPerfumes = [
   { title: 'Precio', key: 'precio', sortable: true },
   { title: 'Disponibilidad', key: 'disponibilidad', sortable: true },
   { title: 'Stock', key: 'stock', sortable: true },
+  { title: 'Link', key: 'link', sortable: true },
   { title: 'Acciones', key: 'actions', sortable: false },
 ]
 const headersDecants = [
@@ -2006,6 +2027,15 @@ const categoryChartOptions = computed<ApexOptions>(() => ({
 
 
 
+/* ---------------- Image Viewer Logic ---------------- */
+const showImageViewerDialog = ref(false)
+const currentImageUrl = ref('')
+
+function openImageViewer(url: string) {
+  currentImageUrl.value = url
+  showImageViewerDialog.value = true
+}
+
 /* ---------------- Stock CRUD Logic Corregido ---------------- */
 const showStockDialog = ref(false)
 const currentStockType = ref<'perfumes' | 'decants' | 'sets'>('perfumes')
@@ -2028,6 +2058,7 @@ function openStockDialog(type: 'perfumes' | 'decants' | 'sets', item?: any) {
       stockFormData.value.perfume = ''
       stockFormData.value.precio = 0
       stockFormData.value.stock = 0 // Agregamos stock que faltaba
+      stockFormData.value.link = ''
     }
     else if (type === 'decants') {
       stockFormData.value.nombre = ''
@@ -2069,6 +2100,7 @@ async function saveStock() {
     // Columnas exactas de tu imagen "brada_perfumes"
     payload.perfume = stockFormData.value.perfume;
     payload.stock = Number(stockFormData.value.stock || 0);
+    payload.link = stockFormData.value.link || '';
     // Tu columna precio es texto, pero guardaremos el número limpio para evitar "S/ S/ 100"
     payload.precio = cleanPrice(stockFormData.value.precio);
 

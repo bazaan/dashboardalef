@@ -565,6 +565,12 @@
                 <v-icon :icon="revenueGrowth >= 0 ? 'mdi-trending-up' : 'mdi-trending-down'" size="12" />
                 {{ Math.abs(revenueGrowth).toFixed(1) }}% vs mes anterior
               </div>
+              <div class="stat-subtitle mt-2 d-flex justify-space-between text-caption">
+                <span><span class="text-primary font-weight-bold">Normal:</span> S/ {{
+                  revenueNormalCurrent.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</span>
+                <span><span class="text-success font-weight-bold">Publi:</span> S/ {{
+                  revenuePubliCurrent.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</span>
+              </div>
             </div>
 
             <div class="stat-card">
@@ -574,19 +580,35 @@
                 <v-icon :icon="salesGrowth >= 0 ? 'mdi-trending-up' : 'mdi-trending-down'" size="12" />
                 {{ Math.abs(salesGrowth).toFixed(1) }}%
               </div>
+              <div class="stat-subtitle mt-2 d-flex justify-space-between text-caption">
+                <span><span class="text-primary font-weight-bold">Normal:</span> {{ salesCountNormalCurrent }}</span>
+                <span><span class="text-success font-weight-bold">Publi:</span> {{ salesCountPubliCurrent }}</span>
+              </div>
             </div>
 
             <div class="stat-card">
               <div class="stat-title">Ticket Promedio (AOV)</div>
               <div class="stat-value">S/ {{ averageOrderValue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
               </div>
-              <div class="stat-subtitle">Promedio por venta este mes</div>
+              <div class="stat-subtitle">Promedio por venta global este mes</div>
+              <div class="stat-subtitle mt-2 d-flex justify-space-between text-caption">
+                <span><span class="text-primary font-weight-bold">Normal:</span> S/ {{ aovNormal.toLocaleString('es-PE',
+                  {
+                  minimumFractionDigits: 2 }) }}</span>
+                <span><span class="text-success font-weight-bold">Publi:</span> S/ {{ aovPubli.toLocaleString('es-PE', {
+                  minimumFractionDigits: 2 }) }}</span>
+              </div>
             </div>
 
             <div class="stat-card">
               <div class="stat-title">Tasa de Conversión Real</div>
               <div class="stat-value">{{ realConversionRate.toFixed(1) }}%</div>
-              <div class="stat-subtitle">{{ convertedLeadsCountReal }} de {{ leads.length }} Leads han comprado</div>
+              <div class="stat-subtitle">{{ convertedLeadsCountReal }} de {{ leadsAll.length }} Leads han comprado</div>
+              <div class="stat-subtitle mt-2 d-flex justify-space-between text-caption">
+                <span><span class="text-primary font-weight-bold">Normal:</span> {{ conversionNormal.toFixed(1)
+                  }}%</span>
+                <span><span class="text-success font-weight-bold">Publi:</span> {{ conversionPubli.toFixed(1) }}%</span>
+              </div>
             </div>
           </div>
 
@@ -604,7 +626,7 @@
 
             <div class="chart-section" style="height: auto;">
               <div class="chart-header">
-                <h2>Leads vs Compradores</h2>
+                <h2>Leads vs Compradores Totales</h2>
               </div>
               <client-only>
                 <apexchart type="donut" height="350" :options="conversionChartOptions"
@@ -614,35 +636,41 @@
           </div>
 
           <!-- Additional Row -->
-          <div class="two-column-grid mt-4">
+          <div class="two-column-grid mt-4" style="grid-template-columns: 2fr 1fr;">
             <div class="chart-section" style="height: auto;">
               <div class="chart-header">
-                <h2>Ventas por Categoría (Total)</h2>
+                <h2>Ventas por Categoría (Normal vs Publicidad)</h2>
               </div>
               <client-only>
                 <apexchart type="bar" height="350" :options="categoryChartOptions" :series="salesByCategorySeries" />
               </client-only>
             </div>
+
             <div class="chart-section" style="height: auto; max-height: 480px; overflow-y: auto;">
               <div class="chart-header mb-2">
-                <h2>Últimas Ventas</h2>
+                <h2>Últimas Ventas (Combinadas)</h2>
               </div>
               <v-list density="compact">
-                <v-list-item v-for="compra in comprasMesActual.slice(0, 6)" :key="compra.id" lines="two"
-                  style="border-bottom: 1px solid var(--border);">
+                <v-list-item
+                  v-for="(compra, idx) in comprasAllCurrent.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 8)"
+                  :key="idx" lines="two" style="border-bottom: 1px solid var(--border);">
                   <template v-slot:prepend>
-                    <v-avatar color="primary" variant="tonal" size="36">
+                    <v-avatar :color="comprasPublicidad.some(p => p.id === compra.id) ? 'success' : 'primary'"
+                      variant="tonal" size="36">
                       <v-icon icon="mdi-cart" size="18"></v-icon>
                     </v-avatar>
                   </template>
-                  <v-list-item-title class="font-weight-bold">{{ compra.nombre }} {{ compra.apellidos
-                  }}</v-list-item-title>
+                  <v-list-item-title class="font-weight-bold">
+                    {{ compra.nombre }} {{ compra.apellidos }}
+                  </v-list-item-title>
                   <v-list-item-subtitle>{{ compra.productos_comprados }}</v-list-item-subtitle>
                   <template v-slot:append>
                     <div class="text-right">
-                      <div class="font-weight-bold text-primary">{{ compra.precio }}</div>
+                      <div class="font-weight-bold"
+                        :class="comprasPublicidad.some(p => p.id === compra.id) ? 'text-success' : 'text-primary'">{{
+                        compra.precio }}</div>
                       <div class="text-caption text-medium-emphasis">{{ new Date(compra.created_at).toLocaleDateString()
-                      }}</div>
+                        }}</div>
                     </div>
                   </template>
                 </v-list-item>
@@ -1472,6 +1500,8 @@ const search = ref('')
 const loading = ref(false)
 const contribuyentes = ref<any[]>([])
 const compras = ref<any[]>([])
+const comprasNormal = ref<any[]>([])
+const comprasPublicidad = ref<any[]>([])
 const selectedListaVentas = ref('Lista de ventas')
 const listaVentasOptions = ['Lista de ventas', 'Lista de ventas publicidad']
 
@@ -1525,18 +1555,22 @@ const fetchContribuyentes = async () => {
 const fetchCompras = async () => {
   loading.value = true
   try {
-    const tableToFetch = selectedListaVentas.value === 'Lista de ventas publicidad'
-      ? 'comprasBDwppBRADA24_7'
-      : 'comprasBDwppBRADA'
+    const [resNormal, resPubli] = await Promise.all([
+      client.from('comprasBDwppBRADA').select('*').order('created_at', { ascending: false }),
+      client.from('comprasBDwppBRADA24_7').select('*').order('created_at', { ascending: false })
+    ])
 
-    const { data, error } = await client
-      .from(tableToFetch)
-      .select('*')
-      .order('created_at', { ascending: false })
+    if (resNormal.error) throw resNormal.error
+    if (resPubli.error) throw resPubli.error
 
-    if (error) throw error
+    comprasNormal.value = resNormal.data as any[]
+    comprasPublicidad.value = resPubli.data as any[]
 
-    compras.value = data as any[]
+    if (selectedListaVentas.value === 'Lista de ventas publicidad') {
+      compras.value = comprasPublicidad.value
+    } else {
+      compras.value = comprasNormal.value
+    }
   } catch (error) {
     console.error('Error al cargar ventas:', error)
   } finally {
@@ -1545,7 +1579,11 @@ const fetchCompras = async () => {
 }
 
 watch(selectedListaVentas, () => {
-  fetchCompras()
+  if (selectedListaVentas.value === 'Lista de ventas publicidad') {
+    compras.value = comprasPublicidad.value
+  } else {
+    compras.value = comprasNormal.value
+  }
 })
 
 // Stats para Compras
@@ -1676,6 +1714,8 @@ async function fetchStockData(type: 'perfumes' | 'decants' | 'sets') {
 
 /* ---------------- LEADS LOGIC ---------------- */
 const leads = ref<any[]>([])
+const leadsNormal = ref<any[]>([])
+const leadsPublicidad = ref<any[]>([])
 const loadingLeads = ref(false)
 const leadsSearch = ref('')
 const showCreateUserDialog = ref(false)
@@ -1697,19 +1737,23 @@ const headersLeads = ref([
 const fetchLeads = async () => {
   loadingLeads.value = true
   try {
-    const tableToFetch = selectedListaLeads.value === 'Leads publicidad'
-      ? 'GeneralBDwppBRADA24_7'
-      : 'GeneralBDwppBRADA'
+    const [resNormal, resPubli] = await Promise.all([
+      client.from('GeneralBDwppBRADA').select('*').order('id', { ascending: false }),
+      client.from('GeneralBDwppBRADA24_7').select('*').order('id', { ascending: false })
+    ])
 
-    const { data, error } = await client
-      .from(tableToFetch)
-      .select('*') // We assume created_at exists for stats, otherwise we just fetch what's there
-      .order('id', { ascending: false })
+    if (resNormal.error) throw resNormal.error
+    if (resPubli.error) throw resPubli.error
 
-    if (error) throw error
+    leadsNormal.value = resNormal.data as any[]
+    leadsPublicidad.value = resPubli.data as any[]
+    console.log('Leads loaded:', resNormal.data, resPubli.data)
 
-    leads.value = data as any[]
-    console.log('Leads loaded:', data)
+    if (selectedListaLeads.value === 'Leads publicidad') {
+      leads.value = leadsPublicidad.value
+    } else {
+      leads.value = leadsNormal.value
+    }
   } catch (error) {
     console.error('Error loading leads:', error)
   } finally {
@@ -1718,7 +1762,11 @@ const fetchLeads = async () => {
 }
 
 watch(selectedListaLeads, () => {
-  fetchLeads()
+  if (selectedListaLeads.value === 'Leads publicidad') {
+    leads.value = leadsPublicidad.value
+  } else {
+    leads.value = leadsNormal.value
+  }
 })
 
 // Computed Stats for Leads
@@ -1841,88 +1889,141 @@ const parseCurrency = (val: string | number) => {
   return parseFloat(val.toString().replace(/[^0-9.-]+/g, '')) || 0
 }
 
-// 1. Ingresos del Mes Actual
-const revenueCurrentMonth = computed(() => {
-  return comprasMesActual.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
-})
+// --- Helpers Facturación ---
+const filterByCurrentMonth = (comprasList: any[]) => {
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+  return comprasList.filter(c => {
+    const d = new Date(c.created_at)
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+  })
+}
 
-// 2. Ingresos del Mes Anterior (para comparar tendencia)
-const revenuePreviousMonth = computed(() => {
-  return comprasMesAnterior.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
-})
+const filterByPreviousMonth = (comprasList: any[]) => {
+  const now = new Date()
+  let prevMonth = now.getMonth() - 1
+  let prevYear = now.getFullYear()
+  if (prevMonth < 0) {
+    prevMonth = 11
+    prevYear--
+  }
+  return comprasList.filter(c => {
+    const d = new Date(c.created_at)
+    return d.getMonth() === prevMonth && d.getFullYear() === prevYear
+  })
+}
 
+const revenueCalc = (list: any[]) => list.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
+
+// Compras Filtradas
+const comprasNormalCurrent = computed(() => filterByCurrentMonth(comprasNormal.value))
+const comprasNormalPrev = computed(() => filterByPreviousMonth(comprasNormal.value))
+const comprasPubliCurrent = computed(() => filterByCurrentMonth(comprasPublicidad.value))
+const comprasPubliPrev = computed(() => filterByPreviousMonth(comprasPublicidad.value))
+const comprasAllCurrent = computed(() => [...comprasNormalCurrent.value, ...comprasPubliCurrent.value])
+const comprasAllPrev = computed(() => [...comprasNormalPrev.value, ...comprasPubliPrev.value])
+
+// 1. Ingresos
+const revenueCurrentMonth = computed(() => revenueCalc(comprasAllCurrent.value))
+const revenuePreviousMonth = computed(() => revenueCalc(comprasAllPrev.value))
 const revenueGrowth = computed(() => {
   if (revenuePreviousMonth.value === 0) return revenueCurrentMonth.value > 0 ? 100 : 0
   return ((revenueCurrentMonth.value - revenuePreviousMonth.value) / revenuePreviousMonth.value) * 100
 })
 
-// 3. Cantidad de Ventas (Transacciones)
-const salesCountCurrentMonth = computed(() => comprasMesActual.value.length)
-const salesCountPreviousMonth = computed(() => comprasMesAnterior.value.length)
+const revenueNormalCurrent = computed(() => revenueCalc(comprasNormalCurrent.value))
+const revenuePubliCurrent = computed(() => revenueCalc(comprasPubliCurrent.value))
+
+// 2. Cantidad de Ventas (Transacciones)
+const salesCountCurrentMonth = computed(() => comprasAllCurrent.value.length)
+const salesCountPreviousMonth = computed(() => comprasAllPrev.value.length)
 const salesGrowth = computed(() => {
   if (salesCountPreviousMonth.value === 0) return salesCountCurrentMonth.value > 0 ? 100 : 0
   return ((salesCountCurrentMonth.value - salesCountPreviousMonth.value) / salesCountPreviousMonth.value) * 100
 })
 
-// 4. Ticket Promedio (AOV)
+const salesCountNormalCurrent = computed(() => comprasNormalCurrent.value.length)
+const salesCountPubliCurrent = computed(() => comprasPubliCurrent.value.length)
+
+// 3. Ticket Promedio (AOV)
 const averageOrderValue = computed(() => {
   if (salesCountCurrentMonth.value === 0) return 0
   return revenueCurrentMonth.value / salesCountCurrentMonth.value
 })
+const aovNormal = computed(() => salesCountNormalCurrent.value ? revenueNormalCurrent.value / salesCountNormalCurrent.value : 0)
+const aovPubli = computed(() => salesCountPubliCurrent.value ? revenuePubliCurrent.value / salesCountPubliCurrent.value : 0)
 
-// 5. Tasa de Conversión Real (Leads que compran)
-// Se basa en coincidencia de número de teléfono
-const realConversionRate = computed(() => {
-  if (leads.value.length === 0) return 0
+// 4. Tasa de Conversión Real (Leads que compran)
+const conversionCalc = (leadsList: any[], comprasList: any[]) => {
+  if (leadsList.length === 0) return 0;
+  const buyerPhones = new Set(comprasList.map(c => c.numero));
+  const convertedLeads = leadsList.filter(l => buyerPhones.has(l.numero)).length;
+  return (convertedLeads / leadsList.length) * 100;
+}
 
-  // Set de teléfonos de personas que han comprado (históricamente)
-  const buyerPhones = new Set(compras.value.map(c => c.numero))
+const leadsAll = computed(() => [...leadsNormal.value, ...leadsPublicidad.value])
+const comprasAllTotal = computed(() => [...comprasNormal.value, ...comprasPublicidad.value])
 
-  // Cuántos leads coinciden con ese set
-  const convertedLeads = leads.value.filter(l => buyerPhones.has(l.numero)).length
-
-  return (convertedLeads / leads.value.length) * 100
-})
+const realConversionRate = computed(() => conversionCalc(leadsAll.value, comprasAllTotal.value))
+const conversionNormal = computed(() => conversionCalc(leadsNormal.value, comprasNormal.value))
+const conversionPubli = computed(() => conversionCalc(leadsPublicidad.value, comprasPublicidad.value))
 
 const convertedLeadsCountReal = computed(() => {
-  const buyerPhones = new Set(compras.value.map(c => c.numero))
-  return leads.value.filter(l => buyerPhones.has(l.numero)).length
+  const buyerPhones = new Set(comprasAllTotal.value.map(c => c.numero))
+  return leadsAll.value.filter(l => buyerPhones.has(l.numero)).length
+})
+const convertedNormalCountReal = computed(() => {
+  const buyerPhones = new Set(comprasNormal.value.map(c => c.numero))
+  return leadsNormal.value.filter(l => buyerPhones.has(l.numero)).length
+})
+const convertedPubliCountReal = computed(() => {
+  const buyerPhones = new Set(comprasPublicidad.value.map(c => c.numero))
+  return leadsPublicidad.value.filter(l => buyerPhones.has(l.numero)).length
 })
 
 
 // --- GRATÍCOS FACTURACIÓN ---
 
-// A. Gráfico de Ingresos Diarios (Mes Actual)
+// A. Gráfico de Ingresos Diarios (Mes Actual) MULTI-LINEA
 const revenueChartSeries = computed(() => {
-  // Inicializar días del mes con 0
   const now = new Date()
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const dailyRevenue = new Array(daysInMonth).fill(0)
+  const dailyNormal = new Array(daysInMonth).fill(0)
+  const dailyPubli = new Array(daysInMonth).fill(0)
 
-  comprasMesActual.value.forEach(c => {
+  comprasNormalCurrent.value.forEach(c => {
     const d = new Date(c.created_at)
-    const dayIndex = d.getDate() - 1 // 0-indexed
+    const dayIndex = d.getDate() - 1
     if (dayIndex >= 0 && dayIndex < daysInMonth) {
-      dailyRevenue[dayIndex] += parseCurrency(c.precio)
+      dailyNormal[dayIndex] += parseCurrency(c.precio)
     }
   })
 
-  return [{
-    name: 'Ingresos Diarios',
-    data: dailyRevenue
-  }]
+  comprasPubliCurrent.value.forEach(c => {
+    const d = new Date(c.created_at)
+    const dayIndex = d.getDate() - 1
+    if (dayIndex >= 0 && dayIndex < daysInMonth) {
+      dailyPubli[dayIndex] += parseCurrency(c.precio)
+    }
+  })
+
+  return [
+    { name: 'Ventas Normales', data: dailyNormal },
+    { name: 'Ventas Publicidad', data: dailyPubli }
+  ]
 })
 
 const revenueChartOptions = computed<ApexOptions>(() => ({
   chart: {
-    type: 'area',
+    type: 'area', // or line
     height: 350,
     fontFamily: 'inherit',
     toolbar: { show: false },
     background: 'transparent'
   },
   xaxis: {
-    categories: Array.from({ length: new Date().getDate() }, (_, i) => i + 1), // Solo mostrar hasta el día actual
+    categories: Array.from({ length: new Date().getDate() }, (_, i) => i + 1),
     labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } },
     tooltip: { enabled: false }
   },
@@ -1931,16 +2032,17 @@ const revenueChartOptions = computed<ApexOptions>(() => ({
   },
   dataLabels: { enabled: false },
   stroke: { curve: 'smooth', width: 2 },
-  colors: ['#10b981'], // Emerald green
+  colors: ['#3b82f6', '#10b981'], // Blue for normal, Emerald for publi
   grid: { borderColor: isDark.value ? '#3f3f46' : '#e5e7eb', strokeDashArray: 4 },
   fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.1, stops: [0, 90, 100] } },
-  theme: { mode: isDark.value ? 'dark' : 'light' }
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  legend: { position: 'top', labels: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } }
 }))
 
-// B. Gráfico de Conversión (Pie Chart)
+// B. Gráfico de Conversión (Pie Chart) -- we can keep it for Total leads vs buyers
 const conversionChartSeries = computed(() => {
   const converted = convertedLeadsCountReal.value
-  const notConverted = leads.value.length - converted
+  const notConverted = leadsAll.value.length - converted
   return [converted, notConverted]
 })
 
@@ -1965,7 +2067,7 @@ const conversionChartOptions = computed<ApexOptions>(() => ({
             label: 'Total Leads',
             color: isDark.value ? '#a1a1aa' : '#666',
             formatter: function (w) {
-              return leads.value.length.toString()
+              return leadsAll.value.length.toString()
             }
           }
         }
@@ -1977,29 +2079,31 @@ const conversionChartOptions = computed<ApexOptions>(() => ({
   theme: { mode: isDark.value ? 'dark' : 'light' }
 }))
 
-// C. Ventas por Categoría
-const salesByCategorySeries = computed(() => {
-  const categories: Record<string, number> = {}
-
-  compras.value.forEach(c => {
-    const cat = c.categoria || 'Sin Categoría'
-    if (!categories[cat]) categories[cat] = 0
-    categories[cat] += parseCurrency(c.precio)
-  })
-
-  return [{
-    name: 'Ventas Totales',
-    data: Object.values(categories)
-  }]
-})
-
+// C. Ventas por Categoría - Desglose Normal vs Publi
 const salesChartCategories = computed(() => {
-  const categories: Record<string, number> = {}
-  compras.value.forEach(c => {
+  const categories: Record<string, boolean> = {}
+  comprasAllTotal.value.forEach(c => {
     const cat = c.categoria || 'Sin Categoría'
-    if (!categories[cat]) categories[cat] = 0
+    if (cat) categories[cat] = true
   })
   return Object.keys(categories)
+})
+
+const salesByCategorySeries = computed(() => {
+  const cats = salesChartCategories.value
+  const dataNormal = cats.map(cat => {
+    return comprasNormal.value.filter(c => (c.categoria || 'Sin Categoría') === cat)
+      .reduce((sum, c) => sum + parseCurrency(c.precio), 0)
+  })
+  const dataPubli = cats.map(cat => {
+    return comprasPublicidad.value.filter(c => (c.categoria || 'Sin Categoría') === cat)
+      .reduce((sum, c) => sum + parseCurrency(c.precio), 0)
+  })
+
+  return [
+    { name: 'Ventas Normales', data: dataNormal },
+    { name: 'Ventas Publicidad', data: dataPubli }
+  ]
 })
 
 const categoryChartOptions = computed<ApexOptions>(() => ({
@@ -2008,7 +2112,8 @@ const categoryChartOptions = computed<ApexOptions>(() => ({
     height: 350,
     fontFamily: 'inherit',
     toolbar: { show: false },
-    background: 'transparent'
+    background: 'transparent',
+    stacked: false
   },
   plotOptions: {
     bar: { borderRadius: 4, horizontal: true, barHeight: '50%' }
@@ -2020,9 +2125,10 @@ const categoryChartOptions = computed<ApexOptions>(() => ({
   yaxis: {
     labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } }
   },
-  colors: ['#3b82f6'],
+  colors: ['#3b82f6', '#10b981'],
   grid: { borderColor: isDark.value ? '#3f3f46' : '#e5e7eb', strokeDashArray: 4 },
-  theme: { mode: isDark.value ? 'dark' : 'light' }
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  legend: { position: 'top', labels: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } }
 }))
 
 

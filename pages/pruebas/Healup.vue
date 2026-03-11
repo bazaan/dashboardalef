@@ -994,6 +994,12 @@
                 :search="medicalHistorySearch" :items-per-page="10" class="elevation-0" show-select
                 v-model="selectedMedicalHistory" return-object style="flex: 1; overflow-y: auto;"
                 no-data-text="No hay historiales médicos registrados">
+                <template v-slot:item.name="{ item }">
+                  <a href="#" class="text-primary font-weight-bold" style="text-decoration: none;" @click.prevent="openMedicalProfileDialog(item)">
+                    {{ item.name }}
+                  </a>
+                </template>
+
                 <template v-slot:item.attachment="{ item }">
                   <v-menu v-if="item.attachmentName">
                     <template v-slot:activator="{ props }">
@@ -1015,6 +1021,22 @@
                 </template>
 
                 <template v-slot:item.actions="{ item }">
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <button v-bind="props" class="icon-btn" @click="openEventDialogFromHistory(item)">
+                        <v-icon icon="mdi-calendar-plus" size="16" color="primary" />
+                      </button>
+                    </template>
+                    <span>Crear Cita</span>
+                  </v-tooltip>
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <button v-bind="props" class="icon-btn" @click="openPatientFormFromHistory(item)">
+                        <v-icon icon="mdi-account-plus" size="16" color="success" />
+                      </button>
+                    </template>
+                    <span>Crear Paciente WP</span>
+                  </v-tooltip>
                   <button class="icon-btn" @click="editMedicalHistory(item)">
                     <v-icon icon="mdi-pencil" size="16" />
                   </button>
@@ -1384,6 +1406,167 @@
           <v-spacer></v-spacer>
           <v-btn color="grey" variant="text" @click="closeMedicalHistoryDialog">Cancelar</v-btn>
           <v-btn color="primary" variant="elevated" @click="saveMedicalHistory">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  MEDICAL PROFILE DIALOG  ========== -->
+    <v-dialog v-model="showMedicalProfileDialog" max-width="500px">
+      <v-card v-if="selectedMedicalProfile">
+        <v-card-title class="event-dialog-title">
+          <span>Perfil del Paciente</span>
+          <v-btn icon="mdi-close" variant="text" @click="closeMedicalProfileDialog"></v-btn>
+        </v-card-title>
+
+        <v-card-text>
+          <div class="event-detail-section">
+            <div class="detail-row">
+              <v-icon icon="mdi-account" class="detail-icon" />
+              <div>
+                <div class="detail-label">Nombre Completo</div>
+                <div class="detail-value">{{ selectedMedicalProfile.name }} {{ selectedMedicalProfile.surname }}</div>
+              </div>
+            </div>
+
+            <div class="detail-row">
+              <v-icon icon="mdi-card-account-details" class="detail-icon" />
+              <div>
+                <div class="detail-label">DNI</div>
+                <div class="detail-value">{{ selectedMedicalProfile.dni }}</div>
+              </div>
+            </div>
+
+            <div class="detail-row">
+              <v-icon icon="mdi-phone" class="detail-icon" />
+              <div>
+                <div class="detail-label">Teléfono</div>
+                <div class="detail-value">{{ selectedMedicalProfile.phone }}</div>
+              </div>
+            </div>
+
+            <div v-if="selectedMedicalProfile.email" class="detail-row">
+              <v-icon icon="mdi-email" class="detail-icon" />
+              <div>
+                <div class="detail-label">Email</div>
+                <div class="detail-value">{{ selectedMedicalProfile.email }}</div>
+              </div>
+            </div>
+
+            <div class="detail-row">
+              <v-icon icon="mdi-calendar-clock" class="detail-icon" />
+              <div>
+                <div class="detail-label">Fecha de Agregado</div>
+                <div class="detail-value">{{ selectedMedicalProfile.dateAdded }}</div>
+              </div>
+            </div>
+            
+            <div class="detail-row">
+              <v-icon icon="mdi-list-status" class="detail-icon" />
+              <div>
+                <div class="detail-label">Estado</div>
+                <div class="detail-value">
+                  <v-chip size="small" :color="selectedMedicalProfile.status === 'Activo' ? 'success' : 'default'">
+                    {{ selectedMedicalProfile.status || 'Activo' }}
+                  </v-chip>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="selectedMedicalProfile.returnNote" class="detail-row">
+              <v-icon icon="mdi-note-text" class="detail-icon" />
+              <div>
+                <div class="detail-label">Notas de Devolución</div>
+                <div class="detail-value">{{ selectedMedicalProfile.returnNote }}</div>
+              </div>
+            </div>
+
+            <v-divider class="my-4"></v-divider>
+
+            <h4 class="mb-3 d-flex align-center">
+              <v-icon icon="mdi-calendar-clock" class="mr-2" color="primary"></v-icon>
+              Historial de Citas
+            </h4>
+
+            <div v-if="selectedPatientAppointments.length === 0" class="text-center pa-4 border rounded border-opacity-25" style="background-color: rgba(var(--v-theme-surface-variant), 0.3);">
+              <v-icon icon="mdi-calendar-blank" color="grey" size="32" class="mb-2"></v-icon>
+              <div class="text-body-2 text-medium-emphasis">Este paciente no tiene citas registradas.</div>
+            </div>
+            
+            <v-list v-else density="compact" class="bg-transparent pa-0">
+              <v-list-item v-for="(appt, index) in selectedPatientAppointments" :key="index"
+                class="mb-2 border border-opacity-25 rounded pa-2" elevation="0" style="background-color: rgba(var(--v-theme-surface-variant), 0.1);">
+                <template v-slot:prepend>
+                  <div class="d-flex flex-column align-center mr-3" style="min-width: 60px;">
+                    <span class="text-caption font-weight-bold text-primary">{{ formatEventDate(appt.date) }}</span>
+                    <span class="text-caption text-medium-emphasis">{{ appt.time }}</span>
+                  </div>
+                </template>
+                <template #title>
+                  <div class="d-flex align-center">
+                    <span class="font-weight-medium text-body-2">{{ appt.subject }}</span>
+                    <v-chip v-if="appt.eventReason" size="x-small" class="ml-2" color="info" variant="flat">
+                      {{ appt.eventReason }}
+                    </v-chip>
+                  </div>
+                </template>
+                <template #subtitle>
+                  <div class="text-caption mt-1 d-flex align-center">
+                    <div class="color-preview mr-1" style="width: 12px; height: 12px; display: inline-block; border-radius: 2px;"
+                      :style="{ backgroundColor: getProcedureColor(appt.procedureId) }"></div>
+                    {{ getProcedureName(appt.procedureId) || 'Procedimiento General' }}
+                  </div>
+                </template>
+              </v-list-item>
+            </v-list>
+
+            <v-divider class="my-4"></v-divider>
+
+            <h4 class="mb-3 d-flex align-center">
+              <v-icon icon="mdi-medical-bag" class="mr-2" color="success"></v-icon>
+              Historial de Tratamientos
+            </h4>
+
+            <div v-if="selectedPatientTreatments.length === 0" class="text-center pa-4 border rounded border-opacity-25" style="background-color: rgba(var(--v-theme-surface-variant), 0.3);">
+              <v-icon icon="mdi-text-box-remove-outline" color="grey" size="32" class="mb-2"></v-icon>
+              <div class="text-body-2 text-medium-emphasis">Este paciente no tiene tratamientos registrados.</div>
+            </div>
+            
+            <v-list v-else density="compact" class="bg-transparent pa-0">
+              <v-list-item v-for="(treatment, index) in selectedPatientTreatments" :key="index"
+                class="mb-2 border border-opacity-25 rounded pa-2" elevation="0" style="background-color: rgba(var(--v-theme-surface-variant), 0.1);">
+                <template v-slot:prepend>
+                  <div class="d-flex flex-column align-center mr-3" style="min-width: 60px;">
+                    <span class="text-caption font-weight-bold text-success" v-if="treatment.fecha_agendamiento">
+                      {{ formatEventDate(treatment.fecha_agendamiento) }}
+                    </span>
+                    <span class="text-caption font-weight-bold text-grey" v-else>
+                      Sin fecha
+                    </span>
+                  </div>
+                </template>
+                <template #title>
+                  <div class="d-flex align-center">
+                    <span class="font-weight-medium text-body-2">{{ treatment.procedimiento || 'Tratamiento General' }}</span>
+                  </div>
+                </template>
+                <template #subtitle>
+                  <div class="text-caption mt-1 d-flex align-center font-weight-bold text-primary">
+                    <v-chip size="x-small" color="success" variant="flat">
+                      S/ {{ treatment.precio_tratamiento || treatment.precio || '0' }}
+                    </v-chip>
+                  </div>
+                </template>
+              </v-list-item>
+            </v-list>
+
+          </div>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="text" @click="closeMedicalProfileDialog">
+            Cerrar
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2971,9 +3154,11 @@ function formatDateToISO(date: Date): string {
 }
 
 function formatEventDate(dateStr: string): string {
+  if (!dateStr) return ''
   // Use T12:00:00 to force local timezone safely into the middle of the day 
   // avoiding any UTC offsets pushing it to the previous day
-  const date = new Date(dateStr + 'T12:00:00')
+  const shortDateStr = dateStr.split('T')[0].split(' ')[0]
+  const date = new Date(shortDateStr + 'T12:00:00')
   const day = date.getDate()
   const month = monthNames[date.getMonth()]
   const year = date.getFullYear()
@@ -3379,6 +3564,62 @@ const medicalHistoryFormData = ref({
   status: 'Activo'
 })
 
+const showMedicalProfileDialog = ref(false)
+const selectedMedicalProfile = ref<MedicalHistoryEntry | null>(null)
+
+function openMedicalProfileDialog(item: MedicalHistoryEntry) {
+  selectedMedicalProfile.value = item
+  showMedicalProfileDialog.value = true
+}
+
+function closeMedicalProfileDialog() {
+  showMedicalProfileDialog.value = false
+  selectedMedicalProfile.value = null
+}
+
+function openEventDialogFromHistory(item: MedicalHistoryEntry) {
+  activeView.value = 'calendario'
+  // Pre-fill form
+  editingEvent.value = null
+  eventFormData.value = {
+    date: formatDateToISO(new Date()),
+    time: '09:00',
+    subject: `Cita Médica - ${item.name} ${item.surname}`,
+    description: '',
+    procedureId: '', // Requires manual selection
+    clientName: item.name,
+    clientSurname: item.surname,
+    clientDNI: item.dni,
+    clientPhone: item.phone,
+    clientEmail: item.email || '',
+    eventReason: 'Consulta'
+  }
+  showEventDialog.value = true
+}
+
+function openPatientFormFromHistory(item: MedicalHistoryEntry) {
+  activeView.value = 'pacientes'
+  selectedPatientType.value = 'wpp'
+  editingPatient.value = null
+
+  // Pre-fill form
+  patientFormData.value = {
+    nombre: `${item.name} ${item.surname}`.trim(),
+    dni: item.dni,
+    numero: item.phone,
+    red_social: '',
+    precio: '',
+    precio_tratamiento: '',
+    procedimiento: '',
+    fecha_agendamiento: new Date().toISOString().slice(0, 16),
+    metodo_de_pago: 'Ninguno',
+    estado: item.status || 'Activo',
+    agendamiento: 'IA'
+  }
+  
+  showPatientFormDialog.value = true
+}
+
 const medicalHistoryHeaders = [
   { title: 'Fecha', key: 'dateAdded', sortable: true },
   { title: 'Nombre', key: 'name', sortable: true },
@@ -3390,6 +3631,53 @@ const medicalHistoryHeaders = [
   { title: 'Documento', key: 'attachment', sortable: false },
   { title: 'Acciones', key: 'actions', sortable: false }
 ]
+
+/* ---------------- Profile Logic ---------------- */
+const selectedPatientAppointments = computed(() => {
+  if (!selectedMedicalProfile.value) return []
+  const profileDni = selectedMedicalProfile.value.dni?.trim()
+  const profilePhone = selectedMedicalProfile.value.phone?.trim()
+  
+  if (!profileDni && !profilePhone) return []
+
+  // Filter events by matching DNI or Phone
+  return events.value.filter(event => 
+    (profileDni && event.clientDNI?.trim() === profileDni) ||
+    (profilePhone && event.clientPhone?.trim() === profilePhone)
+  ).sort((a, b) => {
+    // Sort descending (latest first)
+    const dateA = new Date(`${a.date}T${a.time || '00:00'}`)
+    const dateB = new Date(`${b.date}T${b.time || '00:00'}`)
+    return dateB.getTime() - dateA.getTime()
+  })
+})
+
+const selectedPatientTreatments = computed(() => {
+  if (!selectedMedicalProfile.value) return []
+  const profileDni = selectedMedicalProfile.value.dni?.trim()
+  const profilePhone = selectedMedicalProfile.value.phone?.trim()
+  
+  if (!profileDni && !profilePhone) return []
+
+  // Filter patients by matching DNI or Phone
+  return allPacientes.value.filter(patient => 
+    (profileDni && patient.dni?.trim() === profileDni) ||
+    (profilePhone && patient.numero?.trim() === profilePhone)
+  ).sort((a, b) => {
+    // Sort descending by fecha_agendamiento
+    if (!a.fecha_agendamiento) return 1
+    if (!b.fecha_agendamiento) return -1
+    const dateA = new Date(a.fecha_agendamiento).getTime()
+    const dateB = new Date(b.fecha_agendamiento).getTime()
+    return dateB - dateA
+  })
+})
+
+function getProcedureName(procedureId: string): string {
+  if (!procedureId) return ''
+  const procedure = procedures.value.find(p => p.id === procedureId)
+  return procedure ? procedure.name : ''
+}
 
 /* ---------------- Medical History Functions ---------------- */
 function openMedicalHistoryDialog() {

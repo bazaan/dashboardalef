@@ -1,0 +1,32 @@
+[
+  {
+    "id": 8,
+    "date": "2024-05-20",
+    "subject": "Consulta General"
+  },
+  {
+    "id": 9,
+    "date": "2024-05-20",
+    "subject": "Tratamiento Especializado"
+  },
+  {
+    "id": 11,
+    "date": "2024-05-21",
+    "subject": "Urgencia Menor"
+  },
+  {
+    "id": 12,
+    "date": "2024-05-22",
+    "subject": "Entrevista Inicial"
+  },
+  {
+    "id": 13,
+    "date": "2026-04-03",
+    "subject": "CITAPRUEBA1 HOLA"
+  },
+  {
+    "id": 10,
+    "date": "2024-04-21",
+    "subject": "Asesoría Técnica"
+  }
+]

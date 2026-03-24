@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
-    "@nuxtjs/supabase": "^2.0.3",
+    "@nuxtjs/supabase": "^2.0.4",
     "@types/bcryptjs": "^2.4.6",
     "apexcharts": "^5.3.5",
     "axios": "^1.13.2",

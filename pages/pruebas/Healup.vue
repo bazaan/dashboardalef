@@ -3290,7 +3290,7 @@ function closeScheduleDialog() {
 
 async function fetchWorkingHours() {
   try {
-    const { data, error } = await client.from('healup_working_hours').select('*').limit(1).single()
+    const { data, error } = await (client.from('healup_working_hours') as any).select('*').limit(1).single()
     if (error && error.code !== 'PGRST116') throw error
     if (data) {
       workingHours.value = {
@@ -3312,7 +3312,7 @@ async function saveWorkingHours() {
       slot_duration_minutes: workingHours.value.slot_duration_minutes,
       schedule_json: workingHours.value.schedule_json
     }
-    const { error } = await client.from('healup_working_hours').upsert(payload, { onConflict: 'id' }).select()
+    const { error } = await (client.from('healup_working_hours') as any).upsert(payload, { onConflict: 'id' }).select()
     if (error) throw error
     alert('Horario actualizado correctamente')
     closeScheduleDialog()

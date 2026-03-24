@@ -292,10 +292,16 @@
       <div v-else-if="activeView === 'calendario'" class="view-container">
         <header class="top-header">
           <h1>Calendario</h1>
-          <button class="btn-primary" @click="() => openCreateEventDialog()">
-            <v-icon icon="mdi-calendar-plus" size="16" />
-            <span>Nuevo Evento</span>
-          </button>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn-secondary" @click="openScheduleDialog">
+              <v-icon icon="mdi-clock-outline" size="16" />
+              <span>Configurar Horario</span>
+            </button>
+            <button class="btn-primary" @click="() => openCreateEventDialog()">
+              <v-icon icon="mdi-calendar-plus" size="16" />
+              <span>Nuevo Evento</span>
+            </button>
+          </div>
         </header>
 
         <div class="content-area">
@@ -328,11 +334,22 @@
                   'other-month': !day.isCurrentMonth,
                   'today': day.isToday,
                   'selected': day.isSelected,
-                  'has-events': day.events.length > 0
+                  'has-events': day.events.length > 0 || (day.isWorkingDay && day.events.length >= day.totalSlots)
                 }
               ]" @click="selectDay(day)">
-                <span class="day-number">{{ day.day }}</span>
-                <div v-if="day.events.length > 0" class="event-list-in-day">
+                <div class="d-flex justify-space-between align-center px-1" style="width: 100%;">
+                  <span class="day-number">{{ day.day }}</span>
+                  <v-chip
+                    v-if="day.isWorkingDay && day.isCurrentMonth"
+                    size="x-small"
+                    :color="day.availableSlots > 0 ? 'success' : 'error'"
+                    variant="flat"
+                    style="font-size: 10px; height: 18px;"
+                  >
+                    {{ day.availableSlots > 0 ? `${day.availableSlots} disp.` : 'Lleno' }}
+                  </v-chip>
+                </div>
+                <div v-if="day.events.length > 0" class="event-list-in-day mt-1">
                   <div v-for="(event, eventIndex) in day.events.slice(0, 2)" :key="eventIndex" class="event-line"
                     :style="{ backgroundColor: getProcedureColor(event.procedureId) }" :title="event.subject">
                     <span class="event-line-text">{{ event.subject }}</span>
@@ -1104,8 +1121,12 @@
                   density="compact" :rules="[v => !!v || 'La fecha es requerida']"></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
-                <v-text-field v-model="eventFormData.time" label="Hora" type="time" variant="outlined" density="compact"
-                  :rules="[v => !!v || 'La hora es requerida']"></v-text-field>
+                <v-select v-model="eventFormData.time" label="Hora" :items="availableTimesForSelectedDate" variant="outlined" density="compact"
+                  :rules="[v => !!v || 'La hora es requerida']"
+                  no-data-text="No hay horarios disponibles para esta fecha"
+                  persistent-hint
+                  :hint="availableTimesForSelectedDate.length === 0 ? 'Día no laborable o horarios llenos' : ''"
+                ></v-select>
               </v-col>
             </v-row>
 
@@ -1595,6 +1616,39 @@
             </v-col>
           </v-row>
         </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  SCHEDULE CONFIG DIALOG  ========== -->
+    <v-dialog v-model="showScheduleDialog" max-width="600px" persistent>
+      <v-card>
+        <v-card-title class="event-dialog-title">
+          <span>Configurar Horario de Atención</span>
+          <v-btn icon="mdi-close" variant="text" @click="closeScheduleDialog"></v-btn>
+        </v-card-title>
+        <v-card-text>
+          <v-form ref="scheduleForm">
+            <v-text-field v-model.number="workingHours.slot_duration_minutes" label="Duración de cita (min)" type="number" variant="outlined" density="compact" :rules="[v => v > 0 || 'Min > 0']" class="mb-4"></v-text-field>
+            
+            <div class="text-subtitle-1 font-weight-bold mb-3">Horario por Día:</div>
+            <v-row v-for="(dayConfig, i) in workingHours.schedule_json" :key="i" class="align-center mb-1" dense>
+              <v-col cols="3">
+                <v-switch v-model="dayConfig.active" :label="getDayName(dayConfig.day)" color="primary" hide-details density="compact"></v-switch>
+              </v-col>
+              <v-col cols="4">
+                <v-text-field v-model="dayConfig.start" label="Apertura" type="time" variant="outlined" density="compact" hide-details :disabled="!dayConfig.active"></v-text-field>
+              </v-col>
+              <v-col cols="4">
+                <v-text-field v-model="dayConfig.end" label="Cierre" type="time" variant="outlined" density="compact" hide-details :disabled="!dayConfig.active"></v-text-field>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="closeScheduleDialog">Cancelar</v-btn>
+          <v-btn color="primary" variant="elevated" @click="saveWorkingHours" :loading="savingSchedule">Guardar</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -3012,6 +3066,9 @@ interface CalendarDay {
   isToday: boolean
   isSelected: boolean
   events: CalendarEvent[]
+  isWorkingDay: boolean
+  totalSlots: number
+  availableSlots: number
 }
 
 /* ---------------- Calendar State ---------------- */
@@ -3019,6 +3076,22 @@ const currentMonth = ref(new Date().getMonth())
 const currentYear = ref(new Date().getFullYear())
 const selectedDate = ref<Date | null>(null)
 const events = ref<CalendarEvent[]>([])
+
+const workingHours = ref({
+  id: 1,
+  slot_duration_minutes: 30,
+  schedule_json: [
+    { day: 1, active: true, start: '10:00', end: '20:00' },
+    { day: 2, active: true, start: '10:00', end: '20:00' },
+    { day: 3, active: true, start: '10:00', end: '20:00' },
+    { day: 4, active: true, start: '10:00', end: '20:00' },
+    { day: 5, active: true, start: '10:00', end: '20:00' },
+    { day: 6, active: true, start: '10:00', end: '14:00' },
+    { day: 0, active: false, start: '09:00', end: '18:00' }
+  ]
+})
+const showScheduleDialog = ref(false)
+const savingSchedule = ref(false)
 
 // Dialog states
 const showEventDialog = ref(false)
@@ -3065,6 +3138,38 @@ const eventReasons = [
   'Otro'
 ]
 
+const getDayName = (dayIndex: number) => {
+  const names = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+  return names[dayIndex] || ''
+}
+
+const availableTimesForSelectedDate = computed(() => {
+  if (!eventFormData.value.date) return []
+  
+  const selectedD = new Date(eventFormData.value.date + 'T12:00:00')
+  const dayOfWeek = selectedD.getDay()
+  
+  const dayConfig = workingHours.value.schedule_json.find(d => d.day === dayOfWeek)
+  if (!dayConfig || !dayConfig.active) return []
+  
+  const startParts = dayConfig.start.split(':').map(Number)
+  const endParts = dayConfig.end.split(':').map(Number)
+  const startMins = startParts[0] * 60 + (startParts[1] || 0)
+  const endMins = endParts[0] * 60 + (endParts[1] || 0)
+  
+  const times = []
+  for (let m = startMins; m < endMins; m += workingHours.value.slot_duration_minutes) {
+    const hh = Math.floor(m / 60).toString().padStart(2, '0')
+    const mm = (m % 60).toString().padStart(2, '0')
+    times.push(`${hh}:${mm}`)
+  }
+  
+  const eventsOnDate = events.value.filter(e => e.date === eventFormData.value.date && e.id !== editingEvent.value?.id)
+  const bookedTimes = eventsOnDate.map(e => e.time ? e.time.substring(0,5) : '')
+  
+  return times.filter(t => !bookedTimes.includes(t))
+})
+
 /* ---------------- Calendar Computed Properties ---------------- */
 const currentMonthName = computed(() => monthNames[currentMonth.value])
 
@@ -3082,16 +3187,43 @@ const calendarDays = computed<CalendarDay[]>(() => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
+  const getDayCapacity = (date: Date) => {
+    const dayOfWeek = date.getDay()
+    const dayConfig = workingHours.value.schedule_json.find(d => d.day === dayOfWeek)
+    
+    if (!dayConfig || !dayConfig.active) return { isWorkingDay: false, total: 0, available: 0 }
+    
+    let startParts = dayConfig.start.split(':').map(Number)
+    let endParts = dayConfig.end.split(':').map(Number)
+    if(startParts.length < 2) startParts = [10, 0]
+    if(endParts.length < 2) endParts = [20, 0]
+
+    const startMins = startParts[0] * 60 + (startParts[1] || 0)
+    const endMins = endParts[0] * 60 + (endParts[1] || 0)
+    const totalMins = endMins - startMins > 0 ? endMins - startMins : 0
+    const durationMins = workingHours.value.slot_duration_minutes > 0 ? workingHours.value.slot_duration_minutes : 30
+    const totalSlots = Math.floor(totalMins / durationMins)
+    
+    const eventsForDay = getEventsForDate(date)
+    const availableSlots = Math.max(0, totalSlots - eventsForDay.length)
+    
+    return { isWorkingDay: true, total: totalSlots, available: availableSlots }
+  }
+
   // Previous month days
   for (let i = firstDayOfWeek - 1; i >= 0; i--) {
     const date = new Date(currentYear.value, currentMonth.value - 1, prevLastDate - i)
+    const capacity = getDayCapacity(date)
     days.push({
       date,
       day: prevLastDate - i,
       isCurrentMonth: false,
       isToday: false,
       isSelected: false,
-      events: getEventsForDate(date)
+      events: getEventsForDate(date),
+      isWorkingDay: capacity.isWorkingDay,
+      totalSlots: capacity.total,
+      availableSlots: capacity.available
     })
   }
 
@@ -3100,6 +3232,7 @@ const calendarDays = computed<CalendarDay[]>(() => {
     const date = new Date(currentYear.value, currentMonth.value, i)
     const dateOnly = new Date(date)
     dateOnly.setHours(0, 0, 0, 0)
+    const capacity = getDayCapacity(date)
 
     days.push({
       date,
@@ -3107,7 +3240,10 @@ const calendarDays = computed<CalendarDay[]>(() => {
       isCurrentMonth: true,
       isToday: dateOnly.getTime() === today.getTime(),
       isSelected: selectedDate.value ? dateOnly.getTime() === new Date(selectedDate.value).setHours(0, 0, 0, 0) : false,
-      events: getEventsForDate(date)
+      events: getEventsForDate(date),
+      isWorkingDay: capacity.isWorkingDay,
+      totalSlots: capacity.total,
+      availableSlots: capacity.available
     })
   }
 
@@ -3115,13 +3251,17 @@ const calendarDays = computed<CalendarDay[]>(() => {
   const remainingDays = 42 - days.length
   for (let i = 1; i <= remainingDays; i++) {
     const date = new Date(currentYear.value, currentMonth.value + 1, i)
+    const capacity = getDayCapacity(date)
     days.push({
       date,
       day: i,
       isCurrentMonth: false,
       isToday: false,
       isSelected: false,
-      events: getEventsForDate(date)
+      events: getEventsForDate(date),
+      isWorkingDay: capacity.isWorkingDay,
+      totalSlots: capacity.total,
+      availableSlots: capacity.available
     })
   }
 
@@ -3139,6 +3279,50 @@ const upcomingEvents = computed(() => {
     })
     .slice(0, 5)
 })
+
+function openScheduleDialog() {
+  showScheduleDialog.value = true
+}
+
+function closeScheduleDialog() {
+  showScheduleDialog.value = false
+}
+
+async function fetchWorkingHours() {
+  try {
+    const { data, error } = await client.from('healup_working_hours').select('*').limit(1).single()
+    if (error && error.code !== 'PGRST116') throw error
+    if (data) {
+      workingHours.value = {
+        id: data.id,
+        slot_duration_minutes: data.slot_duration_minutes,
+        schedule_json: typeof data.schedule_json === 'string' ? JSON.parse(data.schedule_json) : data.schedule_json
+      }
+    }
+  } catch (error) {
+    console.error('Error loading working hours:', error)
+  }
+}
+
+async function saveWorkingHours() {
+  savingSchedule.value = true
+  try {
+    const payload = {
+      id: workingHours.value.id,
+      slot_duration_minutes: workingHours.value.slot_duration_minutes,
+      schedule_json: workingHours.value.schedule_json
+    }
+    const { error } = await client.from('healup_working_hours').upsert(payload, { onConflict: 'id' }).select()
+    if (error) throw error
+    alert('Horario actualizado correctamente')
+    closeScheduleDialog()
+  } catch (error) {
+    console.error('Error saving working hours:', error)
+    alert('Error al guardar el horario')
+  } finally {
+    savingSchedule.value = false
+  }
+}
 
 /* ---------------- Calendar Functions ---------------- */
 function getEventsForDate(date: Date): CalendarEvent[] {
@@ -3992,6 +4176,7 @@ onMounted(() => {
   fetchCompras()
   fetchLeads()
   handleZoom('Mes')
+  fetchWorkingHours()
   fetchEvents()
   fetchProcedures()
   fetchMedicalHistory()

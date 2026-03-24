@@ -31,6 +31,6 @@
     "vite-plugin-vuetify": "^2.0.4",
     "vue": "latest",
     "vue-router": "latest",
-    "vue3-apexcharts": "^1.10.0"
+    "vue3-apexcharts": "^1.11.1"
   }
 }

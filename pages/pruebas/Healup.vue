@@ -642,6 +642,7 @@
               </v-card-title>
               <v-data-table :headers="headersLeadsWpp" :items="leadsWpp" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de WhatsApp">
+                <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -660,6 +661,7 @@
               </v-card-title>
               <v-data-table :headers="headersLeadsFbIg" :items="leadsFbIg" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de FB/IG">
+                <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -1752,6 +1754,26 @@ import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessHealup, dashboards } from '@/utils/permissions'
 import SettingsView from '@/components/Settings/SettingsView.vue'
 
+const formatFecha = (dateString: string | null | undefined) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  const day = date.getDate();
+  const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+
+  let hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+
+  return `${day} ${month} ${year} - ${hours}:${minutes}${ampm}`;
+};
+
 const formatDateAgendamiento = (dateString: string | null | undefined) => {
   if (!dateString) return '-'
   const date = new Date(dateString)
@@ -1886,27 +1908,30 @@ const headersCompras = ref([
 
 const headersLeadsWpp = ref([
   { title: 'ID', key: 'id', sortable: true, width: '80px', align: 'start' as const },
+  { title: 'Fecha', key: 'created_at', sortable: true, width: '180px', align: 'start' as const },
   { title: 'Nombre', key: 'nombre', sortable: true, width: '20%', align: 'start' as const },
   { title: 'Número', key: 'numero', sortable: true, width: '150px', align: 'start' as const },
   { title: 'Estado', key: 'lead_status', sortable: true, width: '120px', align: 'start' as const },
-  { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '20%', align: 'start' as const },
+  { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '35%', align: 'start' as const },
   { title: 'Interés', key: 'servicio_interes', sortable: true, width: '250px', align: 'start' as const },
 ])
 
 const headersLeadsFbIg = ref([
   { title: 'ID', key: 'id', sortable: true, width: '80px', align: 'start' as const },
+  { title: 'Fecha', key: 'created_at', sortable: true, width: '180px', align: 'start' as const },
   { title: 'Nombre', key: 'nombre', sortable: true, width: '20%', align: 'start' as const },
   { title: 'Instagram', key: 'instagram_handle', sortable: true, width: '150px', align: 'start' as const },
   { title: 'Estado', key: 'lead_status', sortable: true, width: '120px', align: 'start' as const },
-  { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '20%', align: 'start' as const },
+  { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '35%', align: 'start' as const },
   { title: 'Interés', key: 'servicio_interes', sortable: true, width: '250px', align: 'start' as const },
 ])
 
 const headersLeads = ref([
   { title: 'ID', key: 'id', sortable: true, width: '80px', align: 'start' as const },
+  { title: 'Fecha', key: 'created_at', sortable: true, width: '180px', align: 'start' as const },
   { title: 'Nombre', key: 'nombre', sortable: true, width: '20%', align: 'start' as const },
   { title: 'Estado', key: 'lead_status', sortable: true, width: '120px', align: 'start' as const },
-  { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '20%', align: 'start' as const },
+  { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '35%', align: 'start' as const },
   { title: 'Interés', key: 'servicio_interes', sortable: true, width: '250px', align: 'start' as const },
 ])
 

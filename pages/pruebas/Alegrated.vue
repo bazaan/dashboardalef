@@ -639,6 +639,7 @@
               </v-card-title>
               <v-data-table :headers="headersLeadsWpp" :items="leadsWpp" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0 mb-4" no-data-text="No hay leads recientes en WhatsApp" :items-per-page="5">
+                <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -654,6 +655,7 @@
               </v-card-title>
               <v-data-table :headers="headersLeadsFbig" :items="leadsFbig" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads recientes en FB/IG" :items-per-page="5">
+                <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -1487,6 +1489,26 @@ import { isSuperAdmin, canAccessAlegrated, dashboards } from '@/utils/permission
 
 import SettingsView from '@/components/Settings/SettingsView.vue'
 
+const formatFecha = (dateString: string | null | undefined) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  const day = date.getDate();
+  const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+
+  let hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+
+  return `${day} ${month} ${year} - ${hours}:${minutes}${ampm}`;
+};
+
 definePageMeta({
   middleware: 'auth-dashboard'
 })
@@ -1992,6 +2014,7 @@ const showCreateUserDialog = ref(false)
 //const showSettingsDialog = ref(false)
 
 const headersLeadsWpp = ref([
+  { title: 'Fecha', key: 'created_at', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
   { title: 'Estado', key: 'lead_status', sortable: true },
@@ -2000,6 +2023,7 @@ const headersLeadsWpp = ref([
 ])
 
 const headersLeadsFbig = ref([
+  { title: 'Fecha', key: 'created_at', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'Instagram', key: 'instagram_handle', sortable: true },
   { title: 'Estado', key: 'lead_status', sortable: true },
@@ -2010,6 +2034,7 @@ const headersLeadsFbig = ref([
 // Headers provided by user: id, nombre, numero, lead_status, reason_ia_qualification, producto_interes
 const headersLeads = ref([
   { title: 'ID', key: 'id', sortable: true },
+  { title: 'Fecha', key: 'created_at', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
   { title: 'Estado', key: 'lead_status', sortable: true },

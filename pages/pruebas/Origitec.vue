@@ -239,6 +239,7 @@
                 </v-card-title>
                 <v-data-table :headers="headersLeads" :items="leads.slice(0, 10)" class="elevation-0"
                   no-data-text="No hay leads recientes" :items-per-page="10">
+                  <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                   <template v-slot:item.lead_status="{ item }">
                     <v-chip
                       :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -572,6 +573,7 @@
               </v-card-title>
               <v-data-table :headers="headersLeadsWhatsapp" :items="leadsWhatsapp" :search="leadsSearch"
                 :loading="loadingLeads" class="elevation-0" no-data-text="No hay leads de WhatsApp">
+                <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -592,6 +594,7 @@
               </v-card-title>
               <v-data-table :headers="headersLeadsInstagram" :items="leadsInstagram" :search="leadsSearch"
                 :loading="loadingLeads" class="elevation-0" no-data-text="No hay leads de Instagram">
+                <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -1866,6 +1869,7 @@ const showCreateUserDialog = ref(false)
 // Headers for WhatsApp
 const headersLeadsWhatsapp = ref([
   { title: 'ID', key: 'id', sortable: true },
+  { title: 'Fecha', key: 'created_at', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
   { title: 'Estado', key: 'lead_status', sortable: true },
@@ -1876,6 +1880,7 @@ const headersLeadsWhatsapp = ref([
 // Headers for Instagram
 const headersLeadsInstagram = ref([
   { title: 'ID', key: 'id', sortable: true },
+  { title: 'Fecha', key: 'created_at', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'Instagram', key: 'instagram_handle', sortable: true },
   { title: 'Estado', key: 'lead_status', sortable: true },
@@ -1886,10 +1891,30 @@ const headersLeadsInstagram = ref([
 // Generic Headers for Dashboard Summary (Mixed types)
 const headersLeads = ref([
   { title: 'ID', key: 'id', sortable: true },
+  { title: 'Fecha', key: 'created_at', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'Estado', key: 'lead_status', sortable: true },
   { title: 'Interés', key: 'producto_interes', sortable: true },
 ])
+
+const formatFecha = (dateString: string) => {
+  if (!dateString) return ''
+  const d = new Date(dateString)
+  if (isNaN(d.getTime())) return dateString
+
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const day = d.getDate()
+  const month = months[d.getMonth()]
+  const year = d.getFullYear()
+  
+  let hours = d.getHours()
+  const minutes = d.getMinutes().toString().padStart(2, '0')
+  const ampm = hours >= 12 ? 'pm' : 'am'
+  hours = hours % 12
+  hours = hours ? hours : 12
+
+  return `${day} ${month} ${year} - ${hours}:${minutes}${ampm}`
+}
 
 const fetchLeads = async () => {
   loadingLeads.value = true

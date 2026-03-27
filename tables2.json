@@ -1,0 +1,50 @@
+{
+  "Alegrated.vue": [
+    "contribuyentes",
+    "compraswpplimaalegrated",
+    "compraswppprovinciaalegrated",
+    "compraswppextranjeroalegrated",
+    "productos_stock_alegrated",
+    "GeneralBDwppALEGRATED",
+    "GeneralBDfbigALEGRATED",
+    "dashboardlogin",
+    "alegrated_calendar_events",
+    "brada_procedures",
+    "brada_client_history"
+  ],
+  "BradaPerfumes.vue": [
+    "contribuyentes",
+    "comprasBDwppBRADA",
+    "comprasBDwppBRADA24_7",
+    "GeneralBDwppBRADA",
+    "GeneralBDwppBRADA24_7",
+    "dashboardlogin",
+    "brada_calendar_events",
+    "brada_procedures",
+    "brada_client_history"
+  ],
+  "ClinicaArroyo.vue": [
+    "PacientesBDwppARROYO",
+    "PacientesBDfbigARROYO",
+    "compras_clinica_arroyo",
+    "GeneralBDwppARROYO",
+    "GeneralBDfbigARROYO",
+    "arroyo_medical_history",
+    "arroyo_calendar_events",
+    "arroyo_procedures"
+  ],
+  "Origitec.vue": [
+    "contribuyentes",
+    "bsale_origitec_stock",
+    "reserva_recojo_tienda",
+    "pago_completo_motorizado",
+    "pago_completo_courier",
+    "pago_completo_recojo_tienda",
+    "GeneralBDwppOrigitec",
+    "GeneralBDfbigOrigitec",
+    "dashboardlogin",
+    "ORIGITEC_calendar_events",
+    "brada_procedures",
+    "brada_client_history"
+  ]
+}

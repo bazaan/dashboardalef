@@ -663,6 +663,47 @@
         </div>
       </div>
 
+      <!-- ==========  VISTA: EGRESOS  ========== -->
+      <div v-else-if="activeView === 'egresos'" class="view-container">
+        <header class="top-header">
+          <h1>Egresos</h1>
+          <button class="btn-primary" @click="openEgresoDialog()">
+            <v-icon icon="mdi-plus" size="16" />
+            <span>Agregar Egreso</span>
+          </button>
+        </header>
+
+        <div class="content-area">
+          <div class="table-section">
+             <v-card flat class="custom-data-table">
+               <v-card-title class="table-search-bar">
+                 <span class="table-title">Lista de Egresos</span>
+                 <v-spacer></v-spacer>
+               </v-card-title>
+               <v-data-table :headers="egresosHeaders" :items="egresosList" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados">
+                 <template v-slot:item.precio="{ item }">
+                   S/ {{ item.precio.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                 </template>
+                 <template v-slot:item.total="{ item }">
+                   S/ {{ (item.precio * item.cantidad).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                 </template>
+                 <template v-slot:item.created_at="{ item }">
+                   {{ new Date(item.created_at).toLocaleDateString() }}
+                 </template>
+                 <template v-slot:item.actions="{ item }">
+                   <button class="icon-btn" @click="openEgresoDialog(item)">
+                     <v-icon icon="mdi-pencil" size="16" />
+                   </button>
+                   <button class="icon-btn" @click="deleteEgreso(item.id)">
+                     <v-icon icon="mdi-delete" size="16" />
+                   </button>
+                 </template>
+               </v-data-table>
+             </v-card>
+          </div>
+        </div>
+      </div>
+
       <!-- ==========  VISTA: FACTURACIÓN (Healup Version) ========== -->
       <div v-else-if="activeView === 'facturacion'" class="view-container">
         <header class="top-header">
@@ -696,10 +737,22 @@
             </div>
 
             <div class="stat-card">
-              <div class="stat-title">Ingresos Totales</div>
-              <div class="stat-value">S/ {{ revenueCurrentMonth.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              <div class="stat-title" style="color: #ef4444;">Egresos Mes Actual</div>
+              <div class="stat-value" style="color: #ef4444;">S/ {{ totalEgresosMesActual.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-subtitle">Gastos del mes en curso</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-title" style="color: #ef4444;">Egresos Mes Pasado</div>
+              <div class="stat-value" style="color: #ef4444;">S/ {{ totalEgresosMesPasado.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-subtitle">Gastos del mes anterior</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-title">Ingresos Totales (Neto)</div>
+              <div class="stat-value">S/ {{ gananciaNetaTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
               </div>
-              <div class="stat-subtitle">Histórico Acumulado</div>
+              <div class="stat-subtitle">Ganancias Brutas - Egresos de este mes</div>
             </div>
 
             <div class="stat-card">
@@ -1058,6 +1111,35 @@
       </div>
 
     </div>
+
+    <!-- ==========  EGRESOS DIALOG  ========== -->
+    <v-dialog v-model="showEgresoDialog" max-width="500px" persistent>
+      <v-card>
+        <v-card-title>
+          <span>{{ editingEgreso ? 'Editar Egreso' : 'Nuevo Egreso' }}</span>
+          <v-btn icon="mdi-close" variant="text" @click="closeEgresoDialog" class="float-right"></v-btn>
+        </v-card-title>
+        <v-card-text>
+          <v-form ref="egresoForm">
+            <v-text-field v-model="egresoFormData.tipo_egreso" label="Tipo de Egreso" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+            <v-text-field v-model="egresoFormData.nombre" label="Nombre/Descripción" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+            <v-row>
+              <v-col cols="6">
+                <v-text-field v-model.number="egresoFormData.precio" label="Precio" type="number" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              </v-col>
+              <v-col cols="6">
+                <v-text-field v-model.number="egresoFormData.cantidad" label="Cantidad" type="number" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="closeEgresoDialog">Cancelar</v-btn>
+          <v-btn color="primary" variant="elevated" @click="saveEgreso" :loading="savingEgreso">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- ==========  EVENT CREATION/EDIT DIALOG  ========== -->
     <v-dialog v-model="showEventDialog" max-width="600px" persistent>
@@ -2151,6 +2233,7 @@ function handleNavigation(item: any) {
 }
 
 const financiasItems = [
+  { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos' },
   { icon: 'mdi-currency-usd', label: 'Contabilidad', id: 'facturacion' },
   { icon: 'mdi-chart-line', label: 'Facturación', id: 'contabilidad' }
 ]
@@ -3667,6 +3750,105 @@ async function fetchMedicalHistory() {
   }
 }
 
+/* ---------------- Egresos Logic ---------------- */
+const egresosList = ref<any[]>([])
+const loadingEgresos = ref(false)
+const showEgresoDialog = ref(false)
+const editingEgreso = ref(false)
+const savingEgreso = ref(false)
+const egresoFormData = ref({
+  id: '',
+  tipo_egreso: '',
+  nombre: '',
+  precio: 0,
+  cantidad: 1,
+  company_id: 'clinicaarroyo'
+})
+const egresosHeaders = [
+  { title: 'Fecha', key: 'created_at' },
+  { title: 'Tipo', key: 'tipo_egreso' },
+  { title: 'Nombre', key: 'nombre' },
+  { title: 'Precio', key: 'precio' },
+  { title: 'Cantidad', key: 'cantidad' },
+  { title: 'Total', key: 'total' },
+  { title: 'Acciones', key: 'actions', sortable: false }
+]
+
+const fetchEgresos = async () => {
+  loadingEgresos.value = true
+  const { data, error } = await (client.from('egresos_clinicaarroyo') as any).select('*').order('created_at', { ascending: false })
+  if (!error && data) {
+    egresosList.value = data
+  }
+  loadingEgresos.value = false
+}
+
+const totalEgresosMesActual = computed(() => {
+  const now = new Date()
+  const m = now.getMonth()
+  const y = now.getFullYear()
+  return egresosList.value.filter(e => {
+    const d = new Date(e.created_at)
+    return d.getMonth() === m && d.getFullYear() === y
+  }).reduce((sum, e) => sum + (e.precio * e.cantidad), 0)
+})
+
+const totalEgresosMesPasado = computed(() => {
+  const now = new Date()
+  let m = now.getMonth() - 1
+  let y = now.getFullYear()
+  if (m < 0) { m = 11; y-- }
+  return egresosList.value.filter(e => {
+    const d = new Date(e.created_at)
+    return d.getMonth() === m && d.getFullYear() === y
+  }).reduce((sum, e) => sum + (e.precio * e.cantidad), 0)
+})
+
+const gananciaNetaTotal = computed(() => {
+  return revenueCurrentMonth.value - totalEgresosMesActual.value
+})
+
+const openEgresoDialog = (item?: any) => {
+  if (item && item.id) {
+    editingEgreso.value = true
+    egresoFormData.value = { ...item }
+  } else {
+    editingEgreso.value = false
+    egresoFormData.value = { id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1, company_id: 'clinicaarroyo' }
+  }
+  showEgresoDialog.value = true
+}
+
+const closeEgresoDialog = () => {
+  showEgresoDialog.value = false
+}
+
+const saveEgreso = async () => {
+  savingEgreso.value = true
+  const payload = {
+    tipo_egreso: egresoFormData.value.tipo_egreso,
+    nombre: egresoFormData.value.nombre,
+    precio: egresoFormData.value.precio,
+    cantidad: egresoFormData.value.cantidad,
+    company_id: 'clinicaarroyo'
+  }
+  if (editingEgreso.value && egresoFormData.value.id) {
+    await (client.from('egresos_clinicaarroyo') as any).update(payload).eq('id', egresoFormData.value.id)
+  } else {
+    await (client.from('egresos_clinicaarroyo') as any).insert(payload)
+  }
+  savingEgreso.value = false
+  closeEgresoDialog()
+  fetchEgresos()
+}
+
+const deleteEgreso = async (id: string) => {
+  if (confirm('¿Seguro que deseas eliminar este egreso?')) {
+    await (client.from('egresos_clinicaarroyo') as any).delete().eq('id', id)
+    fetchEgresos()
+  }
+}
+
 onMounted(() => {
   // Access Control
   // const userEmail = currentUser.value.email?.toLowerCase()
@@ -3685,5 +3867,6 @@ onMounted(() => {
   fetchEvents()
   fetchProcedures()
   fetchMedicalHistory()
+  fetchEgresos()
 })
 </script>

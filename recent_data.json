@@ -1,0 +1,74 @@
+[
+  {
+    "nombre": "Walter Enrique Arana Barrueta",
+    "precio_tratamiento": 599,
+    "precio": 0,
+    "parsedTotal": 599,
+    "fecha_agendamiento": "2026-03-30T22:00:00-05:00",
+    "created_at": "2026-03-25T13:58:13.515164-05:00"
+  },
+  {
+    "nombre": "Luis Enrique Barrantes Angulo",
+    "precio_tratamiento": null,
+    "precio": null,
+    "parsedTotal": 0,
+    "fecha_agendamiento": "2026-04-02T10:00:00-05:00",
+    "created_at": "2026-03-31T10:08:09.162023-05:00"
+  },
+  {
+    "nombre": "Carmen Paredes",
+    "precio_tratamiento": null,
+    "precio": null,
+    "parsedTotal": 0,
+    "fecha_agendamiento": "2026-04-04T10:00:00-05:00",
+    "created_at": "2026-03-31T10:59:52.500916-05:00"
+  },
+  {
+    "nombre": "Alexis Oropeza",
+    "precio_tratamiento": 50,
+    "precio": 0,
+    "parsedTotal": 50,
+    "fecha_agendamiento": "2026-03-31T21:49:00-05:00",
+    "created_at": "2026-03-31T16:49:49.315674-05:00"
+  },
+  {
+    "nombre": "Nayely Sauñe de la Cruz",
+    "precio_tratamiento": 72,
+    "precio": 0,
+    "parsedTotal": 72,
+    "fecha_agendamiento": "2026-03-31T21:37:00-05:00",
+    "created_at": "2026-03-31T16:37:47.401504-05:00"
+  },
+  {
+    "nombre": "María Fernanda Cotrina",
+    "precio_tratamiento": null,
+    "precio": null,
+    "parsedTotal": 0,
+    "fecha_agendamiento": "2026-04-01T16:00:00-05:00",
+    "created_at": "2026-03-31T17:54:10.595632-05:00"
+  },
+  {
+    "nombre": "Carolina Mendez Gonzales",
+    "precio_tratamiento": 90,
+    "precio": 0,
+    "parsedTotal": 90,
+    "fecha_agendamiento": "2026-03-31T21:30:00-05:00",
+    "created_at": "2026-03-29T19:06:31.480757-05:00"
+  },
+  {
+    "nombre": "Adriana paola diaz balarezo",
+    "precio_tratamiento": 800,
+    "precio": 0,
+    "parsedTotal": 800,
+    "fecha_agendamiento": "2026-03-30T22:00:00-05:00",
+    "created_at": "2026-03-28T00:21:51.095234-05:00"
+  },
+  {
+    "nombre": "Nayely sauñe de la cruz",
+    "precio_tratamiento": 800,
+    "precio": 0,
+    "parsedTotal": 800,
+    "fecha_agendamiento": "2026-03-31T20:00:00-05:00",
+    "created_at": "2026-03-30T17:51:26.284964-05:00"
+  }
+]

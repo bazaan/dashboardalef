@@ -5,7 +5,8 @@ export const dashboards = [
     { name: 'Alef Company', path: '/pruebas/AlefCompany', icon: 'mdi-domain', logo: 'aleflogo oscuro.png' },
     { name: 'Origitec', path: '/pruebas/Origitec', icon: 'mdi-alpha-o-circle', logo: 'Logo_Origitec_Trans.png' },
     { name: 'Clinica Arroyo', path: '/pruebas/ClinicaArroyo', icon: 'mdi-hospital-building', logo: 'arroyoLOGO.jpg' },
-    { name: 'Alegrated', path: '/pruebas/Alegrated', icon: 'mdi-star', logo: 'alegratedLOGO.jpg' }
+    { name: 'Alegrated', path: '/pruebas/Alegrated', icon: 'mdi-star', logo: 'alegratedLOGO.jpg' },
+    { name: 'Solari', path: '/pruebas/Solari', icon: 'mdi-white-balance-sunny', logo: 'solariLOGO.webp' }
 ]
 
 // Tipos para la sesión de usuario
@@ -108,6 +109,14 @@ export function canAccessAlegrated(session: UserSession | null): boolean {
     return cid === 'alegrated' || cid.includes('alegrated')
 }
 
+export function canAccessSolari(session: UserSession | null): boolean {
+    if (!session) return false
+    if (isSuperAdmin(session)) return true
+
+    const cid = normalize(session.company_id)
+    return cid === 'solari' || cid.includes('solari')
+}
+
 export function getDashboardPathByCompanyId(companyId: string | undefined | null): string {
     if (!companyId) return '/'
 
@@ -120,6 +129,7 @@ export function getDashboardPathByCompanyId(companyId: string | undefined | null
     if (normalizedId === 'alegrated' || normalizedId.includes('alegrated')) return '/pruebas/Alegrated'
     if (normalizedId === 'clinica arroyo' || normalizedId === 'clinicaarroyo' || normalizedId.includes('arroyo')) return '/pruebas/ClinicaArroyo'
     if (normalizedId === 'origitec' || normalizedId.includes('origitec')) return '/pruebas/Origitec'
+    if (normalizedId === 'solari' || normalizedId.includes('solari')) return '/pruebas/Solari'
 
     return '/'
 }

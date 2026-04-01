@@ -5,7 +5,7 @@
       <div class="sidebar-header">
         <div class="logo" style="gap: 0.5rem;">
           <div style="width: 35px; height: 35px; border-radius: 50%; overflow: hidden; flex-shrink: 0;">
-            <v-img src="@/assets/img/healupLOGO.png" alt="Alef Company Logo" style="width: 100%; height: 100%;" />
+            <v-img src="@/assets/img/solariLOGO.webp" alt="Solari Logo" style="width: 100%; height: 100%;" />
           </div>
 
           <template v-if="isSuperAdmin(currentUser)">
@@ -286,7 +286,7 @@
 
 
       <!-- ==========  VISTA: SETTINGS  ========== -->
-      <SettingsView v-else-if="activeView === 'settings'" company-id="Heal up" :current-user-role="currentUser?.role" />
+      <SettingsView v-else-if="activeView === 'settings'" company-id="solari" :current-user-role="currentUser?.role" />
 
       <!-- ==========  VISTA: CALENDARIO  ========== -->
       <div v-else-if="activeView === 'calendario'" class="view-container">

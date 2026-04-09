@@ -985,11 +985,11 @@
         <header class="top-header">
           <h1>Catálogo de Servicios</h1>
           <div class="header-actions">
-            <button class="btn-primary" @click="openServicioDialog()" style="margin-right: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+            <button class="btn-primary" @click="openServicioDialog()" style="margin-right: 10px;">
               <v-icon icon="mdi-plus" size="16" />
               <span>Nuevo Servicio</span>
             </button>
-            <button class="btn-primary" @click="fetchServicios" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none;">
+            <button class="btn-primary" @click="fetchServicios">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Sincronizar</span>
             </button>

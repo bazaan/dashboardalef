@@ -1,0 +1,14 @@
+pago_completo_recojo_tienda
+reserva_recojo_tienda
+GeneralBDwppSKIP
+brada_procedures
+ORIGITEC_calendar_events
+dashboardlogin
+pago_completo_courier
+contribuyentes
+skip_servicios
+egresos_skip
+brada_client_history
+GeneralBDfbigSKIP
+pago_completo_motorizado
+bsale_skip_stock

@@ -1,0 +1,6 @@
+let tableName = 'pago_completo_motorizado'
+tableName = 'pago_completo_courier'
+tableName = 'pago_completo_recojo_tienda'
+client.from('pago_completo_motorizado').select('precio, cantidad'),
+client.from('pago_completo_courier').select('precio, cantidad'),
+client.from('pago_completo_recojo_tienda').select('precio, cantidad'),

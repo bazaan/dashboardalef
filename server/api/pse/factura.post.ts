@@ -1,30 +1,26 @@
 /**
  * POST /api/pse/factura
  * Proxy server-side para PSE.PE / NubeFact
- * Mantiene el TOKEN seguro en el servidor y permite
- * enviar facturas electrónicas a SUNAT por empresa.
  */
 
-// RUC y configuración por empresa
-const EMPRESAS: Record<string, { ruc: string; razon_social: string }> = {
+// Configuración por empresa:
+// - token: obtenido de PSE.PE → Empresa → Integración → TOKEN
+// - url:   obtenido de PSE.PE → Empresa → Integración → RUTA
+const EMPRESAS: Record<string, { url: string; token: string }> = {
   healup: {
-    ruc: '20615088111',
-    razon_social: 'HEALUP'
+    // ← REEMPLAZAR con los datos reales de Healup en PSE.PE
+    url:   'https://api.pse.pe/api/v1/0c15ce82e168a8763e4644c2',
+    token: '0c15ce82e168a8763e4644c2'
   },
   estasconsuerte: {
-    ruc: '20611950650',
-    razon_social: 'ESTAS CON SUERTE S.A.C.'
+    // ← REEMPLAZAR con los datos reales de EstasConSuerte en PSE.PE
+    url:   'https://api.pse.pe/api/v1/0c15ce82e168a8763e4644c2',
+    token: '0c15ce82e168a8763e4644c2'
   }
 }
 
-// JWT obtenido de PSE.PE → Integración → TOKEN (columna TOKEN de la tabla)
-// Los JWTs se envían con "Bearer", no con "Token token="
-const PSE_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.IjEzM2ZmNmNiNTQ4YzhkNzgyODk5NzVmNzhiZjRmNmFmOGY4ZWExMGEwZTM4MzViNyI.Dqwk2iJcQB1K0yuHFXwhJ2Ao3AP7IVaQ0PpIER2RBWc'
-const PSE_URL   = 'https://api.pse.pe/api/reseller/v1/0c15ce82e168a8763e4644c2'
-
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-
   const { company_id, payload } = body
 
   if (!company_id || !payload) {
@@ -33,29 +29,27 @@ export default defineEventHandler(async (event) => {
 
   const empresa = EMPRESAS[company_id.toLowerCase().replace(/\s/g, '')]
   if (!empresa) {
-    throw createError({ statusCode: 400, statusMessage: `Empresa '${company_id}' no configurada para facturación PSE` })
+    throw createError({ statusCode: 400, statusMessage: `Empresa '${company_id}' no configurada` })
   }
 
-  // ruc_emisor identifica qué empresa emite el comprobante en el endpoint reseller
   const facturaPayload = {
     operacion: 'generar_comprobante',
-    ruc_emisor: empresa.ruc,
     ...payload,
     enviar_automaticamente_a_la_sunat: true,
     enviar_automaticamente_al_cliente: false,
     porcentaje_de_igv: 18.00
   }
 
-  console.log('[PSE] Enviando a:', PSE_URL)
-  console.log('[PSE] ruc_emisor:', empresa.ruc)
+  console.log('[PSE] URL:', empresa.url)
+  console.log('[PSE] Token (inicio):', empresa.token.slice(0, 20) + '...')
   console.log('[PSE] tipo_comprobante:', facturaPayload.tipo_de_comprobante)
 
   try {
-    const response = await $fetch<any>(PSE_URL, {
+    const response = await $fetch<any>(empresa.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': `Bearer ${PSE_TOKEN}`
+        'Authorization': `Token token=${empresa.token}`
       },
       body: facturaPayload
     })
@@ -65,8 +59,8 @@ export default defineEventHandler(async (event) => {
 
   } catch (err: any) {
     const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
-    console.error('[PSE Factura Error] Status:', err?.status)
-    console.error('[PSE Factura Error] Body:', JSON.stringify(detail))
+    console.error('[PSE Error] Status:', err?.status)
+    console.error('[PSE Error] Body:', JSON.stringify(detail))
     throw createError({
       statusCode: err?.status || 500,
       statusMessage: typeof detail === 'string'

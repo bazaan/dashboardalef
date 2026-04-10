@@ -730,6 +730,23 @@
 
       <!-- ==========  VISTA: FACTURACIÓN (Healup Version) ========== -->
       <div v-else-if="activeView === 'facturacion'" class="view-container">
+        <!-- Sub-tabs: Contabilidad | Factura Electrónica -->
+        <v-tabs v-model="facturacionTab" color="primary" class="mb-2" density="compact">
+          <v-tab value="contabilidad">
+            <v-icon icon="mdi-chart-bar" size="16" class="mr-1" />Contabilidad
+          </v-tab>
+          <v-tab value="emitir">
+            <v-icon icon="mdi-file-send" size="16" class="mr-1" />Factura Electrónica (SUNAT)
+          </v-tab>
+        </v-tabs>
+
+        <!-- ── TAB: EMITIR FACTURA PSE ── -->
+        <div v-if="facturacionTab === 'emitir'">
+          <FacturacionPSE company-id="healup" />
+        </div>
+
+        <!-- ── TAB: CONTABILIDAD (original) ── -->
+        <div v-else>
         <header class="top-header">
           <h1>Contabilidad</h1>
           <div class="header-actions">
@@ -893,6 +910,7 @@
           </div>
 
         </div>
+        </div><!-- fin tab contabilidad -->
       </div>
 
       <!-- ==========  VISTA: CONTABILIDAD  ========== -->
@@ -2431,6 +2449,7 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
+const facturacionTab = ref('contabilidad')
 
 const showUserMenu = ref(false)
 const showDashboardMenu = ref(false)

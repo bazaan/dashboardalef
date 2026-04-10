@@ -17,8 +17,9 @@ const EMPRESAS: Record<string, { ruc: string; razon_social: string }> = {
   }
 }
 
-const PSE_URL   = 'https://api.pse.pe/api/reseller/v1/0c15ce82e168a8763e4644c2'
-const PSE_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.IjEzM2ZmNmNiNTQ4YzhkNzgyODk5NzVmNzhiZjRmNmFmOGY4ZWExMGEwZTM4MzViNyI.Dqwk2iJcQB1K0yuHFXwhJ2Ao3AP7IVaQ0PpIER2RBWc'
+// El token de la URL y el del header deben ser el mismo (patrón PSE.PE/NubeFact)
+const PSE_TOKEN = '0c15ce82e168a8763e4644c2'
+const PSE_URL   = `https://api.pse.pe/api/reseller/v1/${PSE_TOKEN}`
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -34,8 +35,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: `Empresa '${company_id}' no configurada para facturación PSE` })
   }
 
-  // Construir payload final con datos de la empresa emisora
-  // ruc_emisor es obligatorio en el endpoint reseller para identificar qué empresa firma
+  // ruc_emisor identifica qué empresa emite el comprobante en el endpoint reseller
   const facturaPayload = {
     operacion: 'generar_comprobante',
     ruc_emisor: empresa.ruc,
@@ -44,6 +44,10 @@ export default defineEventHandler(async (event) => {
     enviar_automaticamente_al_cliente: false,
     porcentaje_de_igv: 18.00
   }
+
+  console.log('[PSE] Enviando a:', PSE_URL)
+  console.log('[PSE] ruc_emisor:', empresa.ruc)
+  console.log('[PSE] tipo_comprobante:', facturaPayload.tipo_de_comprobante)
 
   try {
     const response = await $fetch<any>(PSE_URL, {
@@ -55,12 +59,18 @@ export default defineEventHandler(async (event) => {
       body: facturaPayload
     })
 
+    console.log('[PSE] Respuesta OK:', JSON.stringify(response).slice(0, 300))
     return response
+
   } catch (err: any) {
-    console.error('[PSE Factura Error]', err)
+    const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
+    console.error('[PSE Factura Error] Status:', err?.status)
+    console.error('[PSE Factura Error] Body:', JSON.stringify(detail))
     throw createError({
       statusCode: err?.status || 500,
-      statusMessage: err?.data?.errors || err?.message || 'Error al conectar con PSE.PE'
+      statusMessage: typeof detail === 'string'
+        ? detail
+        : JSON.stringify(detail?.errors || detail?.message || detail)
     })
   }
 })

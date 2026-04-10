@@ -6,16 +6,20 @@
 // Configuración por empresa:
 // - token: obtenido de PSE.PE → Empresa → Integración → TOKEN
 // - url:   obtenido de PSE.PE → Empresa → Integración → RUTA
-const EMPRESAS: Record<string, { url: string; token: string }> = {
+// URL reseller de PSE.PE + hex token como Authorization
+// El hex 0c15ce82... autentica correctamente (confirmado: da 404 no 401 en v1)
+// La URL reseller es la correcta para emitir con ruc_emisor
+const PSE_RESELLER_URL   = 'https://api.pse.pe/api/reseller/v1/0c15ce82e168a8763e4644c2'
+const PSE_RESELLER_TOKEN = '0c15ce82e168a8763e4644c2'
+
+const EMPRESAS: Record<string, { ruc: string; razon_social: string }> = {
   healup: {
-    // ← REEMPLAZAR con los datos reales de Healup en PSE.PE
-    url:   'https://api.pse.pe/api/v1/0c15ce82e168a8763e4644c2',
-    token: '0c15ce82e168a8763e4644c2'
+    ruc: '20615088111',
+    razon_social: 'HEALUP'
   },
   estasconsuerte: {
-    // ← REEMPLAZAR con los datos reales de EstasConSuerte en PSE.PE
-    url:   'https://api.pse.pe/api/v1/0c15ce82e168a8763e4644c2',
-    token: '0c15ce82e168a8763e4644c2'
+    ruc: '20611950650',
+    razon_social: 'ESTAS CON SUERTE S.A.C.'
   }
 }
 
@@ -33,23 +37,24 @@ export default defineEventHandler(async (event) => {
   }
 
   const facturaPayload = {
-    operacion: 'generar_comprobante',
+    operacion:    'generar_comprobante',
+    ruc_emisor:   empresa.ruc,
     ...payload,
     enviar_automaticamente_a_la_sunat: true,
     enviar_automaticamente_al_cliente: false,
     porcentaje_de_igv: 18.00
   }
 
-  console.log('[PSE] URL:', empresa.url)
-  console.log('[PSE] Token (inicio):', empresa.token.slice(0, 20) + '...')
+  console.log('[PSE] URL:', PSE_RESELLER_URL)
+  console.log('[PSE] ruc_emisor:', empresa.ruc)
   console.log('[PSE] tipo_comprobante:', facturaPayload.tipo_de_comprobante)
 
   try {
-    const response = await $fetch<any>(empresa.url, {
+    const response = await $fetch<any>(PSE_RESELLER_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': `Token token=${empresa.token}`
+        'Authorization': `Token token=${PSE_RESELLER_TOKEN}`
       },
       body: facturaPayload
     })

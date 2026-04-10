@@ -610,6 +610,27 @@
 
       <!-- ==========  VISTA: FACTURACIÓN  ========== -->
       <div v-else-if="activeView === 'facturacion'" class="view-container">
+
+        <!-- PSE Tabs -->
+        <v-tabs
+          v-model="facturacionTab"
+          bg-color="transparent"
+          color="primary"
+          density="compact"
+          class="mb-4"
+          style="border-bottom: 1px solid var(--border);"
+        >
+          <v-tab value="resumen">Resumen</v-tab>
+          <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
+        </v-tabs>
+
+        <!-- PSE.PE: Factura Electrónica -->
+        <div v-show="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
+          <FacturacionPSE company-id="alefcompany" />
+        </div>
+
+        <!-- Resumen original -->
+        <div v-show="facturacionTab === 'resumen'">
         <header class="top-header">
           <h1>Facturación</h1>
           <button class="btn-primary">
@@ -669,6 +690,8 @@
             </div>
           </div>
         </div>
+
+        </div><!-- fin tab resumen -->
       </div>
 
       <!-- ==========  VISTA: CONTABILIDAD  ========== -->
@@ -1396,6 +1419,7 @@ const deleteItem = async (item: any) => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
+const facturacionTab = ref('resumen')
 const activeTab = ref('outline')
 const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)

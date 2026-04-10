@@ -663,23 +663,6 @@
 
       <!-- ==========  VISTA: FACTURACIÓN  ========== -->
       <div v-else-if="activeView === 'facturacion'" class="view-container">
-        <!-- Sub-tabs: Contabilidad | Factura Electrónica -->
-        <v-tabs v-model="facturacionTab" color="primary" class="mb-2" density="compact">
-          <v-tab value="contabilidad">
-            <v-icon icon="mdi-chart-bar" size="16" class="mr-1" />Contabilidad
-          </v-tab>
-          <v-tab value="emitir">
-            <v-icon icon="mdi-file-send" size="16" class="mr-1" />Factura Electrónica (SUNAT)
-          </v-tab>
-        </v-tabs>
-
-        <!-- ── TAB: EMITIR FACTURA PSE ── -->
-        <div v-if="facturacionTab === 'emitir'">
-          <FacturacionPSE company-id="estasconsuerte" />
-        </div>
-
-        <!-- ── TAB: CONTABILIDAD (original) ── -->
-        <div v-else>
         <header class="top-header">
           <h1>Contabilidad</h1>
           <div class="header-actions">
@@ -799,11 +782,31 @@
           </div>
 
         </div>
-        </div><!-- fin tab contabilidad -->
       </div>
 
       <!-- ==========  VISTA: CONTABILIDAD GLOBAL  ========== -->
       <div v-else-if="activeView === 'contabilidad'" class="view-container">
+
+        <!-- PSE Tabs -->
+        <v-tabs
+          v-model="facturacionTab"
+          bg-color="transparent"
+          color="primary"
+          density="compact"
+          class="mb-4"
+          style="border-bottom: 1px solid var(--border);"
+        >
+          <v-tab value="resumen">Resumen</v-tab>
+          <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
+        </v-tabs>
+
+        <!-- PSE.PE: Factura Electrónica -->
+        <div v-show="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
+          <FacturacionPSE company-id="estasconsuerte" />
+        </div>
+
+        <!-- Resumen original -->
+        <div v-show="facturacionTab === 'resumen'">
         <header class="top-header">
           <h1>Contabilidad Global</h1>
           <button class="btn-primary" @click="fetchGlobalAccounting">
@@ -938,6 +941,8 @@
             </div>
           </div>
         </div>
+
+        </div><!-- fin tab resumen -->
       </div>
 
       <!-- ==========  VISTA: PROCEDIMIENTOS  ========== -->
@@ -1941,7 +1946,7 @@ const deleteItem = async (item: any) => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
-const facturacionTab = ref('contabilidad')
+const facturacionTab = ref('resumen')
 const activeTab = ref('ventas')
 const showUserMenu = ref(false)
 const stockMenuOpen = ref(false)

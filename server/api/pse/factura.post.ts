@@ -17,9 +17,11 @@ const EMPRESAS: Record<string, { ruc: string; razon_social: string }> = {
   }
 }
 
-// El token de la URL y el del header deben ser el mismo (patrón PSE.PE/NubeFact)
-const PSE_TOKEN = '0c15ce82e168a8763e4644c2'
-const PSE_URL   = `https://api.pse.pe/api/reseller/v1/${PSE_TOKEN}`
+// Token real extraído del JWT (payload decodificado en base64):
+// eyJhbGciOiJIUzI1NiJ9.IjEzM2ZmNmNiNTQ4YzhkNzgyODk5NzVmNzhiZjRmNmFmOGY4ZWExMGEwZTM4MzViNyI.xxx
+// → base64("IjEzM2ZmNmNiNTQ4YzhkNzgyODk5NzVmNzhiZjRmNmFmOGY4ZWExMGEwZTM4MzViNyI") = "133ff6cb548c8d782899975f78bf4f6af8f8ea10a0e38353b7"
+const PSE_TOKEN = '133ff6cb548c8d782899975f78bf4f6af8f8ea10a0e38353b7'
+const PSE_URL   = 'https://api.pse.pe/api/reseller/v1/0c15ce82e168a8763e4644c2'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)

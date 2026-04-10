@@ -873,6 +873,27 @@
 
       <!-- ==========  VISTA: CONTABILIDAD  ========== -->
       <div v-else-if="activeView === 'contabilidad'" class="view-container">
+
+        <!-- PSE Tabs -->
+        <v-tabs
+          v-model="facturacionTab"
+          bg-color="transparent"
+          color="primary"
+          density="compact"
+          class="mb-4"
+          style="border-bottom: 1px solid var(--border);"
+        >
+          <v-tab value="resumen">Resumen</v-tab>
+          <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
+        </v-tabs>
+
+        <!-- PSE.PE: Factura Electrónica -->
+        <div v-show="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
+          <FacturacionPSE company-id="clinicaarroyo" />
+        </div>
+
+        <!-- Resumen original -->
+        <div v-show="facturacionTab === 'resumen'">
         <header class="top-header">
           <h1>Facturación</h1>
           <button class="btn-primary">
@@ -927,6 +948,8 @@
             </div>
           </div>
         </div>
+
+        </div><!-- fin tab resumen -->
       </div>
 
       <!-- ==========  VISTA: PROCEDIMIENTOS  ========== -->
@@ -2170,6 +2193,7 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
+const facturacionTab = ref('resumen')
 
 const showUserMenu = ref(false)
 const showDashboardMenu = ref(false)

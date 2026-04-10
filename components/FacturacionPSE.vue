@@ -6,12 +6,18 @@
       <h1>Facturación Electrónica</h1>
       <div style="display:flex; gap:10px; align-items:center;">
         <v-chip
-          :color="esDemo ? 'warning' : 'success'"
+          v-if="empresaActiva"
+          color="success"
           size="small"
-          :prepend-icon="esDemo ? 'mdi-flask-outline' : 'mdi-check-circle'">
-          {{ esDemo
-              ? 'PSE.PE — modo DEMO (no llega a SUNAT real)'
-              : 'Conectado a SUNAT vía PSE.PE' }}
+          prepend-icon="mdi-check-circle">
+          Conectado a SUNAT vía PSE.PE
+        </v-chip>
+        <v-chip
+          v-else
+          color="warning"
+          size="small"
+          prepend-icon="mdi-clock-outline">
+          Activo próximamente
         </v-chip>
         <button class="btn-primary" @click="abrirNuevo">
           <v-icon icon="mdi-plus" size="16" />
@@ -19,6 +25,36 @@
         </button>
       </div>
     </header>
+
+    <!-- ════════════════════════════════════════════
+         DIALOG: "ACTIVO PRÓXIMAMENTE"
+         (empresas que aún no están dadas de alta en PSE.PE)
+    ════════════════════════════════════════════ -->
+    <v-dialog v-model="dialogProximamente" max-width="460px">
+      <v-card>
+        <v-card-title class="pa-4" style="border-bottom:1px solid rgba(0,0,0,.1);">
+          <v-icon icon="mdi-clock-outline" color="warning" class="me-2" />
+          Activo próximamente
+        </v-card-title>
+        <v-card-text class="pa-5">
+          <p style="margin:0 0 12px;">
+            La facturación electrónica para esta empresa aún no está disponible.
+          </p>
+          <p style="margin:0; color:#6b7280; font-size:0.92rem;">
+            Estamos terminando de registrar la cuenta en
+            <strong>PSE.PE / SUNAT</strong>. Apenas la activemos, podrás emitir
+            facturas, boletas y notas desde este mismo botón sin tener que
+            cambiar nada.
+          </p>
+        </v-card-text>
+        <v-card-actions class="pa-4" style="border-top:1px solid rgba(0,0,0,.1);">
+          <v-spacer />
+          <v-btn color="primary" variant="elevated" @click="dialogProximamente = false">
+            Entendido
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <div class="content-area">
       <!-- ── LISTA DE COMPROBANTES EMITIDOS ── -->
@@ -188,7 +224,7 @@
           <div style="display:flex; align-items:center; gap:10px;">
             <v-icon icon="mdi-file-document-edit" color="primary" />
             <span>Nuevo Comprobante Electrónico</span>
-            <v-chip v-if="esDemo" size="x-small" color="warning" variant="tonal">DEMO</v-chip>
+            <v-chip size="x-small" color="success" variant="tonal">PRODUCCIÓN</v-chip>
           </div>
           <v-btn icon="mdi-close" variant="text" @click="showDialog = false" />
         </v-card-title>
@@ -222,7 +258,7 @@
                   density="compact"
                   maxlength="4"
                   :rules="[v => !!v || 'Requerido', v => (v && v.length === 4) || '4 caracteres']"
-                  :hint="esDemo ? 'Demo: FPP1 / BPP1' : 'F001 / B001'"
+                  hint="F001 (factura) · B001 (boleta) · FC01 / FD01 (notas)"
                   persistent-hint />
               </v-col>
               <v-col cols="12" sm="2">
@@ -1345,6 +1381,7 @@ const tiposGuia = [
    ESTADO
    ═════════════════════════════════════════════════════════════ */
 const showDialog          = ref(false)
+const dialogProximamente  = ref(false)
 const enviando            = ref(false)
 const formRef             = ref<any>(null)
 const respuestaSunat      = ref<any>(null)
@@ -1419,7 +1456,7 @@ const SUNAT_DIR    = 'AV. GARCILASO DE LA VEGA 1472 LIMA'
 const formInicial = () => ({
   // ── General ──
   tipo_de_comprobante:   1,
-  serie:                 'FPP1',
+  serie:                 'F001',
   numero:                1,
   sunat_transaction:     1,
   fecha_de_emision:      hoy(),
@@ -1497,10 +1534,30 @@ const form = ref(formInicial())
 /* ═════════════════════════════════════════════════════════════
    COMPUTEDS
    ═════════════════════════════════════════════════════════════ */
-const esDemo = computed(() => {
-  const k = props.companyId.toLowerCase().replace(/\s/g, '')
-  return k === 'estasconsuerte'
-})
+
+/**
+ * Empresas que ya están dadas de alta en PSE.PE y pueden emitir
+ * comprobantes electrónicos reales contra SUNAT. El resto verá el
+ * mensaje "Activo próximamente" cuando intenten abrir el formulario.
+ *
+ * Para activar una nueva empresa:
+ *   1. Darla de alta en el panel de PSE.PE (reseller)
+ *   2. Añadir su URL/token al objeto EMPRESAS de
+ *      server/api/pse/factura.post.ts
+ *   3. Añadir su company_id (lower-case, sin espacios) a esta lista
+ */
+const COMPANIES_ACTIVE = ['estasconsuerte', 'healup'] as const
+
+const companyKey = computed(() =>
+  (props.companyId || '').toLowerCase().replace(/\s/g, '')
+)
+
+const empresaActiva = computed(() => COMPANIES_ACTIVE.includes(companyKey.value as any))
+
+// Demo flag — en este momento NINGUNA empresa está en demo (todas las
+// empresas activas pasaron a producción real). Se mantiene la variable
+// por compatibilidad con el resto del template (chips, hints de serie, etc.).
+const esDemo = computed(() => false)
 
 const esNota = computed(() =>
   form.value.tipo_de_comprobante === 3 || form.value.tipo_de_comprobante === 4
@@ -1598,12 +1655,16 @@ const totales = computed(() => {
    ACCIONES: TIPO DE COMPROBANTE / ITEMS / CUOTAS / GUÍAS
    ═════════════════════════════════════════════════════════════ */
 const onTipoCambia = (v: number) => {
-  // Series por defecto (demo vs prod)
-  if (esDemo.value) {
-    form.value.serie = v === 1 ? 'FPP1' : v === 2 ? 'BPP1' : v === 3 ? 'FPP1' : 'FPP1'
-  } else {
-    form.value.serie = v === 1 ? 'F001' : v === 2 ? 'B001' : v === 3 ? 'F001' : 'F001'
-  }
+  // Series por defecto en producción.
+  // 1 = Factura → F001
+  // 2 = Boleta  → B001
+  // 3 = Nota de Crédito → la serie debe coincidir con la del documento
+  //     que se modifica (Factura: FC01, Boleta: BC01)
+  // 4 = Nota de Débito → FD01 / BD01 según el caso
+  if (v === 1)      form.value.serie = 'F001'
+  else if (v === 2) form.value.serie = 'B001'
+  else if (v === 3) form.value.serie = 'FC01'
+  else if (v === 4) form.value.serie = 'FD01'
 
   if (v === 1) {
     // Factura → cliente con RUC (SUNAT por defecto)
@@ -1635,6 +1696,11 @@ const agregarGuia  = () => form.value.guias.push({ guia_tipo: 1, guia_serie_nume
 const eliminarGuia = (idx: number) => form.value.guias.splice(idx, 1)
 
 const abrirNuevo = () => {
+  // Empresas que aún no están dadas de alta en PSE.PE → mostrar aviso
+  if (!empresaActiva.value) {
+    dialogProximamente.value = true
+    return
+  }
   form.value           = formInicial()
   respuestaSunat.value = null
   showDialog.value     = true

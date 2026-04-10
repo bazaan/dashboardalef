@@ -38,9 +38,16 @@ const EMPRESAS: Record<string, EmpresaConfig> = {
     razon_social: 'ESTAS CON SUERTE S.A.C.',
     url:   'https://api.pse.pe/api/v1/42d38c65df7d465e98b2689e9d70883e7b7f00971afc4cd3b0338368950d1faf',
     token: 'eyJhbGciOiJIUzI1NiJ9.ImRkYTg3MDYwNjljZTRiYjViMGU0YWJkOTJlMzlmYWYyYmUxZjJmMTE4MTY2NGU2NTg0MmQ0NTk3MTJjZmIyYTYi.sF5Tv1kK2XWS63c1pXNTvor5zqyyroPTnxRRCUxeqq4',
-    demo: true
+    demo: false
+  },
+  healup: {
+    ruc: '20615088111',
+    razon_social: 'HEAL UP LAB S.A.C.',
+    url:   'https://api.pse.pe/api/v1/b3a349e648c543088a5e807bd36c4337b261a1b468974863ba49762bd2dd3600',
+    token: 'eyJhbGciOiJIUzI1NiJ9.ImRkMThkNTFiOGExZjQ4NmI5MmRjMmU5MTU2MjRiMGRhZDI2MDkyYTM2YTQ0NDUzMGI4N2JhM2UwNTczNzAzZjki.ZZaYzBkK7ezOHq1hnupbqbrEAonHKpoIGkj9qi5w1pA',
+    demo: false
   }
-  // HEALUP todavía no está registrada en PSE.PE.
+  // El resto de empresas todavía no están registradas en PSE.PE.
 }
 
 /**

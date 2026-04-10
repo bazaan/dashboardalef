@@ -35,8 +35,10 @@ export default defineEventHandler(async (event) => {
   }
 
   // Construir payload final con datos de la empresa emisora
+  // ruc_emisor es obligatorio en el endpoint reseller para identificar qué empresa firma
   const facturaPayload = {
     operacion: 'generar_comprobante',
+    ruc_emisor: empresa.ruc,
     ...payload,
     enviar_automaticamente_a_la_sunat: true,
     enviar_automaticamente_al_cliente: false,

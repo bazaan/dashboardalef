@@ -512,9 +512,24 @@ const totales = computed(() => {
 })
 
 /* ─────────── ACCIONES ─────────── */
+const SUNAT_RUC   = '20131312955'
+const SUNAT_NOMBRE = 'SUNAT - SUPERINTENDENCIA NACIONAL DE ADUANAS Y DE ADMINISTRACIÓN TRIBUTARIA'
+
 const onTipoCambia = (v: number) => {
-  form.value.serie  = v === 1 ? 'F001' : v === 2 ? 'B001' : v === 3 ? 'FC01' : 'FD01'
-  form.value.cliente_tipo_de_documento = v === 1 ? 6 : 1
+  // Serie según tipo
+  form.value.serie = v === 1 ? 'F001' : v === 2 ? 'B001' : v === 3 ? 'FC01' : 'FD01'
+
+  if (v === 1) {
+    // Factura → cliente con RUC, restaurar SUNAT por defecto
+    form.value.cliente_tipo_de_documento   = 6
+    form.value.cliente_numero_de_documento = SUNAT_RUC
+    form.value.cliente_denominacion        = SUNAT_NOMBRE
+  } else {
+    // Boleta / Nota → sin documento, limpiar datos de cliente
+    form.value.cliente_tipo_de_documento   = 0
+    form.value.cliente_numero_de_documento = ''
+    form.value.cliente_denominacion        = 'CONSUMIDOR FINAL'
+  }
 }
 
 const agregarItem  = () => form.value.items.push(itemVacio())

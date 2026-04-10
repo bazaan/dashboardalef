@@ -30,7 +30,7 @@
  * mensaje explícito en lugar de fingir éxito.
  */
 
-import { serverSupabaseServiceRole } from '#supabase/server'
+import { serverSupabaseServiceRole, serverSupabaseClient } from '#supabase/server'
 
 interface EnviarCorreoBody {
   comprobante_id?: string
@@ -175,7 +175,12 @@ Gracias por su compra.`
     // ── Actualizar histórico en Supabase si tenemos el id ──
     if (body.comprobante_id) {
       try {
-        const supabase = serverSupabaseServiceRole(event)
+        let supabase: any
+        try {
+          supabase = serverSupabaseServiceRole(event)
+        } catch {
+          supabase = await serverSupabaseClient(event)
+        }
         const { data: existing } = await supabase
           .from('comprobantes_pse')
           .select('correo_enviado_a')

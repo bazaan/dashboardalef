@@ -25,12 +25,44 @@
       <div class="table-section">
         <v-card flat class="custom-data-table">
           <v-card-title class="table-search-bar">
-            <span class="table-title">Comprobantes Emitidos</span>
+            <span class="table-title">
+              Comprobantes Emitidos
+              <v-chip v-if="comprobantes.length > 0" size="x-small" color="primary" class="ms-2">
+                {{ comprobantes.length }}
+              </v-chip>
+            </span>
             <v-spacer />
+            <v-btn
+              icon
+              size="small"
+              variant="text"
+              :loading="loadingComprobantes"
+              @click="cargarComprobantes">
+              <v-icon icon="mdi-refresh" size="20" />
+              <v-tooltip activator="parent">Recargar historial</v-tooltip>
+            </v-btn>
             <v-text-field v-model="searchComprobantes" append-inner-icon="mdi-magnify"
               label="Buscar" single-line hide-details density="compact"
               variant="outlined" class="search-field" style="max-width:280px" />
           </v-card-title>
+
+          <!-- Alerta de error de carga -->
+          <v-alert
+            v-if="errorCargaHistorial"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="ma-2"
+            closable
+            @click:close="errorCargaHistorial = ''">
+            <div class="font-weight-bold">No se pudo cargar el historial desde Supabase</div>
+            <div style="font-size:0.85rem;">{{ errorCargaHistorial }}</div>
+            <div style="font-size:0.78rem; opacity:.8; margin-top:4px;">
+              Los comprobantes nuevos siguen emitiéndose correctamente. Verifica
+              <code>SUPABASE_SERVICE_KEY</code> y que la tabla <code>comprobantes_pse</code>
+              exista en tu proyecto Supabase.
+            </div>
+          </v-alert>
 
           <v-data-table
             :headers="headersComprobantes"
@@ -1345,6 +1377,9 @@ interface ErrorLog {
 }
 const erroresHistorial = ref<ErrorLog[]>([])
 
+// Error de carga del historial
+const errorCargaHistorial = ref<string>('')
+
 const headersComprobantes = [
   { title: 'Tipo',     key: 'tipo',     sortable: true },
   { title: 'Serie',    key: 'serie',    sortable: true },
@@ -1944,11 +1979,23 @@ const enviarCorreoRapido = async () => {
    CARGAR HISTORIAL DESDE SUPABASE
    ═════════════════════════════════════════════════════════════ */
 const cargarComprobantes = async () => {
+  if (!props.companyId) {
+    console.warn('[PSE] cargarComprobantes: companyId vacío, abortando')
+    return
+  }
+
   loadingComprobantes.value = true
+  errorCargaHistorial.value = ''
+
   try {
+    console.log('[PSE] Cargando historial de comprobantes para:', props.companyId)
+
     const res = await $fetch<any>('/api/pse/comprobantes', {
       params: { company_id: props.companyId, limit: 200 }
     })
+
+    console.log('[PSE] Respuesta del servidor:', res)
+
     if (res?.ok && Array.isArray(res.items)) {
       comprobantes.value = res.items.map((r: any) => ({
         id:         r.id,
@@ -1957,28 +2004,35 @@ const cargarComprobantes = async () => {
         numero:     r.numero,
         cliente:    r.cliente_denominacion,
         fecha:      r.fecha_de_emision,
-        total:      r.total,
-        sunat_ok:   r.aceptada_por_sunat,
+        total:      Number(r.total) || 0,
+        sunat_ok:   !!r.aceptada_por_sunat,
         enlace:     r.enlace,
         enlace_pdf: r.enlace_del_pdf,
         enlace_xml: r.enlace_del_xml,
         enlace_cdr: r.enlace_del_cdr
       }))
+      console.log('[PSE] Historial cargado:', comprobantes.value.length, 'comprobantes')
+    } else {
+      console.warn('[PSE] Respuesta inesperada del endpoint:', res)
+      errorCargaHistorial.value = 'Respuesta inesperada del servidor'
     }
   } catch (err: any) {
-    console.error('[PSE] error cargando comprobantes:', err?.message)
+    const msg = err?.data?.statusMessage || err?.statusMessage || err?.message || 'Error desconocido'
+    console.error('[PSE] error cargando comprobantes:', msg, err)
+    errorCargaHistorial.value = msg
   } finally {
     loadingComprobantes.value = false
   }
 }
 
-onMounted(() => {
-  cargarComprobantes()
-})
-
-watch(() => props.companyId, () => {
-  cargarComprobantes()
-})
+// Un solo watcher con immediate:true → cubre mount inicial Y cambios posteriores
+watch(
+  () => props.companyId,
+  (val) => {
+    if (val) cargarComprobantes()
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

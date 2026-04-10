@@ -22,7 +22,7 @@
  *     completa para auditoría.
  */
 
-import { serverSupabaseServiceRole } from '#supabase/server'
+import { serverSupabaseServiceRole, serverSupabaseClient } from '#supabase/server'
 
 interface EmpresaConfig {
   ruc: string
@@ -172,7 +172,15 @@ export default defineEventHandler(async (event) => {
     // en NubeFact/SUNAT y el usuario debe poder verlo.
     // ──────────────────────────────────────────────────────────────────
     try {
-      const supabase = serverSupabaseServiceRole(event)
+      // Preferimos service_role (bypass RLS); si no está configurado, caemos al anon client
+      let supabase: any
+      try {
+        supabase = serverSupabaseServiceRole(event)
+      } catch (e: any) {
+        console.warn('[PSE][Supabase] service_role no disponible, usando anon:', e?.message)
+        supabase = await serverSupabaseClient(event)
+      }
+
       const userEmail = getCookie(event, 'dashboard_session')
         ? (() => {
             try {

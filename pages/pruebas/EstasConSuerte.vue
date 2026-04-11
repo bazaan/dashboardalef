@@ -5,14 +5,14 @@
       <div class="sidebar-header">
         <div class="logo" style="gap: 0.5rem;">
           <div style="width: 35px; height: 35px; border-radius: 50%; overflow: hidden; flex-shrink: 0;">
-            <v-img src="@/assets/img/Logo_Origitec_Trans.png" alt="Origitec Logo" style="width: 100%; height: 100%;" />
+            <v-img src="@/assets/img/ecsLOGO.png" alt="Estás con Suerte Logo" style="width: 100%; height: 100%;" />
           </div>
 
           <template v-if="isSuperAdmin(currentUser)">
             <v-menu v-model="showDashboardMenu">
               <template v-slot:activator="{ props }">
                 <div v-bind="props" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <span class="logo-text">Origitec</span>
+                  <span class="logo-text">Estás con Suerte</span>
                   <v-icon icon="mdi-menu-down" size="small" />
                 </div>
               </template>
@@ -24,7 +24,7 @@
               </v-list>
             </v-menu>
           </template>
-          <span v-else class="logo-text">Origitec</span>
+          <span v-else class="logo-text">Estás con Suerte</span>
         </div>
       </div>
 
@@ -273,7 +273,7 @@
       </div>
 
       <!-- ==========  VISTA: SETTINGS  ========== -->
-      <SettingsView v-else-if="activeView === 'settings'" company-id="Origitec"
+      <SettingsView v-else-if="activeView === 'settings'" company-id="EstasConSuerte"
         :current-user-role="currentUser?.role" />
 
       <!-- ==========  VISTA: CALENDARIO  ========== -->
@@ -802,7 +802,7 @@
 
         <!-- PSE.PE: Factura Electrónica -->
         <div v-show="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
-          <FacturacionPSE company-id="origitec" />
+          <FacturacionPSE company-id="estasconsuerte" />
         </div>
 
         <!-- Resumen original -->
@@ -1003,12 +1003,12 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: STOCK  ========== -->
+      <!-- ==========  VISTA: SUBSCRIPCIÓN  ========== -->
       <div v-else-if="activeView === 'stock'" class="view-container">
         <header class="top-header">
-          <h1>Stock de Productos</h1>
+          <h1>Subscripción</h1>
           <div class="header-actions">
-            <button class="btn-warning ml-2" @click="fetchStock">
+            <button class="btn-warning ml-2" @click="fetchPlanesSubscripcion">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Actualizar</span>
             </button>
@@ -1019,15 +1019,36 @@
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Inventario</span>
+                <span class="table-title">Planes de Subscripción</span>
                 <v-spacer></v-spacer>
-                <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
-                  hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
+                <v-text-field v-model="planesSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
+                  hide-details density="compact" variant="outlined" class="search-field" />
               </v-card-title>
-              <v-data-table :headers="headersStock" :items="stockItems" :search="stockSearch" :loading="loadingStock"
-                class="elevation-0" no-data-text="No hay datos de stock">
+              <v-data-table
+                :headers="headersPlanes"
+                :items="planesSubscripcion"
+                :search="planesSearch"
+                :loading="loadingPlanes"
+                class="elevation-0"
+                no-data-text="No hay planes registrados">
                 <template v-slot:item.precio="{ item }">
-                  S/ {{ item.precio }}
+                  <span style="text-decoration:line-through; color:#888; font-size:0.8rem; margin-right:4px;">S/ {{ item.precio_original }}</span>
+                  <strong>S/ {{ item.precio }}</strong>
+                </template>
+                <template v-slot:item.descuento_pct="{ item }">
+                  <v-chip size="x-small" color="success" variant="tonal">{{ item.descuento_pct }}%</v-chip>
+                </template>
+                <template v-slot:item.tickets_mes="{ item }">
+                  <v-chip size="x-small" color="primary" variant="tonal">{{ item.tickets_mes }} ticket{{ item.tickets_mes > 1 ? 's' : '' }}</v-chip>
+                </template>
+                <template v-slot:item.es_popular="{ item }">
+                  <v-chip v-if="item.es_popular" size="x-small" color="warning" variant="tonal">POPULAR</v-chip>
+                  <span v-else>—</span>
+                </template>
+                <template v-slot:item.activo="{ item }">
+                  <v-chip size="x-small" :color="item.activo ? 'success' : 'error'" variant="tonal">
+                    {{ item.activo ? 'Activo' : 'Inactivo' }}
+                  </v-chip>
                 </template>
               </v-data-table>
             </v-card>
@@ -1499,7 +1520,7 @@ import { useActivityLogger } from '@/composables/useActivityLogger'
 
 const { logActivity } = useActivityLogger()
 import type { ApexOptions } from 'apexcharts'
-import { isSuperAdmin, canAccessOrigitec, dashboards } from '@/utils/permissions'
+import { isSuperAdmin, canAccessEstasConSuerte, dashboards } from '@/utils/permissions'
 
 import SettingsView from '@/components/Settings/SettingsView.vue'
 
@@ -1514,7 +1535,7 @@ definePageMeta({
 onMounted(() => {
   // Access Control
   // Access Control
-  if (!canAccessOrigitec(currentUser.value)) {
+  if (!canAccessEstasConSuerte(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }
@@ -1530,6 +1551,7 @@ onMounted(() => {
   fetchEvents()
   fetchProcedures()
   fetchMedicalHistory()
+  fetchPlanesSubscripcion()
 
   // DIAGNOSTICO
   runDiagnostics()
@@ -1680,7 +1702,7 @@ watch(tipoVentaSeleccionada, () => {
   fetchCompras()
 })
 
-/* Headers de la tabla - ajusta según tu tabla 'contribuyentes' */
+/* Headers de la tabla - ajusta según tu tabla 'ECS_contribuyentes' */
 const headers = ref([
   { title: 'ID', key: 'id', sortable: true },
   { title: 'Nombre', key: 'nombre', sortable: true },
@@ -1713,7 +1735,7 @@ const fetchContribuyentes = async () => {
   loading.value = true
   try {
     const { data, error } = await client
-      .from('contribuyentes')
+      .from('ECS_contribuyentes')
       .select('*')
 
     if (error) throw error
@@ -1731,7 +1753,7 @@ const fetchStock = async () => {
   loadingStock.value = true
   try {
     const { data, error } = await client
-      .from('bsale_origitec_stock')
+      .from('ECS_stock')
       .select('nombre_producto, cantidad_disponible, sucursal_id, precio')
       .eq('sucursal_id', '1')
 
@@ -1748,11 +1770,11 @@ const fetchStock = async () => {
 const fetchCompras = async () => {
   loading.value = true
 
-  let tableName = 'pago_completo_motorizado'
+  let tableName = 'ECS_pago_completo_motorizado'
   if (tipoVentaSeleccionada.value === 'Ventas Courier') {
-    tableName = 'pago_completo_courier'
+    tableName = 'ECS_pago_completo_courier'
   } else if (tipoVentaSeleccionada.value === 'Ventas Recojo en tienda') {
-    tableName = 'pago_completo_recojo_tienda'
+    tableName = 'ECS_pago_completo_recojo_tienda'
   }
 
   try {
@@ -1775,7 +1797,7 @@ const fetchReservas = async () => {
   loadingReservas.value = true
   try {
     const { data, error } = await client
-      .from('reserva_recojo_tienda')
+      .from('ECS_reserva_recojo_tienda')
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -1813,10 +1835,10 @@ const fetchGlobalAccounting = async () => {
   loadingGlobalAccounting.value = true
   try {
     const [resMot, resCou, resTie, resRes] = await Promise.all([
-      client.from('pago_completo_motorizado').select('precio, cantidad'),
-      client.from('pago_completo_courier').select('precio, cantidad'),
-      client.from('pago_completo_recojo_tienda').select('precio, cantidad'),
-      client.from('reserva_recojo_tienda').select('precio, cantidad')
+      client.from('ECS_pago_completo_motorizado').select('precio, cantidad'),
+      client.from('ECS_pago_completo_courier').select('precio, cantidad'),
+      client.from('ECS_pago_completo_recojo_tienda').select('precio, cantidad'),
+      client.from('ECS_reserva_recojo_tienda').select('precio, cantidad')
     ])
 
     globalMotorizado.value = resMot.data || []
@@ -1932,7 +1954,7 @@ const deleteItem = async (item: any) => {
 
   try {
     const { error } = await client
-      .from('contribuyentes')
+      .from('ECS_contribuyentes')
       .delete()
       .eq('id', item.id)
 
@@ -1961,6 +1983,38 @@ const headersStock = ref([
   { title: 'Disponibilidad', key: 'cantidad_disponible', sortable: true },
   { title: 'Precio de venta', key: 'precio', sortable: true },
 ])
+
+/* ---------------- Subscripción Logic ---------------- */
+const planesSearch = ref('')
+const loadingPlanes = ref(false)
+const planesSubscripcion = ref<any[]>([])
+
+const headersPlanes = [
+  { title: 'Plan', key: 'nombre', sortable: true },
+  { title: 'Subtítulo', key: 'subtitulo', sortable: false },
+  { title: 'Precio', key: 'precio', sortable: true },
+  { title: 'Descuento', key: 'descuento_pct', sortable: true },
+  { title: 'Período', key: 'periodo', sortable: true },
+  { title: 'Tickets', key: 'tickets_mes', sortable: true },
+  { title: 'Popular', key: 'es_popular', sortable: false },
+  { title: 'Estado', key: 'activo', sortable: false },
+]
+
+const fetchPlanesSubscripcion = async () => {
+  loadingPlanes.value = true
+  try {
+    const { data, error } = await client
+      .from('ecs_planes_subcripcion')
+      .select('*')
+      .order('id', { ascending: true })
+    if (error) throw error
+    planesSubscripcion.value = data || []
+  } catch (e) {
+    console.error('Error cargando planes:', e)
+  } finally {
+    loadingPlanes.value = false
+  }
+}
 
 /* ---------------- LEADS LOGIC ---------------- */
 // ... (Leads Logic remains unchanged, skipping context lines for brevity if possible, but I must replace contiguous block.
@@ -2033,7 +2087,7 @@ const fetchLeads = async () => {
   try {
     // 1. Fetch Whatsapp Leads
     const { data: dataWpp, error: errorWpp } = await client
-      .from('GeneralBDwppOrigitec')
+      .from('ECS_GeneralBDwpp')
       .select('*')
       .order('id', { ascending: false })
 
@@ -2042,7 +2096,7 @@ const fetchLeads = async () => {
 
     // 2. Fetch Instagram Leads
     const { data: dataIg, error: errorIg } = await client
-      .from('GeneralBDfbigOrigitec')
+      .from('ECS_GeneralBDfbig')
       .select('*')
       .order('id', { ascending: false })
 
@@ -2426,19 +2480,19 @@ async function saveStock() {
   const payload: any = {};
 
   if (type === 'celulares') {
-    tableName = 'Stock_celulares';
+    tableName = 'ECS_Stock_celulares';
     payload.nombre = stockFormData.value.nombre;
     payload.stock = Number(stockFormData.value.stock || 0);
     payload.precio = cleanPrice(stockFormData.value.precio);
 
   } else if (type === 'laptops') {
-    tableName = 'Stock_laptops_tablets';
+    tableName = 'ECS_Stock_laptops_tablets';
     payload.nombre = stockFormData.value.nombre;
     payload.stock = Number(stockFormData.value.stock || 0);
     payload.precio = cleanPrice(stockFormData.value.precio);
 
   } else if (type === 'accesorios') {
-    tableName = 'Stock_accesorios';
+    tableName = 'ECS_Stock_accesorios';
     payload.nombre = stockFormData.value.nombre;
     payload.stock = Number(stockFormData.value.stock || 0);
     payload.precio = cleanPrice(stockFormData.value.precio);
@@ -2482,9 +2536,9 @@ async function deleteStock(type: 'celulares' | 'laptops' | 'accesorios', id: str
   if (!confirm('¿Estás seguro de que deseas eliminar este ítem? Esta acción no se puede deshacer.')) return;
 
   let tableName = '';
-  if (type === 'celulares') tableName = 'Stock_celulares';
-  else if (type === 'laptops') tableName = 'Stock_laptops_tablets';
-  else if (type === 'accesorios') tableName = 'Stock_accesorios';
+  if (type === 'celulares') tableName = 'ECS_Stock_celulares';
+  else if (type === 'laptops') tableName = 'ECS_Stock_laptops_tablets';
+  else if (type === 'accesorios') tableName = 'ECS_Stock_accesorios';
 
   try {
     console.log(`Eliminando de ${tableName} el ID: ${id}`);
@@ -2653,8 +2707,8 @@ const chatsItems = [
 const documentItems: Array<{ icon: string; label: string; id: string; children?: any[] }> = [
   // { icon: 'mdi-arrow-right-bold-circle', label: 'Procedimientos', id: 'procedimientos' },
   {
-    icon: 'mdi-folder',
-    label: 'Stock',
+    icon: 'mdi-ticket-percent',
+    label: 'Subscripción',
     id: 'stock'
   },
   { icon: 'mdi-robot-mower', label: 'Meta', id: 'meta' }
@@ -3141,7 +3195,7 @@ async function saveEvent() {
     if (editingEvent.value) {
       // Update
       const { error } = await (client
-        .from('ORIGITEC_calendar_events') as any)
+        .from('ECS_calendar_events') as any)
         .update(payload)
         .eq('id', editingEvent.value.id)
 
@@ -3149,7 +3203,7 @@ async function saveEvent() {
     } else {
       // Create
       const { error } = await (client
-        .from('ORIGITEC_calendar_events') as any)
+        .from('ECS_calendar_events') as any)
         .insert(payload)
 
       if (error) throw error
@@ -3194,7 +3248,7 @@ function confirmDeleteEvent() {
 async function deleteEvent(eventId: string) {
   try {
     const { error } = await client
-      .from('ORIGITEC_calendar_events')
+      .from('ECS_calendar_events')
       .delete()
       .eq('id', eventId)
 
@@ -3220,7 +3274,7 @@ function openEventDetailFromDay(event: CalendarEvent) {
 async function fetchEvents() {
   try {
     const { data, error } = await client
-      .from('ORIGITEC_calendar_events')
+      .from('ECS_calendar_events')
       .select('*')
 
     if (error) throw error
@@ -3333,7 +3387,7 @@ async function saveProcedure() {
     if (editingProcedure.value) {
       // Update
       const { error } = await (client
-        .from('brada_procedures') as any)
+        .from('ECS_procedures') as any)
         .update(payload)
         .eq('id', editingProcedure.value.id)
 
@@ -3341,7 +3395,7 @@ async function saveProcedure() {
     } else {
       // Create
       const { error } = await (client
-        .from('brada_procedures') as any)
+        .from('ECS_procedures') as any)
         .insert(payload)
 
       if (error) throw error
@@ -3359,7 +3413,7 @@ async function deleteProcedure(id: string) {
   if (confirm('¿Estás seguro de que deseas eliminar este procedimiento?')) {
     try {
       const { error } = await client
-        .from('brada_procedures')
+        .from('ECS_procedures')
         .delete()
         .eq('id', id)
 
@@ -3375,7 +3429,7 @@ async function deleteProcedure(id: string) {
 async function fetchProcedures() {
   try {
     const { data, error } = await client
-      .from('brada_procedures')
+      .from('ECS_procedures')
       .select('*')
       .order('id', { ascending: false })
 
@@ -3512,7 +3566,7 @@ async function saveMedicalHistory() {
     if (editingMedicalHistory.value) {
       // Update
       const { error } = await (client
-        .from('brada_client_history') as any)
+        .from('ECS_client_history') as any)
         .update(payload)
         .eq('id', editingMedicalHistory.value.id)
 
@@ -3520,7 +3574,7 @@ async function saveMedicalHistory() {
     } else {
       // Create
       const { error } = await (client
-        .from('brada_client_history') as any)
+        .from('ECS_client_history') as any)
         .insert({
           ...payload,
           date_added: new Date().toLocaleDateString()
@@ -3541,7 +3595,7 @@ async function deleteMedicalHistory(id: string) {
   if (confirm('¿Eliminar este historial?')) {
     try {
       const { error } = await client
-        .from('brada_client_history')
+        .from('ECS_client_history')
         .delete()
         .eq('id', id)
 
@@ -3557,7 +3611,7 @@ async function deleteMedicalHistory(id: string) {
 async function fetchMedicalHistory() {
   try {
     const { data, error } = await client
-      .from('brada_client_history')
+      .from('ECS_client_history')
       .select('*')
       .order('id', { ascending: false })
 
@@ -3591,7 +3645,7 @@ const egresoFormData = ref({
   nombre: '',
   precio: 0,
   cantidad: 1,
-  company_id: 'origitec'
+  company_id: 'estasconsuerte'
 })
 const egresosHeaders = [
   { title: 'Fecha', key: 'created_at' },
@@ -3605,7 +3659,7 @@ const egresosHeaders = [
 
 const fetchEgresos = async () => {
   loadingEgresos.value = true
-  const { data, error } = await (client.from('egresos_origitec') as any).select('*').order('created_at', { ascending: false })
+  const { data, error } = await (client.from('ECS_egresos') as any).select('*').order('created_at', { ascending: false })
   if (!error && data) {
     egresosList.value = data
   }
@@ -3644,7 +3698,7 @@ const openEgresoDialog = (item?: any) => {
     egresoFormData.value = { ...item }
   } else {
     editingEgreso.value = false
-    egresoFormData.value = { id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1, company_id: 'origitec' }
+    egresoFormData.value = { id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1, company_id: 'estasconsuerte' }
   }
   showEgresoDialog.value = true
 }
@@ -3660,12 +3714,12 @@ const saveEgreso = async () => {
     nombre: egresoFormData.value.nombre,
     precio: egresoFormData.value.precio,
     cantidad: egresoFormData.value.cantidad,
-    company_id: 'origitec'
+    company_id: 'estasconsuerte'
   }
   if (editingEgreso.value && egresoFormData.value.id) {
-    await (client.from('egresos_origitec') as any).update(payload).eq('id', egresoFormData.value.id)
+    await (client.from('ECS_egresos') as any).update(payload).eq('id', egresoFormData.value.id)
   } else {
-    await (client.from('egresos_origitec') as any).insert(payload)
+    await (client.from('ECS_egresos') as any).insert(payload)
   }
   savingEgreso.value = false
   closeEgresoDialog()
@@ -3674,7 +3728,7 @@ const saveEgreso = async () => {
 
 const deleteEgreso = async (id: string) => {
   if (confirm('¿Seguro que deseas eliminar este egreso?')) {
-    await (client.from('egresos_origitec') as any).delete().eq('id', id)
+    await (client.from('ECS_egresos') as any).delete().eq('id', id)
     fetchEgresos()
   }
 }
@@ -3683,7 +3737,7 @@ onMounted(() => {
   // Access Control
   // const userEmail = currentUser.value.email?.toLowerCase()
 
-  if (!canAccessOrigitec(currentUser.value)) {
+  if (!canAccessEstasConSuerte(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }

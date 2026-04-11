@@ -1003,12 +1003,12 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: STOCK  ========== -->
+      <!-- ==========  VISTA: SUBSCRIPCIÓN  ========== -->
       <div v-else-if="activeView === 'stock'" class="view-container">
         <header class="top-header">
-          <h1>Stock de Productos</h1>
+          <h1>Subscripción</h1>
           <div class="header-actions">
-            <button class="btn-warning ml-2" @click="fetchStock">
+            <button class="btn-warning ml-2" @click="fetchPlanesSubscripcion">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Actualizar</span>
             </button>
@@ -1019,15 +1019,36 @@
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Inventario</span>
+                <span class="table-title">Planes de Subscripción</span>
                 <v-spacer></v-spacer>
-                <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
-                  hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
+                <v-text-field v-model="planesSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
+                  hide-details density="compact" variant="outlined" class="search-field" />
               </v-card-title>
-              <v-data-table :headers="headersStock" :items="stockItems" :search="stockSearch" :loading="loadingStock"
-                class="elevation-0" no-data-text="No hay datos de stock">
+              <v-data-table
+                :headers="headersPlanes"
+                :items="planesSubscripcion"
+                :search="planesSearch"
+                :loading="loadingPlanes"
+                class="elevation-0"
+                no-data-text="No hay planes registrados">
                 <template v-slot:item.precio="{ item }">
-                  S/ {{ item.precio }}
+                  <span style="text-decoration:line-through; color:#888; font-size:0.8rem; margin-right:4px;">S/ {{ item.precio_original }}</span>
+                  <strong>S/ {{ item.precio }}</strong>
+                </template>
+                <template v-slot:item.descuento_pct="{ item }">
+                  <v-chip size="x-small" color="success" variant="tonal">{{ item.descuento_pct }}%</v-chip>
+                </template>
+                <template v-slot:item.tickets_mes="{ item }">
+                  <v-chip size="x-small" color="primary" variant="tonal">{{ item.tickets_mes }} ticket{{ item.tickets_mes > 1 ? 's' : '' }}</v-chip>
+                </template>
+                <template v-slot:item.es_popular="{ item }">
+                  <v-chip v-if="item.es_popular" size="x-small" color="warning" variant="tonal">POPULAR</v-chip>
+                  <span v-else>—</span>
+                </template>
+                <template v-slot:item.activo="{ item }">
+                  <v-chip size="x-small" :color="item.activo ? 'success' : 'error'" variant="tonal">
+                    {{ item.activo ? 'Activo' : 'Inactivo' }}
+                  </v-chip>
                 </template>
               </v-data-table>
             </v-card>
@@ -1530,6 +1551,7 @@ onMounted(() => {
   fetchEvents()
   fetchProcedures()
   fetchMedicalHistory()
+  fetchPlanesSubscripcion()
 
   // DIAGNOSTICO
   runDiagnostics()
@@ -1961,6 +1983,38 @@ const headersStock = ref([
   { title: 'Disponibilidad', key: 'cantidad_disponible', sortable: true },
   { title: 'Precio de venta', key: 'precio', sortable: true },
 ])
+
+/* ---------------- Subscripción Logic ---------------- */
+const planesSearch = ref('')
+const loadingPlanes = ref(false)
+const planesSubscripcion = ref<any[]>([])
+
+const headersPlanes = [
+  { title: 'Plan', key: 'nombre', sortable: true },
+  { title: 'Subtítulo', key: 'subtitulo', sortable: false },
+  { title: 'Precio', key: 'precio', sortable: true },
+  { title: 'Descuento', key: 'descuento_pct', sortable: true },
+  { title: 'Período', key: 'periodo', sortable: true },
+  { title: 'Tickets', key: 'tickets_mes', sortable: true },
+  { title: 'Popular', key: 'es_popular', sortable: false },
+  { title: 'Estado', key: 'activo', sortable: false },
+]
+
+const fetchPlanesSubscripcion = async () => {
+  loadingPlanes.value = true
+  try {
+    const { data, error } = await client
+      .from('ecs_planes_subcripcion')
+      .select('*')
+      .order('id', { ascending: true })
+    if (error) throw error
+    planesSubscripcion.value = data || []
+  } catch (e) {
+    console.error('Error cargando planes:', e)
+  } finally {
+    loadingPlanes.value = false
+  }
+}
 
 /* ---------------- LEADS LOGIC ---------------- */
 // ... (Leads Logic remains unchanged, skipping context lines for brevity if possible, but I must replace contiguous block.
@@ -2653,8 +2707,8 @@ const chatsItems = [
 const documentItems: Array<{ icon: string; label: string; id: string; children?: any[] }> = [
   // { icon: 'mdi-arrow-right-bold-circle', label: 'Procedimientos', id: 'procedimientos' },
   {
-    icon: 'mdi-folder',
-    label: 'Stock',
+    icon: 'mdi-ticket-percent',
+    label: 'Subscripción',
     id: 'stock'
   },
   { icon: 'mdi-robot-mower', label: 'Meta', id: 'meta' }

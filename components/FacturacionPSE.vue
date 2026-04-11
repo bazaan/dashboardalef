@@ -473,9 +473,33 @@
                 <v-icon icon="mdi-package-variant" size="16" />
                 Productos / Servicios
               </span>
-              <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="agregarItem">
-                Agregar Línea
-              </v-btn>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <v-menu v-if="hasCatalog" v-model="showCatalogMenu" :close-on-content-click="false">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn v-bind="menuProps" size="small" color="primary" variant="tonal" prepend-icon="mdi-view-list"
+                      :loading="loadingCatalog" @click="!catalogItems.length && !loadingCatalog ? cargarCatalogo() : undefined">
+                      Catálogo
+                    </v-btn>
+                  </template>
+                  <v-list max-height="200" style="overflow-y:auto; min-width:280px;">
+                    <v-list-item v-if="!catalogItems.length && !loadingCatalog" disabled>
+                      <v-list-item-title style="opacity:0.5; font-size:0.8rem;">Sin items en catálogo</v-list-item-title>
+                    </v-list-item>
+                    <v-list-item
+                      v-for="prod in catalogItems"
+                      :key="prod.id"
+                      :title="prod.nombre"
+                      :subtitle="`S/ ${prod.precio.toFixed(2)}`"
+                      density="compact"
+                      style="cursor:pointer;"
+                      @click="agregarItemDesdeCatalogo(prod)"
+                    />
+                  </v-list>
+                </v-menu>
+                <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="agregarItem">
+                  Agregar Línea
+                </v-btn>
+              </div>
             </div>
 
             <div v-for="(item, idx) in form.items" :key="idx" class="item-row">
@@ -538,13 +562,10 @@
                     @update:model-value="calcularItem(idx)" />
                 </v-col>
                 <v-col cols="12" sm="1">
-                  <v-text-field
-                    :model-value="item.total.toFixed(2)"
-                    label="Total"
-                    variant="outlined"
-                    density="compact"
-                    readonly
-                    bg-color="grey-lighten-4" />
+                  <div class="item-total-display">
+                    <span class="item-total-label">Total</span>
+                    <span class="item-total-value">{{ item.total.toFixed(2) }}</span>
+                  </div>
                 </v-col>
                 <v-col cols="12" sm="1" class="text-center">
                   <v-btn icon size="small" variant="text" color="error" @click="eliminarItem(idx)" :disabled="form.items.length === 1">
@@ -2099,6 +2120,67 @@ watch(
   },
   { immediate: true }
 )
+
+/* ═════════════════════════════════════════════════════════════
+   CATÁLOGO DE PRODUCTOS / SERVICIOS POR EMPRESA
+   ═════════════════════════════════════════════════════════════ */
+const supabase = useSupabaseClient()
+
+interface CatalogConfig { table: string; nameField: string; priceField: string }
+const catalogConfig: Record<string, CatalogConfig> = {
+  healup:         { table: 'healup_procedures',          nameField: 'name',                priceField: 'price'           },
+  estasconsuerte: { table: 'ecs_planes_subcripcion',      nameField: 'nombre',              priceField: 'precio'          },
+  bradaperfumes:  { table: 'brada_perfumes',             nameField: 'perfume',             priceField: 'precio'          },
+  alefcompany:    { table: 'alef_procedures',            nameField: 'name',                priceField: 'price'           },
+  solari:         { table: 'solari_procedures',          nameField: 'name',                priceField: 'price'           },
+  clinicaarroyo:  { table: 'arroyo_procedures',          nameField: 'name',                priceField: 'price'           },
+  origitec:       { table: 'bsale_origitec_stock',       nameField: 'nombre_producto',     priceField: 'precio'          },
+  alegrated:      { table: 'productos_stock_alegrated',  nameField: 'nombre_del_producto', priceField: 'precio_nacional' },
+  skip:           { table: 'skip_servicios',             nameField: 'servicio',            priceField: 'precio'          },
+}
+
+interface CatalogItem { id: number | string; nombre: string; precio: number }
+const catalogItems    = ref<CatalogItem[]>([])
+const showCatalogMenu = ref(false)
+const loadingCatalog  = ref(false)
+
+const hasCatalog = computed(() => !!catalogConfig[companyKey.value])
+
+const cargarCatalogo = async () => {
+  const cfg = catalogConfig[companyKey.value]
+  if (!cfg) return
+  loadingCatalog.value = true
+  try {
+    const { data, error } = await (supabase.from(cfg.table) as any).select('*')
+    if (error) { console.warn('[PSE] catalog error:', error); return }
+    catalogItems.value = (data || []).map((r: any, idx: number) => ({
+      id:     r.id ?? r.uuid ?? idx,
+      nombre: String(r[cfg.nameField] || ''),
+      precio: Number(r[cfg.priceField]) || 0
+    })).filter((r: CatalogItem) => r.nombre)
+  } catch (e) {
+    console.warn('[PSE] catalog fetch failed:', e)
+  } finally {
+    loadingCatalog.value = false
+  }
+}
+
+const agregarItemDesdeCatalogo = (prod: CatalogItem) => {
+  const it = itemVacio()
+  it.codigo         = String(prod.id)
+  it.descripcion    = prod.nombre
+  it.cantidad       = 1
+  it.valor_unitario = prod.precio
+  it.tipo_de_igv    = 1
+  form.value.items.push(it)
+  calcularItem(form.value.items.length - 1)
+  showCatalogMenu.value = false
+}
+
+// Carga el catálogo cuando se abre el diálogo de nuevo comprobante
+watch(showDialog, (v) => { if (v && catalogItems.value.length === 0 && !loadingCatalog.value) cargarCatalogo() })
+// Recarga si cambia el companyId
+watch(companyKey, () => { catalogItems.value = []; if (showDialog.value) cargarCatalogo() })
 </script>
 
 <style scoped>
@@ -2127,28 +2209,70 @@ watch(
 }
 
 .totales-box {
-  background: rgba(99,102,241,.05);
-  border: 1px solid rgba(99,102,241,.2);
-  border-radius: 10px;
-  padding: 14px 18px;
-  max-width: 360px;
+  background: rgba(99,102,241,.1);
+  border: 1px solid rgba(99,102,241,.35);
+  border-radius: 12px;
+  padding: 0;
+  max-width: 380px;
   margin-left: auto;
+  overflow: hidden;
 }
 
 .total-row {
   display: flex;
   justify-content: space-between;
-  padding: 4px 0;
-  font-size: 0.9rem;
+  align-items: center;
+  padding: 8px 18px;
+  font-size: 0.88rem;
+  color: rgba(255,255,255,0.82);
+  border-bottom: 1px solid rgba(99,102,241,.15);
+}
+
+.total-row:last-child {
+  border-bottom: none;
 }
 
 .total-final {
-  font-size: 1.1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  font-size: 1.15rem;
   font-weight: 700;
-  border-top: 1px solid rgba(99,102,241,.3);
-  margin-top: 6px;
-  padding-top: 8px;
-  color: #6366f1;
+  color: #fff;
+  background: rgba(99,102,241,.55);
+  border-top: 2px solid rgba(99,102,241,.6);
+  letter-spacing: 0.03em;
+}
+
+.item-total-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  height: 40px;
+  background: rgba(99,102,241,.15);
+  border: 1px solid rgba(99,102,241,.35);
+  border-radius: 8px;
+  text-align: center;
+  width: 100%;
+}
+
+.item-total-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,.5);
+  line-height: 1;
+}
+
+.item-total-value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  line-height: 1.3;
 }
 
 /* ═══════ RESPUESTA SUNAT — ÉXITO ═══════ */

@@ -602,31 +602,45 @@
         </header>
 
         <div class="content-area">
+          <!-- Indicador de período -->
+          <div style="font-size:0.78rem; color: var(--text-secondary); margin-bottom: 0.75rem; padding-left: 2px">
+            📅 Mostrando: <strong>mes actual</strong> · Comparativa vs mes anterior entre paréntesis
+          </div>
+
           <div class="stats-grid five-columns">
             <div class="stat-card">
               <div class="stat-value">{{ totalLeadsCount }}</div>
-              <div class="stat-title">Total Leads</div>
+              <div class="stat-title">Total Leads (mes)</div>
               <div class="stat-change" :class="leadsGrowthStat >= 0 ? 'up' : 'down'">
-                {{ leadsGrowthStat >= 0 ? '+' : '' }}{{ leadsGrowthStat.toFixed(1) }}% this month
+                {{ leadsGrowthStat >= 0 ? '+' : '' }}{{ leadsGrowthStat.toFixed(1) }}% vs mes ant. ({{ leadsMesAnterior.length }})
               </div>
             </div>
             <div class="stat-card">
               <div class="stat-value" style="color: #3b82f6">{{ coldLeadsCount }}</div>
               <div class="stat-title">Leads Fríos</div>
+              <div class="stat-change" :class="coldLeadsCount >= coldLeadsCountPrev ? 'down' : 'up'">
+                mes ant: {{ coldLeadsCountPrev }}
+              </div>
             </div>
             <div class="stat-card">
               <div class="stat-value" style="color: #f59e0b">{{ warmLeadsCount }}</div>
               <div class="stat-title">Leads Tibios</div>
+              <div class="stat-change" :class="warmLeadsCount >= warmLeadsCountPrev ? 'up' : 'down'">
+                mes ant: {{ warmLeadsCountPrev }}
+              </div>
             </div>
             <div class="stat-card">
               <div class="stat-value" style="color: #ef4444">{{ hotLeadsCount }}</div>
               <div class="stat-title">Leads Calientes</div>
+              <div class="stat-change" :class="hotLeadsCount >= hotLeadsCountPrev ? 'up' : 'down'">
+                mes ant: {{ hotLeadsCountPrev }}
+              </div>
             </div>
             <div class="stat-card">
-              <div class="stat-value">{{ conversionRate.toFixed(1) }}%</div>
-              <div class="stat-title">Tasa Conversión</div>
+              <div class="stat-value" style="color: #22c55e">{{ hotLeadsConvertedCount }}</div>
+              <div class="stat-title">Pacientes este mes</div>
               <div class="stat-change up">
-                (Calientes/Total)
+                {{ totalConversionRate.toFixed(1) }}% del total · {{ hotToPatientRate.toFixed(1) }}% de calientes
               </div>
             </div>
           </div>
@@ -643,6 +657,19 @@
               <v-data-table :headers="headersLeadsWpp" :items="leadsWpp" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de WhatsApp">
                 <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
+                <template v-slot:item.nombre="{ item }">
+                  {{ (!item.nombre || item.nombre === 'null' || item.nombre.trim() === '') ? '—' : item.nombre }}
+                </template>
+                <template v-slot:item.fuente="{ item }">
+                  <v-chip
+                    :color="isEncrypted(item.numero) || !item.numero ? 'deep-purple' : 'green'"
+                    size="small" variant="tonal">
+                    {{ isEncrypted(item.numero) || !item.numero ? 'TikTok' : 'WhatsApp' }}
+                  </v-chip>
+                </template>
+                <template v-slot:item.numero="{ item }">
+                  {{ isEncrypted(item.numero) ? '—' : (item.numero || '—') }}
+                </template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -675,12 +702,68 @@
 
           <div class="mt-4">
             <v-card flat class="custom-data-table pa-4">
-              <h3>Comparativa de Leads</h3>
+              <h3>Comparativa de Leads (Mes Actual)</h3>
               <client-only>
                 <div id="chart">
                   <apexchart type="bar" height="350" :options="leadsChartOptions" :series="leadsChartSeries">
                   </apexchart>
                 </div>
+              </client-only>
+            </v-card>
+          </div>
+
+          <div class="mt-4">
+            <v-card flat class="custom-data-table pa-4">
+              <div class="d-flex align-center justify-space-between mb-3">
+                <div>
+                  <h3 style="margin-bottom: 4px">Histórico de Leads desde inicio del Agente IA</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0">
+                    Evolución mensual · Fríos / Tibios / Calientes / Convertidos a paciente
+                  </p>
+                </div>
+              </div>
+
+              <!-- Tabla resumen por mes -->
+              <div style="overflow-x: auto; margin-bottom: 1.5rem;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                      <th style="text-align:left; padding: 8px 12px; color: var(--text-secondary)">Mes</th>
+                      <th style="text-align:center; padding: 8px 12px; color: #3b82f6">Fríos</th>
+                      <th style="text-align:center; padding: 8px 12px; color: #f59e0b">Tibios</th>
+                      <th style="text-align:center; padding: 8px 12px; color: #ef4444">Calientes</th>
+                      <th style="text-align:center; padding: 8px 12px; color: var(--text-secondary)">Total</th>
+                      <th style="text-align:center; padding: 8px 12px; color: #22c55e">Convertidos</th>
+                      <th style="text-align:center; padding: 8px 12px; color: #22c55e">% Conversión</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(mes, i) in leadsHistoricoByMonth" :key="i"
+                      style="border-bottom: 1px solid rgba(255,255,255,0.05)">
+                      <td style="padding: 8px 12px; font-weight: 500">{{ mes.label }}</td>
+                      <td style="text-align:center; padding: 8px 12px; color: #3b82f6">{{ mes.frio }}</td>
+                      <td style="text-align:center; padding: 8px 12px; color: #f59e0b">{{ mes.tibio }}</td>
+                      <td style="text-align:center; padding: 8px 12px; color: #ef4444">{{ mes.caliente }}</td>
+                      <td style="text-align:center; padding: 8px 12px">{{ mes.frio + mes.tibio + mes.caliente }}</td>
+                      <td style="text-align:center; padding: 8px 12px; color: #22c55e; font-weight: 600">{{ mes.convertidos }}</td>
+                      <td style="text-align:center; padding: 8px 12px">
+                        <v-chip
+                          :color="mes.caliente > 0 && (mes.convertidos/mes.caliente)*100 >= 10 ? 'success' : 'default'"
+                          size="x-small" variant="tonal">
+                          {{ mes.caliente > 0 ? ((mes.convertidos / mes.caliente) * 100).toFixed(1) : '0.0' }}%
+                        </v-chip>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Gráfico de barras histórico -->
+              <client-only>
+                <apexchart type="bar" height="380"
+                  :options="leadsHistoricoChartOptions"
+                  :series="leadsHistoricoChartSeries">
+                </apexchart>
               </client-only>
             </v-card>
           </div>
@@ -2015,6 +2098,7 @@ const headersLeadsWpp = ref([
   { title: 'ID', key: 'id', sortable: true, width: '80px', align: 'start' as const },
   { title: 'Fecha', key: 'created_at', sortable: true, width: '180px', align: 'start' as const },
   { title: 'Nombre', key: 'nombre', sortable: true, width: '20%', align: 'start' as const },
+  { title: 'Fuente', key: 'fuente', sortable: true, width: '120px', align: 'start' as const },
   { title: 'Número', key: 'numero', sortable: true, width: '150px', align: 'start' as const },
   { title: 'Estado', key: 'lead_status', sortable: true, width: '120px', align: 'start' as const },
   { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '35%', align: 'start' as const },
@@ -2097,13 +2181,23 @@ const fetchCompras = async () => {
 
 const fetchLeadsWpp = async () => {
   try {
-    const { data, error } = await (client
-      .from('GeneralBDwppHEALUP')
-      .select('*') as any)
-      .order('id', { ascending: false })
-
-    if (error) throw error
-    leadsWpp.value = data as any[] || []
+    // Paginar para obtener todos los registros (hay más de 1000)
+    const PAGE = 1000
+    let all: any[] = []
+    let offset = 0
+    while (true) {
+      const { data, error } = await (client
+        .from('GeneralBDwppHEALUP')
+        .select('*') as any)
+        .order('id', { ascending: false })
+        .range(offset, offset + PAGE - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      all = all.concat(data)
+      if (data.length < PAGE) break
+      offset += PAGE
+    }
+    leadsWpp.value = all
   } catch (error) {
     console.error('Error loading leads WhatsApp:', error)
   }
@@ -2862,18 +2956,128 @@ const leadsGrowthStat = computed(() => {
   return ((current - previous) / previous) * 100
 })
 
-const totalLeadsCount = computed(() => leads.value.length)
-const totalLeads = computed(() => leads.value.length) // Alias for template compatibility
+// Stat cards — todos del MES ACTUAL para coherencia
+const totalLeadsCount = computed(() => leadsMesActual.value.length)
+const totalLeads = computed(() => leads.value.length) // total histórico (usado en otros lugares)
 
-// Status counts (Case insensitive safety)
-const coldLeadsCount = computed(() => leads.value.filter(l => l.lead_status?.toLowerCase().includes('fri') || l.lead_status?.toLowerCase().includes('frío')).length)
-const warmLeadsCount = computed(() => leads.value.filter(l => l.lead_status?.toLowerCase().includes('tibi')).length)
-const hotLeadsCount = computed(() => leads.value.filter(l => l.lead_status?.toLowerCase().includes('caliente')).length)
+// Status counts del MES ACTUAL
+const coldLeadsCount = computed(() => leadsMesActual.value.filter((l: any) => l.lead_status?.toLowerCase().includes('fri')).length)
+const warmLeadsCount = computed(() => leadsMesActual.value.filter((l: any) => l.lead_status?.toLowerCase().includes('tibi')).length)
+const hotLeadsCount = computed(() => leadsMesActual.value.filter((l: any) => l.lead_status?.toLowerCase().includes('caliente')).length)
+
+// Comparativa mes anterior (para subtítulo de cada card)
+const coldLeadsCountPrev = computed(() => leadsMesAnterior.value.filter((l: any) => l.lead_status?.toLowerCase().includes('fri')).length)
+const warmLeadsCountPrev = computed(() => leadsMesAnterior.value.filter((l: any) => l.lead_status?.toLowerCase().includes('tibi')).length)
+const hotLeadsCountPrev = computed(() => leadsMesAnterior.value.filter((l: any) => l.lead_status?.toLowerCase().includes('caliente')).length)
 
 const conversionRate = computed(() => {
   if (totalLeadsCount.value === 0) return 0
   return (hotLeadsCount.value / totalLeadsCount.value) * 100
 })
+
+// Detecta si un número de teléfono está encriptado en base64 (no es un número real)
+const isEncrypted = (val: any): boolean => {
+  if (!val) return false
+  const s = String(val).trim()
+  // Si contiene caracteres que no son dígitos, +, -, espacios → es base64 o dato inválido
+  return /[^0-9+\-\s]/.test(s) && s.length > 10
+}
+
+// Normaliza teléfono: quita prefijo 51 si tiene 11 dígitos, limpia espacios y +
+const normalizePhone = (num: any): string => {
+  if (!num) return ''
+  const n = String(num).trim().replace(/[+ ]/g, '')
+  if (n.startsWith('51') && n.length === 11) return n.slice(2)
+  return n
+}
+
+// Convertidos del mes actual = todos los pacientes con fecha_agendamiento en el mes actual
+const hotLeadsConvertedCount = computed(() => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return [...pacientesWpp.value, ...pacientesFbIg.value].filter((p: any) =>
+    p.fecha_agendamiento?.startsWith(thisMonth)
+  ).length
+})
+
+const hotToPatientRate = computed(() => {
+  if (hotLeadsCount.value === 0) return 0
+  return (hotLeadsConvertedCount.value / hotLeadsCount.value) * 100
+})
+
+const totalConversionRate = computed(() => {
+  if (totalLeadsCount.value === 0) return 0
+  return (hotLeadsConvertedCount.value / totalLeadsCount.value) * 100
+})
+
+// Histórico por mes desde inicio del agente IA (Enero 2026)
+const leadsHistoricoByMonth = computed(() => {
+  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+
+  // Pacientes agrupados por mes de fecha_agendamiento (sin cruce, todos cuentan)
+  const patByMonth = new Map<string, number>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
+    const fa = p.fecha_agendamiento
+    if (!fa) return
+    const key = fa.slice(0, 7)
+    patByMonth.set(key, (patByMonth.get(key) || 0) + 1)
+  })
+
+  const monthMap = new Map<string, { label: string; frio: number; tibio: number; caliente: number; convertidos: number; pacientes: number }>()
+
+  leads.value.forEach((l: any) => {
+    if (!l.created_at) return
+    const d = new Date(l.created_at)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    if (!monthMap.has(key)) {
+      monthMap.set(key, { label: `${monthNames[d.getMonth()]} ${d.getFullYear()}`, frio: 0, tibio: 0, caliente: 0, convertidos: 0, pacientes: 0 })
+    }
+    const entry = monthMap.get(key)!
+    const status = l.lead_status?.toLowerCase() || ''
+    if (status.includes('caliente')) entry.caliente++
+    else if (status.includes('tibi')) entry.tibio++
+    else entry.frio++
+  })
+
+  // Convertidos por mes = pacientes con fecha_agendamiento en ese mes
+  patByMonth.forEach((count, key) => {
+    if (!monthMap.has(key)) {
+      const [y, m] = key.split('-')
+      monthMap.set(key, { label: `${monthNames[parseInt(m)-1]} ${y}`, frio: 0, tibio: 0, caliente: 0, convertidos: 0, pacientes: 0 })
+    }
+    monthMap.get(key)!.convertidos = count
+    monthMap.get(key)!.pacientes = count
+  })
+
+  return Array.from(monthMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, v]) => v)
+})
+
+const leadsHistoricoChartSeries = computed(() => [
+  { name: 'Fríos', data: leadsHistoricoByMonth.value.map(m => m.frio) },
+  { name: 'Tibios', data: leadsHistoricoByMonth.value.map(m => m.tibio) },
+  { name: 'Calientes', data: leadsHistoricoByMonth.value.map(m => m.caliente) },
+  { name: 'Convertidos a Paciente', data: leadsHistoricoByMonth.value.map(m => m.convertidos) },
+])
+
+const leadsHistoricoChartOptions = computed<any>(() => ({
+  chart: { type: 'bar', height: 380, fontFamily: 'inherit', stacked: false, toolbar: { show: false } },
+  plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 4 } },
+  colors: ['#3b82f6', '#f59e0b', '#ef4444', '#22c55e'],
+  dataLabels: { enabled: false },
+  xaxis: {
+    categories: leadsHistoricoByMonth.value.map(m => m.label),
+    labels: { style: { colors: 'var(--text-secondary)' } }
+  },
+  yaxis: { labels: { style: { colors: 'var(--text-secondary)' } } },
+  legend: { position: 'top', labels: { colors: 'var(--text-secondary)' } },
+  grid: { borderColor: 'rgba(255,255,255,0.08)' },
+  tooltip: {
+    theme: 'dark',
+    y: { formatter: (val: number) => `${val} leads` }
+  }
+}))
 
 const leadsChartSeries = computed(() => {
   return [{
@@ -3676,10 +3880,22 @@ async function fetchEvents() {
 
     console.log('Raw Supabase Events:', data)
 
+    // Normaliza cualquier formato de fecha a YYYY-MM-DD
+    const normalizeDate = (raw: string): string => {
+      if (!raw) return ''
+      const s = raw.split('T')[0]
+      // Detectar DD-MM-YYYY (agente IA guarda así)
+      if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+        const [d, m, y] = s.split('-')
+        return `${y}-${m}-${d}`
+      }
+      return s // Ya está en YYYY-MM-DD
+    }
+
     // Map snake_case to camelCase
     events.value = (data || []).map((e: any) => ({
       id: e.id,
-      date: e.date ? e.date.split('T')[0] : '', // Asegurar que sea 'YYYY-MM-DD'
+      date: normalizeDate(e.date),
       time: e.time ? e.time.substring(0, 5) : '', // '18:30:00' -> '18:30'
       subject: e.subject || '',
       description: e.description || '',

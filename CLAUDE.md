@@ -265,3 +265,40 @@ N8N_ID_HEALUP=
 - **Logs:** Acciones manuales importantes → `useActivityLogger` (cliente) o `logServerActivity` (servidor)
 - **Permisos:** Siempre verificar rol en el servidor, el middleware solo protege navegación
 - **company_id:** Los valores en BD tienen capitalización inconsistente — `permissions.ts` hace lowercase + fuzzy match para normalizar
+
+---
+
+## Healup — Lógica Específica (`pages/pruebas/Healup.vue`)
+
+### Tablas Supabase
+
+| Tabla | Propósito |
+|---|---|
+| `healup_calendar_events` | Citas del calendario. Fechas en dos formatos: `DD-MM-YYYY` (agente IA) y `YYYY-MM-DD` (manual) |
+| `GeneralBDwppHEALUP` | Leads de WhatsApp y TikTok. Campos: `nombre`, `numero`, `lead_status`, `reason_ia_qualification`, `servicio_interes` |
+| `GeneralBDfbigHEALUP` | Leads de Facebook e Instagram. Usa `instagram_handle` en vez de `numero` |
+| `PacientesBDwppHEALUP` | Pacientes captados por WhatsApp. Campo clave: `fecha_agendamiento` |
+| `PacientesBDfbigHEALUP` | Pacientes captados por FB/IG. Campo clave: `fecha_agendamiento` |
+
+### Quirks de Datos
+
+- **Fechas del calendario:** El agente IA guarda `DD-MM-YYYY`, entradas manuales usan `YYYY-MM-DD`. Siempre normalizar con `normalizeDate()` al hacer fetch.
+- **Paginación:** `GeneralBDwppHEALUP` tiene 1500+ filas. Supabase limita a 1000 por query — usar loop con `.range(offset, offset+999)` hasta que devuelva menos de 1000.
+- **Números encriptados:** Algunos `numero` en `GeneralBDwppHEALUP` están en base64 (ej: `u5Bkps+uBQhtO+xuEE9b81yi1A==`). Detectar con `isEncrypted()` — contiene caracteres no numéricos y longitud > 10.
+- **Leads TikTok vs WhatsApp:** Los leads sin número real (encriptados o null) son de TikTok. Los que tienen número son de WhatsApp. La columna "Fuente" usa `isEncrypted()` para distinguirlos.
+- **Conversión a pacientes:** Definición simplificada — `convertidos` del mes = todos los pacientes (`PacientesBDwppHEALUP` + `PacientesBDfbigHEALUP`) cuyo `fecha_agendamiento` empieza con `YYYY-MM` del mes en cuestión. No se hace cross-reference de teléfonos.
+- **Nombres null:** La BD puede guardar el string literal `"null"`. El template muestra `—` si `nombre` es null, `"null"`, o string vacío.
+
+### Métricas del Dashboard
+
+- **Stat cards:** Siempre muestran el mes actual. Comparan con mes anterior (flecha ↑↓).
+- **Histórico de leads:** Muestra todos los meses desde enero 2026 (inicio del agente IA). Columnas: total, fríos, tibios, calientes, convertidos (pacientes agendados ese mes).
+- **Semáforo de leads:** Frío = `lead_status` contiene "fri", Tibio = "tibi", Caliente = "caliente".
+
+### Funciones Helper Clave
+
+```javascript
+normalizeDate(raw)   // Convierte DD-MM-YYYY → YYYY-MM-DD (no toca YYYY-MM-DD)
+normalizePhone(num)  // Quita prefijo 51 de números de 11 dígitos (leads WPP guardan 51XXXXXXXXX)
+isEncrypted(val)     // True si el valor tiene chars no numéricos y longitud > 10 (base64)
+```

@@ -390,6 +390,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Ventas</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(compras, headersVentas, 'origitec-ventas')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="ventasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -436,6 +440,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Reservas</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(reservas, headersReservas, 'origitec-reservas')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="reservasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -568,6 +576,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Compras WhatsApp</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsWhatsapp, headersLeadsWhatsapp, 'origitec-leads-wpp')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="leadsSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -591,6 +603,10 @@
                 <span class="table-title">Leads Instagram</span>
                 <v-spacer></v-spacer>
                 <!-- We share the search variable for simplicity, or we could duplicate it -->
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsInstagram, headersLeadsInstagram, 'origitec-leads-instagram')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
               </v-card-title>
               <v-data-table :headers="headersLeadsInstagram" :items="leadsInstagram" :search="leadsSearch"
                 :loading="loadingLeads" class="elevation-0" no-data-text="No hay leads de Instagram">
@@ -636,6 +652,10 @@
                <v-card-title class="table-search-bar">
                  <span class="table-title">Lista de Egresos</span>
                  <v-spacer></v-spacer>
+                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(egresosList, egresosHeaders, 'origitec-egresos')">
+                   <v-icon>mdi-file-excel</v-icon>
+                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                 </v-btn>
                </v-card-title>
                <v-data-table :headers="egresosHeaders" :items="egresosList" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados">
                  <template v-slot:item.precio="{ item }">
@@ -961,6 +981,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Procedimientos</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(procedures, procedureHeaders, 'origitec-procedimientos')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="procedureSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1021,6 +1045,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Inventario</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(stockItems, headersStock, 'origitec-stock')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1496,8 +1524,10 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
+import { useExcelExport } from '@/composables/useExcelExport'
 
 const { logActivity } = useActivityLogger()
+const { downloadExcel } = useExcelExport()
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessOrigitec, dashboards } from '@/utils/permissions'
 

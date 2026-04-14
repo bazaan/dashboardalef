@@ -390,6 +390,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Ventas</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(compras, headersVentas, 'ecs-ventas')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="ventasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -436,6 +440,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Reservas</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(reservas, headersReservas, 'ecs-reservas')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="reservasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -568,6 +576,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Compras WhatsApp</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsWhatsapp, headersLeadsWhatsapp, 'ecs-leads-wpp')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="leadsSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -590,6 +602,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Leads Instagram</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsInstagram, headersLeadsInstagram, 'ecs-leads-instagram')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <!-- We share the search variable for simplicity, or we could duplicate it -->
               </v-card-title>
               <v-data-table :headers="headersLeadsInstagram" :items="leadsInstagram" :search="leadsSearch"
@@ -636,6 +652,10 @@
                <v-card-title class="table-search-bar">
                  <span class="table-title">Lista de Egresos</span>
                  <v-spacer></v-spacer>
+                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(egresosList, egresosHeaders, 'ecs-egresos')">
+                   <v-icon>mdi-file-excel</v-icon>
+                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                 </v-btn>
                </v-card-title>
                <v-data-table :headers="egresosHeaders" :items="egresosList" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados">
                  <template v-slot:item.precio="{ item }">
@@ -961,6 +981,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Procedimientos</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(procedures, procedureHeaders, 'ecs-procedimientos')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="procedureSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1021,6 +1045,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Planes de Subscripción</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(planesSubscripcion, headersPlanes, 'ecs-planes')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="planesSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field" />
               </v-card-title>
@@ -1519,6 +1547,8 @@ import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
 
 const { logActivity } = useActivityLogger()
+import { useExcelExport } from '@/composables/useExcelExport'
+const { downloadExcel } = useExcelExport()
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessEstasConSuerte, dashboards } from '@/utils/permissions'
 

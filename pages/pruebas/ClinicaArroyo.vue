@@ -397,6 +397,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de pacientes whatsapp</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesWpp, headersPacientesWpp, 'clinicaarroyo-pacientes-wpp')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
                   density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -452,6 +456,11 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de pacientes Facebook e Instagram</span>
                 <!-- Optional: Separate search for this table or shared? Assuming shared for now or just visual separation -->
+                <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesFbIg, headersPacientesFbIg, 'clinicaarroyo-pacientes-fbig')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
               </v-card-title>
               <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIg" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de FB/IG">
@@ -613,6 +622,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de leads whatsapp</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsWpp, headersLeadsWpp, 'clinicaarroyo-leads-wpp')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="leadsSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -634,6 +647,11 @@
               <v-card-title class="table-search-bar">
                 <!-- Using same search for both for now, or could split search logic if requested. Assuming global search for Leads view. -->
                 <span class="table-title">Lista de leads Facebook e Instagram</span>
+                <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsFbIg, headersLeadsFbIg, 'clinicaarroyo-leads-fbig')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
               </v-card-title>
               <v-data-table :headers="headersLeadsFbIg" :items="leadsFbIg" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de FB/IG">
@@ -679,6 +697,10 @@
                <v-card-title class="table-search-bar">
                  <span class="table-title">Lista de Egresos</span>
                  <v-spacer></v-spacer>
+                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(egresosList, egresosHeaders, 'clinicaarroyo-egresos')">
+                   <v-icon>mdi-file-excel</v-icon>
+                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                 </v-btn>
                </v-card-title>
                <v-data-table :headers="egresosHeaders" :items="egresosList" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados">
                  <template v-slot:item.precio="{ item }">
@@ -968,6 +990,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Procedimientos</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(procedures, procedureHeaders, 'clinicaarroyo-procedimientos')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="procedureSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1058,6 +1084,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Registros Médicos</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(medicalHistoryEntries, medicalHistoryHeaders, 'clinicaarroyo-registros-medicos')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="medicalHistorySearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1602,8 +1632,10 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
+import { useExcelExport } from '@/composables/useExcelExport'
 
 const { logActivity } = useActivityLogger()
+const { downloadExcel } = useExcelExport()
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessClinicaArroyo, dashboards } from '@/utils/permissions'
 

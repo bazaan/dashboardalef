@@ -48,7 +48,7 @@
         </div>
 
         <div class="nav-section">
-          <div class="nav-label">Financias</div>
+          <div class="nav-label">FINANZAS</div>
           <button v-for="item in financiasItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
             <v-icon :icon="item.icon" size="18" />
@@ -1532,23 +1532,29 @@
 
         <v-card-text>
           <v-form ref="procedureForm">
-            <v-text-field v-model="procedureFormData.name" label="Nombre del Procedimiento" variant="outlined"
-              density="compact" :rules="[v => !!v || 'El nombre es requerido']"></v-text-field>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+              <v-text-field v-model="procedureFormData.name" label="Nombre del Procedimiento" variant="outlined"
+                density="compact" :rules="[v => !!v || 'El nombre es requerido']" style="grid-column:1/-1;"></v-text-field>
+              <v-text-field v-model="procedureFormData.sku" label="SKU" variant="outlined"
+                density="compact" placeholder="Ej: FAC-001"></v-text-field>
+              <v-text-field v-model="procedureFormData.grupo" label="Grupo / Categoría" variant="outlined"
+                density="compact" placeholder="Ej: Faciales, Corporales"></v-text-field>
+            </div>
 
-            <div class="mt-4 mb-2">
-              <label class="form-label">Color del Procedimiento</label>
+            <div class="mt-3 mb-2">
+              <label class="form-label">Color</label>
               <v-color-picker v-model="procedureFormData.color" mode="hex" width="100%" elevation="0"
                 hide-inputs></v-color-picker>
               <v-text-field v-model="procedureFormData.color" label="Código de color" variant="outlined"
                 density="compact" readonly class="mt-2"></v-text-field>
             </div>
 
-            <v-text-field v-model.number="procedureFormData.price" label="Precio" type="number" variant="outlined"
-              density="compact" prefix="S/" :rules="[v => v >= 0 || 'El precio debe ser mayor o igual a 0']"
-              step="0.01"></v-text-field>
-
-            <v-text-field v-model.number="procedureFormData.discount" label="Descuento (%)" type="number"
-              variant="outlined" density="compact" suffix="%" :rules="[v => v >= 0 && v <= 100 || 'El descuento debe estar entre 0 y 100']"></v-text-field>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+              <v-text-field v-model.number="procedureFormData.price" label="Precio" type="number" variant="outlined"
+                density="compact" prefix="S/" :rules="[v => v >= 0 || 'Debe ser ≥ 0']" step="0.01"></v-text-field>
+              <v-text-field v-model.number="procedureFormData.discount" label="Descuento (%)" type="number"
+                variant="outlined" density="compact" suffix="%" :rules="[v => v >= 0 && v <= 100 || '0–100']"></v-text-field>
+            </div>
 
             <div v-if="procedureFormData.discount > 0" class="discount-preview">
               <div class="preview-row">
@@ -1957,8 +1963,1074 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- ══════════  VISTA: ESTRUCTURA DE PRECIOS Y PUNTO DE EQUILIBRIO  ══════════ -->
+    <div v-if="activeView === 'precios'" class="view-container" style="padding: 1.5rem;">
+
+      <header class="top-header" style="margin-bottom: 1.5rem;">
+        <div>
+          <h1 style="font-size: 1.3rem; font-weight: 700; margin: 0;">Estructura de Precios y Punto de Equilibrio</h1>
+          <p style="font-size: 0.82rem; color: var(--text-muted); margin: 0.2rem 0 0;">
+            Edita las variables (borde dorado) para ver resultados en tiempo real. Las celdas grises son fórmulas automáticas.
+          </p>
+        </div>
+      </header>
+
+      <!-- ── PANEL INTEGRADO DE COSTOS ── -->
+      <div class="costos-panel precios-section" style="margin-bottom:1.25rem;">
+
+        <!-- Cabecera del panel -->
+        <div class="costos-panel-header">
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <v-icon icon="mdi-calculator-variant-outline" size="18" style="color:var(--primary,#daa520);" />
+            <span class="costos-panel-title">Estructura de Costos</span>
+          </div>
+          <div class="costos-total-badge">
+            Total mensual: <strong>{{ fmtS(preciosCalc.totalCostosFijos + preciosCalc.totalGastosVarExtra) }}</strong>
+          </div>
+        </div>
+
+        <!-- ● OPERARIOS -->
+        <div class="costos-seccion">
+          <div class="costos-seccion-label">
+            <span class="costos-bullet-dot"></span>
+            <v-icon icon="mdi-account-group-outline" size="14" style="margin-right:5px;" />
+            OPERARIOS
+            <button class="btn-add-row" style="margin-left:auto;" @click="agregarOperadora">
+              <v-icon icon="mdi-plus" size="13" /> Agregar
+            </button>
+          </div>
+          <div class="costos-items-list">
+            <div v-for="(op, i) in operadoras" :key="i" class="costos-item-row">
+              <span class="item-viñeta">•</span>
+              <input v-model="op.nombre" type="text" class="ci-name" placeholder="Nombre del operario" />
+              <div class="ci-fields">
+                <div class="ci-field editable">
+                  <label>Salario/mes</label>
+                  <div class="ci-field-input"><span class="ci-prefix">S/</span><input v-model.number="op.salario" type="number" min="0" class="ci-input" /></div>
+                </div>
+                <div class="ci-field editable">
+                  <label>Horas/mes</label>
+                  <div class="ci-field-input"><input v-model.number="op.horas" type="number" min="1" class="ci-input ci-input-sm" /><span class="ci-prefix">h</span></div>
+                </div>
+                <div class="ci-field formula">
+                  <label>Costo/min</label>
+                  <div class="ci-formula-val">{{ op.horas > 0 ? fmtS(op.salario / op.horas / 60) : '—' }}</div>
+                </div>
+              </div>
+              <button v-if="operadoras.length > 1" class="btn-del-row" @click="eliminarOperadora(i)" title="Eliminar">
+                <v-icon icon="mdi-close" size="13" />
+              </button>
+            </div>
+          </div>
+          <div class="costos-seccion-total">
+            Total salarios: <strong>{{ fmtS(preciosCalc.totalSalarios) }}</strong>
+            <span class="costos-sep">·</span>
+            Costo promedio/min: <strong>{{ fmtS(preciosCalc.costoPorMinuto) }}</strong>
+          </div>
+        </div>
+
+        <!-- ● GASTOS FIJOS DEL LOCAL -->
+        <div class="costos-seccion">
+          <div class="costos-seccion-label">
+            <span class="costos-bullet-dot"></span>
+            <v-icon icon="mdi-home-city-outline" size="14" style="margin-right:5px;" />
+            GASTOS FIJOS DEL LOCAL
+          </div>
+          <div class="costos-items-list">
+            <div class="costos-item-row">
+              <span class="item-viñeta">•</span>
+              <span class="ci-name-static">Alquiler, servicios y equipos</span>
+              <div class="ci-fields">
+                <div class="ci-field editable">
+                  <label>Monto/mes</label>
+                  <div class="ci-field-input"><span class="ci-prefix">S/</span><input v-model.number="preciosParams.otrosCostosFijosMes" type="number" min="0" class="ci-input" /></div>
+                </div>
+              </div>
+            </div>
+            <div class="costos-item-row">
+              <span class="item-viñeta">•</span>
+              <span class="ci-name-static">Días laborables / mes</span>
+              <div class="ci-fields">
+                <div class="ci-field editable">
+                  <label>Días</label>
+                  <div class="ci-field-input"><input v-model.number="preciosParams.diasLaborables" type="number" min="1" max="31" class="ci-input ci-input-sm" /><span class="ci-prefix">días</span></div>
+                </div>
+                <div class="ci-field formula">
+                  <label>Costo/día</label>
+                  <div class="ci-formula-val">{{ fmtS(preciosCalc.costosFijosDia) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="costos-seccion-total">
+            Total fijos (local + salarios): <strong>{{ fmtS(preciosCalc.totalCostosFijos) }}</strong>
+          </div>
+        </div>
+
+        <!-- ● GASTOS VARIABLES ADICIONALES -->
+        <div class="costos-seccion" style="border-bottom:none;padding-bottom:0;">
+          <div class="costos-seccion-label">
+            <span class="costos-bullet-dot"></span>
+            <v-icon icon="mdi-bullhorn-outline" size="14" style="margin-right:5px;" />
+            GASTOS VARIABLES ADICIONALES
+            <button class="btn-add-row" style="margin-left:auto;" @click="agregarGastoVar">
+              <v-icon icon="mdi-plus" size="13" /> Agregar
+            </button>
+          </div>
+          <div class="costos-items-list">
+            <div v-for="(g, i) in gastosVarExtra" :key="i" class="costos-item-row">
+              <span class="item-viñeta">•</span>
+              <input v-model="g.nombre" type="text" class="ci-name" placeholder="Concepto (ej: Publicidad)" />
+              <div class="ci-fields">
+                <div class="ci-field editable">
+                  <label>Monto/mes</label>
+                  <div class="ci-field-input"><span class="ci-prefix">S/</span><input v-model.number="g.monto" type="number" min="0" class="ci-input" /></div>
+                </div>
+              </div>
+              <button class="btn-del-row" @click="eliminarGastoVar(i)" title="Eliminar">
+                <v-icon icon="mdi-close" size="13" />
+              </button>
+            </div>
+          </div>
+          <div class="costos-seccion-total">
+            Total variables: <strong>{{ fmtS(preciosCalc.totalGastosVarExtra) }}</strong>
+          </div>
+        </div>
+
+        <!-- Barra de totales integrada -->
+        <div class="costos-total-bar">
+          <div class="costos-total-item">
+            <span class="cti-label">Salarios operarios</span>
+            <span class="cti-val">{{ fmtS(preciosCalc.totalSalarios) }}</span>
+          </div>
+          <span class="cti-op">+</span>
+          <div class="costos-total-item">
+            <span class="cti-label">Gastos fijos local</span>
+            <span class="cti-val">{{ fmtS(preciosParams.otrosCostosFijosMes) }}</span>
+          </div>
+          <span class="cti-op">+</span>
+          <div class="costos-total-item">
+            <span class="cti-label">Gastos variables</span>
+            <span class="cti-val">{{ fmtS(preciosCalc.totalGastosVarExtra) }}</span>
+          </div>
+          <span class="cti-op">=</span>
+          <div class="costos-total-item accent">
+            <span class="cti-label">TOTAL COSTOS / MES</span>
+            <span class="cti-val">{{ fmtS(preciosCalc.totalCostosFijos + preciosCalc.totalGastosVarExtra) }}</span>
+          </div>
+        </div>
+
+      </div><!-- fin panel costos -->
+
+      <!-- ── PROCEDIMIENTOS POR GRUPO ──────────────────────────────── -->
+      <div class="precios-section">
+        <div class="precios-section-header" style="margin-bottom: 1rem;">
+          <h3 class="precios-section-title" style="margin:0;">
+            <v-icon icon="mdi-format-list-group" size="16" style="margin-right:6px;" />
+            Procedimientos por Grupo
+          </h3>
+          <div style="display:flex; gap:0.5rem;">
+            <button class="btn-add-row" @click="openProcedureDialog()">
+              <v-icon icon="mdi-plus" size="14" /> Nuevo Procedimiento
+            </button>
+            <button class="btn-add-row" style="border-color:#888; color:#888;" @click="showNuevoGrupoDialog = true">
+              <v-icon icon="mdi-folder-plus-outline" size="14" /> Nuevo Grupo
+            </button>
+          </div>
+        </div>
+
+        <!-- Sin procedimientos -->
+        <div v-if="procedures.length === 0" style="padding:2rem;text-align:center;color:var(--text-muted);">
+          <v-icon icon="mdi-clipboard-list-outline" size="40" />
+          <p style="margin:0.5rem 0 0;">Aún no hay procedimientos. Haz clic en "Nuevo Procedimiento" para comenzar.</p>
+        </div>
+
+        <!-- Un bloque por grupo -->
+        <div v-for="(procs, grupoKey) in procedimientosPorGrupo" :key="grupoKey" class="grupo-bloque">
+          <!-- Cabecera del grupo: editable inline -->
+          <div class="grupo-header">
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <v-icon icon="mdi-folder-outline" size="15" style="color:var(--primary,#daa520);" />
+              <input
+                :value="grupoKey"
+                class="grupo-title-input"
+                @blur="(e) => renameGrupo(grupoKey, (e.target as HTMLInputElement).value)"
+                title="Haz clic para renombrar el grupo"
+              />
+              <span class="grupo-count">({{ procs.length }})</span>
+            </div>
+            <button class="btn-add-row" style="font-size:0.7rem;" @click="openProcedureDialog(undefined, grupoKey)">
+              <v-icon icon="mdi-plus" size="12" /> Agregar aquí
+            </button>
+          </div>
+
+          <!-- Tabla del grupo -->
+          <div style="overflow-x:auto;">
+            <table class="precios-table grupo-table">
+              <thead>
+                <tr>
+                  <th style="text-align:left;min-width:70px;">SKU</th>
+                  <th style="text-align:left;min-width:170px;">Nombre</th>
+                  <th style="min-width:55px;">Color</th>
+                  <th class="col-edit" style="min-width:80px;">Precio (S/)</th>
+                  <th class="col-edit" style="min-width:70px;">Desc %</th>
+                  <th class="col-formula" style="min-width:90px;">Precio Final</th>
+                  <th class="col-edit" style="min-width:75px;">Ses/mes</th>
+                  <th class="col-edit" style="min-width:85px;">Insumo (S/)</th>
+                  <th class="col-formula" style="min-width:85px;">Ingresos</th>
+                  <th class="col-formula" style="min-width:80px;">Costo</th>
+                  <th class="col-formula" style="min-width:75px;">Margen</th>
+                  <th class="col-formula" style="min-width:60px;">%</th>
+                  <th style="width:28px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="p in procs" :key="p.id">
+                  <!-- SKU inline editable -->
+                  <td>
+                    <input
+                      :value="p.sku || ''"
+                      class="cell-input cell-text"
+                      placeholder="SKU"
+                      style="width:60px;"
+                      @blur="(e) => saveProcedureField(p.id, 'sku', (e.target as HTMLInputElement).value)"
+                    />
+                  </td>
+                  <!-- Nombre inline editable -->
+                  <td>
+                    <input
+                      :value="p.name"
+                      class="cell-input cell-text"
+                      style="width:155px;"
+                      @blur="(e) => saveProcedureField(p.id, 'name', (e.target as HTMLInputElement).value)"
+                    />
+                  </td>
+                  <!-- Color dot + input -->
+                  <td style="text-align:center;">
+                    <input
+                      type="color"
+                      :value="p.color || '#3b82f6'"
+                      class="color-picker-input"
+                      @change="(e) => saveProcedureField(p.id, 'color', (e.target as HTMLInputElement).value)"
+                      title="Color"
+                    />
+                  </td>
+                  <!-- Precio inline editable -->
+                  <td>
+                    <input
+                      :value="p.price || 0"
+                      type="number" min="0"
+                      class="cell-input"
+                      @blur="(e) => saveProcedureField(p.id, 'price', parseFloat((e.target as HTMLInputElement).value) || 0)"
+                    />
+                  </td>
+                  <!-- Descuento inline editable -->
+                  <td>
+                    <input
+                      :value="p.discount || 0"
+                      type="number" min="0" max="100"
+                      class="cell-input"
+                      @blur="(e) => saveProcedureField(p.id, 'discount', parseFloat((e.target as HTMLInputElement).value) || 0)"
+                    />
+                  </td>
+                  <!-- Precio final (fórmula) -->
+                  <td class="cell-formula" style="font-weight:600;">
+                    {{ fmtS((p.price || 0) * (1 - ((p.discount || 0) / 100))) }}
+                  </td>
+                  <!-- Sesiones (procMeta editable) -->
+                  <td>
+                    <input v-model.number="procMeta[p.id].sesiones" type="number" min="0" class="cell-input" />
+                  </td>
+                  <!-- Costo insumo (procMeta editable) -->
+                  <td>
+                    <input v-model.number="procMeta[p.id].costoInsumo" type="number" min="0" class="cell-input" />
+                  </td>
+                  <!-- Ingresos (fórmula) -->
+                  <td class="cell-formula">
+                    {{ fmtS((procMeta[p.id]?.sesiones||0) * (p.price||0) * (1-((p.discount||0)/100))) }}
+                  </td>
+                  <!-- Costo insumos (fórmula) -->
+                  <td class="cell-formula">
+                    {{ fmtS((procMeta[p.id]?.sesiones||0) * (procMeta[p.id]?.costoInsumo||0)) }}
+                  </td>
+                  <!-- Margen (fórmula) -->
+                  <td class="cell-formula">
+                    {{ fmtS(
+                      (procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100))
+                      - (procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0)
+                    ) }}
+                  </td>
+                  <!-- % Margen (fórmula) -->
+                  <td class="cell-formula" :class="{
+                    'pct-high': (() => {
+                      const i2 = (procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100))
+                      const c2 = (procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0)
+                      return i2 > 0 && (i2-c2)/i2 > 0.5
+                    })()
+                  }">
+                    {{ (() => {
+                      const i2 = (procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100))
+                      const c2 = (procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0)
+                      return i2 > 0 ? (((i2-c2)/i2)*100).toFixed(1)+'%' : '—'
+                    })() }}
+                  </td>
+                  <!-- Eliminar -->
+                  <td>
+                    <button class="btn-del-row" @click="deleteProcedure(p.id)" title="Eliminar procedimiento">
+                      <v-icon icon="mdi-trash-can-outline" size="14" />
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+              <!-- Subtotales del grupo -->
+              <tfoot>
+                <tr class="totales-row">
+                  <td colspan="6" style="text-align:right;padding-right:0.5rem;font-size:0.75rem;color:var(--text-muted);">
+                    Subtotal {{ grupoKey }}
+                  </td>
+                  <td class="cell-formula">
+                    <strong>{{ procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0), 0) }}</strong>
+                  </td>
+                  <td></td>
+                  <td class="cell-formula">
+                    <strong>{{ fmtS(procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100)), 0)) }}</strong>
+                  </td>
+                  <td class="cell-formula">
+                    <strong>{{ fmtS(procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0), 0)) }}</strong>
+                  </td>
+                  <td class="cell-formula" colspan="2">
+                    <strong>{{ fmtS(
+                      procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100)), 0)
+                      - procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0), 0)
+                    ) }}</strong>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- TOTAL GENERAL -->
+        <div v-if="procedures.length > 0" class="grupo-total-general">
+          <span>TOTAL GENERAL</span>
+          <span>{{ preciosCalc.totalSesiones }} sesiones</span>
+          <span>Ingresos: <strong>{{ fmtS(preciosCalc.totalIngresos) }}</strong></span>
+          <span>Insumos: <strong>{{ fmtS(preciosCalc.totalCostosInsumos) }}</strong></span>
+          <span>Margen bruto insumos: <strong>{{ fmtS(preciosCalc.totalIngresos - preciosCalc.totalCostosInsumos) }}</strong></span>
+        </div>
+      </div>
+
+      <!-- Dialog: Nuevo Grupo -->
+      <v-dialog v-model="showNuevoGrupoDialog" max-width="360px" persistent>
+        <v-card style="background:var(--bg-secondary,#1a1a1a);border:1px solid var(--border,#2a2a2a);">
+          <v-card-title style="font-size:1rem;padding:1rem 1.5rem 0.5rem;">Nuevo Grupo</v-card-title>
+          <v-card-text>
+            <v-text-field
+              v-model="nuevoGrupoNombre"
+              label="Nombre del grupo (ej: Faciales, Corporales)"
+              variant="outlined"
+              density="compact"
+              autofocus
+              @keyup.enter="() => { if(nuevoGrupoNombre.trim()){ openProcedureDialog(undefined, nuevoGrupoNombre.trim()); showNuevoGrupoDialog=false; nuevoGrupoNombre='' } }"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="text" color="grey" @click="showNuevoGrupoDialog=false; nuevoGrupoNombre=''">Cancelar</v-btn>
+            <v-btn variant="elevated" color="primary" @click="() => { if(nuevoGrupoNombre.trim()){ openProcedureDialog(undefined, nuevoGrupoNombre.trim()); showNuevoGrupoDialog=false; nuevoGrupoNombre='' } }">
+              Crear y agregar procedimiento
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <!-- ── ESTADO DE RESULTADOS + PUNTO DE EQUILIBRIO ───────────── -->
+      <div class="precios-results-grid">
+
+        <!-- Estado de resultados -->
+        <div class="precios-section" style="margin-top: 0;">
+          <h3 class="precios-section-title">
+            <v-icon icon="mdi-file-chart-outline" size="16" style="margin-right: 6px;" />
+            Estado de Resultados Mensual
+          </h3>
+          <div class="resultado-card">
+            <div class="resultado-row">
+              <span>Ingresos Brutos</span>
+              <span class="resultado-val positive">{{ fmtS(preciosCalc.totalIngresos) }}</span>
+            </div>
+            <div class="resultado-row sub">
+              <span>(−) Insumos de procedimientos</span>
+              <span class="resultado-val negative">({{ fmtS(preciosCalc.totalCostosInsumos) }})</span>
+            </div>
+            <div class="resultado-row sub">
+              <span>(−) Publicidad y otros variables</span>
+              <span class="resultado-val negative">({{ fmtS(preciosCalc.totalGastosVarExtra) }})</span>
+            </div>
+            <div class="resultado-row subtotal">
+              <span>Margen Bruto</span>
+              <span class="resultado-val">{{ fmtS(preciosCalc.margenBruto) }}</span>
+            </div>
+            <div class="resultado-row sub">
+              <span>(−) Salarios operarios</span>
+              <span class="resultado-val negative">({{ fmtS(preciosCalc.totalSalarios) }})</span>
+            </div>
+            <div class="resultado-row sub">
+              <span>(−) Costos fijos del local</span>
+              <span class="resultado-val negative">({{ fmtS(preciosParams.otrosCostosFijosMes) }})</span>
+            </div>
+            <div class="resultado-row total"
+              :class="{ 'utilidad-positiva': preciosCalc.utilidadNeta >= 0, 'utilidad-negativa': preciosCalc.utilidadNeta < 0 }">
+              <span>Utilidad Neta</span>
+              <span class="resultado-val">{{ fmtS(preciosCalc.utilidadNeta) }}</span>
+            </div>
+            <div class="resultado-row margen-neto">
+              <span>Margen Neto</span>
+              <span class="resultado-val"
+                :style="{ color: preciosCalc.margenNetoPct >= 0 ? 'var(--success, #4caf50)' : 'var(--error, #f44336)' }">
+                {{ preciosCalc.margenNetoPct.toFixed(1) }}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Punto de equilibrio -->
+        <div class="precios-section" style="margin-top: 0;">
+          <h3 class="precios-section-title">
+            <v-icon icon="mdi-chart-bell-curve" size="16" style="margin-right: 6px;" />
+            Punto de Equilibrio
+          </h3>
+          <div class="equilibrio-card">
+            <div class="equilibrio-item">
+              <div class="equilibrio-label">Sesiones totales (escenario actual)</div>
+              <div class="equilibrio-val">{{ preciosCalc.totalSesiones }} sesiones</div>
+            </div>
+            <div class="equilibrio-item">
+              <div class="equilibrio-label">Ticket promedio ponderado</div>
+              <div class="equilibrio-val">{{ fmtS(preciosCalc.ticketPromedio) }}</div>
+              <div class="equilibrio-formula">= ingresos totales ÷ sesiones totales</div>
+            </div>
+            <div class="equilibrio-item">
+              <div class="equilibrio-label">Margen variable por sesión</div>
+              <div class="equilibrio-val">{{ fmtS(preciosCalc.margenVarPorSesion) }}</div>
+              <div class="equilibrio-formula">= (ingresos − todos los costos variables) ÷ sesiones</div>
+            </div>
+            <div class="equilibrio-item highlight">
+              <div class="equilibrio-label">Sesiones mínimas para cubrir costos fijos</div>
+              <div class="equilibrio-val accent">{{ Math.ceil(preciosCalc.sesionesEquilibrio) }} sesiones</div>
+              <div class="equilibrio-formula">= costos fijos totales ÷ margen variable/sesión</div>
+            </div>
+            <div class="equilibrio-item highlight">
+              <div class="equilibrio-label">Ingresos mínimos (punto de equilibrio)</div>
+              <div class="equilibrio-val accent">{{ fmtS(preciosCalc.ingresosEquilibrio) }}</div>
+              <div class="equilibrio-formula">= sesiones mínimas × ticket promedio</div>
+            </div>
+            <div style="margin-top: 1rem;">
+              <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+                <span style="color: var(--text-muted)">Cobertura del punto de equilibrio</span>
+                <span style="font-weight: 600;">
+                  {{ preciosCalc.ingresosEquilibrio > 0 ? Math.min(Math.round((preciosCalc.totalIngresos / preciosCalc.ingresosEquilibrio) * 100), 200) : 0 }}%
+                </span>
+              </div>
+              <div style="background: var(--bg-tertiary, #2a2a2a); border-radius: 4px; height: 8px; overflow: hidden;">
+                <div :style="{
+                  width: preciosCalc.ingresosEquilibrio > 0 ? Math.min((preciosCalc.totalIngresos / preciosCalc.ingresosEquilibrio) * 100, 100) + '%' : '0%',
+                  height: '100%',
+                  background: preciosCalc.totalIngresos >= preciosCalc.ingresosEquilibrio ? 'var(--success, #4caf50)' : '#daa520',
+                  transition: 'width 0.4s ease', borderRadius: '4px'
+                }"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin grid resultados -->
+
+    </div><!-- fin vista precios -->
+
   </div>
 </template>
+
+<style scoped>
+/* ── ESTRUCTURA DE PRECIOS ─────────────────────────────────────────── */
+
+/* Panel integrado de costos */
+.costos-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+}
+
+.costos-panel-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-primary, #fff);
+}
+
+.costos-total-badge {
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+  padding: 0.3rem 0.75rem;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 20px;
+}
+.costos-total-badge strong { color: var(--primary, #daa520); }
+
+/* Secciones de viñetas */
+.costos-seccion {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border, #1e1e1e);
+}
+
+.costos-seccion-label {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+}
+
+.costos-bullet-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary, #daa520);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.costos-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.costos-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 0;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.costos-item-row:hover { background: rgba(255,255,255,0.025); }
+
+.item-viñeta {
+  color: var(--primary, #daa520);
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+
+.ci-name {
+  flex: 1;
+  min-width: 140px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+  color: var(--text-primary, #fff);
+  font-size: 0.85rem;
+  padding: 3px 4px;
+  outline: none;
+}
+.ci-name:focus { border-bottom-color: var(--primary, #daa520); }
+
+.ci-name-static {
+  flex: 1;
+  min-width: 140px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #bbb);
+  padding: 3px 4px;
+}
+
+.ci-fields {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.ci-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.ci-field label {
+  font-size: 0.65rem;
+  color: var(--text-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.ci-field-input {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ci-field.editable .ci-field-input {
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--primary, #daa520);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.ci-field.formula .ci-formula-val {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-muted, #aaa);
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 5px;
+  border: 1px solid var(--border, #1e1e1e);
+  min-width: 70px;
+  text-align: right;
+}
+
+.ci-prefix {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.ci-input {
+  width: 80px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #fff);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: right;
+  padding: 1px 2px;
+  outline: none;
+}
+.ci-input-sm { width: 44px; }
+
+.costos-seccion-total {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-muted, #888);
+  padding-left: 1.25rem;
+}
+.costos-seccion-total strong { color: var(--text-primary, #fff); }
+.costos-sep { margin: 0 0.4rem; }
+
+/* Barra de totales integrada */
+.costos-total-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 8px;
+}
+
+.costos-total-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cti-label {
+  font-size: 0.65rem;
+  color: var(--text-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.cti-val {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary, #ccc);
+}
+
+.costos-total-item.accent .cti-label { color: var(--primary, #daa520); }
+.costos-total-item.accent .cti-val { font-size: 1rem; color: var(--primary, #daa520); }
+
+.cti-op {
+  font-size: 1rem;
+  color: var(--text-muted, #555);
+  font-weight: 300;
+  align-self: flex-end;
+  padding-bottom: 2px;
+}
+
+.precios-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.btn-add-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75rem;
+  color: var(--primary, #daa520);
+  background: transparent;
+  border: 1px solid var(--primary, #daa520);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-add-row:hover { background: rgba(218,165,32,0.12); }
+
+.btn-del-row {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #666);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+}
+.btn-del-row:hover { color: #f44336; }
+
+.color-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* Grupos de procedimientos */
+.grupo-bloque {
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.grupo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: rgba(218, 165, 32, 0.07);
+  border-bottom: 1px solid var(--border, #2a2a2a);
+}
+
+.grupo-title-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  color: var(--primary, #daa520);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: text;
+  padding: 1px 4px;
+  outline: none;
+  min-width: 80px;
+}
+.grupo-title-input:hover { border-bottom-color: var(--primary, #daa520); }
+.grupo-title-input:focus { border-bottom-color: var(--primary, #daa520); background: rgba(218,165,32,0.06); }
+
+.grupo-count {
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+}
+
+.grupo-table thead th { background: var(--bg-primary, #0d0d0d); }
+
+.grupo-total-general {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--primary, #daa520);
+  border-radius: 8px;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+}
+.grupo-total-general span:first-child {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--primary, #daa520);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.color-picker-input {
+  width: 28px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+}
+
+.cell-text {
+  width: 100%;
+  min-width: 90px;
+  text-align: left !important;
+}
+
+.precios-section {
+  background: var(--bg-secondary, #1a1a1a);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.precios-section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #888);
+  margin: 0 0 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.precios-params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.param-card {
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border, #2a2a2a);
+}
+
+.param-card label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  margin-bottom: 0.4rem;
+}
+
+.param-card.editable {
+  background: var(--bg-primary, #111);
+  border-color: var(--primary, #daa520);
+}
+
+.param-card.formula {
+  background: rgba(255, 255, 255, 0.03);
+  cursor: not-allowed;
+}
+
+.param-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.param-prefix, .param-suffix {
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.param-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--primary, #daa520);
+  color: var(--text-primary, #fff);
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 2px 4px;
+  outline: none;
+  min-width: 0;
+}
+
+.param-input:focus {
+  border-bottom-color: #f0c040;
+}
+
+.param-formula-val {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.formula-badge {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-muted, #666);
+  font-style: italic;
+  margin-top: 3px;
+}
+
+/* Tabla de servicios */
+.precios-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.precios-table th {
+  padding: 0.5rem 0.75rem;
+  text-align: right;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+  border-bottom: 1px solid var(--border, #2a2a2a);
+  background: var(--bg-tertiary, #0d0d0d);
+  white-space: nowrap;
+}
+
+.precios-table th:first-child { text-align: left; }
+
+.precios-table td {
+  padding: 0.45rem 0.75rem;
+  text-align: right;
+  border-bottom: 1px solid var(--border, #1e1e1e);
+  vertical-align: middle;
+}
+
+.col-edit { background: rgba(218, 165, 32, 0.06); }
+.col-formula { background: rgba(255, 255, 255, 0.02); color: var(--text-muted, #aaa); }
+
+.servicio-nombre {
+  text-align: left !important;
+  font-weight: 500;
+  color: var(--text-primary, #fff);
+}
+
+.cell-input {
+  width: 72px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--primary, #daa520);
+  color: var(--text-primary, #fff);
+  font-size: 0.82rem;
+  text-align: right;
+  padding: 2px 4px;
+  outline: none;
+}
+
+.cell-input:focus { border-bottom-color: #f0c040; }
+
+.cell-formula {
+  color: var(--text-secondary, #bbb);
+  font-size: 0.82rem;
+}
+
+.pct-high { color: #4caf50 !important; font-weight: 600; }
+
+.totales-row td {
+  border-top: 2px solid var(--border, #2a2a2a);
+  background: var(--bg-tertiary, #0d0d0d);
+  font-size: 0.85rem;
+}
+
+/* Grid resultados */
+.precios-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .precios-results-grid { grid-template-columns: 1fr; }
+}
+
+/* Estado de resultados */
+.resultado-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.resultado-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.resultado-row.sub { color: var(--text-muted, #888); font-size: 0.8rem; padding-left: 1.5rem; }
+.resultado-row.subtotal { border-top: 1px solid var(--border, #2a2a2a); padding-top: 0.6rem; font-weight: 600; }
+.resultado-row.total { background: var(--bg-primary, #111); font-weight: 700; font-size: 0.95rem; margin-top: 0.25rem; }
+.resultado-row.margen-neto { font-size: 0.8rem; color: var(--text-muted, #888); }
+.resultado-row.utilidad-positiva { border-left: 3px solid #4caf50; }
+.resultado-row.utilidad-negativa { border-left: 3px solid #f44336; }
+
+.resultado-val { font-weight: 600; }
+.resultado-val.positive { color: #4caf50; }
+.resultado-val.negative { color: var(--text-muted, #888); }
+
+/* Punto de equilibrio */
+.equilibrio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.equilibrio-item {
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--border, #1e1e1e);
+}
+
+.equilibrio-item.highlight {
+  border-color: var(--primary, #daa520);
+  background: rgba(218, 165, 32, 0.06);
+}
+
+.equilibrio-label {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  margin-bottom: 2px;
+}
+
+.equilibrio-val {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+}
+
+.equilibrio-val.accent { color: var(--primary, #daa520); }
+
+.equilibrio-formula {
+  font-size: 0.68rem;
+  color: var(--text-muted, #666);
+  font-style: italic;
+  margin-top: 2px;
+}
+</style>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
@@ -2644,8 +3716,87 @@ function handleNavigation(item: any) {
 const financiasItems = [
   { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos' },
   { icon: 'mdi-currency-usd', label: 'Contabilidad', id: 'facturacion' },
-  { icon: 'mdi-chart-line', label: 'Facturación', id: 'contabilidad' }
+  { icon: 'mdi-chart-line', label: 'Facturación', id: 'contabilidad' },
+  { icon: 'mdi-calculator-variant', label: 'Estructura de Precios', id: 'precios' }
 ]
+
+// ── ESTRUCTURA DE PRECIOS Y PUNTO DE EQUILIBRIO ──────────────────────────────
+
+// Parámetros base (gastos fijos excluyendo salarios)
+const preciosParams = reactive({
+  otrosCostosFijosMes: 3975,   // alquiler, servicios, equipos (sin salarios)
+  diasLaborables: 26,
+})
+
+// Operadoras (lista editable)
+const operadoras = reactive([
+  { nombre: 'Operario 1', salario: 1800, horas: 180 }
+])
+
+function agregarOperadora() {
+  operadoras.push({ nombre: `Operario ${operadoras.length + 1}`, salario: 1800, horas: 180 })
+}
+function eliminarOperadora(i: number) {
+  if (operadoras.length > 1) operadoras.splice(i, 1)
+}
+
+// Gastos variables adicionales (publicidad, marketing, etc.)
+const gastosVarExtra = reactive([
+  { nombre: 'Publicidad',           monto: 0 },
+  { nombre: 'Gestión de Marketing', monto: 0 },
+  { nombre: 'Otros',                monto: 0 },
+])
+
+function agregarGastoVar() {
+  gastosVarExtra.push({ nombre: 'Nuevo gasto', monto: 0 })
+}
+function eliminarGastoVar(i: number) {
+  gastosVarExtra.splice(i, 1)
+}
+
+// Fórmulas calculadas (solo lectura)
+const preciosCalc = computed(() => {
+  const totalSalarios   = operadoras.reduce((s, op) => s + (op.salario || 0), 0)
+  const totalHoras      = operadoras.reduce((s, op) => s + (op.horas || 0), 0)
+  const costoPorMinuto  = totalHoras > 0 ? totalSalarios / totalHoras / 60 : 0
+  const totalCostosFijos = preciosParams.otrosCostosFijosMes + totalSalarios
+  const costosFijosDia  = totalCostosFijos / (preciosParams.diasLaborables || 1)
+
+  const totalGastosVarExtra = gastosVarExtra.reduce((s, g) => s + (g.monto || 0), 0)
+
+  let totalIngresos  = 0
+  let totalCostosInsumos = 0
+  let totalSesiones  = 0
+
+  procedures.value.forEach(p => {
+    const meta = procMeta[p.id] || { sesiones: 0, costoInsumo: 0 }
+    const precioFinal = (p.price || 0) * (1 - ((p.discount || 0) / 100))
+    totalIngresos      += meta.sesiones * precioFinal
+    totalCostosInsumos += meta.sesiones * (meta.costoInsumo || 0)
+    totalSesiones      += meta.sesiones
+  })
+
+  const totalCostosVar   = totalCostosInsumos + totalGastosVarExtra
+  const margenBruto      = totalIngresos - totalCostosVar
+  const utilidadNeta     = margenBruto - totalCostosFijos
+  const margenNetoPct    = totalIngresos > 0 ? (utilidadNeta / totalIngresos) * 100 : 0
+
+  const ticketPromedio      = totalSesiones > 0 ? totalIngresos / totalSesiones : 0
+  const margenVarPorSesion  = totalSesiones > 0 ? (totalIngresos - totalCostosVar) / totalSesiones : 0
+  const sesionesEquilibrio  = margenVarPorSesion > 0 ? totalCostosFijos / margenVarPorSesion : 0
+  const ingresosEquilibrio  = sesionesEquilibrio * ticketPromedio
+
+  return {
+    totalSalarios, costoPorMinuto,
+    totalCostosFijos, costosFijosDia,
+    totalGastosVarExtra,
+    totalIngresos, totalCostosInsumos, totalCostosVar,
+    totalSesiones, margenBruto, utilidadNeta, margenNetoPct,
+    ticketPromedio, margenVarPorSesion, sesionesEquilibrio, ingresosEquilibrio,
+  }
+})
+
+const fmtS = (n: number) => `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const documentItems = [
   { icon: 'mdi-arrow-right-bold-circle', label: 'Procedimientos', id: 'procedimientos' },
@@ -3950,10 +5101,32 @@ interface Procedure {
   color: string
   price: number
   discount: number
+  sku?: string
+  grupo?: string
 }
 
 /* ---------------- Procedures State ---------------- */
 const procedures = ref<Procedure[]>([])
+
+// Mapa sesiones + costo insumo por procedimiento para la calculadora de precios
+const procMeta = reactive<Record<string, { sesiones: number; costoInsumo: number }>>({})
+watch(procedures, (procs) => {
+  procs.forEach(p => {
+    if (!procMeta[p.id]) procMeta[p.id] = { sesiones: 0, costoInsumo: 0 }
+  })
+}, { immediate: true })
+
+// Procedimientos agrupados por grupo (para la vista de precios)
+const procedimientosPorGrupo = computed(() => {
+  const map: Record<string, Procedure[]> = {}
+  procedures.value.forEach(p => {
+    const g = (p.grupo || 'Sin Grupo').toUpperCase()
+    if (!map[g]) map[g] = []
+    map[g].push(p)
+  })
+  return map
+})
+
 const procedureSearch = ref('')
 const showProcedureDialog = ref(false)
 const editingProcedure = ref<Procedure | null>(null)
@@ -3961,15 +5134,21 @@ const procedureFormData = ref({
   name: '',
   color: '#3b82f6',
   price: 0,
-  discount: 0
+  discount: 0,
+  sku: '',
+  grupo: '',
 })
 const procedureForm = ref<any>(null)
 
+// Nuevo grupo desde la vista de precios
+const showNuevoGrupoDialog = ref(false)
+const nuevoGrupoNombre = ref('')
+
 /* ---------------- Procedures Constants ---------------- */
-
-
 const procedureHeaders = [
+  { title: 'SKU', key: 'sku', sortable: true },
   { title: 'Nombre', key: 'name', sortable: true },
+  { title: 'Grupo', key: 'grupo', sortable: true },
   { title: 'Color', key: 'color', sortable: false },
   { title: 'Precio Original', key: 'price', sortable: true },
   { title: 'Descuento', key: 'discount', sortable: true },
@@ -3978,17 +5157,26 @@ const procedureHeaders = [
 ]
 
 /* ---------------- Procedures Functions ---------------- */
-function openProcedureDialog(procedure?: Procedure) {
+function openProcedureDialog(procedure?: Procedure, grupoDefault?: string) {
   if (procedure) {
     editingProcedure.value = procedure
-    procedureFormData.value = { ...procedure }
+    procedureFormData.value = {
+      name: procedure.name,
+      color: procedure.color,
+      price: procedure.price,
+      discount: procedure.discount,
+      sku: procedure.sku || '',
+      grupo: procedure.grupo || '',
+    }
   } else {
     editingProcedure.value = null
     procedureFormData.value = {
       name: '',
       color: '#3b82f6',
       price: 0,
-      discount: 0
+      discount: 0,
+      sku: '',
+      grupo: grupoDefault || '',
     }
   }
   showProcedureDialog.value = true
@@ -4004,41 +5192,29 @@ async function saveProcedure() {
     alert('Por favor ingrese un nombre para el procedimiento')
     return
   }
-
   if (procedureFormData.value.price < 0) {
     alert('El precio debe ser mayor o igual a 0')
     return
   }
-
-  // Supabase Logic
   try {
+    const payload = {
+      name: procedureFormData.value.name,
+      color: procedureFormData.value.color,
+      price: procedureFormData.value.price,
+      discount: procedureFormData.value.discount,
+      sku: procedureFormData.value.sku || null,
+      grupo: procedureFormData.value.grupo || null,
+    }
     if (editingProcedure.value) {
-      // Update
-      const { error } = await (client
-        .from('healup_procedures') as any)
-        .update({
-          name: procedureFormData.value.name,
-          color: procedureFormData.value.color,
-          price: procedureFormData.value.price,
-          discount: procedureFormData.value.discount
-        })
+      const { error } = await (client.from('healup_procedures') as any)
+        .update(payload)
         .eq('id', editingProcedure.value.id)
-
       if (error) throw error
     } else {
-      // Create
-      const { error } = await (client
-        .from('healup_procedures') as any)
-        .insert({
-          name: procedureFormData.value.name,
-          color: procedureFormData.value.color,
-          price: procedureFormData.value.price,
-          discount: procedureFormData.value.discount
-        })
-
+      const { error } = await (client.from('healup_procedures') as any)
+        .insert(payload)
       if (error) throw error
     }
-
     await fetchProcedures()
     closeProcedureDialog()
   } catch (error) {
@@ -4047,20 +5223,51 @@ async function saveProcedure() {
   }
 }
 
+// Guardar un campo específico inline desde la tabla de precios
+async function saveProcedureField(id: string, field: keyof Procedure, value: any) {
+  try {
+    const { error } = await (client.from('healup_procedures') as any)
+      .update({ [field]: value === '' ? null : value })
+      .eq('id', id)
+    if (error) throw error
+    const p = procedures.value.find(x => x.id === id)
+    if (p) (p as any)[field] = value
+  } catch (e) {
+    console.error('Error guardando campo:', e)
+  }
+}
+
 async function deleteProcedure(procedureId: string) {
-  if (confirm('¿Estás seguro de que deseas eliminar este procedimiento?')) {
+  if (confirm('¿Eliminar este procedimiento? Esta acción no se puede deshacer.')) {
     try {
       const { error } = await client
         .from('healup_procedures')
         .delete()
         .eq('id', procedureId)
-
       if (error) throw error
       await fetchProcedures()
     } catch (error) {
       console.error('Error deleting procedure:', error)
       alert('Error al eliminar el procedimiento')
     }
+  }
+}
+
+// Renombrar un grupo completo
+async function renameGrupo(oldName: string, newName: string) {
+  if (!newName.trim() || newName === oldName) return
+  try {
+    const ids = procedures.value
+      .filter(p => (p.grupo || 'Sin Grupo').toUpperCase() === oldName)
+      .map(p => p.id)
+    if (!ids.length) return
+    const { error } = await (client.from('healup_procedures') as any)
+      .update({ grupo: newName.trim() })
+      .in('id', ids)
+    if (error) throw error
+    await fetchProcedures()
+  } catch (e) {
+    console.error('Error renombrando grupo:', e)
   }
 }
 

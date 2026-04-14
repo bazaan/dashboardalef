@@ -52,13 +52,20 @@ Los `company_id` en la BD tienen variaciones de capitalización y espacios. `get
 ## Comandos
 
 ```bash
+# IMPORTANTE: Usar Node v20.19.1 (v20.11.1 es incompatible)
+PATH="$HOME/Downloads/espacio-de-trabajo-claude/node-v20.19.1-darwin-x64/bin:$PATH" node node_modules/.bin/nuxt dev
+
+# O con el alias configurado en ~/.zshrc:
+dashboard   # → http://localhost:3000
+```
+
+```bash
 npm install        # Instalar dependencias
-npm run dev        # Dev server → http://localhost:3000
 npm run build      # Build producción
 npm run preview    # Preview build local
-npm run lint       # ESLint
-npm run reset      # Limpiar node_modules + reinstalar
 ```
+
+**Si npm install falla** (bug de optional deps): instalar con `--ignore-scripts`, luego `npm install @oxc-parser/binding-darwin-x64 @oxc-transform/binding-darwin-x64 @oxc-minify/binding-darwin-x64`, luego `npm rebuild`.
 
 ---
 
@@ -216,17 +223,48 @@ Doble sistema para auditar acciones:
 
 ---
 
+## Componentes Compartidos
+
+| Componente | Props | Uso |
+|---|---|---|
+| `N8nPanicButton.vue` | `clientKey` ('healup'\|'brada'\|'alegrated'), `label` | Activa/desactiva workflow n8n. Solo estas 3 empresas tienen workflows configurados |
+| `FacturacionPSE.vue` | — | Emite y gestiona facturas/boletas electrónicas. Solo Healup y ECS |
+| `Settings/SettingsView.vue` | `companyId`, `currentUser` | CRUD de usuarios + logs de auditoría. Todos los dashboards |
+
+---
+
+## API Routes del Servidor
+
+| Método | Ruta | Quién puede usarla |
+|---|---|---|
+| POST | `/api/auth/verify-legacy` | Login público (capa 3) |
+| GET | `/api/users` | admin (su empresa), superadmin (todas) |
+| POST | `/api/users/create` | admin, superadmin. No puede crear superadmin |
+| PUT | `/api/users/update` | admin (su empresa), superadmin |
+| DELETE | `/api/users/delete` | admin (su empresa), superadmin. No auto-eliminación |
+| POST | `/api/n8n/toggle-workflow` | Cualquier autenticado. Body: `{ clientKey, active: boolean }` |
+| POST | `/api/pse/factura` | Autenticados de Healup / ECS |
+| GET | `/api/pse/comprobantes` | Autenticados de Healup / ECS |
+| POST | `/api/pse/enviar-correo` | Autenticados de Healup / ECS |
+| POST | `/api/pse/webhook-compra` | Webhook público de PSE.PE |
+
+---
+
 ## Base de Datos (Supabase)
 
-### Tablas principales
+### Tablas globales
 
 | Tabla | Propósito |
 |---|---|
 | `dashboardlogin` | Usuarios: `id`, `email`, `password` (bcrypt), `role`, `company_id`, `full_name`, `created_at` |
 | `activity_logs` | Auditoría: `user_email`, `activity`, `company_id`, `created_at` |
 | `comprobantes_pse` | Facturas emitidas vía PSE.PE (payload + response) |
-| `Brada_stock` | Inventario Brada (botellas, decants, sets) |
-| `ECS_*` | Tablas de Estás Con Suerte (leads, ventas por canal) |
+
+### Tablas por empresa
+
+**Brada:** `brada_stock` (inventario), `brada_calendar_events` (entregas), `comprasBDwppBRADA` (leads de compra), `GeneralBDwppBRADA` (leads generales)
+
+**ECS:** múltiples tablas `ECS_*` de leads y ventas por canal
 
 ---
 
@@ -263,12 +301,14 @@ N8N_ID_HEALUP=
 
 ## Patrones Importantes
 
-- **Nueva empresa:** Agregar `.vue` en `pages/pruebas/` + entradas en `utils/permissions.ts` (canAccess* y getDashboardPathByCompanyId) + tablas en Supabase
-- **Estilos:** Todo custom va en `assets/styles/dashboard.css`, no inline
-- **Seguridad:** Lógica sensible (API keys, bcrypt, JWT tokens) siempre en `server/api/`, nunca expuesta al cliente
-- **Logs:** Acciones manuales importantes → `useActivityLogger` (cliente) o `logServerActivity` (servidor)
+- **Nueva empresa:** Agregar `.vue` en `pages/pruebas/` + entradas en `utils/permissions.ts` (canAccess* y getDashboardPathByCompanyId) + tablas en Supabase + actualizar `tables2.json`
+- **Estilos:** Todo custom va en `assets/styles/dashboard.css` (~2200 líneas), no inline. Tema Vuetify configurado en `plugins/vuetify.ts` (oscuro por defecto, dorado #daa520)
+- **Seguridad:** Lógica sensible (API keys, bcrypt, JWT tokens PSE.PE) siempre en `server/api/`, nunca expuesta al cliente
+- **Logs:** Acciones manuales importantes → `useActivityLogger` (cliente) o `logServerActivity` (servidor). El plugin `supabase-logger.client.ts` loggea automáticamente todas las mutations
 - **Permisos:** Siempre verificar rol en el servidor, el middleware solo protege navegación
 - **company_id:** Los valores en BD tienen capitalización inconsistente — `permissions.ts` hace lowercase + fuzzy match para normalizar
+- **PSE.PE tokens:** JWT hardcodeados en `server/api/pse/factura.post.ts` (no en `.env`) porque son por empresa
+- **Supabase Service Role Key:** La key en `.env` es `service_role` (no `anon`), tiene acceso total a la BD sin RLS
 
 ---
 

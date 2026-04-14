@@ -388,6 +388,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Ventas</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(compras, headersCompras, 'brada-ventas')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
                   density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -512,6 +516,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Leads</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leads, headersLeads, 'brada-leads')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="leadsSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -559,6 +567,10 @@
                <v-card-title class="table-search-bar">
                  <span class="table-title">Lista de Egresos</span>
                  <v-spacer></v-spacer>
+                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(egresosList, egresosHeaders, 'brada-egresos')">
+                   <v-icon>mdi-file-excel</v-icon>
+                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                 </v-btn>
                </v-card-title>
                <v-data-table :headers="egresosHeaders" :items="egresosList" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados">
                  <template v-slot:item.precio="{ item }">
@@ -838,6 +850,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Procedimientos</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(procedures, procedureHeaders, 'brada-procedimientos')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="procedureSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -902,6 +918,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Perfumes</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(stockPerfumes, headersPerfumes, 'brada-stock-perfumes')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -955,6 +975,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Decants</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(stockDecants, headersDecants, 'brada-stock-decants')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1004,6 +1028,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Sets</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(stockSets, headersSets, 'brada-stock-sets')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1507,6 +1535,8 @@ import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
 
 const { logActivity } = useActivityLogger()
+import { useExcelExport } from '@/composables/useExcelExport'
+const { downloadExcel } = useExcelExport()
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessBrada, dashboards } from '@/utils/permissions'
 

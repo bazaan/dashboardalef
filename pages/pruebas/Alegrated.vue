@@ -459,6 +459,11 @@
               <v-card v-if="selectedComprasCategory === 'Lima'" flat class="mb-4 fade-in">
                 <v-card-title class="table-search-bar">
                   <span class="table-title">Compras Lima</span>
+                  <v-spacer></v-spacer>
+                  <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(comprasLima, headersComprasLima, 'alegrated-compras-lima')">
+                    <v-icon>mdi-file-excel</v-icon>
+                    <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                  </v-btn>
                 </v-card-title>
                 <v-data-table :headers="headersComprasLima" :items="comprasLima" :search="search" :loading="loading"
                   class="elevation-0" no-data-text="No hay compras recientes en Lima" :items-per-page="15"
@@ -481,6 +486,11 @@
               <v-card v-if="selectedComprasCategory === 'Provincia'" flat class="mb-4 fade-in">
                 <v-card-title class="table-search-bar">
                   <span class="table-title">Compras Provincia</span>
+                  <v-spacer></v-spacer>
+                  <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(comprasProvincia, headersComprasProvincia, 'alegrated-compras-provincia')">
+                    <v-icon>mdi-file-excel</v-icon>
+                    <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                  </v-btn>
                 </v-card-title>
                 <v-data-table :headers="headersComprasProvincia" :items="comprasProvincia" :search="search"
                   :loading="loading" class="elevation-0" no-data-text="No hay compras recientes en Provincia"
@@ -503,6 +513,11 @@
               <v-card v-if="selectedComprasCategory === 'Extranjero'" flat class="mb-4 fade-in">
                 <v-card-title class="table-search-bar">
                   <span class="table-title">Compras Extranjero</span>
+                  <v-spacer></v-spacer>
+                  <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(comprasExtranjero, headersComprasExtranjero, 'alegrated-compras-extranjero')">
+                    <v-icon>mdi-file-excel</v-icon>
+                    <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                  </v-btn>
                 </v-card-title>
                 <v-data-table :headers="headersComprasExtranjero" :items="comprasExtranjero" :search="search"
                   :loading="loading" class="elevation-0" no-data-text="No hay compras recientes en Extranjero"
@@ -634,6 +649,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Leads WhatsApp</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsWpp, headersLeadsWpp, 'alegrated-leads-wpp')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="leadsSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -652,6 +671,11 @@
               <!-- FB/IG LEADS -->
               <v-card-title class="table-search-bar mt-4">
                 <span class="table-title">Leads Facebook & Instagram</span>
+                <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsFbig, headersLeadsFbig, 'alegrated-leads-fbig')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
               </v-card-title>
               <v-data-table :headers="headersLeadsFbig" :items="leadsFbig" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads recientes en FB/IG" :items-per-page="5">
@@ -697,6 +721,10 @@
                <v-card-title class="table-search-bar">
                  <span class="table-title">Lista de Egresos</span>
                  <v-spacer></v-spacer>
+                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(egresosList, egresosHeaders, 'alegrated-egresos')">
+                   <v-icon>mdi-file-excel</v-icon>
+                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                 </v-btn>
                </v-card-title>
                <v-data-table :headers="egresosHeaders" :items="egresosList" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados">
                  <template v-slot:item.precio="{ item }">
@@ -948,6 +976,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de Procedimientos</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(procedures, procedureHeaders, 'alegrated-procedimientos')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="procedureSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1012,6 +1044,10 @@
               <v-card-title class="table-search-bar">
                 <span class="table-title">Productos en Stock</span>
                 <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(stockProducts, headersStock, 'alegrated-stock')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
                 <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
@@ -1625,6 +1661,8 @@ definePageMeta({
 })
 
 const { logActivity } = useActivityLogger()
+import { useExcelExport } from '@/composables/useExcelExport'
+const { downloadExcel } = useExcelExport()
 
 // ...
 

@@ -6,7 +6,7 @@ Leer esto al inicio de cualquier sesión que trabaje en este proyecto.
 
 ## Qué Es
 
-Dashboard multi-tenant en **Nuxt 3 + Vue + Vuetify 3 + Supabase** para gestionar las 9 empresas del grupo Alef Company. Cada empresa tiene su propio dashboard con datos aislados por `company_id`.
+Dashboard multi-tenant en **Nuxt 3 + Vue + Vuetify 3 + Supabase** para gestionar las 11 empresas del grupo Alef Company. Cada empresa tiene su propio dashboard con datos aislados por `company_id`.
 
 **Repo:** `https://github.com/bazaan/dashboardalef`
 **Ubicación local:** `espacio-de-trabajo-claude/dashboard alef allin/`
@@ -28,6 +28,8 @@ Los `company_id` en la BD tienen variaciones de capitalización y espacios. `get
 | `solari` / `Solari` | Solari | `/pruebas/Solari` |
 | `skip` / `SKIP` | SKIP | `/pruebas/SKIP` |
 | `estasconsuerte` / `estás con suerte` / `ecs` | Estás Con Suerte | `/pruebas/EstasConSuerte` |
+| `estetikamedika` / `estetika medika` | Estetika Medika | `/pruebas/EstetikaMedika` |
+| `davila` / `miguel davila` | Miguel Davila | `/pruebas/MiguelDavila` |
 
 ---
 
@@ -78,7 +80,9 @@ dashboard alef allin/
 │       ├── Origitec.vue
 │       ├── Solari.vue
 │       ├── SKIP.vue
-│       └── EstasConSuerte.vue
+│       ├── EstasConSuerte.vue
+│       ├── EstetikaMedika.vue
+│       └── MiguelDavila.vue
 │
 ├── components/
 │   ├── FacturacionPSE.vue         # Interfaz de facturas/boletas electrónicas
@@ -302,3 +306,53 @@ normalizeDate(raw)   // Convierte DD-MM-YYYY → YYYY-MM-DD (no toca YYYY-MM-DD)
 normalizePhone(num)  // Quita prefijo 51 de números de 11 dígitos (leads WPP guardan 51XXXXXXXXX)
 isEncrypted(val)     // True si el valor tiene chars no numéricos y longitud > 10 (base64)
 ```
+
+---
+
+## Estetika Medika — Lógica Específica (`pages/pruebas/EstetikaMedika.vue`)
+
+- **Conversaciones:** `https://chats.alef.company/app/accounts/14/dashboard`
+- **Logo:** `assets/img/estetika-medika-logo.png`
+- **company_id en BD:** `estetikamedika` / `estetika medika`
+- **Permiso:** `canAccessEstetikaMedika` en `utils/permissions.ts`
+
+### Tablas Supabase
+
+| Tabla | Propósito |
+|---|---|
+| `GeneralBDwppEstetikaMedika` | Leads de WhatsApp |
+| `GeneralBDfbigEstetikaMedika` | Leads de Facebook/Instagram |
+| `PacientesBDwppEstetikaMedika` | Pacientes captados por WhatsApp |
+| `PacientesBDfbigEstetikaMedika` | Pacientes captados por FB/IG |
+| `EstetikaMedika_calendar_events` | Citas del calendario |
+| `EstetikaMedika_medical_history` | Historial clínico |
+| `EstetikaMedika_procedures` | Procedimientos disponibles |
+| `EstetikaMedika_working_hours` | Horarios de trabajo |
+| `egresos_EstetikaMedika` | Egresos/gastos |
+| `metricas_EstetikaMedika` | Métricas adicionales (pendiente de integrar en UI) |
+| `pacientesbdEstetikaMedika` | Tabla adicional de pacientes (pendiente de integrar en UI) |
+
+---
+
+## Miguel Davila — Lógica Específica (`pages/pruebas/MiguelDavila.vue`)
+
+- **Conversaciones:** `https://chats.alef.company/app/accounts/3/dashboard`
+- **Logo:** `assets/img/miguel-davila-logo.png`
+- **company_id en BD:** `davila` / `miguel davila`
+- **Permiso:** `canAccessDavila` en `utils/permissions.ts`
+
+### Tablas Supabase
+
+| Tabla | Propósito |
+|---|---|
+| `GeneralBDwppDAVILA` | Leads de WhatsApp |
+| `GeneralBDfbigDAVILA` | Leads de Facebook/Instagram |
+| `PacientesBDwppDAVILA` | Pacientes captados por WhatsApp |
+| `PacientesBDfbigDAVILA` | Pacientes captados por FB/IG |
+| `DAVILA_calendar_events` | Citas del calendario |
+| `DAVILA_medical_history` | Historial clínico |
+| `DAVILA_procedures` | Procedimientos disponibles |
+| `DAVILA_working_hours` | Horarios de trabajo |
+| `egresos_DAVILA` | Egresos/gastos |
+| `metricas_DAVILA` | Métricas adicionales (pendiente de integrar en UI) |
+| `pacientesbdDAVILA` | Tabla adicional de pacientes (pendiente de integrar en UI) |

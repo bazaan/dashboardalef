@@ -207,18 +207,14 @@ const fetchLogs = async () => {
     loadingLogs.value = true
     try {
         const client = useSupabaseClient()
-        let query = client
+        // Siempre filtrar por company_id del dashboard actual,
+        // aunque el usuario sea superadmin — cada dashboard solo ve sus propios logs
+        const { data, error } = await client
             .from('activity_logs')
             .select('*')
+            .eq('company_id', props.companyId)
             .order('created_at', { ascending: false })
-            .limit(100)
-
-        // If not superadmin, filter by company
-        if (props.currentUserRole !== 'superadmin') {
-            query = query.eq('company_id', props.companyId)
-        }
-
-        const { data, error } = await query
+            .limit(200)
 
         if (error) throw error
         logs.value = data || []

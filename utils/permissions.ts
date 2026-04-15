@@ -8,7 +8,9 @@ export const dashboards = [
     { name: 'Alegrated', path: '/pruebas/Alegrated', icon: 'mdi-star', logo: 'alegratedLOGO.jpg' },
     { name: 'Solari', path: '/pruebas/Solari', icon: 'mdi-white-balance-sunny', logo: 'solariLOGO.webp' },
     { name: 'SKIP', path: '/pruebas/SKIP', icon: 'mdi-water', logo: 'LogoSkyDive.png' },
-    { name: 'Estás con Suerte', path: '/pruebas/EstasConSuerte', icon: 'mdi-clover', logo: 'ecsLOGO.png' }
+    { name: 'Estás con Suerte', path: '/pruebas/EstasConSuerte', icon: 'mdi-clover', logo: 'ecsLOGO.png' },
+    { name: 'Estetika Medika', path: '/pruebas/EstetikaMedika', icon: 'mdi-spa', logo: 'estetika-medika-logo.png' },
+    { name: 'Miguel Davila', path: '/pruebas/MiguelDavila', icon: 'mdi-doctor', logo: 'miguel-davila-logo.png' }
 ]
 
 // Tipos para la sesión de usuario
@@ -135,6 +137,22 @@ export function canAccessEstasConSuerte(session: UserSession | null): boolean {
     return cid === 'estasconsuerte' || cid === 'estás con suerte' || cid.includes('ecs') || cid.includes('suerte')
 }
 
+export function canAccessEstetikaMedika(session: UserSession | null): boolean {
+    if (!session) return false
+    if (isSuperAdmin(session)) return true
+
+    const cid = normalize(session.company_id)
+    return cid === 'estetikamedika' || cid === 'estetika medika' || cid === 'estetikamedika' || cid.includes('estetika')
+}
+
+export function canAccessDavila(session: UserSession | null): boolean {
+    if (!session) return false
+    if (isSuperAdmin(session)) return true
+
+    const cid = normalize(session.company_id)
+    return cid === 'davila' || cid === 'miguel davila' || cid.includes('davila')
+}
+
 export function getDashboardPathByCompanyId(companyId: string | undefined | null): string {
     if (!companyId) return '/'
 
@@ -150,6 +168,8 @@ export function getDashboardPathByCompanyId(companyId: string | undefined | null
     if (normalizedId === 'solari' || normalizedId.includes('solari')) return '/pruebas/Solari'
     if (normalizedId === 'skip' || normalizedId.includes('skip')) return '/pruebas/SKIP'
     if (normalizedId === 'estasconsuerte' || normalizedId === 'estás con suerte' || normalizedId.includes('suerte')) return '/pruebas/EstasConSuerte'
+    if (normalizedId === 'estetikamedika' || normalizedId === 'estetika medika' || normalizedId.includes('estetika')) return '/pruebas/EstetikaMedika'
+    if (normalizedId === 'davila' || normalizedId === 'miguel davila' || normalizedId.includes('davila')) return '/pruebas/MiguelDavila'
 
     return '/'
 }

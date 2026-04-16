@@ -1,2 +1,3 @@
 [build.environment]
+  NODE_OPTIONS = "--max-old-space-size=4096"
   SECRETS_SCAN_OMIT_PATHS = ".netlify/functions-internal/server/chunks/nitro/nitro.mjs"

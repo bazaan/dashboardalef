@@ -424,11 +424,24 @@
               </v-card-title>
               <v-data-table :headers="headersPacientesWpp" :items="pacientesWpp" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de WhatsApp">
+                <template v-slot:item.booking_sku="{ item }">
+                  <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
+                    style="font-family:monospace; letter-spacing:0.03em; cursor:default;"
+                    :title="`SKU Reserva: ${item.booking_sku}`">
+                    {{ item.booking_sku }}
+                  </v-chip>
+                  <span v-else style="color:var(--text-secondary); font-size:11px;">—</span>
+                </template>
                 <template v-slot:item.precio="{ item }">
-                  S/ {{ item.precio }}
+                  <span v-if="item.precio && Number(item.precio) > 0" style="color:#f59e0b; font-weight:600;">
+                    S/ {{ item.precio }}
+                  </span>
+                  <span v-else style="color:var(--text-secondary);">—</span>
                 </template>
                 <template v-slot:item.precio_tratamiento="{ item }">
-                  S/ {{ item.precio_tratamiento }}
+                  <span :style="Number(item.precio_tratamiento) > 0 ? 'color:#ef4444;font-weight:600;' : 'color:#22c55e;font-weight:600;'">
+                    S/ {{ item.precio_tratamiento }}
+                  </span>
                 </template>
                 <template v-slot:item.metodo_de_pago="{ item }">
                   <div class="d-flex align-center">
@@ -484,11 +497,24 @@
               </v-card-title>
               <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIg" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de FB/IG">
+                <template v-slot:item.booking_sku="{ item }">
+                  <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
+                    style="font-family:monospace; letter-spacing:0.03em; cursor:default;"
+                    :title="`SKU Reserva: ${item.booking_sku}`">
+                    {{ item.booking_sku }}
+                  </v-chip>
+                  <span v-else style="color:var(--text-secondary); font-size:11px;">—</span>
+                </template>
                 <template v-slot:item.precio="{ item }">
-                  S/ {{ item.precio }}
+                  <span v-if="item.precio && Number(item.precio) > 0" style="color:#f59e0b; font-weight:600;">
+                    S/ {{ item.precio }}
+                  </span>
+                  <span v-else style="color:var(--text-secondary);">—</span>
                 </template>
                 <template v-slot:item.precio_tratamiento="{ item }">
-                  S/ {{ item.precio_tratamiento }}
+                  <span :style="Number(item.precio_tratamiento) > 0 ? 'color:#ef4444;font-weight:600;' : 'color:#22c55e;font-weight:600;'">
+                    S/ {{ item.precio_tratamiento }}
+                  </span>
                 </template>
                 <template v-slot:item.metodo_de_pago="{ item }">
                   <div class="d-flex align-center">
@@ -1127,6 +1153,20 @@
                   }) }}</span>
                 </template>
 
+                <template v-slot:item.receta="{ item }">
+                  <button
+                    class="icon-btn"
+                    @click="openRecetaDialog(item)"
+                    title="Ver / editar receta de insumos"
+                    style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background: var(--bg-hover, rgba(218,165,32,0.12));"
+                  >
+                    <v-icon icon="mdi-flask-outline" size="15" color="warning" />
+                    <span style="font-size: 11px; color: var(--text-secondary);">
+                      {{ getProcSupplyCount(item.id) > 0 ? getProcSupplyCount(item.id) + ' insumos' : 'Definir' }}
+                    </span>
+                  </button>
+                </template>
+
                 <template v-slot:item.actions="{ item }">
                   <button class="icon-btn" @click="openProcedureDialog(item)">
                     <v-icon icon="mdi-pencil" size="16" />
@@ -1249,6 +1289,234 @@
                   <button class="icon-btn" @click="deleteMedicalHistory(item.id)">
                     <v-icon icon="mdi-delete" size="16" />
                   </button>
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========  VISTA: CONTADOR PROCEDIMIENTOS  ========== -->
+      <div v-else-if="activeView === 'contadorProcedimientos'" class="view-container">
+        <header class="top-header">
+          <h1>Contador de Procedimientos</h1>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <v-select
+              v-model="contadorMes"
+              :items="mesesDisponibles"
+              item-title="label"
+              item-value="value"
+              density="compact"
+              variant="outlined"
+              style="max-width: 200px;"
+              hide-details
+            />
+            <button class="btn-primary" @click="() => {}">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="content-area">
+          <!-- Resumen total del mes -->
+          <div class="stats-grid mini" style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); margin-bottom: 1.5rem;">
+            <div class="stat-card" style="background: var(--accent-gold, #daa520); color: #000;">
+              <div class="stat-header"><span class="stat-title" style="color:#000;">Total Procedimientos</span></div>
+              <div class="stat-value" style="color:#000;">{{ contadorItems.reduce((s, i) => s + i.total, 0) }}</div>
+              <div class="stat-subtitle" style="color:#333;">{{ contadorMesLabel }}</div>
+            </div>
+            <div v-for="g in contadorGrupos.slice(0, 5)" :key="g.grupo" class="stat-card">
+              <div class="stat-header"><span class="stat-title" style="font-size:10px; text-transform:uppercase;">{{ g.grupo }}</span></div>
+              <div class="stat-value">{{ g.total }}</div>
+              <div class="stat-subtitle">procedimientos</div>
+            </div>
+          </div>
+
+          <!-- Tabla detallada -->
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Detalle por Procedimiento — {{ contadorMesLabel }}</span>
+                <v-spacer />
+                <v-btn icon size="small" variant="text" color="success" class="me-2" @click="downloadExcel(contadorItems, contadorHeaders, `healup-contador-${contadorMes}`)">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
+                <v-text-field v-model="contadorSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details density="compact" variant="outlined" class="search-field" />
+              </v-card-title>
+              <v-data-table
+                :headers="contadorHeaders"
+                :items="contadorItems"
+                :search="contadorSearch"
+                :items-per-page="20"
+                class="elevation-0"
+                no-data-text="Sin procedimientos en el período seleccionado"
+              >
+                <template v-slot:item.grupo="{ item }">
+                  <v-chip size="x-small" :color="getGrupoColor(item.grupo)" variant="tonal">{{ item.grupo }}</v-chip>
+                </template>
+                <template v-slot:item.total="{ item }">
+                  <span style="font-weight: 700; font-size: 1.1rem;">{{ item.total }}</span>
+                </template>
+                <template v-slot:item.ingreso_estimado="{ item }">
+                  <span class="price-cell">S/ {{ item.ingreso_estimado.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</span>
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========  VISTA: ALMACÉN  ========== -->
+      <div v-else-if="activeView === 'stock'" class="view-container">
+        <header class="top-header">
+          <h1>Almacén</h1>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn-secondary" @click="fetchStockData">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+            <button class="btn-primary" @click="openStockItemDialog()">
+              <v-icon icon="mdi-plus" size="16" />
+              <span>Nuevo Insumo</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="content-area">
+          <!-- Alertas de stock bajo -->
+          <v-alert
+            v-if="lowStockAlerts.length > 0"
+            type="warning"
+            variant="tonal"
+            class="mb-4"
+            style="border-radius: 10px;"
+          >
+            <template #title>
+              <strong>⚠️ {{ lowStockAlerts.length }} insumo{{ lowStockAlerts.length > 1 ? 's' : '' }} por debajo del mínimo</strong>
+            </template>
+            <template #text>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                <v-chip
+                  v-for="a in lowStockAlerts" :key="a.id"
+                  color="error" size="small" variant="flat"
+                  @click="openAddStockMovement(a, 'entrada')"
+                  style="cursor: pointer;"
+                >
+                  {{ a.nombre }} ({{ a.cantidad_actual }} {{ a.unidad }}) — clic para reponer
+                </v-chip>
+              </div>
+            </template>
+          </v-alert>
+
+          <!-- Tabs -->
+          <div class="table-tabs" style="margin-bottom: 1rem;">
+            <button :class="['tab', { active: stockTab === 'items' }]" @click="stockTab = 'items'">Inventario</button>
+            <button :class="['tab', { active: stockTab === 'movimientos' }]" @click="stockTab = 'movimientos'">Movimientos</button>
+          </div>
+
+          <!-- TAB: INVENTARIO -->
+          <div v-if="stockTab === 'items'" class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Inventario de Insumos</span>
+                <v-spacer />
+                <v-btn icon size="small" variant="text" color="success" class="me-2"
+                  @click="downloadExcel(stockItems, stockHeaders, 'healup-almacen')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
+                <v-text-field v-model="stockSearch" append-inner-icon="mdi-magnify" label="Buscar"
+                  single-line hide-details density="compact" variant="outlined" class="search-field" />
+              </v-card-title>
+
+              <v-data-table
+                :headers="stockHeaders"
+                :items="stockItems"
+                :search="stockSearch"
+                :items-per-page="20"
+                class="elevation-0"
+                no-data-text="Sin insumos. Ejecuta sql/healup_stock_schema.sql en Supabase y recarga."
+                :sort-by="[{ key: 'estado_orden', order: 'asc' }]"
+              >
+                <!-- Estado (coloreado) -->
+                <template v-slot:item.estado="{ item }">
+                  <v-chip
+                    :color="Number(item.cantidad_actual) <= Number(item.umbral_minimo) ? 'error'
+                           : Number(item.cantidad_actual) <= Number(item.umbral_minimo) * 2 ? 'warning' : 'success'"
+                    size="small" variant="flat"
+                  >
+                    {{ Number(item.cantidad_actual) <= Number(item.umbral_minimo) ? '⚠ Bajo'
+                     : Number(item.cantidad_actual) <= Number(item.umbral_minimo) * 2 ? 'Cuidado' : '✓ OK' }}
+                  </v-chip>
+                </template>
+
+                <!-- Stock actual resaltado si está bajo -->
+                <template v-slot:item.cantidad_actual="{ item }">
+                  <span :style="{
+                    color: Number(item.cantidad_actual) <= Number(item.umbral_minimo) ? '#ef4444' : 'inherit',
+                    fontWeight: Number(item.cantidad_actual) <= Number(item.umbral_minimo) ? '700' : '400'
+                  }">{{ item.cantidad_actual }} <span style="opacity:0.6; font-size:11px;">{{ item.unidad }}</span></span>
+                </template>
+
+                <!-- Costo unitario -->
+                <template v-slot:item.costo_unitario="{ item }">
+                  <span style="opacity: 0.8;">S/ {{ Number(item.costo_unitario || 0).toFixed(2) }}</span>
+                </template>
+
+                <!-- Acciones -->
+                <template v-slot:item.actions="{ item }">
+                  <button class="icon-btn" @click="openAddStockMovement(item, 'entrada')"
+                    title="Registrar entrada de stock" style="color: #22c55e;">
+                    <v-icon icon="mdi-plus-circle-outline" size="18" />
+                  </button>
+                  <button class="icon-btn" @click="openAddStockMovement(item, 'salida')"
+                    title="Registrar salida" style="color: #f97316;">
+                    <v-icon icon="mdi-minus-circle-outline" size="18" />
+                  </button>
+                  <button class="icon-btn" @click="openStockItemDialog(item)" title="Editar insumo">
+                    <v-icon icon="mdi-pencil" size="16" />
+                  </button>
+                  <button class="icon-btn" @click="deleteStockItem(item.id)" title="Eliminar">
+                    <v-icon icon="mdi-delete" size="16" />
+                  </button>
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+
+          <!-- TAB: MOVIMIENTOS -->
+          <div v-if="stockTab === 'movimientos'" class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Movimientos de Stock</span>
+              </v-card-title>
+              <v-data-table
+                :headers="movimientosHeaders"
+                :items="stockMovements"
+                :items-per-page="25"
+                class="elevation-0"
+                no-data-text="Sin movimientos registrados"
+              >
+                <template v-slot:item.tipo="{ item }">
+                  <v-chip
+                    :color="item.tipo === 'entrada' ? 'success' : item.tipo === 'ajuste' ? 'info' : 'error'"
+                    size="small" variant="flat"
+                  >{{ item.tipo }}</v-chip>
+                </template>
+                <template v-slot:item.cantidad="{ item }">
+                  <span :style="{ color: item.tipo === 'entrada' ? '#22c55e' : '#ef4444', fontWeight: '700' }">
+                    {{ item.tipo === 'entrada' ? '+' : '-' }}{{ item.cantidad }}
+                  </span>
+                </template>
+                <template v-slot:item.item_nombre="{ item }">
+                  {{ item.healup_stock_items?.nombre || `#${item.stock_item_id}` }}
+                </template>
+                <template v-slot:item.created_at="{ item }">
+                  {{ item.created_at
+                    ? new Date(item.created_at).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })
+                    : '—' }}
                 </template>
               </v-data-table>
             </v-card>
@@ -1481,6 +1749,48 @@
             </div>
           </div>
         </v-card-text>
+
+        <!-- Panel de insumos del procedimiento -->
+        <div v-if="selectedEvent?.procedureId" style="padding: 0 16px 8px;">
+          <v-divider class="mb-3"></v-divider>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <div>
+              <div style="font-size:12px; color:var(--text-secondary); margin-bottom:2px;">Descuento de insumos (almacén)</div>
+              <v-chip
+                v-if="selectedEvent.stockDescontado"
+                color="success" size="small" variant="tonal"
+              >
+                <v-icon icon="mdi-check-circle" size="14" class="mr-1" />
+                Descontado {{ selectedEvent.stockDescontadoPor ? `por ${selectedEvent.stockDescontadoPor}` : '' }}
+              </v-chip>
+              <v-chip v-else color="warning" size="small" variant="tonal">
+                <v-icon icon="mdi-clock-outline" size="14" class="mr-1" />
+                Pendiente
+              </v-chip>
+            </div>
+            <v-btn
+              v-if="!selectedEvent.stockDescontado"
+              color="success" variant="outlined" size="small"
+              :loading="descontandoStock"
+              @click="descontarInsumosEvento(selectedEvent)"
+            >
+              <v-icon icon="mdi-package-down" size="16" class="mr-1" />
+              Descontar insumos
+            </v-btn>
+          </div>
+          <div
+            v-if="getRecetaCountForProcedure(selectedEvent.procedureId) === 0"
+            style="font-size:11px; color:#f59e0b; margin-top:6px;"
+          >
+            ⚠️ Este procedimiento no tiene receta. Configúrala en Almacén → Inventario → botón Receta.
+          </div>
+          <div
+            v-else
+            style="font-size:11px; color:var(--text-secondary); margin-top:6px;"
+          >
+            {{ getRecetaCountForProcedure(selectedEvent.procedureId) }} insumo(s) en receta
+          </div>
+        </div>
 
         <v-card-actions>
           <v-btn color="error" variant="text" @click="confirmDeleteEvent">
@@ -1920,8 +2230,57 @@
               </v-col>
             </v-row>
 
-            <v-select v-model="patientFormData.procedimiento" label="Procedimiento" :items="procedures"
-              item-title="name" item-value="name" variant="outlined" density="compact"></v-select>
+            <!-- Selector de procedimiento vinculado al catálogo (para precio y receta) -->
+            <v-autocomplete
+              v-model="patientFormData.procedure_id"
+              :items="procedures.filter(p => Number(p.id) > 0)"
+              item-title="name"
+              item-value="id"
+              label="Procedimiento (catálogo)"
+              variant="outlined"
+              density="compact"
+              clearable
+              class="mb-2"
+              :item-props="(p: any) => ({ subtitle: p.sku ? `${p.sku} · S/${p.price}` : `S/${p.price}` })"
+              @update:model-value="(v: any) => {
+                const proc = procedures.find(p => Number(p.id) === Number(v))
+                if (proc && !patientFormData.procedimiento) patientFormData.procedimiento = proc.name
+              }"
+            ></v-autocomplete>
+
+            <!-- Desglose de precios cuando hay procedimiento + anticipo -->
+            <div v-if="selectedProcedurePrice && parseCurrency(patientFormData.precio) > 0"
+              style="background:rgba(var(--v-theme-surface-variant),0.4); border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:13px;">
+              <div style="font-weight:600; margin-bottom:6px; color:var(--text-secondary);">Desglose de cobro</div>
+              <div style="display:flex; justify-content:space-between;">
+                <span>Precio lista — {{ selectedProcedurePrice.sku }}</span>
+                <span>S/ {{ selectedProcedurePrice.precioFinal.toLocaleString('es-PE', {minimumFractionDigits:2}) }}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; color:#f59e0b;">
+                <span>Anticipo pagado</span>
+                <span>− S/ {{ parseCurrency(patientFormData.precio).toLocaleString('es-PE', {minimumFractionDigits:2}) }}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-weight:700; border-top:1px solid rgba(255,255,255,0.1); margin-top:6px; padding-top:6px;">
+                <span>Saldo a cobrar al servicio</span>
+                <span style="color:#22c55e;">
+                  S/ {{ Math.max(0, selectedProcedurePrice.precioFinal - parseCurrency(patientFormData.precio)).toLocaleString('es-PE', {minimumFractionDigits:2}) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- SKU de reserva (read-only si ya existe) -->
+            <div v-if="patientFormData.booking_sku" style="margin-bottom:12px;">
+              <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SKU de reserva (generado automáticamente)</div>
+              <v-chip color="primary" variant="tonal" style="font-family:monospace; font-size:13px;">
+                🎫 {{ patientFormData.booking_sku }}
+              </v-chip>
+            </div>
+            <div v-else-if="parseCurrency(patientFormData.precio) > 0" style="font-size:11px; color:#f59e0b; margin-bottom:12px;">
+              ✨ Se generará un SKU de reserva al guardar.
+            </div>
+
+            <v-text-field v-model="patientFormData.procedimiento" label="Nombre procedimiento (texto libre)" variant="outlined"
+              density="compact" class="mb-2" hint="Se auto-completa al seleccionar del catálogo" persistent-hint></v-text-field>
 
             <v-text-field v-model="patientFormData.fecha_agendamiento" label="Fecha de Agendamiento"
               type="datetime-local" variant="outlined" density="compact"></v-text-field>
@@ -1965,7 +2324,7 @@
     </v-dialog>
 
     <!-- ══════════  VISTA: ESTRUCTURA DE PRECIOS Y PUNTO DE EQUILIBRIO  ══════════ -->
-    <div v-if="activeView === 'precios'" class="view-container" style="padding: 1.5rem;">
+    <div v-if="activeView === 'precios'" class="view-container" style="padding: 1.5rem; overflow-y: auto; overflow-x: hidden;">
 
       <header class="top-header" style="margin-bottom: 1.5rem;">
         <div>
@@ -2123,228 +2482,247 @@
 
       </div><!-- fin panel costos -->
 
-      <!-- ── PROCEDIMIENTOS POR GRUPO ──────────────────────────────── -->
+      <!-- ── PROCEDIMIENTOS POR GRUPO (VIÑETAS) ───────────────────── -->
       <div class="precios-section">
-        <div class="precios-section-header" style="margin-bottom: 1rem;">
+        <div class="precios-section-header" style="margin-bottom:1.25rem;">
           <h3 class="precios-section-title" style="margin:0;">
             <v-icon icon="mdi-format-list-group" size="16" style="margin-right:6px;" />
             Procedimientos por Grupo
+            <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted,#888);margin-left:0.5rem;">— clic en grupo para ver detalle</span>
           </h3>
-          <div style="display:flex; gap:0.5rem;">
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <button class="btn-add-row" style="font-size:0.7rem;"
+              @click="GRUPOS_HEALUP.forEach(g => { collapsedGroups[g] = false })">
+              <v-icon icon="mdi-arrow-expand-all" size="12" /> Expandir todo
+            </button>
+            <button class="btn-add-row" style="font-size:0.7rem;"
+              @click="GRUPOS_HEALUP.forEach(g => { collapsedGroups[g] = true })">
+              <v-icon icon="mdi-arrow-collapse-all" size="12" /> Colapsar todo
+            </button>
             <button class="btn-add-row" @click="openProcedureDialog()">
               <v-icon icon="mdi-plus" size="14" /> Nuevo Procedimiento
             </button>
-            <button class="btn-add-row" style="border-color:#888; color:#888;" @click="showNuevoGrupoDialog = true">
-              <v-icon icon="mdi-folder-plus-outline" size="14" /> Nuevo Grupo
-            </button>
           </div>
         </div>
 
-        <!-- Sin procedimientos -->
-        <div v-if="procedures.length === 0" style="padding:2rem;text-align:center;color:var(--text-muted);">
-          <v-icon icon="mdi-clipboard-list-outline" size="40" />
-          <p style="margin:0.5rem 0 0;">Aún no hay procedimientos. Haz clic en "Nuevo Procedimiento" para comenzar.</p>
-        </div>
+        <!-- Un bloque viñeta por grupo -->
+        <div v-for="(procs, grupoKey) in procedimientosPorGrupo" :key="grupoKey" class="grupo-vineta">
 
-        <!-- Un bloque por grupo -->
-        <div v-for="(procs, grupoKey) in procedimientosPorGrupo" :key="grupoKey" class="grupo-bloque">
-          <!-- Cabecera del grupo: editable inline -->
-          <div class="grupo-header">
-            <div style="display:flex;align-items:center;gap:0.5rem;">
-              <v-icon icon="mdi-folder-outline" size="15" style="color:var(--primary,#daa520);" />
-              <input
-                :value="grupoKey"
-                class="grupo-title-input"
-                @blur="(e) => renameGrupo(grupoKey, (e.target as HTMLInputElement).value)"
-                title="Haz clic para renombrar el grupo"
+          <!-- Cabecera colapsable del grupo -->
+          <div class="grupo-vineta-header" @click="toggleGrupo(String(grupoKey))">
+            <div style="display:flex;align-items:center;gap:0.65rem;min-width:0;flex:1;">
+              <v-icon
+                :icon="collapsedGroups[String(grupoKey)] ? 'mdi-chevron-right' : 'mdi-chevron-down'"
+                size="16"
+                :style="{ color: 'var(--primary,#daa520)', transition: 'transform 0.2s', flexShrink: 0 }"
               />
-              <span class="grupo-count">({{ procs.length }})</span>
+              <span class="grupo-vineta-bullet"></span>
+              <span class="grupo-vineta-nombre">{{ grupoKey }}</span>
+              <span class="grupo-count">{{ procs.length }} proc.</span>
+              <div v-if="procs.length > 0 && collapsedGroups[String(grupoKey)]" class="grupo-subtotales">
+                <span>{{ fmtS(procs.reduce((s,p) => s+(p.price||0)*(1-((p.discount||0)/100)), 0)) }} total lista</span>
+              </div>
             </div>
-            <button class="btn-add-row" style="font-size:0.7rem;" @click="openProcedureDialog(undefined, grupoKey)">
-              <v-icon icon="mdi-plus" size="12" /> Agregar aquí
-            </button>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <button class="btn-add-row" style="font-size:0.7rem;" @click.stop="openProcedureDialog(undefined, String(grupoKey))">
+                <v-icon icon="mdi-plus" size="12" /> Agregar
+              </button>
+            </div>
           </div>
 
-          <!-- Tabla del grupo -->
-          <div style="overflow-x:auto;">
-            <table class="precios-table grupo-table">
-              <thead>
-                <tr>
-                  <th style="text-align:left;min-width:70px;">SKU</th>
-                  <th style="text-align:left;min-width:170px;">Nombre</th>
-                  <th style="min-width:55px;">Color</th>
-                  <th class="col-edit" style="min-width:80px;">Precio (S/)</th>
-                  <th class="col-edit" style="min-width:70px;">Desc %</th>
-                  <th class="col-formula" style="min-width:90px;">Precio Final</th>
-                  <th class="col-edit" style="min-width:75px;">Ses/mes</th>
-                  <th class="col-edit" style="min-width:85px;">Insumo (S/)</th>
-                  <th class="col-formula" style="min-width:85px;">Ingresos</th>
-                  <th class="col-formula" style="min-width:80px;">Costo</th>
-                  <th class="col-formula" style="min-width:75px;">Margen</th>
-                  <th class="col-formula" style="min-width:60px;">%</th>
-                  <th style="width:28px;"></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="p in procs" :key="p.id">
-                  <!-- SKU inline editable -->
-                  <td>
-                    <input
-                      :value="p.sku || ''"
-                      class="cell-input cell-text"
-                      placeholder="SKU"
-                      style="width:60px;"
-                      @blur="(e) => saveProcedureField(p.id, 'sku', (e.target as HTMLInputElement).value)"
-                    />
-                  </td>
-                  <!-- Nombre inline editable -->
-                  <td>
-                    <input
-                      :value="p.name"
-                      class="cell-input cell-text"
-                      style="width:155px;"
-                      @blur="(e) => saveProcedureField(p.id, 'name', (e.target as HTMLInputElement).value)"
-                    />
-                  </td>
-                  <!-- Color dot + input -->
-                  <td style="text-align:center;">
-                    <input
-                      type="color"
-                      :value="p.color || '#3b82f6'"
-                      class="color-picker-input"
-                      @change="(e) => saveProcedureField(p.id, 'color', (e.target as HTMLInputElement).value)"
-                      title="Color"
-                    />
-                  </td>
-                  <!-- Precio inline editable -->
-                  <td>
-                    <input
-                      :value="p.price || 0"
-                      type="number" min="0"
-                      class="cell-input"
-                      @blur="(e) => saveProcedureField(p.id, 'price', parseFloat((e.target as HTMLInputElement).value) || 0)"
-                    />
-                  </td>
-                  <!-- Descuento inline editable -->
-                  <td>
-                    <input
-                      :value="p.discount || 0"
-                      type="number" min="0" max="100"
-                      class="cell-input"
-                      @blur="(e) => saveProcedureField(p.id, 'discount', parseFloat((e.target as HTMLInputElement).value) || 0)"
-                    />
-                  </td>
-                  <!-- Precio final (fórmula) -->
-                  <td class="cell-formula" style="font-weight:600;">
-                    {{ fmtS((p.price || 0) * (1 - ((p.discount || 0) / 100))) }}
-                  </td>
-                  <!-- Sesiones (procMeta editable) -->
-                  <td>
-                    <input v-model.number="procMeta[p.id].sesiones" type="number" min="0" class="cell-input" />
-                  </td>
-                  <!-- Costo insumo (procMeta editable) -->
-                  <td>
-                    <input v-model.number="procMeta[p.id].costoInsumo" type="number" min="0" class="cell-input" />
-                  </td>
-                  <!-- Ingresos (fórmula) -->
-                  <td class="cell-formula">
-                    {{ fmtS((procMeta[p.id]?.sesiones||0) * (p.price||0) * (1-((p.discount||0)/100))) }}
-                  </td>
-                  <!-- Costo insumos (fórmula) -->
-                  <td class="cell-formula">
-                    {{ fmtS((procMeta[p.id]?.sesiones||0) * (procMeta[p.id]?.costoInsumo||0)) }}
-                  </td>
-                  <!-- Margen (fórmula) -->
-                  <td class="cell-formula">
-                    {{ fmtS(
-                      (procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100))
-                      - (procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0)
-                    ) }}
-                  </td>
-                  <!-- % Margen (fórmula) -->
-                  <td class="cell-formula" :class="{
-                    'pct-high': (() => {
-                      const i2 = (procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100))
-                      const c2 = (procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0)
-                      return i2 > 0 && (i2-c2)/i2 > 0.5
-                    })()
-                  }">
-                    {{ (() => {
-                      const i2 = (procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100))
-                      const c2 = (procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0)
-                      return i2 > 0 ? (((i2-c2)/i2)*100).toFixed(1)+'%' : '—'
-                    })() }}
-                  </td>
-                  <!-- Eliminar -->
-                  <td>
-                    <button class="btn-del-row" @click="deleteProcedure(p.id)" title="Eliminar procedimiento">
-                      <v-icon icon="mdi-trash-can-outline" size="14" />
+          <!-- Cuerpo colapsable -->
+          <div v-if="!collapsedGroups[String(grupoKey)]" class="grupo-vineta-body">
+
+            <!-- Grupo vacío -->
+            <div v-if="procs.length === 0" class="grupo-empty">
+              <v-icon icon="mdi-plus-circle-outline" size="13" style="margin-right:5px;" />
+              Sin procedimientos — haz clic en "Agregar" para añadir uno.
+            </div>
+
+            <!-- Tabla de procedimientos (una fila por procedimiento) -->
+            <div v-else class="proc-table-wrap">
+
+              <!-- Cabecera de columnas -->
+              <div class="proc-table-hdr">
+                <div class="ptc ptc-id-name">SKU · Nombre</div>
+                <div class="ptc ptc-num">P.Original</div>
+                <div class="ptc ptc-num">Desc%</div>
+                <div class="ptc ptc-num ptc-formula">P.Final</div>
+                <div class="ptc ptc-min">Duración</div>
+                <div class="ptc ptc-min">T.Prep</div>
+                <div class="ptc ptc-min">T.Total</div>
+                <div class="ptc ptc-num">C.Insumo</div>
+                <div class="ptc ptc-num">C.HH</div>
+                <div class="ptc ptc-num ptc-formula">C.Total</div>
+                <div class="ptc ptc-num ptc-formula">IGV 19.5%</div>
+                <div class="ptc ptc-num ptc-formula">Utilidad</div>
+                <div class="ptc ptc-pct ptc-formula">Margen%</div>
+                <div class="ptc ptc-wpp" title="Procedimientos agendados vía WhatsApp en el mes actual">WPP mes</div>
+                <div class="ptc ptc-actions"></div>
+              </div>
+
+              <!-- Una fila por procedimiento -->
+              <div v-for="p in procs" :key="p.id"
+                   class="proc-row" :class="{ 'proc-row--editing': editingProcs[p.id] }">
+
+                <!-- SKU + color dot + Nombre (columna única) -->
+                <div class="ptc ptc-id-name">
+                  <template v-if="!editingProcs[p.id]">
+                    <span class="proc-color-dot" :style="{ background: p.color || '#3b82f6' }"></span>
+                    <span class="proc-sku-tag">{{ p.sku || '—' }}</span>
+                    <span class="proc-row-name">{{ p.name }}</span>
+                  </template>
+                  <template v-else>
+                    <input type="color" v-model="editBuffer[p.id].color" class="color-picker-input" />
+                    <input v-model="editBuffer[p.id].sku" type="text" class="ci-input" style="width:52px;font-size:0.72rem;" />
+                    <input v-model="editBuffer[p.id].name" type="text" class="ci-name" style="flex:1;min-width:100px;" />
+                  </template>
+                </div>
+
+                <!-- Precio Original (editable) -->
+                <div class="ptc ptc-num">
+                  <span v-if="!editingProcs[p.id]" class="pv-val pv-editable">{{ fmtS(p.price||0) }}</span>
+                  <div v-else class="pv-input-wrap">
+                    <span class="ci-prefix">S/</span>
+                    <input v-model.number="editBuffer[p.id].price" type="number" min="0" class="ci-input ci-input-xs" />
+                  </div>
+                </div>
+
+                <!-- Descuento % (editable) -->
+                <div class="ptc ptc-num">
+                  <span v-if="!editingProcs[p.id]" class="pv-val pv-editable">{{ p.discount||0 }}%</span>
+                  <div v-else class="pv-input-wrap">
+                    <input v-model.number="editBuffer[p.id].discount" type="number" min="0" max="100" class="ci-input ci-input-xs" />
+                    <span class="ci-prefix">%</span>
+                  </div>
+                </div>
+
+                <!-- Precio Final cobrado (fórmula) -->
+                <div class="ptc ptc-num">
+                  <span class="pv-val pv-formula">{{ fmtS(procCalc(p).precioFinal) }}</span>
+                </div>
+
+                <!-- Duración del servicio (editable) -->
+                <div class="ptc ptc-min">
+                  <span v-if="!editingProcs[p.id]" class="pv-val pv-editable">{{ procMeta[p.id]?.duracion||0 }}'</span>
+                  <div v-else class="pv-input-wrap">
+                    <input v-model.number="editBuffer[p.id].duracion" type="number" min="0" class="ci-input ci-input-xs" />
+                    <span class="ci-prefix">min</span>
+                  </div>
+                </div>
+
+                <!-- Tiempo de preparación y cierre (editable) -->
+                <div class="ptc ptc-min">
+                  <span v-if="!editingProcs[p.id]" class="pv-val pv-editable">{{ procMeta[p.id]?.tiempoPrep||0 }}'</span>
+                  <div v-else class="pv-input-wrap">
+                    <input v-model.number="editBuffer[p.id].tiempoPrep" type="number" min="0" class="ci-input ci-input-xs" />
+                    <span class="ci-prefix">min</span>
+                  </div>
+                </div>
+
+                <!-- Tiempo total en minutos (editable) -->
+                <div class="ptc ptc-min">
+                  <span v-if="!editingProcs[p.id]" class="pv-val pv-editable">{{ procMeta[p.id]?.tiempoTotal||0 }}'</span>
+                  <div v-else class="pv-input-wrap">
+                    <input v-model.number="editBuffer[p.id].tiempoTotal" type="number" min="0" class="ci-input ci-input-xs" />
+                    <span class="ci-prefix">min</span>
+                  </div>
+                </div>
+
+                <!-- Costo de insumos (editable) -->
+                <div class="ptc ptc-num">
+                  <span v-if="!editingProcs[p.id]" class="pv-val pv-editable">{{ fmtS(procMeta[p.id]?.costoInsumo||0) }}</span>
+                  <div v-else class="pv-input-wrap">
+                    <span class="ci-prefix">S/</span>
+                    <input v-model.number="editBuffer[p.id].costoInsumo" type="number" min="0" class="ci-input ci-input-xs" />
+                  </div>
+                </div>
+
+                <!-- Costo horas hombre (editable) -->
+                <div class="ptc ptc-num">
+                  <span v-if="!editingProcs[p.id]" class="pv-val pv-editable">{{ fmtS(procMeta[p.id]?.costoHH||0) }}</span>
+                  <div v-else class="pv-input-wrap">
+                    <span class="ci-prefix">S/</span>
+                    <input v-model.number="editBuffer[p.id].costoHH" type="number" min="0" class="ci-input ci-input-xs" />
+                  </div>
+                </div>
+
+                <!-- Costo total (fórmula: insumos + HH) -->
+                <div class="ptc ptc-num">
+                  <span class="pv-val pv-formula">{{ fmtS(procCalc(p).costoTotal) }}</span>
+                </div>
+
+                <!-- IGV y renta 19.5% (fórmula fija) -->
+                <div class="ptc ptc-num">
+                  <span class="pv-val pv-formula">{{ fmtS(procCalc(p).igvRenta) }}</span>
+                </div>
+
+                <!-- Utilidad neta (fórmula) -->
+                <div class="ptc ptc-num">
+                  <span class="pv-val pv-formula" :class="{ 'pr-positive': procCalc(p).utilidadNeta >= 0, 'pr-negative': procCalc(p).utilidadNeta < 0 }">
+                    {{ fmtS(procCalc(p).utilidadNeta) }}
+                  </span>
+                </div>
+
+                <!-- Margen neto % (fórmula) -->
+                <div class="ptc ptc-pct">
+                  <span class="pv-val pv-formula" :class="{ 'pr-positive': procCalc(p).margenNeto >= 0, 'pr-negative': procCalc(p).margenNeto < 0 }">
+                    {{ procCalc(p).precioFinal > 0 ? procCalc(p).margenNeto.toFixed(1)+'%' : '—' }}
+                  </span>
+                </div>
+
+                <!-- Conteo WPP mes actual -->
+                <div class="ptc ptc-wpp">
+                  <span class="proc-wpp-badge" :class="{ 'wpp-active': getProcWppCount(p.name) > 0 }">
+                    {{ getProcWppCount(p.name) }}
+                  </span>
+                </div>
+
+                <!-- Acciones -->
+                <div class="ptc ptc-actions">
+                  <template v-if="!editingProcs[p.id]">
+                    <button class="btn-proc-edit" @click="startEditProc(p)" title="Editar">
+                      <v-icon icon="mdi-pencil-outline" size="12" />
                     </button>
-                  </td>
-                </tr>
-              </tbody>
-              <!-- Subtotales del grupo -->
-              <tfoot>
-                <tr class="totales-row">
-                  <td colspan="6" style="text-align:right;padding-right:0.5rem;font-size:0.75rem;color:var(--text-muted);">
-                    Subtotal {{ grupoKey }}
-                  </td>
-                  <td class="cell-formula">
-                    <strong>{{ procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0), 0) }}</strong>
-                  </td>
-                  <td></td>
-                  <td class="cell-formula">
-                    <strong>{{ fmtS(procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100)), 0)) }}</strong>
-                  </td>
-                  <td class="cell-formula">
-                    <strong>{{ fmtS(procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0), 0)) }}</strong>
-                  </td>
-                  <td class="cell-formula" colspan="2">
-                    <strong>{{ fmtS(
-                      procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(p.price||0)*(1-((p.discount||0)/100)), 0)
-                      - procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0)*(procMeta[p.id]?.costoInsumo||0), 0)
-                    ) }}</strong>
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
+                    <button class="btn-del-row" @click="deleteProcedure(p.id)" title="Eliminar">
+                      <v-icon icon="mdi-trash-can-outline" size="13" />
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button class="btn-proc-save" @click="saveEditProc(p)" title="Guardar">
+                      <v-icon icon="mdi-check" size="12" />
+                    </button>
+                    <button class="btn-proc-cancel" @click="cancelEditProc(p.id)" title="Cancelar">
+                      <v-icon icon="mdi-close" size="12" />
+                    </button>
+                  </template>
+                </div>
+
+              </div><!-- fin proc-row -->
+
+              <!-- Subtotal del grupo -->
+              <div class="grupo-subtotal-bar">
+                <span class="gsb-label">Subtotal {{ grupoKey }}</span>
+                <span>{{ procs.reduce((s,p) => s+(procMeta[p.id]?.sesiones||0),0) }} ses/mes</span>
+                <span>Ingresos: {{ fmtS(procs.reduce((s,p) => s+procCalc(p).ingresos,0)) }}</span>
+                <span>Utilidad: {{ fmtS(procs.reduce((s,p) => s+(procCalc(p).utilidadNeta*(procMeta[p.id]?.sesiones||1)),0)) }}</span>
+                <span>WPP: {{ procs.reduce((s,p) => s+getProcWppCount(p.name),0) }}</span>
+              </div>
+
+            </div><!-- fin proc-table-wrap -->
+
+          </div><!-- fin grupo-vineta-body -->
+        </div><!-- fin grupo-vineta -->
 
         <!-- TOTAL GENERAL -->
-        <div v-if="procedures.length > 0" class="grupo-total-general">
+        <div v-if="procedures.length > 0" class="grupo-total-general" style="margin-top:1rem;">
           <span>TOTAL GENERAL</span>
           <span>{{ preciosCalc.totalSesiones }} sesiones</span>
           <span>Ingresos: <strong>{{ fmtS(preciosCalc.totalIngresos) }}</strong></span>
           <span>Insumos: <strong>{{ fmtS(preciosCalc.totalCostosInsumos) }}</strong></span>
-          <span>Margen bruto insumos: <strong>{{ fmtS(preciosCalc.totalIngresos - preciosCalc.totalCostosInsumos) }}</strong></span>
+          <span>Margen bruto: <strong>{{ fmtS(preciosCalc.totalIngresos - preciosCalc.totalCostosInsumos) }}</strong></span>
         </div>
       </div>
-
-      <!-- Dialog: Nuevo Grupo -->
-      <v-dialog v-model="showNuevoGrupoDialog" max-width="360px" persistent>
-        <v-card style="background:var(--bg-secondary,#1a1a1a);border:1px solid var(--border,#2a2a2a);">
-          <v-card-title style="font-size:1rem;padding:1rem 1.5rem 0.5rem;">Nuevo Grupo</v-card-title>
-          <v-card-text>
-            <v-text-field
-              v-model="nuevoGrupoNombre"
-              label="Nombre del grupo (ej: Faciales, Corporales)"
-              variant="outlined"
-              density="compact"
-              autofocus
-              @keyup.enter="() => { if(nuevoGrupoNombre.trim()){ openProcedureDialog(undefined, nuevoGrupoNombre.trim()); showNuevoGrupoDialog=false; nuevoGrupoNombre='' } }"
-            />
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <v-btn variant="text" color="grey" @click="showNuevoGrupoDialog=false; nuevoGrupoNombre=''">Cancelar</v-btn>
-            <v-btn variant="elevated" color="primary" @click="() => { if(nuevoGrupoNombre.trim()){ openProcedureDialog(undefined, nuevoGrupoNombre.trim()); showNuevoGrupoDialog=false; nuevoGrupoNombre='' } }">
-              Crear y agregar procedimiento
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
 
       <!-- ── ESTADO DE RESULTADOS + PUNTO DE EQUILIBRIO ───────────── -->
       <div class="precios-results-grid">
@@ -2448,6 +2826,208 @@
       </div><!-- fin grid resultados -->
 
     </div><!-- fin vista precios -->
+
+    <!-- ==========  RECETA DIALOG (Insumos por procedimiento)  ========== -->
+    <v-dialog v-model="recetaDialog" max-width="680px" persistent scrollable>
+      <v-card style="max-height: 90vh;">
+        <v-card-title class="event-dialog-title" style="display: flex; align-items: center; gap: 10px;">
+          <v-icon icon="mdi-flask-outline" color="warning" />
+          <div>
+            <div>Receta — {{ recetaProcedure?.name || '' }}</div>
+            <div style="font-size: 11px; opacity: 0.6; font-weight: 400;">{{ recetaProcedure?.sku || '' }} · {{ recetaProcedure?.grupo || '' }}</div>
+          </div>
+        </v-card-title>
+
+        <v-card-text style="padding: 0;">
+          <!-- Tabla de insumos actuales -->
+          <div style="padding: 12px 16px 0;">
+            <div v-if="recetaIngredientes.length === 0" style="text-align: center; padding: 24px; color: var(--text-secondary); font-size: 13px;">
+              <v-icon icon="mdi-flask-empty-outline" size="36" style="opacity: 0.4;" />
+              <div style="margin-top: 8px;">Sin insumos definidos para este procedimiento.</div>
+            </div>
+
+            <div v-else>
+              <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.5; margin-bottom: 8px; letter-spacing: 0.05em;">
+                Insumos de la receta
+              </div>
+              <div
+                v-for="ing in recetaIngredientes"
+                :key="ing.id"
+                style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--bg-hover, rgba(0,0,0,0.04)); margin-bottom: 6px;"
+              >
+                <v-icon icon="mdi-circle-small" size="16" color="warning" style="flex-shrink: 0;" />
+                <span style="flex: 1; font-size: 13px;">{{ getStockItemName(ing.stock_item_id) }}</span>
+                <span style="font-weight: 700; font-size: 14px; min-width: 60px; text-align: right;">{{ ing.cantidad_usada }}</span>
+                <span style="font-size: 12px; opacity: 0.6; min-width: 55px;">{{ ing.unidad || getStockItemUnit(ing.stock_item_id) }}</span>
+                <button class="icon-btn" @click="deleteProcSupplyDirect(ing.id)" title="Quitar insumo" style="color: #ef4444; flex-shrink: 0;">
+                  <v-icon icon="mdi-close" size="16" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <v-divider style="margin: 12px 0;" />
+
+          <!-- Formulario para agregar nuevo insumo -->
+          <div style="padding: 0 16px 12px;">
+            <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.5; margin-bottom: 10px; letter-spacing: 0.05em;">
+              Agregar insumo a la receta
+            </div>
+            <v-row dense>
+              <v-col cols="12" sm="5">
+                <v-autocomplete
+                  v-model="recetaNewForm.stock_item_id"
+                  :items="stockItemsForReceta"
+                  item-title="label"
+                  item-value="id"
+                  label="Insumo *"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  clearable
+                  no-data-text="Sin insumos. Ve a Almacén y agrega primero."
+                />
+              </v-col>
+              <v-col cols="6" sm="3">
+                <v-text-field
+                  v-model.number="recetaNewForm.cantidad"
+                  label="Cantidad *"
+                  variant="outlined"
+                  density="compact"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="6" sm="3">
+                <v-combobox
+                  v-model="recetaNewForm.unidad"
+                  :items="UNIDADES_RECETA"
+                  label="Unidad"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" sm="1" style="display: flex; align-items: center;">
+                <button
+                  class="btn-primary"
+                  @click="addRecetaIngrediente"
+                  :disabled="!recetaNewForm.stock_item_id || !recetaNewForm.cantidad"
+                  style="padding: 6px 10px; width: 100%;"
+                >
+                  <v-icon icon="mdi-plus" size="16" />
+                </button>
+              </v-col>
+            </v-row>
+
+            <!-- También permite crear nuevo insumo inline -->
+            <div style="margin-top: 10px; font-size: 12px; opacity: 0.6;">
+              ¿No encuentras el insumo?
+              <span
+                style="color: var(--accent-gold, #daa520); cursor: pointer; text-decoration: underline;"
+                @click="recetaDialog = false; openStockItemDialog()"
+              >
+                Agrega un nuevo insumo en Almacén
+              </span>
+            </div>
+          </div>
+        </v-card-text>
+
+        <v-card-actions>
+          <div style="flex: 1; font-size: 12px; opacity: 0.5;">
+            {{ recetaIngredientes.length }} insumo{{ recetaIngredientes.length !== 1 ? 's' : '' }} definido{{ recetaIngredientes.length !== 1 ? 's' : '' }}
+          </div>
+          <button class="btn-primary" @click="recetaDialog = false">Cerrar</button>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  STOCK ITEM DIALOG (Agregar/Editar Insumo)  ========== -->
+    <v-dialog v-model="stockItemDialog" max-width="520px" persistent>
+      <v-card>
+        <v-card-title class="event-dialog-title">
+          {{ editingStockItem ? 'Editar Insumo' : 'Nuevo Insumo' }}
+        </v-card-title>
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="12" sm="8">
+              <v-text-field v-model="stockItemForm.nombre" label="Nombre del insumo *" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']" />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field v-model="stockItemForm.unidad" label="Unidad (ml, g, vial…)" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model.number="stockItemForm.cantidad_actual" label="Cantidad actual" variant="outlined" density="compact" type="number" min="0" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model.number="stockItemForm.umbral_minimo" label="Alerta si baja de…" variant="outlined" density="compact" type="number" min="0" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model.number="stockItemForm.costo_unitario" label="Costo por unidad (S/)" variant="outlined" density="compact" type="number" min="0" step="0.01" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model="stockItemForm.categoria" label="Categoría" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12">
+              <v-text-field v-model="stockItemForm.proveedor" label="Proveedor" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12">
+              <v-textarea v-model="stockItemForm.notas" label="Notas" variant="outlined" density="compact" rows="2" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <button class="btn-secondary" @click="stockItemDialog = false">Cancelar</button>
+          <button class="btn-primary" @click="saveStockItem">Guardar</button>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  STOCK MOVEMENT DIALOG (Entrada/Salida/Ajuste)  ========== -->
+    <v-dialog v-model="stockMovementDialog" max-width="480px" persistent>
+      <v-card>
+        <v-card-title class="event-dialog-title">
+          {{ stockMovementForm.tipo === 'entrada' ? '📦 Registrar Entrada' : stockMovementForm.tipo === 'salida' ? '📤 Registrar Salida' : '🔧 Ajuste de Stock' }}
+        </v-card-title>
+        <v-card-text>
+          <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+            Insumo: <strong>{{ stockMovementTargetName }}</strong>
+          </p>
+          <v-row dense>
+            <v-col cols="12" sm="6">
+              <v-select
+                v-model="stockMovementForm.tipo"
+                :items="[{ title: 'Entrada (compra/reposición)', value: 'entrada' }, { title: 'Salida (uso manual)', value: 'salida' }, { title: 'Ajuste de inventario', value: 'ajuste' }]"
+                item-title="title"
+                item-value="value"
+                label="Tipo"
+                variant="outlined"
+                density="compact"
+              />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model.number="stockMovementForm.cantidad" label="Cantidad" variant="outlined" density="compact" type="number" min="0.01" step="0.01" />
+            </v-col>
+            <v-col cols="12">
+              <v-text-field v-model="stockMovementForm.motivo" label="Motivo / Referencia" variant="outlined" density="compact" placeholder="Ej: compra proveedor, uso en paciente, etc." />
+            </v-col>
+            <v-col cols="12">
+              <v-textarea v-model="stockMovementForm.notas" label="Notas adicionales" variant="outlined" density="compact" rows="2" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <button class="btn-secondary" @click="stockMovementDialog = false">Cancelar</button>
+          <button class="btn-primary" @click="saveStockMovement">Registrar</button>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- PROC SUPPLY DIALOG removed — replaced by per-procedure Receta dialog -->
 
   </div>
 </template>
@@ -2719,46 +3299,414 @@
   vertical-align: middle;
 }
 
-/* Grupos de procedimientos */
-.grupo-bloque {
-  margin-bottom: 1.25rem;
+/* ── GRUPOS VIÑETA ────────────────────────────────────────────── */
+.grupo-vineta {
+  margin-bottom: 0.5rem;
   border: 1px solid var(--border, #2a2a2a);
   border-radius: 8px;
   overflow: hidden;
 }
 
-.grupo-header {
+.grupo-vineta-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6rem 1rem;
-  background: rgba(218, 165, 32, 0.07);
-  border-bottom: 1px solid var(--border, #2a2a2a);
+  padding: 0.65rem 1rem;
+  background: rgba(218, 165, 32, 0.05);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.grupo-vineta-header:hover { background: rgba(218, 165, 32, 0.1); }
+
+.grupo-vineta-bullet {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary, #daa520);
+  flex-shrink: 0;
 }
 
-.grupo-title-input {
-  background: transparent;
-  border: none;
-  border-bottom: 1px dashed transparent;
-  color: var(--primary, #daa520);
-  font-size: 0.82rem;
+.grupo-vineta-nombre {
+  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  cursor: text;
-  padding: 1px 4px;
-  outline: none;
-  min-width: 80px;
+  color: var(--primary, #daa520);
 }
-.grupo-title-input:hover { border-bottom-color: var(--primary, #daa520); }
-.grupo-title-input:focus { border-bottom-color: var(--primary, #daa520); background: rgba(218,165,32,0.06); }
 
 .grupo-count {
   font-size: 0.72rem;
   color: var(--text-muted, #888);
 }
 
-.grupo-table thead th { background: var(--bg-primary, #0d0d0d); }
+.grupo-subtotales {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  margin-left: 0.25rem;
+}
+.gsep { color: var(--border, #444); }
+
+.grupo-vineta-body {
+  padding: 0.25rem 0 0.5rem;
+  border-top: 1px solid var(--border, #2a2a2a);
+}
+
+.grupo-empty {
+  padding: 0.6rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted, #666);
+  display: flex;
+  align-items: center;
+}
+
+/* ── TABLA DE PROCEDIMIENTOS — una fila por procedimiento ────── */
+.proc-table-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 0.25rem;
+  /* Contiene la tabla wide sin romper el layout padre */
+  display: block;
+  width: 100%;
+}
+
+.proc-table-hdr,
+.proc-row {
+  display: grid;
+  grid-template-columns:
+    1fr     /* SKU + Nombre (flexible) */
+    82px    /* P.Orig */
+    62px    /* Desc% */
+    82px    /* P.Final */
+    62px    /* Duración */
+    62px    /* T.Prep */
+    62px    /* T.Total */
+    82px    /* C.Insumo */
+    82px    /* C.HH */
+    82px    /* C.Total */
+    82px    /* IGV */
+    82px    /* Utilidad */
+    64px    /* Margen% */
+    54px    /* WPP */
+    68px;   /* Actions */
+  min-width: 1080px;
+  align-items: center;
+  column-gap: 0.2rem;
+}
+
+.proc-table-hdr {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+}
+.proc-table-hdr .ptc {
+  font-size: 0.59rem;
+  color: var(--text-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ptc-formula { font-style: italic; color: var(--text-muted, #777) !important; }
+
+.proc-row {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.1s;
+}
+.proc-row:last-of-type { border-bottom: none; }
+.proc-row:hover { background: rgba(255,255,255,0.025); }
+.proc-row--editing { background: rgba(218,165,32,0.045); }
+
+.ptc {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+.ptc-id-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.proc-row-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proc-sku-tag {
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: var(--text-muted, #888);
+  background: var(--bg-secondary, #1a1a1a);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 3px;
+  padding: 1px 4px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.ci-input-xs {
+  width: 52px !important;
+  font-size: 0.76rem !important;
+  padding: 1px 4px !important;
+}
+
+.pr-negative { color: #f44336; }
+
+.proc-wpp-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--bg-secondary, #1a1a1a);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted, #666);
+}
+.wpp-active {
+  background: rgba(76,175,80,0.12);
+  border-color: rgba(76,175,80,0.4);
+  color: #4caf50;
+}
+
+/* ── TARJETA DE PROCEDIMIENTO (legacy — ya no usada) ─────────── */
+.proc-card {
+  margin: 0.4rem 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border, #1e1e1e);
+  border-radius: 7px;
+  background: var(--bg-primary, #111);
+  transition: border-color 0.15s;
+}
+.proc-card:hover { border-color: rgba(218,165,32,0.3); }
+.proc-card--editing { border-color: var(--primary, #daa520); background: rgba(218,165,32,0.04); }
+
+.proc-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.proc-vineta {
+  color: var(--primary, #daa520);
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.proc-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.proc-sku {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted, #888);
+  background: var(--bg-secondary, #1a1a1a);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 3px;
+  padding: 1px 5px;
+  letter-spacing: 0.04em;
+}
+
+.proc-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proc-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.btn-proc-edit {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+  background: transparent;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-proc-edit:hover { color: var(--primary, #daa520); border-color: var(--primary, #daa520); }
+
+.btn-proc-save {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  color: #fff;
+  background: var(--primary, #daa520);
+  border: 1px solid var(--primary, #daa520);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-proc-save:hover { background: #c8921c; }
+
+.btn-proc-cancel {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+  background: transparent;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.btn-proc-cancel:hover { color: #f44336; border-color: #f44336; }
+
+/* Fila de variables */
+.proc-card-vars {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border, #1a1a1a);
+  border-bottom: 1px solid var(--border, #1a1a1a);
+}
+
+.proc-var {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pv-label {
+  font-size: 0.62rem;
+  color: var(--text-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.pv-val {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pv-editable {
+  color: var(--text-primary, #fff);
+  border-bottom: 1px dashed rgba(218,165,32,0.5);
+  padding-bottom: 1px;
+}
+
+.pv-formula {
+  color: var(--text-muted, #aaa);
+}
+
+.pv-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--bg-primary, #0d0d0d);
+  border: 1px solid var(--primary, #daa520);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.pv-sep {
+  color: var(--text-muted, #555);
+  font-size: 0.8rem;
+  align-self: flex-end;
+  padding-bottom: 2px;
+}
+
+.pv-sep--lg {
+  font-size: 1rem;
+  color: var(--border, #333);
+  margin: 0 0.15rem;
+}
+
+/* Fila de resultados */
+.proc-card-results {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.4rem;
+}
+
+.pr-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pr-label {
+  font-size: 0.68rem;
+  color: var(--text-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pr-val {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary, #bbb);
+}
+.pr-positive { color: #4caf50; }
+
+.pr-sep {
+  color: var(--border, #333);
+  font-size: 0.75rem;
+}
+
+/* Subtotal de grupo */
+.grupo-subtotal-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  background: rgba(218,165,32,0.05);
+  border: 1px solid rgba(218,165,32,0.2);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted, #888);
+}
+.gsb-label {
+  font-weight: 700;
+  color: var(--primary, #daa520);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+}
 
 .grupo-total-general {
   display: flex;
@@ -2769,7 +3717,6 @@
   background: var(--bg-primary, #111);
   border: 1px solid var(--primary, #daa520);
   border-radius: 8px;
-  margin-top: 0.75rem;
   font-size: 0.82rem;
 }
 .grupo-total-general span:first-child {
@@ -2802,6 +3749,7 @@
   border-radius: 10px;
   padding: 1.25rem 1.5rem;
   margin-bottom: 1.25rem;
+  min-width: 0;
 }
 
 .precios-section-title {
@@ -3154,10 +4102,11 @@ const headersPacientesWpp = ref([
   { title: 'Nombre', key: 'nombre', sortable: true },
   { title: 'DNI', key: 'dni', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
-  { title: 'Precio de reserva', key: 'precio', sortable: true },
+  { title: '🎫 SKU Reserva', key: 'booking_sku', sortable: false, width: '130px' },
+  { title: 'Anticipo', key: 'precio', sortable: true },
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
-  { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
-  { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Saldo Pendiente', key: 'precio_tratamiento', sortable: true },
+  { title: 'Fecha Agendamiento', key: 'fecha_agendamiento', sortable: true },
   { title: 'Método de pago', key: 'metodo_de_pago', sortable: true },
   { title: 'Estado', key: 'estado', sortable: true },
   { title: 'Agendado por', key: 'agendamiento', sortable: true, align: 'center' as const },
@@ -3169,10 +4118,11 @@ const headersPacientesFbIg = ref([
   { title: 'DNI', key: 'dni', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
   { title: 'Red Social', key: 'red_social', sortable: true },
-  { title: 'Precio de reserva', key: 'precio', sortable: true },
+  { title: '🎫 SKU Reserva', key: 'booking_sku', sortable: false, width: '130px' },
+  { title: 'Anticipo', key: 'precio', sortable: true },
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
-  { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
-  { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Saldo Pendiente', key: 'precio_tratamiento', sortable: true },
+  { title: 'Fecha Agendamiento', key: 'fecha_agendamiento', sortable: true },
   { title: 'Método de pago', key: 'metodo_de_pago', sortable: true },
   { title: 'Estado', key: 'estado', sortable: true },
   { title: 'Agendado por', key: 'agendamiento', sortable: true, align: 'center' as const },
@@ -3363,10 +4313,23 @@ const patientFormData = ref({
   precio: '',
   precio_tratamiento: '',
   procedimiento: '',
+  procedure_id: null as number | null,
+  booking_sku: '',
   fecha_agendamiento: '',
   metodo_de_pago: 'Ninguno',
   estado: 'Activo',
   agendamiento: 'IA'
+})
+
+// Precio del procedimiento seleccionado para mostrar desglose
+const selectedProcedurePrice = computed(() => {
+  if (!patientFormData.value.procedure_id) return null
+  const proc = procedures.value.find(p => Number(p.id) === Number(patientFormData.value.procedure_id))
+  if (!proc) return null
+  const precio = proc.price || 0
+  const descuento = proc.discount || 0
+  const precioFinal = precio * (1 - descuento / 100)
+  return { nombre: proc.name, sku: proc.sku || '', precioFinal: Math.round(precioFinal * 100) / 100 }
 })
 
 const openPatientTypeDialog = () => {
@@ -3399,6 +4362,8 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
       precio: item.precio || '',
       precio_tratamiento: totalTratamiento.toString(), // Show Total to user
       procedimiento: item.procedimiento || '',
+      procedure_id: item.procedure_id ? Number(item.procedure_id) : null,
+      booking_sku: item.booking_sku || '',
       fecha_agendamiento: item.fecha_agendamiento ? new Date(item.fecha_agendamiento).toISOString().slice(0, 16) : '',
       metodo_de_pago: item.metodo_de_pago || 'Ninguno',
       estado: item.estado || 'Activo',
@@ -3414,6 +4379,8 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
       precio: '',
       precio_tratamiento: '',
       procedimiento: '',
+      procedure_id: null,
+      booking_sku: '',
       fecha_agendamiento: new Date().toISOString().slice(0, 16),
       metodo_de_pago: 'Ninguno',
       estado: 'Activo',
@@ -3455,17 +4422,28 @@ const savePatient = async () => {
       finalPrecioTratamiento = inputTotalTratamiento - inputReserva
     }
 
-    const commonPayload = {
+    // Generar booking SKU si hay anticipo y es un registro nuevo sin SKU previo
+    let bookingSku = patientFormData.value.booking_sku || ''
+    if (inputReserva > 0 && !bookingSku) {
+      try {
+        const { data: skuData, error: skuError } = await (client.rpc as any)('healup_next_booking_sku')
+        if (!skuError && skuData) bookingSku = skuData
+      } catch { /* SKU opcional, no bloqueante */ }
+    }
+
+    const commonPayload: Record<string, any> = {
       nombre: patientFormData.value.nombre,
       dni: patientFormData.value.dni,
       numero: patientFormData.value.numero,
-      precio: inputReserva, // Save reservation as is
-      precio_tratamiento: finalPrecioTratamiento, // Save remaining balance
+      precio: inputReserva,                        // anticipo / reserva
+      precio_tratamiento: finalPrecioTratamiento,  // saldo pendiente
       procedimiento: patientFormData.value.procedimiento,
+      procedure_id: patientFormData.value.procedure_id || null,
       fecha_agendamiento: formattedDate,
       estado: patientFormData.value.estado,
       agendamiento: patientFormData.value.agendamiento,
-      metodo_de_pago: patientFormData.value.metodo_de_pago
+      metodo_de_pago: patientFormData.value.metodo_de_pago,
+      ...(bookingSku ? { booking_sku: bookingSku } : {}),
     }
 
     if (selectedPatientType.value === 'wpp') {
@@ -3800,6 +4778,8 @@ const fmtS = (n: number) => `S/ ${n.toLocaleString('es-PE', { minimumFractionDig
 
 const documentItems = [
   { icon: 'mdi-arrow-right-bold-circle', label: 'Procedimientos', id: 'procedimientos' },
+  { icon: 'mdi-chart-bar', label: 'Contador Procedimientos', id: 'contadorProcedimientos' },
+  { icon: 'mdi-warehouse', label: 'Almacén', id: 'stock' },
   { icon: 'mdi-folder', label: 'Historial Clínico', id: 'historialClinico' },
   { icon: 'mdi-robot-mower', label: 'Meta', id: 'meta' }
 ]
@@ -4574,6 +5554,9 @@ interface CalendarEvent {
   clientEmail?: string
   eventReason: string
   color?: string
+  stockDescontado?: boolean
+  stockDescontadoEn?: string
+  stockDescontadoPor?: string
 }
 
 interface CalendarDay {
@@ -4996,6 +5979,72 @@ function closeEventDetailDialog() {
   selectedEvent.value = null
 }
 
+// ── Descuento de insumos por receta del procedimiento ──────────────
+const descontandoStock = ref(false)
+
+function getRecetaCountForProcedure(procedureId: string | number): number {
+  return procedureSupplies.value.filter(
+    s => String(s.procedure_id) === String(procedureId)
+  ).length
+}
+
+async function descontarInsumosEvento(event: CalendarEvent) {
+  if (!event?.procedureId || !event?.id) return
+
+  const recetaCount = getRecetaCountForProcedure(event.procedureId)
+  if (recetaCount === 0) {
+    alert('Este procedimiento no tiene receta de insumos configurada.\nVe a Almacén → Inventario → botón Receta para configurarla primero.')
+    return
+  }
+
+  const proc = procedures.value.find(p => String(p.id) === String(event.procedureId))
+  const procNombre = proc?.name || `Procedimiento #${event.procedureId}`
+
+  if (!confirm(
+    `¿Confirmar descuento de insumos para:\n"${event.subject}" — ${procNombre}?\n\n` +
+    `Se descontarán ${recetaCount} insumo(s) del almacén según la receta.`
+  )) return
+
+  descontandoStock.value = true
+  try {
+    const sessionCookie = useCookie('dashboard_session')
+    const usuario = (sessionCookie.value as any)?.email || 'agente'
+
+    const { error } = await (client.rpc as any)(
+      'healup_descontar_insumos_procedimiento',
+      {
+        p_procedure_id: Number(event.procedureId),
+        p_event_id:     Number(event.id),
+        p_usuario:      usuario,
+      }
+    )
+    if (error) throw error
+
+    // Marcar el evento como descontado
+    await (client.from('healup_calendar_events') as any)
+      .update({
+        stock_descontado:     true,
+        stock_descontado_en:  new Date().toISOString(),
+        stock_descontado_por: usuario,
+      })
+      .eq('id', event.id)
+
+    // Refrescar estado
+    await Promise.all([fetchEvents(), fetchStockData()])
+
+    // Actualizar el evento seleccionado en memoria
+    const updated = events.value.find(e => String(e.id) === String(event.id))
+    if (updated) selectedEvent.value = updated
+
+    alert(`✅ Insumos descontados correctamente.\n${recetaCount} movimiento(s) registrado(s) en el almacén.`)
+  } catch (e: any) {
+    console.error('descontarInsumosEvento:', e)
+    alert(`Error al descontar insumos:\n${e?.message || e}`)
+  } finally {
+    descontandoStock.value = false
+  }
+}
+
 function editSelectedEvent() {
   if (!selectedEvent.value) return
 
@@ -5087,7 +6136,9 @@ async function fetchEvents() {
       clientPhone: e.client_phone || '',
       clientEmail: e.client_email || '',
       eventReason: e.event_reason || '',
-      // color is purely frontend derivation from procedureId, so handled by getProcedureColor
+      stockDescontado: e.stock_descontado ?? false,
+      stockDescontadoEn: e.stock_descontado_en || '',
+      stockDescontadoPor: e.stock_descontado_por || '',
     }))
   } catch (error) {
     console.error('Error loading events:', error)
@@ -5108,24 +6159,317 @@ interface Procedure {
 /* ---------------- Procedures State ---------------- */
 const procedures = ref<Procedure[]>([])
 
-// Mapa sesiones + costo insumo por procedimiento para la calculadora de precios
-const procMeta = reactive<Record<string, { sesiones: number; costoInsumo: number }>>({})
+// ─── DATOS DE HOJA DE CÁLCULO (Estándar Procedimientos) ─────────────────────
+// Fuente: HealUp_Estandar_v2.xlsx – verificado directamente de la hoja.
+// 73 procedimientos con nombres exactos. Editables en el dashboard.
+// La BD de Supabase puede sobreescribir precio/descuento si el usuario los editó.
+interface ProcSheet {
+  name: string; grupo: string; color: string; sku: string;
+  precioOrig: number; descuento: number;
+  duracion: number; tiempoPrep: number; tiempoTotal: number;
+  costoInsumo: number; costoHH: number;
+}
+const PROC_SHEET_LIST: ProcSheet[] = [
+  // ── FACIAL BASICO ─────────────────────────────────────────────────────────
+  { name:'Glass Skin Babe',           grupo:'FACIAL BASICO',       color:'#a78bfa', sku:'FB-001', precioOrig:120,  descuento:0, duracion:40,  tiempoPrep:10, tiempoTotal:50,  costoInsumo:17.20, costoHH:8.33   },
+  { name:'Prime Skin Clean',          grupo:'FACIAL BASICO',       color:'#a78bfa', sku:'FB-002', precioOrig:120,  descuento:0, duracion:40,  tiempoPrep:10, tiempoTotal:50,  costoInsumo:17.20, costoHH:8.33   },
+  { name:'Calm Babe',                  grupo:'FACIAL BASICO',       color:'#a78bfa', sku:'FB-003', precioOrig:150,  descuento:0, duracion:40,  tiempoPrep:10, tiempoTotal:50,  costoInsumo:17.20, costoHH:8.33   },
+  { name:'Eternal Glow Boost',        grupo:'FACIAL BASICO',       color:'#a78bfa', sku:'FB-004', precioOrig:170,  descuento:0, duracion:40,  tiempoPrep:10, tiempoTotal:50,  costoInsumo:17.20, costoHH:8.33   },
+  { name:'Pure Babe Skin',            grupo:'FACIAL BASICO',       color:'#a78bfa', sku:'FB-005', precioOrig:200,  descuento:0, duracion:50,  tiempoPrep:10, tiempoTotal:60,  costoInsumo:20.52, costoHH:10.00  },
+  { name:'Prestige Glow Ritual',      grupo:'FACIAL BASICO',       color:'#a78bfa', sku:'FB-006', precioOrig:210,  descuento:0, duracion:50,  tiempoPrep:10, tiempoTotal:60,  costoInsumo:20.52, costoHH:10.00  },
+  // ── FACIAL PREMIUM ────────────────────────────────────────────────────────
+  { name:'Heal Up Babe Ritual',       grupo:'FACIAL PREMIUM',      color:'#f59e0b', sku:'FP-001', precioOrig:250,  descuento:0, duracion:80,  tiempoPrep:10, tiempoTotal:90,  costoInsumo:37.72, costoHH:15.00  },
+  { name:'Heal Up Signature Glow',    grupo:'FACIAL PREMIUM',      color:'#f59e0b', sku:'FP-002', precioOrig:260,  descuento:0, duracion:80,  tiempoPrep:10, tiempoTotal:90,  costoInsumo:37.72, costoHH:15.00  },
+  // ── TRAT. MEDICO FACIAL ───────────────────────────────────────────────────
+  { name:'Hidralips con Dermapen',            grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-001', precioOrig:80,   descuento:0, duracion:20,  tiempoPrep:10, tiempoTotal:30,  costoInsumo:9.40,  costoHH:5.00   },
+  { name:'NCTF 1 sesión',                     grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-002', precioOrig:450,  descuento:0, duracion:50,  tiempoPrep:10, tiempoTotal:60,  costoInsumo:85.00, costoHH:10.00  },
+  { name:'NCTF 2 sesiones',                   grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-003', precioOrig:600,  descuento:0, duracion:100, tiempoPrep:20, tiempoTotal:120, costoInsumo:170.00,costoHH:20.00  },
+  { name:'NCTF 3 sesiones',                   grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-004', precioOrig:750,  descuento:0, duracion:150, tiempoPrep:20, tiempoTotal:170, costoInsumo:255.00,costoHH:28.33  },
+  { name:'Plasma Rico Plaquetas PRP 1s',      grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-005', precioOrig:140,  descuento:0, duracion:50,  tiempoPrep:10, tiempoTotal:60,  costoInsumo:5.35,  costoHH:10.00  },
+  { name:'Plasma Rico Plaquetas PRP 2s',      grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-006', precioOrig:200,  descuento:0, duracion:110, tiempoPrep:10, tiempoTotal:120, costoInsumo:10.70, costoHH:20.00  },
+  { name:'Plasma Rico Plaquetas PRP 3s',      grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-007', precioOrig:280,  descuento:0, duracion:170, tiempoPrep:10, tiempoTotal:180, costoInsumo:16.05, costoHH:30.00  },
+  { name:'Plasma Rico Plaquetas PRP 4s',      grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-008', precioOrig:370,  descuento:0, duracion:230, tiempoPrep:10, tiempoTotal:240, costoInsumo:21.40, costoHH:40.00  },
+  { name:'Exoxomas + Esperma Salmón 3s',      grupo:'TRAT. MEDICO FACIAL', color:'#34d399', sku:'TMF-009', precioOrig:2500, descuento:0, duracion:250, tiempoPrep:10, tiempoTotal:260, costoInsumo:73.60, costoHH:43.33  },
+  // ── MEDICINA ESTETICA ─────────────────────────────────────────────────────
+  { name:'Botox full face',                   grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-001', precioOrig:800,  descuento:0, duracion:20,  tiempoPrep:15, tiempoTotal:35,  costoInsumo:222.00, costoHH:93.06  },
+  { name:'Baby botox',                        grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-002', precioOrig:600,  descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:129.50, costoHH:75.75  },
+  { name:'Barbie Botox',                      grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-003', precioOrig:1200, descuento:0, duracion:20,  tiempoPrep:15, tiempoTotal:35,  costoInsumo:444.00, costoHH:121.72 },
+  { name:'Masseter Botox',                    grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-004', precioOrig:900,  descuento:0, duracion:20,  tiempoPrep:15, tiempoTotal:35,  costoInsumo:444.00, costoHH:73.42  },
+  { name:'2X1 Party Botox - baby botox',      grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-005', precioOrig:600,  descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:129.50, costoHH:75.75  },
+  { name:'2x1 Party Botox - full face',       grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-006', precioOrig:800,  descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:444.00, costoHH:57.32  },
+  { name:'Natural Lips',                      grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-007', precioOrig:700,  descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:130.00, costoHH:91.77  },
+  { name:'Bratz Lips',                        grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-008', precioOrig:900,  descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:260.00, costoHH:103.04 },
+  { name:'Perfilamiento',                     grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-009', precioOrig:700,  descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:130.00, costoHH:91.77  },
+  { name:'Rinomodelación',                    grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-010', precioOrig:1000, descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:260.00, costoHH:119.14 },
+  { name:'Surcos nasogenianos',               grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-011', precioOrig:700,  descuento:0, duracion:60,  tiempoPrep:15, tiempoTotal:75,  costoInsumo:130.00, costoHH:91.77  },
+  { name:'Sustentación pómular',              grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-012', precioOrig:900,  descuento:0, duracion:60,  tiempoPrep:15, tiempoTotal:75,  costoInsumo:260.00, costoHH:103.04 },
+  { name:'Marcación Mandibular',              grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-013', precioOrig:1300, descuento:0, duracion:75,  tiempoPrep:15, tiempoTotal:90,  costoInsumo:520.00, costoHH:125.58 },
+  { name:'Proyección de mentón',              grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-014', precioOrig:900,  descuento:0, duracion:30,  tiempoPrep:15, tiempoTotal:45,  costoInsumo:260.00, costoHH:103.04 },
+  { name:'Paquete 1 (Perfilamiento+natural lips+menton/baby botox)', grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-015', precioOrig:1500, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:390.00, costoHH:178.71 },
+  { name:'Paquete 2 (Perfilamiento+ Bratz lips+ menton/baby botox)', grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-016', precioOrig:2000, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:520.00, costoHH:238.28 },
+  { name:'Paquete 3 (Rinomodelación+ Natural lips+ menton/baby botox)',grupo:'MEDICINA ESTETICA',color:'#f472b6', sku:'ME-017', precioOrig:2000, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:520.00, costoHH:238.28 },
+  { name:'Paquete 4 (Rinomodelación+ Bratz lips+ menton/baby botox)', grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-018', precioOrig:2300, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:650.00, costoHH:265.65 },
+  { name:'Pack Heal Up',                      grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-019', precioOrig:3300, descuento:0, duracion:60,  tiempoPrep:20, tiempoTotal:80,  costoInsumo:1040.00,costoHH:363.86 },
+  { name:'#DUO1 (perfilamiento + natural lips)',   grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-020', precioOrig:1100, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:260.00, costoHH:135.24 },
+  { name:'#DUO2 (perfilamiento + Bratz lips)',     grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-021', precioOrig:1300, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:260.00, costoHH:167.44 },
+  { name:'#DUO3 (Rinomodelación + natural lips)',  grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-022', precioOrig:1400, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:390.00, costoHH:162.61 },
+  { name:'#DUO4 (Rinomodelación + Bratz lips)',    grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-023', precioOrig:1550, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:520.00, costoHH:165.83 },
+  { name:'#DUO5 (Rinomodelación + mentón)',        grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-024', precioOrig:1550, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:520.00, costoHH:165.83 },
+  { name:'#DUO6 (Bratz lips + mentón)',            grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-025', precioOrig:1450, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:520.00, costoHH:149.73 },
+  { name:'#DUO7 (mentón + natural lips)',          grupo:'MEDICINA ESTETICA', color:'#f472b6', sku:'ME-026', precioOrig:1300, descuento:0, duracion:90, tiempoPrep:15, tiempoTotal:105, costoInsumo:390.00, costoHH:146.51 },
+  { name:'Zona Botox extra baby',             grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-027', precioOrig:200,  descuento:0, duracion:10,  tiempoPrep:10, tiempoTotal:20,  costoInsumo:37.00,  costoHH:26.24  },
+  { name:'Zona Botox extra full face',        grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-028', precioOrig:250,  descuento:0, duracion:10,  tiempoPrep:10, tiempoTotal:20,  costoInsumo:66.60,  costoHH:29.53  },
+  { name:'Micropigmentación de labios',       grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-029', precioOrig:350,  descuento:0, duracion:120, tiempoPrep:15, tiempoTotal:135, costoInsumo:15.00,  costoHH:53.94  },
+  { name:'Retiro de ácido (Hialuronidasa)',   grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-030', precioOrig:300,  descuento:0, duracion:45,  tiempoPrep:15, tiempoTotal:60,  costoInsumo:45.00,  costoHH:41.06  },
+  { name:'Ácido Hialurónico para Ojeras',     grupo:'MEDICINA ESTETICA',   color:'#f472b6', sku:'ME-031', precioOrig:800,  descuento:0, duracion:60,  tiempoPrep:15, tiempoTotal:75,  costoInsumo:280.00, costoHH:83.72  },
+  // ── LIPO PAPADA ENZIMÁTICO ────────────────────────────────────────────────
+  { name:'Lipopapada 1ra gen 1 sesión',  grupo:'LIPO PAPADA ENZIMÁTICO', color:'#fb923c', sku:'LPE-001', precioOrig:200,  descuento:0, duracion:15, tiempoPrep:10, tiempoTotal:25,  costoInsumo:10.00,  costoHH:30.59  },
+  { name:'Lipopapada 1ra gen 6 sesiones',grupo:'LIPO PAPADA ENZIMÁTICO', color:'#fb923c', sku:'LPE-002', precioOrig:800,  descuento:0, duracion:90, tiempoPrep:10, tiempoTotal:100, costoInsumo:60.00,  costoHH:119.14 },
+  { name:'Lipopapada 2da gen 1 sesión',  grupo:'LIPO PAPADA ENZIMÁTICO', color:'#fb923c', sku:'LPE-003', precioOrig:1200, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60,  costoInsumo:660.00, costoHH:86.94  },
+  // ── HIFU 22D ─────────────────────────────────────────────────────────────
+  { name:'HIFU 22D 1 Zona Facial',  grupo:'HIFU 22D', color:'#38bdf8', sku:'H22-001', precioOrig:199, descuento:0, duracion:20, tiempoPrep:10, tiempoTotal:30, costoInsumo:24.00, costoHH:5.00   },
+  { name:'HIFU 22D Rostro Completo',grupo:'HIFU 22D', color:'#38bdf8', sku:'H22-002', precioOrig:599, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60, costoInsumo:66.00, costoHH:10.00  },
+  { name:'HIFU Corporal 1 Zona',    grupo:'HIFU 22D', color:'#38bdf8', sku:'H22-003', precioOrig:299, descuento:0, duracion:30, tiempoPrep:10, tiempoTotal:40, costoInsumo:24.00, costoHH:6.67   },
+  { name:'HIFU 22D Espalda',        grupo:'HIFU 22D', color:'#38bdf8', sku:'H22-004', precioOrig:699, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60, costoInsumo:28.00, costoHH:10.00  },
+  { name:'HIFU 22D Abdomen',        grupo:'HIFU 22D', color:'#38bdf8', sku:'H22-005', precioOrig:699, descuento:0, duracion:50, tiempoPrep:10, tiempoTotal:60, costoInsumo:28.00, costoHH:10.00  },
+  // ── CARBOXITERAPIA ────────────────────────────────────────────────────────
+  { name:'Carboxiterapia Ojeras 1 sesión', grupo:'CARBOXITERAPIA', color:'#4ade80', sku:'CX-001', precioOrig:80,  descuento:0, duracion:10, tiempoPrep:10, tiempoTotal:20, costoInsumo:10.00, costoHH:3.33   },
+  { name:'Carboxiterapia Ojeras 3 ses',    grupo:'CARBOXITERAPIA', color:'#4ade80', sku:'CX-002', precioOrig:210, descuento:0, duracion:30, tiempoPrep:10, tiempoTotal:40, costoInsumo:30.00, costoHH:6.67   },
+  { name:'Carboxiterapia Ojeras 4 ses',    grupo:'CARBOXITERAPIA', color:'#4ade80', sku:'CX-003', precioOrig:260, descuento:0, duracion:40, tiempoPrep:10, tiempoTotal:50, costoInsumo:40.00, costoHH:8.33   },
+  { name:'Carboxiterapia Ojeras 6 ses',    grupo:'CARBOXITERAPIA', color:'#4ade80', sku:'CX-004', precioOrig:330, descuento:0, duracion:60, tiempoPrep:10, tiempoTotal:70, costoInsumo:60.00, costoHH:11.67  },
+  // ── CORPORAL REDUCCION ────────────────────────────────────────────────────
+  { name:'Lipo Start Protocol 3 ses',  grupo:'CORPORAL REDUCCION', color:'#818cf8', sku:'CR-001', precioOrig:450,  descuento:0, duracion:60,  tiempoPrep:20, tiempoTotal:80,  costoInsumo:80.00,  costoHH:13.33  },
+  { name:'Lipo Sculpt Protocol 5 ses', grupo:'CORPORAL REDUCCION', color:'#818cf8', sku:'CR-002', precioOrig:599,  descuento:0, duracion:300, tiempoPrep:20, tiempoTotal:320, costoInsumo:90.00,  costoHH:53.33  },
+  { name:'Lipo Intensive Shape 8 ses', grupo:'CORPORAL REDUCCION', color:'#818cf8', sku:'CR-003', precioOrig:999,  descuento:0, duracion:480, tiempoPrep:20, tiempoTotal:500, costoInsumo:105.00, costoHH:83.33  },
+  { name:'Heal Up Lipo 360 10 ses',    grupo:'CORPORAL REDUCCION', color:'#818cf8', sku:'CR-004', precioOrig:1399, descuento:0, duracion:600, tiempoPrep:20, tiempoTotal:620, costoInsumo:115.00, costoHH:103.33 },
+  // ── CORPORAL GLUTEOS ──────────────────────────────────────────────────────
+  { name:'Glow Booty 6 peptonas 3 ses',   grupo:'CORPORAL GLUTEOS', color:'#c084fc', sku:'CG-001', precioOrig:500, descuento:0, duracion:180, tiempoPrep:10, tiempoTotal:190, costoInsumo:42.00, costoHH:31.67  },
+  { name:'Sculpt Booty 8 peptonas 4 ses', grupo:'CORPORAL GLUTEOS', color:'#c084fc', sku:'CG-002', precioOrig:650, descuento:0, duracion:240, tiempoPrep:10, tiempoTotal:250, costoInsumo:56.00, costoHH:41.67  },
+  { name:'Power Booty 10 peptonas 5 ses', grupo:'CORPORAL GLUTEOS', color:'#c084fc', sku:'CG-003', precioOrig:850, descuento:0, duracion:300, tiempoPrep:10, tiempoTotal:310, costoInsumo:70.00, costoHH:51.67  },
+  // ── CORPORAL REAFIRMACION ─────────────────────────────────────────────────
+  { name:'Reafirm Body 4 sesiones',  grupo:'CORPORAL REAFIRMACION', color:'#2dd4bf', sku:'CRF-001', precioOrig:200, descuento:0, duracion:240, tiempoPrep:10, tiempoTotal:250, costoInsumo:0,     costoHH:41.67  },
+  { name:'Reafirm Body 6 sesiones',  grupo:'CORPORAL REAFIRMACION', color:'#2dd4bf', sku:'CRF-002', precioOrig:280, descuento:0, duracion:360, tiempoPrep:10, tiempoTotal:370, costoInsumo:0,     costoHH:61.67  },
+  { name:'Reafirm Body 8 sesiones',  grupo:'CORPORAL REAFIRMACION', color:'#2dd4bf', sku:'CRF-003', precioOrig:380, descuento:0, duracion:480, tiempoPrep:10, tiempoTotal:490, costoInsumo:0,     costoHH:81.67  },
+  { name:'Reafirm Body 10 sesiones', grupo:'CORPORAL REAFIRMACION', color:'#2dd4bf', sku:'CRF-004', precioOrig:450, descuento:0, duracion:600, tiempoPrep:10, tiempoTotal:610, costoInsumo:0,     costoHH:101.67 },
+  // ── RESERVAS ──────────────────────────────────────────────────────────────
+  { name:'Reserva facial y/o corporal', grupo:'RESERVAS', color:'#94a3b8', sku:'RES-001', precioOrig:20,  descuento:0, duracion:0, tiempoPrep:0, tiempoTotal:0, costoInsumo:0, costoHH:0 },
+  { name:'Reserva armonización',        grupo:'RESERVAS', color:'#94a3b8', sku:'RES-002', precioOrig:50,  descuento:0, duracion:0, tiempoPrep:0, tiempoTotal:0, costoInsumo:0, costoHH:0 },
+]
+
+// Índice por nombre normalizado para lookup rápido
+const PROC_SHEET_MAP = new Map<string, ProcSheet>(
+  PROC_SHEET_LIST.map(p => [p.name.toLowerCase().trim(), p])
+)
+function getProcSheet(name: string): ProcSheet | undefined {
+  return PROC_SHEET_MAP.get(String(name || '').toLowerCase().trim())
+}
+
+// PROC_DEFAULTS alias mantenido para compatibilidad con código restante
+const PROC_DEFAULTS = PROC_SHEET_MAP
+interface ProcDefault extends ProcSheet {}
+function getProcDefault(name: string) { return getProcSheet(name) }
+
+// Mapa de variables extendidas por procedimiento (calculadora de precios)
+const procMeta = reactive<Record<string, {
+  sesiones: number; costoInsumo: number;
+  duracion: number; tiempoPrep: number; tiempoTotal: number; costoHH: number;
+}>>({})
 watch(procedures, (procs) => {
   procs.forEach(p => {
-    if (!procMeta[p.id]) procMeta[p.id] = { sesiones: 0, costoInsumo: 0 }
+    if (!procMeta[p.id]) {
+      const def = getProcDefault(p.name)
+      procMeta[p.id] = {
+        sesiones:    0,
+        costoInsumo: def?.costoInsumo  ?? 0,
+        duracion:    def?.duracion     ?? 0,
+        tiempoPrep:  def?.tiempoPrep   ?? 0,
+        tiempoTotal: def?.tiempoTotal  ?? 0,
+        costoHH:     def?.costoHH      ?? 0,
+      }
+    }
   })
 }, { immediate: true })
 
-// Procedimientos agrupados por grupo (para la vista de precios)
+// Grupos fijos Healup en orden definido
+const GRUPOS_HEALUP = [
+  'FACIAL BASICO',
+  'FACIAL PREMIUM',
+  'TRAT. MEDICO FACIAL',
+  'MEDICINA ESTETICA',
+  'LIPO PAPADA ENZIMÁTICO',
+  'HIFU 22D',
+  'CARBOXITERAPIA',
+  'CORPORAL REDUCCION',
+  'CORPORAL GLUTEOS',
+  'CORPORAL REAFIRMACION',
+  'RESERVAS',
+]
+
+// Procedimientos agrupados en el orden definido (siempre muestra todos los grupos)
 const procedimientosPorGrupo = computed(() => {
   const map: Record<string, Procedure[]> = {}
+  GRUPOS_HEALUP.forEach(g => { map[g] = [] })
   procedures.value.forEach(p => {
-    const g = (p.grupo || 'Sin Grupo').toUpperCase()
-    if (!map[g]) map[g] = []
-    map[g].push(p)
+    const g = (p.grupo || '').toUpperCase().trim()
+    if (map[g] !== undefined) {
+      map[g].push(p)
+    } else {
+      // Grupo no estándar: agregarlo al final
+      if (!map[g]) map[g] = []
+      map[g].push(p)
+    }
   })
   return map
 })
+
+// Estado de colapso por grupo — todos empiezan colapsados
+const collapsedGroups = reactive<Record<string, boolean>>(
+  Object.fromEntries(GRUPOS_HEALUP.map(g => [g, true]))
+)
+
+function toggleGrupo(key: string) {
+  collapsedGroups[key] = !collapsedGroups[key]
+}
+
+// Estado de edición por procedimiento
+const editingProcs = reactive<Record<string, boolean>>({})
+const editBuffer = reactive<Record<string, {
+  sku: string; name: string; color: string; price: number; discount: number;
+  sesiones: number; costoInsumo: number; grupo: string;
+  duracion: number; tiempoPrep: number; tiempoTotal: number; costoHH: number;
+}>>({})
+
+function startEditProc(p: Procedure) {
+  editBuffer[p.id] = {
+    sku:         p.sku   || '',
+    name:        p.name,
+    color:       p.color || '#3b82f6',
+    price:       p.price || 0,
+    discount:    p.discount || 0,
+    sesiones:    procMeta[p.id]?.sesiones    || 0,
+    costoInsumo: procMeta[p.id]?.costoInsumo || 0,
+    grupo:       (p as any).grupo || '',
+    duracion:    procMeta[p.id]?.duracion    || 0,
+    tiempoPrep:  procMeta[p.id]?.tiempoPrep  || 0,
+    tiempoTotal: procMeta[p.id]?.tiempoTotal || 0,
+    costoHH:     procMeta[p.id]?.costoHH     || 0,
+  }
+  editingProcs[p.id] = true
+}
+
+function cancelEditProc(id: string) {
+  editingProcs[id] = false
+  delete editBuffer[id]
+}
+
+async function saveEditProc(p: Procedure) {
+  const buf = editBuffer[p.id]
+  if (!buf) return
+  try {
+    // Intentar guardar con sku+grupo; si falla (columnas no existen en BD),
+    // reintentar solo con campos seguros
+    const { error } = await (client.from('healup_procedures') as any)
+      .update({ name: buf.name, color: buf.color, price: buf.price, discount: buf.discount, sku: buf.sku || null, grupo: (p as any).grupo || null })
+      .eq('id', p.id)
+
+    if (error) {
+      // Columnas sku/grupo no existen → guardar solo los campos base
+      const { error: e2 } = await (client.from('healup_procedures') as any)
+        .update({ name: buf.name, color: buf.color, price: buf.price, discount: buf.discount })
+        .eq('id', p.id)
+      if (e2) throw e2
+    }
+
+    // Actualizar estado local siempre
+    p.name     = buf.name
+    p.sku      = buf.sku
+    p.color    = buf.color
+    p.price    = buf.price
+    p.discount = buf.discount
+    if (procMeta[p.id]) {
+      procMeta[p.id].sesiones    = buf.sesiones
+      procMeta[p.id].costoInsumo = buf.costoInsumo
+      procMeta[p.id].duracion    = buf.duracion    || 0
+      procMeta[p.id].tiempoPrep  = buf.tiempoPrep  || 0
+      procMeta[p.id].tiempoTotal = buf.tiempoTotal || 0
+      procMeta[p.id].costoHH     = buf.costoHH     || 0
+    }
+    editingProcs[p.id] = false
+    delete editBuffer[p.id]
+  } catch (e) {
+    console.error('Error guardando procedimiento:', e)
+  }
+}
+
+// Cálculo reactivo por procedimiento (usa editBuffer cuando está en edición)
+function procCalc(p: Procedure) {
+  const isEditing  = editingProcs[p.id]
+  const ses        = isEditing ? (editBuffer[p.id]?.sesiones    || 0) : (procMeta[p.id]?.sesiones    || 0)
+  const precio     = isEditing ? (editBuffer[p.id]?.price       || 0) : (p.price || 0)
+  const desc       = isEditing ? (editBuffer[p.id]?.discount    || 0) : (p.discount || 0)
+  const insumo     = isEditing ? (editBuffer[p.id]?.costoInsumo || 0) : (procMeta[p.id]?.costoInsumo || 0)
+  const duracion   = isEditing ? (editBuffer[p.id]?.duracion    || 0) : (procMeta[p.id]?.duracion    || 0)
+  const tiempoPrep = isEditing ? (editBuffer[p.id]?.tiempoPrep  || 0) : (procMeta[p.id]?.tiempoPrep  || 0)
+  const tiempoTotal= isEditing ? (editBuffer[p.id]?.tiempoTotal || 0) : (procMeta[p.id]?.tiempoTotal || 0)
+  const costoHH    = isEditing ? (editBuffer[p.id]?.costoHH     || 0) : (procMeta[p.id]?.costoHH     || 0)
+
+  // Precios y costos por sesión
+  const precioFinal  = precio * (1 - desc / 100)
+  const costoTotal   = insumo + costoHH
+  const igvRenta     = precioFinal * 0.195            // siempre 19.5%
+  const utilidadNeta = precioFinal - costoTotal - igvRenta
+  const margenNeto   = precioFinal > 0 ? (utilidadNeta / precioFinal) * 100 : 0
+
+  // Totales mensuales (sesiones × precio)
+  const ingresos = ses * precioFinal
+  const costos   = ses * insumo
+  const margen   = ingresos - costos
+  const pct      = ingresos > 0 ? (margen / ingresos) * 100 : 0
+
+  return { ses, precioFinal, ingresos, costos, margen, pct,
+           duracion, tiempoPrep, tiempoTotal, costoHH,
+           costoTotal, igvRenta, utilidadNeta, margenNeto }
+}
+
+// Conteo de procedimientos agendados por WhatsApp (mes actual)
+const procWppCounts = computed(() => {
+  const now = new Date()
+  const mesActual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  // Normaliza DD-MM-YYYY → YYYY-MM-DD (o pasa ISO tal cual)
+  const normFecha = (raw: string): string => {
+    if (!raw) return ''
+    const s = String(raw).split('T')[0]
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+      const [d, m, y] = s.split('-')
+      return `${y}-${m}-${d}`
+    }
+    return s
+  }
+
+  const counts: Record<string, number> = {}
+  pacientesWpp.value.forEach((pat: any) => {
+    const fecha = normFecha(pat.fecha_agendamiento).slice(0, 7)
+    if (fecha !== mesActual) return
+    // Usar procedimiento; si vacío, usar servicio_interes como respaldo
+    const rawName = pat.procedimiento || pat.servicio_interes
+    if (!rawName) return
+    const key = String(rawName).toLowerCase().trim()
+    counts[key] = (counts[key] || 0) + 1
+  })
+  return counts
+})
+function getProcWppCount(name: string): number {
+  const key = String(name || '').toLowerCase().trim()
+  // 1. Coincidencia exacta
+  if (procWppCounts.value[key] != null) return procWppCounts.value[key]
+  // 2. El campo del paciente contiene el nombre del procedimiento (o viceversa)
+  let total = 0
+  for (const [k, v] of Object.entries(procWppCounts.value)) {
+    if (k.includes(key) || key.includes(k)) total += v
+  }
+  return total
+}
 
 const procedureSearch = ref('')
 const showProcedureDialog = ref(false)
@@ -5146,14 +6490,15 @@ const nuevoGrupoNombre = ref('')
 
 /* ---------------- Procedures Constants ---------------- */
 const procedureHeaders = [
-  { title: 'SKU', key: 'sku', sortable: true },
+  { title: 'SKU', key: 'sku', sortable: true, width: '90px' },
   { title: 'Nombre', key: 'name', sortable: true },
   { title: 'Grupo', key: 'grupo', sortable: true },
-  { title: 'Color', key: 'color', sortable: false },
+  { title: 'Color', key: 'color', sortable: false, width: '60px' },
   { title: 'Precio Original', key: 'price', sortable: true },
   { title: 'Descuento', key: 'discount', sortable: true },
   { title: 'Precio Final', key: 'finalPrice', sortable: true },
-  { title: 'Acciones', key: 'actions', sortable: false }
+  { title: 'Receta', key: 'receta', sortable: false, width: '110px' },
+  { title: 'Acciones', key: 'actions', sortable: false, width: '80px' }
 ]
 
 /* ---------------- Procedures Functions ---------------- */
@@ -5271,18 +6616,614 @@ async function renameGrupo(oldName: string, newName: string) {
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────
+   CONFIGURACIÓN ESTÁTICA: Grupos y SKUs por ID de procedimiento
+   Fuente: hoja de cálculo HealUp_Estandar_v2
+   ────────────────────────────────────────────────────────────────── */
+const PROC_CONFIG: Record<number, { grupo: string; sku: string }> = {
+  // FACIAL BASICO
+  24: { grupo: 'FACIAL BASICO',         sku: 'FB-001' },
+  25: { grupo: 'FACIAL BASICO',         sku: 'FB-002' },
+  26: { grupo: 'FACIAL BASICO',         sku: 'FB-003' },
+  27: { grupo: 'FACIAL BASICO',         sku: 'FB-004' },
+  28: { grupo: 'FACIAL BASICO',         sku: 'FB-005' },
+  29: { grupo: 'FACIAL BASICO',         sku: 'FB-006' },
+  30: { grupo: 'FACIAL BASICO',         sku: 'FB-007' },
+  31: { grupo: 'FACIAL BASICO',         sku: 'FB-008' },
+  // FACIAL PREMIUM
+  70: { grupo: 'FACIAL PREMIUM',        sku: 'FP-001' },
+  71: { grupo: 'FACIAL PREMIUM',        sku: 'FP-002' },
+  72: { grupo: 'FACIAL PREMIUM',        sku: 'FP-003' },
+  73: { grupo: 'FACIAL PREMIUM',        sku: 'FP-004' },
+  93: { grupo: 'FACIAL PREMIUM',        sku: 'FP-005' },
+  // TRAT. MEDICO FACIAL
+  32: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-001' },
+  62: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-002' },
+  63: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-003' },
+  64: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-004' },
+  65: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-005' },
+  66: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-006' },
+  67: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-007' },
+  68: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-008' },
+  69: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-009' },
+  90: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-010' },
+  92: { grupo: 'TRAT. MEDICO FACIAL',   sku: 'TMF-011' },
+  // MEDICINA ESTETICA
+   4: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-001' },
+  10: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-002' },
+  11: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-003' },
+  15: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-004' },
+  17: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-005' },
+  18: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-006' },
+  19: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-007' },
+  20: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-008' },
+  21: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-009' },
+  22: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-010' },
+  23: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-011' },
+  33: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-012' },
+  34: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-013' },
+  35: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-014' },
+  36: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-015' },
+  37: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-016' },
+  38: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-017' },
+  39: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-018' },
+  40: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-019' },
+  46: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-020' },
+  53: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-021' },
+  56: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-022' },
+  57: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-023' },
+  58: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-024' },
+  59: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-025' },
+  60: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-026' },
+  61: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-027' },
+  89: { grupo: 'MEDICINA ESTETICA',     sku: 'ME-028' },
+  // LIPO PAPADA ENZIMÁTICO
+  54: { grupo: 'LIPO PAPADA ENZIMÁTICO', sku: 'LPE-001' },
+  55: { grupo: 'LIPO PAPADA ENZIMÁTICO', sku: 'LPE-002' },
+  91: { grupo: 'LIPO PAPADA ENZIMÁTICO', sku: 'LPE-003' },
+  // HIFU 22D
+  48: { grupo: 'HIFU 22D',              sku: 'H22-001' },
+  49: { grupo: 'HIFU 22D',              sku: 'H22-002' },
+  50: { grupo: 'HIFU 22D',              sku: 'H22-003' },
+  51: { grupo: 'HIFU 22D',              sku: 'H22-004' },
+  52: { grupo: 'HIFU 22D',              sku: 'H22-005' },
+  // CARBOXITERAPIA
+  74: { grupo: 'CARBOXITERAPIA',        sku: 'CRX-001' },
+  75: { grupo: 'CARBOXITERAPIA',        sku: 'CRX-002' },
+  76: { grupo: 'CARBOXITERAPIA',        sku: 'CRX-003' },
+  77: { grupo: 'CARBOXITERAPIA',        sku: 'CRX-004' },
+  // CORPORAL REDUCCION
+  78: { grupo: 'CORPORAL REDUCCION',    sku: 'CRD-001' },
+  79: { grupo: 'CORPORAL REDUCCION',    sku: 'CRD-002' },
+  80: { grupo: 'CORPORAL REDUCCION',    sku: 'CRD-003' },
+  81: { grupo: 'CORPORAL REDUCCION',    sku: 'CRD-004' },
+  // CORPORAL GLUTEOS
+  82: { grupo: 'CORPORAL GLUTEOS',      sku: 'CGL-001' },
+  83: { grupo: 'CORPORAL GLUTEOS',      sku: 'CGL-002' },
+  84: { grupo: 'CORPORAL GLUTEOS',      sku: 'CGL-003' },
+  // CORPORAL REAFIRMACION
+  85: { grupo: 'CORPORAL REAFIRMACION', sku: 'CRF-001' },
+  86: { grupo: 'CORPORAL REAFIRMACION', sku: 'CRF-002' },
+  87: { grupo: 'CORPORAL REAFIRMACION', sku: 'CRF-003' },
+  88: { grupo: 'CORPORAL REAFIRMACION', sku: 'CRF-004' },
+  // RESERVAS
+  41: { grupo: 'RESERVAS',              sku: 'RES-001' },
+  42: { grupo: 'RESERVAS',              sku: 'RES-002' },
+}
+
 /* ---------------- Procedures Supabase ---------------- */
 async function fetchProcedures() {
   try {
     const { data, error } = await client
       .from('healup_procedures')
       .select('*')
-      .order('id', { ascending: false })
+      .order('id', { ascending: true })
 
     if (error) throw error
-    procedures.value = data || []
+
+    // Aplicar configuración estática de grupos, SKUs y datos de hoja de cálculo
+    const dbProcs = (data || []).map((p: any) => {
+      const cfg = PROC_CONFIG[Number(p.id)]
+      const def = getProcDefault(p.name)
+      return {
+        ...p,
+        sku:      p.sku      || cfg?.sku      || '',
+        grupo:    p.grupo    || cfg?.grupo    || def?.grupo || 'SIN GRUPO',
+        // Precio de la hoja de cálculo como respaldo si DB tiene 0 o null
+        price:    (p.price != null && p.price > 0) ? p.price    : (def?.precioOrig ?? 0),
+        discount: (p.discount != null)              ? p.discount : (def?.descuento  ?? 0),
+      }
+    })
+
+    // Registrar nombres que ya existen en DB
+    const dbNames = new Set(dbProcs.map((p: any) => String(p.name || '').toLowerCase().trim()))
+
+    // Construir lista completa desde PROC_SHEET_LIST — fuente de verdad de los 73 procedimientos
+    let syntheticId = -1
+    const syntheticProcs: Procedure[] = []
+    for (const entry of PROC_SHEET_LIST) {
+      const nameKey = entry.name.toLowerCase().trim()
+      if (dbNames.has(nameKey)) continue
+      syntheticProcs.push({
+        id:       String(syntheticId--),
+        name:     entry.name,
+        color:    entry.color || '#3b82f6',
+        price:    entry.precioOrig,
+        discount: entry.descuento,
+        sku:      entry.sku,
+        grupo:    entry.grupo,
+      } as Procedure)
+    }
+
+    procedures.value = [...dbProcs, ...syntheticProcs]
+
+    // Inicializar procMeta con datos de la hoja de cálculo para TODOS los procedimientos
+    procedures.value.forEach((p: Procedure) => {
+      const def = getProcDefault(p.name)
+      if (!procMeta[p.id] || (procMeta[p.id].duracion === 0 && def)) {
+        procMeta[p.id] = {
+          sesiones:    procMeta[p.id]?.sesiones ?? 0,
+          costoInsumo: def?.costoInsumo  ?? procMeta[p.id]?.costoInsumo ?? 0,
+          duracion:    def?.duracion     ?? procMeta[p.id]?.duracion    ?? 0,
+          tiempoPrep:  def?.tiempoPrep   ?? procMeta[p.id]?.tiempoPrep  ?? 0,
+          tiempoTotal: def?.tiempoTotal  ?? procMeta[p.id]?.tiempoTotal ?? 0,
+          costoHH:     def?.costoHH      ?? procMeta[p.id]?.costoHH     ?? 0,
+        }
+      }
+    })
   } catch (error) {
     console.error('Error loading procedures:', error)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONTADOR DE PROCEDIMIENTOS
+// ══════════════════════════════════════════════════════════════
+
+const contadorMes = ref('2026-04')
+const contadorSearch = ref('')
+
+const contadorHeaders = [
+  { title: 'SKU', key: 'sku', width: '90px' },
+  { title: 'Procedimiento', key: 'name', sortable: true },
+  { title: 'Grupo', key: 'grupo', sortable: true },
+  { title: 'Cantidad', key: 'total', sortable: true, align: 'center' as const },
+  { title: 'Ingreso Estimado', key: 'ingreso_estimado', sortable: true },
+]
+
+const NOMBRES_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+const mesesDisponibles = computed(() => {
+  const result = []
+  const now = new Date()
+  for (let y = 2026; y <= now.getFullYear(); y++) {
+    const maxM = (y === now.getFullYear()) ? now.getMonth() + 1 : 12
+    const startM = (y === 2026) ? 1 : 1
+    for (let m = startM; m <= maxM; m++) {
+      const val = `${y}-${String(m).padStart(2, '0')}`
+      result.push({ label: `${NOMBRES_MESES[m-1]} ${y}`, value: val })
+    }
+  }
+  return result.reverse()
+})
+
+const contadorMesLabel = computed(() => {
+  const found = mesesDisponibles.value.find(m => m.value === contadorMes.value)
+  return found?.label ?? contadorMes.value
+})
+
+// Normaliza fecha para comparación (reutiliza lógica de fetchEvents)
+function normalizeDateForCounter(raw: string): string {
+  if (!raw) return ''
+  const s = raw.split('T')[0]
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('-')
+    return `${y}-${m}-${d}`
+  }
+  return s
+}
+
+const contadorItems = computed(() => {
+  const prefix = contadorMes.value // 'YYYY-MM'
+  const counts: Record<string, number> = {}
+  events.value.forEach(e => {
+    const d = normalizeDateForCounter(e.date)
+    if (d.startsWith(prefix) && e.procedureId) {
+      const pid = String(e.procedureId)
+      counts[pid] = (counts[pid] || 0) + 1
+    }
+  })
+  return procedures.value
+    .filter(p => counts[String(p.id)])
+    .map(p => ({
+      ...p,
+      total: counts[String(p.id)] || 0,
+      ingreso_estimado: (counts[String(p.id)] || 0) * (p.price || 0) * (1 - (p.discount || 0) / 100),
+    }))
+    .sort((a, b) => b.total - a.total)
+})
+
+const contadorGrupos = computed(() => {
+  const groups: Record<string, number> = {}
+  contadorItems.value.forEach(item => {
+    const g = (item as any).grupo || 'SIN GRUPO'
+    groups[g] = (groups[g] || 0) + item.total
+  })
+  return Object.entries(groups)
+    .map(([grupo, total]) => ({ grupo, total }))
+    .sort((a, b) => b.total - a.total)
+})
+
+// Colores por grupo para chips
+const GRUPO_COLORS: Record<string, string> = {
+  'FACIAL BASICO':        'teal',
+  'FACIAL PREMIUM':       'cyan',
+  'TRAT. MEDICO FACIAL':  'deep-purple',
+  'MEDICINA ESTETICA':    'pink',
+  'LIPO PAPADA ENZIMÁTICO': 'orange',
+  'HIFU 22D':             'blue',
+  'CARBOXITERAPIA':       'green',
+  'CORPORAL REDUCCION':   'brown',
+  'CORPORAL GLUTEOS':     'red',
+  'CORPORAL REAFIRMACION':'indigo',
+  'RESERVAS':             'grey',
+}
+
+function getGrupoColor(grupo: string): string {
+  return GRUPO_COLORS[grupo] || 'default'
+}
+
+// ══════════════════════════════════════════════════════════════
+// RECETA DE PROCEDIMIENTO
+// ══════════════════════════════════════════════════════════════
+
+const UNIDADES_RECETA = [
+  'ml', 'cc', 'g', 'mg', 'unidad', 'vial', 'jeringa', 'ampolla',
+  'gota', 'gotero', 'tubo', 'frasco', 'sobre', 'cápsula',
+]
+
+const recetaDialog = ref(false)
+const recetaProcedure = ref<any>(null)
+const recetaIngredientes = ref<any[]>([])
+const recetaNewForm = reactive({ stock_item_id: null as any, cantidad: 1, unidad: 'ml' })
+
+// Items formateados para el autocomplete de la receta
+const stockItemsForReceta = computed(() =>
+  stockItems.value.map(i => ({
+    id: i.id,
+    label: `${i.nombre}${i.categoria ? ' · ' + i.categoria : ''}`,
+    unidad: i.unidad,
+  }))
+)
+
+function getStockItemName(id: any): string {
+  return stockItems.value.find(i => String(i.id) === String(id))?.nombre || `Insumo #${id}`
+}
+
+function getStockItemUnit(id: any): string {
+  return stockItems.value.find(i => String(i.id) === String(id))?.unidad || ''
+}
+
+function getProcSupplyCount(procedureId: any): number {
+  return procedureSupplies.value.filter(s => String(s.procedure_id) === String(procedureId)).length
+}
+
+async function openRecetaDialog(proc: any) {
+  recetaProcedure.value = proc
+  // Filtrar insumos de este procedimiento
+  await fetchProcedureSupplies()
+  recetaIngredientes.value = procedureSupplies.value
+    .filter(s => String(s.procedure_id) === String(proc.id))
+  Object.assign(recetaNewForm, { stock_item_id: null, cantidad: 1, unidad: 'ml' })
+  recetaDialog.value = true
+}
+
+async function addRecetaIngrediente() {
+  if (!recetaNewForm.stock_item_id || !recetaNewForm.cantidad || !recetaProcedure.value) return
+  try {
+    const payload = {
+      procedure_id: recetaProcedure.value.id,
+      stock_item_id: recetaNewForm.stock_item_id,
+      cantidad_usada: recetaNewForm.cantidad,
+      unidad: recetaNewForm.unidad || null,
+    }
+    const { error } = await (client.from('healup_procedure_supplies') as any).insert(payload)
+    if (error) throw error
+    await fetchProcedureSupplies()
+    recetaIngredientes.value = procedureSupplies.value
+      .filter(s => String(s.procedure_id) === String(recetaProcedure.value?.id))
+    Object.assign(recetaNewForm, { stock_item_id: null, cantidad: 1, unidad: 'ml' })
+  } catch (e) {
+    console.error('addRecetaIngrediente:', e)
+    alert('Error agregando insumo: ' + (e as any)?.message)
+  }
+}
+
+async function deleteProcSupplyDirect(id: any) {
+  if (!confirm('¿Quitar este insumo de la receta?')) return
+  try {
+    const { error } = await (client.from('healup_procedure_supplies') as any).delete().eq('id', id)
+    if (error) throw error
+    await fetchProcedureSupplies()
+    recetaIngredientes.value = procedureSupplies.value
+      .filter(s => String(s.procedure_id) === String(recetaProcedure.value?.id))
+  } catch (e) {
+    console.error('deleteProcSupplyDirect:', e)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONTROL DE STOCK
+// ══════════════════════════════════════════════════════════════
+
+interface StockItem {
+  id: number | string
+  nombre: string
+  categoria?: string
+  unidad: string
+  cantidad_actual: number
+  umbral_minimo: number
+  costo_unitario?: number
+  proveedor?: string
+  notas?: string
+}
+
+interface StockMovement {
+  id: number | string
+  created_at: string
+  stock_item_id: number | string
+  tipo: 'entrada' | 'salida' | 'ajuste'
+  cantidad: number
+  motivo?: string
+  event_id?: number | string
+  procedure_id?: number | string
+  notas?: string
+  registrado_por?: string
+  healup_stock_items?: { nombre: string }
+}
+
+interface ProcedureSupply {
+  id: number | string
+  procedure_id: number | string
+  stock_item_id: number | string
+  cantidad_usada: number
+  notas?: string
+}
+
+const stockItems = ref<StockItem[]>([])
+const stockMovements = ref<StockMovement[]>([])
+const procedureSupplies = ref<ProcedureSupply[]>([])
+const stockTab = ref('items')
+const stockSearch = ref('')
+
+// Dialogs
+const stockItemDialog = ref(false)
+const editingStockItem = ref<StockItem | null>(null)
+const stockItemForm = reactive({
+  nombre: '', categoria: '', unidad: 'unidad',
+  cantidad_actual: 0, umbral_minimo: 5,
+  costo_unitario: 0, proveedor: '', notas: '',
+})
+
+const stockMovementDialog = ref(false)
+const stockMovementTargetId = ref<number | string | null>(null)
+const stockMovementTargetName = ref('')
+const stockMovementForm = reactive({
+  tipo: 'entrada' as 'entrada' | 'salida' | 'ajuste',
+  cantidad: 1, motivo: '', notas: '',
+})
+
+const procSupplyDialog = ref(false)
+const procSupplyForm = reactive({
+  procedure_id: null as any,
+  stock_item_id: null as any,
+  cantidad_usada: 1,
+  notas: '',
+})
+
+// Table headers
+const stockHeaders = [
+  { title: 'Insumo', key: 'nombre', sortable: true },
+  { title: 'Categoría', key: 'categoria', sortable: true },
+  { title: 'Stock actual', key: 'cantidad_actual', sortable: true },
+  { title: 'Alerta mínimo', key: 'umbral_minimo' },
+  { title: 'Estado', key: 'estado', sortable: false },
+  { title: 'Costo unitario', key: 'costo_unitario' },
+  { title: 'Proveedor', key: 'proveedor' },
+  { title: 'Acciones', key: 'actions', sortable: false, width: '120px' },
+]
+
+const movimientosHeaders = [
+  { title: 'Fecha', key: 'created_at', sortable: true },
+  { title: 'Insumo', key: 'item_nombre', sortable: false },
+  { title: 'Tipo', key: 'tipo', sortable: true },
+  { title: 'Cantidad', key: 'cantidad', sortable: true },
+  { title: 'Motivo', key: 'motivo' },
+  { title: 'Notas', key: 'notas' },
+]
+
+const procSupplyHeaders = [
+  { title: 'Procedimiento', key: 'procedure_name', sortable: true },
+  { title: 'Insumo', key: 'item_name', sortable: true },
+  { title: 'Cant. por sesión', key: 'cantidad_usada', align: 'center' as const },
+  { title: 'Unidad', key: 'item_unidad' },
+  { title: 'Notas', key: 'notas' },
+  { title: 'Acciones', key: 'actions', sortable: false, width: '80px' },
+]
+
+// Computed
+const lowStockAlerts = computed(() =>
+  stockItems.value.filter(i => Number(i.cantidad_actual) <= Number(i.umbral_minimo))
+)
+
+const procedureSuppliesDisplay = computed(() =>
+  procedureSupplies.value.map(ps => ({
+    ...ps,
+    procedure_name: procedures.value.find(p => String(p.id) === String(ps.procedure_id))?.name || `Proc #${ps.procedure_id}`,
+    item_name: stockItems.value.find(i => String(i.id) === String(ps.stock_item_id))?.nombre || `Insumo #${ps.stock_item_id}`,
+    item_unidad: stockItems.value.find(i => String(i.id) === String(ps.stock_item_id))?.unidad || 'u',
+  }))
+)
+
+// Fetch functions
+async function fetchStockData() {
+  await Promise.all([fetchStockItems(), fetchStockMovements(), fetchProcedureSupplies()])
+}
+
+async function fetchStockItems() {
+  try {
+    const { data, error } = await (client.from('healup_stock_items') as any)
+      .select('*').order('categoria').order('nombre')
+    if (error) throw error
+    stockItems.value = data || []
+  } catch (e) {
+    console.error('fetchStockItems:', e)
+  }
+}
+
+async function fetchStockMovements() {
+  try {
+    const { data, error } = await (client.from('healup_stock_movements') as any)
+      .select('*, healup_stock_items(nombre)')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) throw error
+    stockMovements.value = data || []
+  } catch (e) {
+    console.error('fetchStockMovements:', e)
+  }
+}
+
+async function fetchProcedureSupplies() {
+  try {
+    const { data, error } = await (client.from('healup_procedure_supplies') as any).select('*')
+    if (error) throw error
+    procedureSupplies.value = data || []
+  } catch (e) {
+    console.error('fetchProcedureSupplies:', e)
+  }
+}
+
+// Dialog openers
+function openStockItemDialog(item?: StockItem) {
+  editingStockItem.value = item || null
+  if (item) {
+    Object.assign(stockItemForm, {
+      nombre: item.nombre, categoria: item.categoria || '',
+      unidad: item.unidad, cantidad_actual: item.cantidad_actual,
+      umbral_minimo: item.umbral_minimo, costo_unitario: item.costo_unitario || 0,
+      proveedor: item.proveedor || '', notas: item.notas || '',
+    })
+  } else {
+    Object.assign(stockItemForm, {
+      nombre: '', categoria: '', unidad: 'unidad',
+      cantidad_actual: 0, umbral_minimo: 5,
+      costo_unitario: 0, proveedor: '', notas: '',
+    })
+  }
+  stockItemDialog.value = true
+}
+
+function openAddStockMovement(item: StockItem, tipo: 'entrada' | 'salida' | 'ajuste' = 'entrada') {
+  stockMovementTargetId.value = item.id
+  stockMovementTargetName.value = item.nombre
+  Object.assign(stockMovementForm, { tipo, cantidad: 1, motivo: '', notas: '' })
+  stockMovementDialog.value = true
+}
+
+function openProcSupplyDialog() {
+  Object.assign(procSupplyForm, { procedure_id: null, stock_item_id: null, cantidad_usada: 1, notas: '' })
+  procSupplyDialog.value = true
+}
+
+// Save / Delete functions
+async function saveStockItem() {
+  if (!stockItemForm.nombre) return
+  try {
+    const payload = { ...stockItemForm }
+    if (editingStockItem.value) {
+      const { error } = await (client.from('healup_stock_items') as any)
+        .update(payload).eq('id', editingStockItem.value.id)
+      if (error) throw error
+    } else {
+      const { error } = await (client.from('healup_stock_items') as any).insert(payload)
+      if (error) throw error
+    }
+    stockItemDialog.value = false
+    await fetchStockItems()
+  } catch (e) {
+    console.error('saveStockItem:', e)
+    alert('Error guardando insumo: ' + (e as any)?.message)
+  }
+}
+
+async function saveStockMovement() {
+  if (!stockMovementTargetId.value || !stockMovementForm.cantidad) return
+  try {
+    const payload = {
+      stock_item_id: stockMovementTargetId.value,
+      tipo: stockMovementForm.tipo,
+      cantidad: stockMovementForm.cantidad,
+      motivo: stockMovementForm.motivo || null,
+      notas: stockMovementForm.notas || null,
+      registrado_por: currentUser.value?.email || 'usuario',
+    }
+    const { error } = await (client.from('healup_stock_movements') as any).insert(payload)
+    if (error) throw error
+
+    // Actualizar cantidad en stock_items
+    const item = stockItems.value.find(i => String(i.id) === String(stockMovementTargetId.value))
+    if (item) {
+      const delta = stockMovementForm.tipo === 'entrada'
+        ? stockMovementForm.cantidad
+        : -stockMovementForm.cantidad
+      const nuevaCantidad = Number(item.cantidad_actual) + delta
+      await (client.from('healup_stock_items') as any)
+        .update({ cantidad_actual: nuevaCantidad })
+        .eq('id', item.id)
+    }
+
+    stockMovementDialog.value = false
+    await fetchStockData()
+  } catch (e) {
+    console.error('saveStockMovement:', e)
+    alert('Error registrando movimiento: ' + (e as any)?.message)
+  }
+}
+
+async function saveProcSupply() {
+  if (!procSupplyForm.procedure_id || !procSupplyForm.stock_item_id) return
+  try {
+    const { error } = await (client.from('healup_procedure_supplies') as any).insert({ ...procSupplyForm })
+    if (error) throw error
+    procSupplyDialog.value = false
+    await fetchProcedureSupplies()
+  } catch (e) {
+    console.error('saveProcSupply:', e)
+    alert('Error guardando relación: ' + (e as any)?.message)
+  }
+}
+
+async function deleteStockItem(id: number | string) {
+  if (!confirm('¿Eliminar este insumo y todos sus movimientos?')) return
+  try {
+    const { error } = await (client.from('healup_stock_items') as any).delete().eq('id', id)
+    if (error) throw error
+    await fetchStockItems()
+  } catch (e) {
+    console.error('deleteStockItem:', e)
+    alert('Error eliminando: ' + (e as any)?.message)
+  }
+}
+
+async function deleteProcSupply(id: number | string) {
+  if (!confirm('¿Eliminar esta relación?')) return
+  try {
+    const { error } = await (client.from('healup_procedure_supplies') as any).delete().eq('id', id)
+    if (error) throw error
+    await fetchProcedureSupplies()
+  } catch (e) {
+    console.error('deleteProcSupply:', e)
   }
 }
 
@@ -5866,6 +7807,7 @@ onMounted(() => {
   fetchProcedures()
   fetchMedicalHistory()
   fetchEgresos()
+  fetchStockData()
   setupRealtime()
 })
 </script>

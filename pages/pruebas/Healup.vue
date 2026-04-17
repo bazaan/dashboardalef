@@ -305,6 +305,26 @@
         </header>
 
         <div class="content-area">
+          <!-- Cabin Selector Tabs -->
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button
+              :class="['btn-secondary', { 'btn-primary': activeCabin === 'cabina1' }]"
+              style="display: flex; align-items: center; gap: 6px;"
+              @click="activeCabin = 'cabina1'"
+            >
+              <v-icon icon="mdi-doctor" size="16" />
+              <span>Cabina 1 — Doctora</span>
+            </button>
+            <button
+              :class="['btn-secondary', { 'btn-primary': activeCabin === 'cabina2' }]"
+              style="display: flex; align-items: center; gap: 6px;"
+              @click="activeCabin = 'cabina2'"
+            >
+              <v-icon icon="mdi-spa" size="16" />
+              <span>Cabina 2 — Cosmiatra</span>
+            </button>
+          </div>
+
           <!-- Calendar Header with Navigation -->
           <div class="calendar-header">
             <div class="calendar-nav">
@@ -375,6 +395,12 @@
                   <div class="event-meta">
                     <v-icon icon="mdi-clock-outline" size="14" />
                     {{ formatEventDate(event.date) }} - {{ event.time }}
+                    <v-chip
+                      size="x-small"
+                      :color="(event.cabina || 'cabina1') === 'cabina1' ? 'indigo' : 'teal'"
+                      variant="tonal"
+                      class="ml-1"
+                    >{{ (event.cabina || 'cabina1') === 'cabina1' ? 'C1' : 'C2' }}</v-chip>
                   </div>
                   <div class="event-client">{{ event.clientName }} {{ event.clientSurname }}</div>
                 </div>
@@ -1130,6 +1156,19 @@
               </v-card-title>
               <v-data-table :headers="procedureHeaders" :items="procedures" :search="procedureSearch"
                 :items-per-page="10" class="elevation-0" no-data-text="No hay procedimientos creados">
+                <template v-slot:item.cabina="{ item }">
+                  <v-chip
+                    size="small"
+                    :color="(item.cabina || 'cabina1') === 'cabina1' ? 'indigo' : 'teal'"
+                    variant="tonal"
+                    style="cursor:pointer;"
+                    @click="toggleProcedureCabina(item)"
+                  >
+                    <v-icon :icon="(item.cabina || 'cabina1') === 'cabina1' ? 'mdi-doctor' : 'mdi-spa'" size="13" class="mr-1" />
+                    {{ (item.cabina || 'cabina1') === 'cabina1' ? 'C1 Doctora' : 'C2 Cosmiatra' }}
+                  </v-chip>
+                </template>
+
                 <template v-slot:item.color="{ item }">
                   <div class="color-preview" :style="{ backgroundColor: item.color }"></div>
                 </template>
@@ -1641,6 +1680,19 @@
               </template>
             </v-select>
 
+            <div v-if="eventFormData.procedureId" class="d-flex align-center gap-2 mb-3">
+              <v-icon size="16" :color="eventFormData.cabina === 'cabina1' ? 'indigo' : 'teal'"
+                :icon="eventFormData.cabina === 'cabina1' ? 'mdi-doctor' : 'mdi-spa'" />
+              <v-chip
+                size="small"
+                :color="eventFormData.cabina === 'cabina1' ? 'indigo' : 'teal'"
+                variant="tonal"
+              >
+                {{ eventFormData.cabina === 'cabina1' ? 'Cabina 1 — Doctora Valeria' : 'Cabina 2 — Cosmiatra' }}
+              </v-chip>
+              <span style="font-size: 11px; opacity: 0.6;">asignado automáticamente</span>
+            </div>
+
             <v-divider class="my-4"></v-divider>
 
             <h4 class="mb-3">Datos del Cliente</h4>
@@ -1700,9 +1752,19 @@
           <div class="event-detail-section">
             <div class="detail-row">
               <v-icon icon="mdi-calendar" class="detail-icon" />
-              <div>
-                <div class="detail-label">Fecha y Hora</div>
-                <div class="detail-value">{{ formatEventDate(selectedEvent.date) }} - {{ selectedEvent.time }}</div>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <div>
+                  <div class="detail-label">Fecha y Hora</div>
+                  <div class="detail-value">{{ formatEventDate(selectedEvent.date) }} - {{ selectedEvent.time }}</div>
+                </div>
+                <v-chip
+                  size="small"
+                  :color="(selectedEvent.cabina || 'cabina1') === 'cabina1' ? 'indigo' : 'teal'"
+                  variant="flat"
+                >
+                  <v-icon :icon="(selectedEvent.cabina || 'cabina1') === 'cabina1' ? 'mdi-doctor' : 'mdi-spa'" size="14" class="mr-1" />
+                  {{ (selectedEvent.cabina || 'cabina1') === 'cabina1' ? 'Cabina 1 — Doctora' : 'Cabina 2 — Cosmiatra' }}
+                </v-chip>
               </div>
             </div>
 
@@ -1850,6 +1912,31 @@
               <v-text-field v-model="procedureFormData.grupo" label="Grupo / Categoría" variant="outlined"
                 density="compact" placeholder="Ej: Faciales, Corporales"></v-text-field>
             </div>
+
+            <v-select
+              v-model="procedureFormData.cabina"
+              label="Cabina asignada"
+              variant="outlined"
+              density="compact"
+              class="mt-3"
+              :items="[
+                { title: 'Cabina 1 — Doctora Valeria (Armonización facial, Botox, Rellenos)', value: 'cabina1' },
+                { title: 'Cabina 2 — Cosmiatra (Faciales, Corporales, HIFU)', value: 'cabina2' }
+              ]"
+              item-title="title"
+              item-value="value"
+            >
+              <template v-slot:selection="{ item }">
+                <v-chip
+                  size="small"
+                  :color="item.value === 'cabina1' ? 'indigo' : 'teal'"
+                  variant="flat"
+                >
+                  <v-icon :icon="item.value === 'cabina1' ? 'mdi-doctor' : 'mdi-spa'" size="13" class="mr-1" />
+                  {{ item.value === 'cabina1' ? 'Cabina 1 — Doctora Valeria' : 'Cabina 2 — Cosmiatra' }}
+                </v-chip>
+              </template>
+            </v-select>
 
             <div class="mt-3 mb-2">
               <label class="form-label">Color</label>
@@ -2157,15 +2244,20 @@
     <v-dialog v-model="showScheduleDialog" max-width="600px" persistent>
       <v-card>
         <v-card-title class="event-dialog-title">
-          <span>Configurar Horario de Atención</span>
+          <div>
+            <span>Configurar Horario de Atención</span>
+            <v-chip size="small" :color="activeCabin === 'cabina1' ? 'indigo' : 'teal'" variant="flat" class="ml-2">
+              {{ activeCabin === 'cabina1' ? 'Cabina 1 — Doctora' : 'Cabina 2 — Cosmiatra' }}
+            </v-chip>
+          </div>
           <v-btn icon="mdi-close" variant="text" @click="closeScheduleDialog"></v-btn>
         </v-card-title>
         <v-card-text>
           <v-form ref="scheduleForm">
-            <v-text-field v-model.number="workingHours.slot_duration_minutes" label="Duración de cita (min)" type="number" variant="outlined" density="compact" :rules="[v => v > 0 || 'Min > 0']" class="mb-4"></v-text-field>
-            
+            <v-text-field v-model.number="activeWorkingHours.slot_duration_minutes" label="Duración de cita (min)" type="number" variant="outlined" density="compact" :rules="[v => v > 0 || 'Min > 0']" class="mb-4"></v-text-field>
+
             <div class="text-subtitle-1 font-weight-bold mb-3">Horario por Día:</div>
-            <v-row v-for="(dayConfig, i) in workingHours.schedule_json" :key="i" class="align-center mb-1" dense>
+            <v-row v-for="(dayConfig, i) in activeWorkingHours.schedule_json" :key="i" class="align-center mb-1" dense>
               <v-col cols="3">
                 <v-switch v-model="dayConfig.active" :label="getDayName(dayConfig.day)" color="primary" hide-details density="compact"></v-switch>
               </v-col>
@@ -5557,6 +5649,7 @@ interface CalendarEvent {
   stockDescontado?: boolean
   stockDescontadoEn?: string
   stockDescontadoPor?: string
+  cabina?: string
 }
 
 interface CalendarDay {
@@ -5571,25 +5664,51 @@ interface CalendarDay {
   availableSlots: number
 }
 
+/* ---------------- Cabin Constants ---------------- */
+const GRUPOS_CABINA_1 = ['MEDICINA ESTETICA', 'TRAT. MEDICO FACIAL', 'LIPO PAPADA ENZIMÁTICO']
+const GRUPOS_CABINA_2 = ['FACIAL BASICO', 'FACIAL PREMIUM', 'HIFU 22D', 'CORPORAL REDUCCION', 'CORPORAL GLUTEOS', 'CORPORAL REAFIRMACION', 'CARBOXITERAPIA']
+
+function getCabinaForProcedure(procedureId: string | number): string {
+  if (!procedureId) return 'cabina1'
+  const proc = procedures.value.find(p => String(p.id) === String(procedureId))
+  if (!proc) return 'cabina1'
+  // Prefer explicit cabina field, fall back to group mapping
+  if (proc.cabina) return proc.cabina
+  return getCabinaFromGrupo(proc.grupo)
+}
+
 /* ---------------- Calendar State ---------------- */
 const currentMonth = ref(new Date().getMonth())
 const currentYear = ref(new Date().getFullYear())
 const selectedDate = ref<Date | null>(null)
 const events = ref<CalendarEvent[]>([])
+const activeCabin = ref<'cabina1' | 'cabina2'>('cabina1')
+
+const defaultSchedule = [
+  { day: 1, active: true, start: '10:00', end: '20:00' },
+  { day: 2, active: true, start: '10:00', end: '20:00' },
+  { day: 3, active: true, start: '10:00', end: '20:00' },
+  { day: 4, active: true, start: '10:00', end: '20:00' },
+  { day: 5, active: true, start: '10:00', end: '20:00' },
+  { day: 6, active: true, start: '10:00', end: '14:00' },
+  { day: 0, active: false, start: '09:00', end: '18:00' }
+]
 
 const workingHours = ref({
   id: 1,
   slot_duration_minutes: 30,
-  schedule_json: [
-    { day: 1, active: true, start: '10:00', end: '20:00' },
-    { day: 2, active: true, start: '10:00', end: '20:00' },
-    { day: 3, active: true, start: '10:00', end: '20:00' },
-    { day: 4, active: true, start: '10:00', end: '20:00' },
-    { day: 5, active: true, start: '10:00', end: '20:00' },
-    { day: 6, active: true, start: '10:00', end: '14:00' },
-    { day: 0, active: false, start: '09:00', end: '18:00' }
-  ]
+  schedule_json: [...defaultSchedule]
 })
+
+const workingHoursCabina2 = ref({
+  id: 2,
+  slot_duration_minutes: 30,
+  schedule_json: [...defaultSchedule]
+})
+
+const activeWorkingHours = computed(() =>
+  activeCabin.value === 'cabina2' ? workingHoursCabina2.value : workingHours.value
+)
 const showScheduleDialog = ref(false)
 const savingSchedule = ref(false)
 
@@ -5614,7 +5733,8 @@ const eventFormData = ref({
   clientDNI: '',
   clientPhone: '',
   clientEmail: '',
-  eventReason: ''
+  eventReason: '',
+  cabina: 'cabina1'
 })
 
 const eventForm = ref<any>(null)
@@ -5649,24 +5769,29 @@ const availableTimesForSelectedDate = computed(() => {
   const selectedD = new Date(eventFormData.value.date + 'T12:00:00')
   const dayOfWeek = selectedD.getDay()
   
-  const dayConfig = workingHours.value.schedule_json.find(d => d.day === dayOfWeek)
+  const wh = activeWorkingHours.value
+  const dayConfig = wh.schedule_json.find((d: any) => d.day === dayOfWeek)
   if (!dayConfig || !dayConfig.active) return []
-  
+
   const startParts = dayConfig.start.split(':').map(Number)
   const endParts = dayConfig.end.split(':').map(Number)
   const startMins = startParts[0] * 60 + (startParts[1] || 0)
   const endMins = endParts[0] * 60 + (endParts[1] || 0)
-  
+
   const times = []
-  for (let m = startMins; m < endMins; m += workingHours.value.slot_duration_minutes) {
+  for (let m = startMins; m < endMins; m += wh.slot_duration_minutes) {
     const hh = Math.floor(m / 60).toString().padStart(2, '0')
     const mm = (m % 60).toString().padStart(2, '0')
     times.push(`${hh}:${mm}`)
   }
-  
-  const eventsOnDate = events.value.filter(e => e.date === eventFormData.value.date && e.id !== editingEvent.value?.id)
+
+  const eventsOnDate = events.value.filter(e =>
+    e.date === eventFormData.value.date &&
+    e.id !== editingEvent.value?.id &&
+    (e.cabina || 'cabina1') === activeCabin.value
+  )
   const bookedTimes = eventsOnDate.map(e => e.time ? e.time.substring(0,5) : '')
-  
+
   return times.filter(t => !bookedTimes.includes(t))
 })
 
@@ -5689,10 +5814,11 @@ const calendarDays = computed<CalendarDay[]>(() => {
 
   const getDayCapacity = (date: Date) => {
     const dayOfWeek = date.getDay()
-    const dayConfig = workingHours.value.schedule_json.find(d => d.day === dayOfWeek)
-    
+    const wh = activeWorkingHours.value
+    const dayConfig = wh.schedule_json.find((d: any) => d.day === dayOfWeek)
+
     if (!dayConfig || !dayConfig.active) return { isWorkingDay: false, total: 0, available: 0 }
-    
+
     let startParts = dayConfig.start.split(':').map(Number)
     let endParts = dayConfig.end.split(':').map(Number)
     if(startParts.length < 2) startParts = [10, 0]
@@ -5701,12 +5827,12 @@ const calendarDays = computed<CalendarDay[]>(() => {
     const startMins = startParts[0] * 60 + (startParts[1] || 0)
     const endMins = endParts[0] * 60 + (endParts[1] || 0)
     const totalMins = endMins - startMins > 0 ? endMins - startMins : 0
-    const durationMins = workingHours.value.slot_duration_minutes > 0 ? workingHours.value.slot_duration_minutes : 30
+    const durationMins = wh.slot_duration_minutes > 0 ? wh.slot_duration_minutes : 30
     const totalSlots = Math.floor(totalMins / durationMins)
-    
+
     const eventsForDay = getEventsForDate(date)
     const availableSlots = Math.max(0, totalSlots - eventsForDay.length)
-    
+
     return { isWorkingDay: true, total: totalSlots, available: availableSlots }
   }
 
@@ -5771,7 +5897,10 @@ const calendarDays = computed<CalendarDay[]>(() => {
 const upcomingEvents = computed(() => {
   const now = new Date()
   return events.value
-    .filter(event => new Date(event.date + 'T' + event.time) >= now)
+    .filter(event =>
+      new Date(event.date + 'T' + event.time) >= now &&
+      (event.cabina || 'cabina1') === activeCabin.value
+    )
     .sort((a, b) => {
       const dateA = new Date(a.date + 'T' + a.time)
       const dateB = new Date(b.date + 'T' + b.time)
@@ -5790,13 +5919,17 @@ function closeScheduleDialog() {
 
 async function fetchWorkingHours() {
   try {
-    const { data, error } = await (client.from('healup_working_hours') as any).select('*').limit(1).single()
+    const { data, error } = await (client.from('healup_working_hours') as any).select('*').order('id')
     if (error && error.code !== 'PGRST116') throw error
     if (data) {
-      workingHours.value = {
-        id: data.id,
-        slot_duration_minutes: data.slot_duration_minutes,
-        schedule_json: typeof data.schedule_json === 'string' ? JSON.parse(data.schedule_json) : data.schedule_json
+      for (const row of data) {
+        const parsed = {
+          id: row.id,
+          slot_duration_minutes: row.slot_duration_minutes,
+          schedule_json: typeof row.schedule_json === 'string' ? JSON.parse(row.schedule_json) : row.schedule_json
+        }
+        if (row.id === 1 || row.cabina === 'cabina1') workingHours.value = parsed
+        else if (row.id === 2 || row.cabina === 'cabina2') workingHoursCabina2.value = parsed
       }
     }
   } catch (error) {
@@ -5807,10 +5940,12 @@ async function fetchWorkingHours() {
 async function saveWorkingHours() {
   savingSchedule.value = true
   try {
+    const wh = activeWorkingHours.value
     const payload = {
-      id: workingHours.value.id,
-      slot_duration_minutes: workingHours.value.slot_duration_minutes,
-      schedule_json: workingHours.value.schedule_json
+      id: wh.id,
+      slot_duration_minutes: wh.slot_duration_minutes,
+      schedule_json: wh.schedule_json,
+      cabina: activeCabin.value
     }
     const { error } = await (client.from('healup_working_hours') as any).upsert(payload, { onConflict: 'id' }).select()
     if (error) throw error
@@ -5827,7 +5962,7 @@ async function saveWorkingHours() {
 /* ---------------- Calendar Functions ---------------- */
 function getEventsForDate(date: Date): CalendarEvent[] {
   const dateStr = formatDateToISO(date)
-  return events.value.filter(event => event.date === dateStr)
+  return events.value.filter(event => event.date === dateStr && (event.cabina || 'cabina1') === activeCabin.value)
 }
 
 function formatDateToISO(date: Date): string {
@@ -5901,10 +6036,17 @@ function openCreateEventDialog(date?: string) {
     clientDNI: '',
     clientPhone: '',
     clientEmail: '',
-    eventReason: ''
+    eventReason: '',
+    cabina: activeCabin.value
   }
   showEventDialog.value = true
 }
+
+watch(() => eventFormData.value.procedureId, (procId) => {
+  if (procId) {
+    eventFormData.value.cabina = getCabinaForProcedure(procId)
+  }
+})
 
 function closeEventDialog() {
   showEventDialog.value = false
@@ -5941,7 +6083,8 @@ async function saveEvent() {
       client_dni: eventFormData.value.clientDNI,
       client_phone: eventFormData.value.clientPhone,
       client_email: eventFormData.value.clientEmail,
-      event_reason: eventFormData.value.eventReason
+      event_reason: eventFormData.value.eventReason,
+      cabina: eventFormData.value.cabina || 'cabina1'
     }
 
     if (editingEvent.value) {
@@ -6139,6 +6282,7 @@ async function fetchEvents() {
       stockDescontado: e.stock_descontado ?? false,
       stockDescontadoEn: e.stock_descontado_en || '',
       stockDescontadoPor: e.stock_descontado_por || '',
+      cabina: e.cabina || 'cabina1',
     }))
   } catch (error) {
     console.error('Error loading events:', error)
@@ -6154,6 +6298,7 @@ interface Procedure {
   discount: number
   sku?: string
   grupo?: string
+  cabina?: string
 }
 
 /* ---------------- Procedures State ---------------- */
@@ -6481,6 +6626,7 @@ const procedureFormData = ref({
   discount: 0,
   sku: '',
   grupo: '',
+  cabina: 'cabina1',
 })
 const procedureForm = ref<any>(null)
 
@@ -6493,6 +6639,7 @@ const procedureHeaders = [
   { title: 'SKU', key: 'sku', sortable: true, width: '90px' },
   { title: 'Nombre', key: 'name', sortable: true },
   { title: 'Grupo', key: 'grupo', sortable: true },
+  { title: 'Cabina', key: 'cabina', sortable: true, width: '140px' },
   { title: 'Color', key: 'color', sortable: false, width: '60px' },
   { title: 'Precio Original', key: 'price', sortable: true },
   { title: 'Descuento', key: 'discount', sortable: true },
@@ -6512,19 +6659,38 @@ function openProcedureDialog(procedure?: Procedure, grupoDefault?: string) {
       discount: procedure.discount,
       sku: procedure.sku || '',
       grupo: procedure.grupo || '',
+      cabina: procedure.cabina || getCabinaFromGrupo(procedure.grupo),
     }
   } else {
     editingProcedure.value = null
+    const grupoForCabin = grupoDefault || ''
     procedureFormData.value = {
       name: '',
       color: '#3b82f6',
       price: 0,
       discount: 0,
       sku: '',
-      grupo: grupoDefault || '',
+      grupo: grupoForCabin,
+      cabina: getCabinaFromGrupo(grupoForCabin),
     }
   }
   showProcedureDialog.value = true
+}
+
+function getCabinaFromGrupo(grupo?: string): string {
+  if (!grupo) return 'cabina1'
+  if (GRUPOS_CABINA_2.includes(grupo.toUpperCase())) return 'cabina2'
+  return 'cabina1'
+}
+
+async function toggleProcedureCabina(procedure: Procedure) {
+  const newCabina = (procedure.cabina || 'cabina1') === 'cabina1' ? 'cabina2' : 'cabina1'
+  // Update locally first for instant feedback
+  procedure.cabina = newCabina
+  // Only persist to DB if procedure has a real ID (not synthetic negative id)
+  if (Number(procedure.id) > 0) {
+    await saveProcedureField(procedure.id, 'cabina' as keyof Procedure, newCabina)
+  }
 }
 
 function closeProcedureDialog() {
@@ -6549,6 +6715,7 @@ async function saveProcedure() {
       discount: procedureFormData.value.discount,
       sku: procedureFormData.value.sku || null,
       grupo: procedureFormData.value.grupo || null,
+      cabina: procedureFormData.value.cabina || 'cabina1',
     }
     if (editingProcedure.value) {
       const { error } = await (client.from('healup_procedures') as any)
@@ -6725,13 +6892,15 @@ async function fetchProcedures() {
     const dbProcs = (data || []).map((p: any) => {
       const cfg = PROC_CONFIG[Number(p.id)]
       const def = getProcDefault(p.name)
+      const resolvedGrupo = p.grupo || cfg?.grupo || def?.grupo || 'SIN GRUPO'
       return {
         ...p,
         sku:      p.sku      || cfg?.sku      || '',
-        grupo:    p.grupo    || cfg?.grupo    || def?.grupo || 'SIN GRUPO',
+        grupo:    resolvedGrupo,
         // Precio de la hoja de cálculo como respaldo si DB tiene 0 o null
         price:    (p.price != null && p.price > 0) ? p.price    : (def?.precioOrig ?? 0),
         discount: (p.discount != null)              ? p.discount : (def?.descuento  ?? 0),
+        cabina:   p.cabina   || getCabinaFromGrupo(resolvedGrupo),
       }
     })
 
@@ -6752,6 +6921,7 @@ async function fetchProcedures() {
         discount: entry.descuento,
         sku:      entry.sku,
         grupo:    entry.grupo,
+        cabina:   getCabinaFromGrupo(entry.grupo),
       } as Procedure)
     }
 

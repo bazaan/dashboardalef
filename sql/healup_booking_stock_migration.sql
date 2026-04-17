@@ -115,3 +115,59 @@ FROM information_schema.columns
 WHERE table_name = 'healup_calendar_events'
   AND column_name IN ('stock_descontado', 'stock_descontado_en', 'stock_descontado_por')
 ORDER BY column_name;
+
+-- ──────────────────────────────────────────────────────────────────
+-- 5. CABINAS — columna en calendar_events y working_hours
+-- ──────────────────────────────────────────────────────────────────
+
+-- cabina1 = Doctora Valeria (armonización facial: botox, rellenos, médico)
+-- cabina2 = Cosmiatra (faciales, corporales, HIFU)
+ALTER TABLE healup_calendar_events
+  ADD COLUMN IF NOT EXISTS cabina TEXT DEFAULT 'cabina1'
+    CHECK (cabina IN ('cabina1', 'cabina2'));
+
+-- Horario independiente por cabina
+ALTER TABLE healup_working_hours
+  ADD COLUMN IF NOT EXISTS cabina TEXT DEFAULT 'cabina1';
+
+-- Crear fila de horario para cabina2 si no existe
+INSERT INTO healup_working_hours (id, slot_duration_minutes, schedule_json, cabina)
+VALUES (2, 30,
+  '[{"day":1,"active":true,"start":"10:00","end":"20:00"},
+    {"day":2,"active":true,"start":"10:00","end":"20:00"},
+    {"day":3,"active":true,"start":"10:00","end":"20:00"},
+    {"day":4,"active":true,"start":"10:00","end":"20:00"},
+    {"day":5,"active":true,"start":"10:00","end":"20:00"},
+    {"day":6,"active":true,"start":"10:00","end":"14:00"},
+    {"day":0,"active":false,"start":"09:00","end":"18:00"}]'::jsonb,
+  'cabina2')
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE healup_working_hours SET cabina = 'cabina1' WHERE id = 1 AND cabina IS NULL;
+
+-- ──────────────────────────────────────────────────────────────────
+-- 6. PROCEDIMIENTOS — columna cabina para asignación explícita
+-- ──────────────────────────────────────────────────────────────────
+
+ALTER TABLE healup_procedures
+  ADD COLUMN IF NOT EXISTS cabina TEXT DEFAULT 'cabina1'
+    CHECK (cabina IN ('cabina1', 'cabina2'));
+
+-- Auto-poblar cabina según el grupo (ejecutar una sola vez)
+UPDATE healup_procedures
+SET cabina = 'cabina2'
+WHERE UPPER(grupo) IN (
+  'FACIAL BASICO', 'FACIAL PREMIUM', 'HIFU 22D',
+  'CORPORAL REDUCCION', 'CORPORAL GLUTEOS', 'CORPORAL REAFIRMACION', 'CARBOXITERAPIA'
+)
+AND cabina IS NULL OR cabina = 'cabina1';
+
+UPDATE healup_procedures
+SET cabina = 'cabina1'
+WHERE cabina IS NULL;
+
+-- Verificación
+SELECT id, name, grupo, cabina
+FROM healup_procedures
+ORDER BY cabina, grupo, name
+LIMIT 20;

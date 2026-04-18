@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "instanceId": "healup-boleta-auto"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/healup/boleta-auto",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"api_key\": \"healup-auto-2026\",\n  \"client_name\": \"{{ $('When Executed by Another Workflow').item.json['nombre_completo'].split(' ')[0] }}\",\n  \"client_surname\": \"{{ $('When Executed by Another Workflow').item.json['nombre_completo'].split(' ').slice(1).join(' ') }}\",\n  \"client_dni\": \"{{ $('When Executed by Another Workflow').item.json.DNI }}\",\n  \"client_phone\": \"{{ $('When Executed by Another Workflow').item.json.numerotelefono }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300],
+      "id": "boleta-auto-healup",
+      "name": "Generar Boleta Consulta",
+      "notes": "Llama al endpoint /api/healup/boleta-auto del dashboard.\nGenera boleta B001 de S/50 (Consulta Medica) en PSE.PE/SUNAT.\nRetorna: serie, numero, enlace_pdf, mensaje_wpp."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://web.wazend.net/api/v1/accounts/53/conversations/{{ $('When Executed by Another Workflow').item.json.conversation_id || '992' }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{ $('When Executed by Another Workflow').item.json.chatwoot_token || '' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"{{ $('Generar Boleta Consulta').item.json.mensaje_wpp }}\",\n  \"message_type\": \"outgoing\",\n  \"content_type\": \"text\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 300],
+      "id": "enviar-boleta-wpp",
+      "name": "Enviar Boleta WhatsApp",
+      "notes": "Envia el mensaje pre-formateado de la boleta al paciente por WhatsApp via Chatwoot/Wazend."
+    }
+  ],
+  "connections": {
+    "Generar Boleta Consulta": {
+      "main": [
+        [
+          {
+            "node": "Enviar Boleta WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

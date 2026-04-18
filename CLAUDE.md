@@ -92,47 +92,57 @@ dashboard alef allin/
 │       └── MiguelDavila.vue
 │
 ├── components/
-│   ├── FacturacionPSE.vue         # Interfaz de facturas/boletas electrónicas
-│   ├── N8nPanicButton.vue         # Activar/desactivar workflows n8n
+│   ├── FacturacionPSE.vue              # Interfaz de facturas/boletas electrónicas (general)
+│   ├── HealupCobroAtencion.vue         # Wizard 3 pasos: cobro de consulta + procedimientos Healup
+│   ├── HealupCatalogoProcedimientos.vue # CRUD del catálogo de procedimientos Healup
+│   ├── HealupGCalSync.vue              # Sincronización Google Calendar ↔ dashboard Healup
+│   ├── N8nPanicButton.vue              # Activar/desactivar workflows n8n
 │   └── Settings/
-│       ├── SettingsView.vue       # Gestión de usuarios + logs de actividad
+│       ├── SettingsView.vue            # Gestión de usuarios + logs de actividad
 │       ├── CreateUserDialog.vue
 │       └── EditUserDialog.vue
 │
 ├── server/api/
-│   ├── auth/verify-legacy.post.ts # Verifica passwords bcrypt
+│   ├── auth/verify-legacy.post.ts      # Verifica passwords bcrypt
 │   ├── users/
-│   │   ├── index.get.ts           # Listar usuarios (filtrado por company)
-│   │   ├── create.post.ts         # Crear usuario (hash bcrypt, verifica permisos)
-│   │   ├── update.put.ts          # Editar usuario
-│   │   └── delete.delete.ts       # Eliminar usuario
-│   ├── pse/                       # Facturación electrónica PSE.PE
+│   │   ├── index.get.ts                # Listar usuarios (filtrado por company)
+│   │   ├── create.post.ts              # Crear usuario (hash bcrypt, verifica permisos)
+│   │   ├── update.put.ts               # Editar usuario
+│   │   └── delete.delete.ts            # Eliminar usuario
+│   ├── pse/                            # Facturación electrónica PSE.PE
+│   ├── healup/
+│   │   ├── enviar-whatsapp.post.ts     # Envío de boleta por WhatsApp vía n8n webhook
+│   ├── gcal-events.get.ts          # Lee GCal via Google API + compara con Supabase
+│   ├── importar-gcal.post.ts       # Importa evento GCal a healup_calendar_events
+│   └── boleta-auto.post.ts         # Auto-genera boleta consulta S/50 (llamado por n8n al agendar)
 │   └── n8n/toggle-workflow.post.ts
 │
 ├── server/utils/
-│   └── logger.ts                  # logServerActivity() — log server-side a Supabase
+│   ├── logger.ts                       # logServerActivity() — log server-side a Supabase
+│   └── google-auth.ts                  # JWT auth con Google Service Account (crypto nativo, 0 deps)
 │
 ├── middleware/
-│   └── auth-dashboard.ts          # Protección de rutas: lee cookie, verifica rol
+│   └── auth-dashboard.ts               # Protección de rutas: lee cookie, verifica rol
 │
 ├── composables/
-│   ├── useActivityLogger.ts       # logActivity() — log client-side a Supabase
-│   └── rules.ts                   # Reglas de validación de formularios
+│   ├── useActivityLogger.ts            # logActivity() — log client-side a Supabase
+│   └── rules.ts                        # Reglas de validación de formularios
 │
 ├── utils/
-│   └── permissions.ts             # isSuperAdmin(), canAccess*(), getDashboardPathByCompanyId()
+│   └── permissions.ts                  # isSuperAdmin(), canAccess*(), getDashboardPathByCompanyId()
 │
 ├── plugins/
-│   ├── vuetify.ts                 # Temas claro/oscuro
+│   ├── vuetify.ts                      # Temas claro/oscuro
 │   ├── apexcharts.client.ts
-│   └── supabase-logger.client.ts  # Intercepta window.fetch y loggea mutations automáticamente
+│   └── supabase-logger.client.ts       # Intercepta window.fetch y loggea mutations automáticamente
 │
 ├── assets/styles/
-│   └── dashboard.css              # ~2,200 líneas de estilos custom
+│   └── dashboard.css                   # ~2,200 líneas de estilos custom
 │
-└── sql/                           # Schemas SQL por empresa
+└── sql/                                # Schemas SQL por empresa
     ├── ECS_tables.sql
-    └── brada_stock_schema.sql
+    ├── brada_stock_schema.sql
+    └── healup_cobro_atencion.sql       # Migración: tipo en procedures + trazabilidad en calendar_events
 ```
 
 ---
@@ -228,7 +238,10 @@ Doble sistema para auditar acciones:
 | Componente | Props | Uso |
 |---|---|---|
 | `N8nPanicButton.vue` | `clientKey` ('healup'\|'brada'\|'alegrated'), `label` | Activa/desactiva workflow n8n. Solo estas 3 empresas tienen workflows configurados |
-| `FacturacionPSE.vue` | — | Emite y gestiona facturas/boletas electrónicas. Solo Healup y ECS |
+| `FacturacionPSE.vue` | — | Emite y gestiona facturas/boletas electrónicas (formulario libre). Solo Healup y ECS |
+| `HealupCobroAtencion.vue` | — | Wizard 3 pasos para cobro de atención médica Healup: paso 1 = seleccionar cita, paso 2 = emitir boleta consulta S/50, paso 3 = procedimientos con descuento S/50 aplicado |
+| `HealupCatalogoProcedimientos.vue` | — | CRUD completo del catálogo `healup_procedures`. Agrupado por `grupo`, muestra precio sin/con IGV. Protege el ítem de consulta de ser eliminado |
+| `HealupGCalSync.vue` | — | Sincronización Google Calendar ↔ dashboard. Muestra eventos GCal del día, estado de sync, botón importar individual/masivo. Usa endpoint `/api/healup/gcal-events` |
 | `Settings/SettingsView.vue` | `companyId`, `currentUser` | CRUD de usuarios + logs de auditoría. Todos los dashboards |
 
 ---
@@ -247,6 +260,10 @@ Doble sistema para auditar acciones:
 | GET | `/api/pse/comprobantes` | Autenticados de Healup / ECS |
 | POST | `/api/pse/enviar-correo` | Autenticados de Healup / ECS |
 | POST | `/api/pse/webhook-compra` | Webhook público de PSE.PE |
+| POST | `/api/healup/enviar-whatsapp` | Autenticados Healup. Body: `{ telefono, mensaje, comprobante_id? }` |
+| GET | `/api/healup/gcal-events` | Autenticados Healup. Query: `?date=YYYY-MM-DD`. Llama Google Calendar API directo → retorna eventos GCal + estado sync con Supabase |
+| POST | `/api/healup/importar-gcal` | Autenticados Healup. Body: `{ date, time, client_name, client_surname, client_phone?, client_dni?, cabina? }` |
+| POST | `/api/healup/boleta-auto` | n8n (api_key auth). Auto-genera boleta consulta S/50 al confirmar cita. Retorna PDF + mensaje WhatsApp listo |
 
 ---
 
@@ -275,7 +292,9 @@ Doble sistema para auditar acciones:
 - Endpoints: `server/api/pse/`
 - JWT tokens por empresa hardcodeados en el servidor (no en `.env`)
 - Guarda respuestas en tabla `comprobantes_pse`
-- También maneja webhooks de pago y envío de correo
+- También maneja webhooks de pago y envío de correo (Resend) y WhatsApp (n8n)
+- **Referencia completa de la API:** `referencia/facturacion/pse-nubefact-api.md` (estructura de payload, tipos IGV, descuentos, math)
+- **Flujo de cobro médico:** `referencia/facturacion/flujo-cobro-atencion.md` (guía para replicar en otras clínicas)
 
 ### n8n (Automatización)
 - Toggle de workflows desde el dashboard
@@ -295,6 +314,16 @@ N8N_BASE_URL=
 N8N_ID_ALEGRATED=
 N8N_ID_BRADA=
 N8N_ID_HEALUP=
+# Facturación Healup (correo)
+RESEND_API_KEY=
+RESEND_FROM="Heal Up <boletas@healablab.com>"
+# WhatsApp vía n8n (uno por empresa que lo use)
+N8N_WEBHOOK_HEALUP_BOLETA=
+# Google Calendar sync (directo, sin n8n)
+GOOGLE_SERVICE_ACCOUNT_JSON='{"client_email":"...","private_key":"..."}'
+GOOGLE_CALENDAR_ID_HEALUP=healupaestheticlab@gmail.com
+# Boleta automática (n8n llama al confirmar cita)
+HEALUP_BOLETA_AUTO_KEY=healup-auto-2026
 ```
 
 ---
@@ -319,10 +348,23 @@ N8N_ID_HEALUP=
 | Tabla | Propósito |
 |---|---|
 | `healup_calendar_events` | Citas del calendario. Fechas en dos formatos: `DD-MM-YYYY` (agente IA) y `YYYY-MM-DD` (manual) |
+| `healup_procedures` | Catálogo de procedimientos. Campos: `id`, `name`, `sku`, `grupo`, `price` (valor_unitario sin IGV), `tipo` (`consulta`/`procedimiento`/`producto`), `cabina` |
 | `GeneralBDwppHEALUP` | Leads de WhatsApp y TikTok. Campos: `nombre`, `numero`, `lead_status`, `reason_ia_qualification`, `servicio_interes` |
 | `GeneralBDfbigHEALUP` | Leads de Facebook e Instagram. Usa `instagram_handle` en vez de `numero` |
 | `PacientesBDwppHEALUP` | Pacientes captados por WhatsApp. Campo clave: `fecha_agendamiento` |
 | `PacientesBDfbigHEALUP` | Pacientes captados por FB/IG. Campo clave: `fecha_agendamiento` |
+
+**Columnas de trazabilidad de cobro en `healup_calendar_events`** (agregadas en `sql/healup_cobro_atencion.sql`):
+
+| Columna | Tipo | Propósito |
+|---|---|---|
+| `boleta_consulta_serie` | TEXT | Serie de la boleta de consulta (ej: `B001`) |
+| `boleta_consulta_numero` | BIGINT | Número correlativo de la boleta de consulta |
+| `boleta_consulta_id` | BIGINT | ID en `comprobantes_pse` de la boleta de consulta |
+| `boleta_proc_serie` | TEXT | Serie de la boleta de procedimiento |
+| `boleta_proc_numero` | BIGINT | Número correlativo de la boleta de procedimiento |
+| `boleta_proc_id` | BIGINT | ID en `comprobantes_pse` de la boleta de procedimiento |
+| `cobro_completado` | BOOLEAN | `true` cuando el flujo de cobro completo ha sido emitido |
 
 ### Quirks de Datos
 
@@ -338,6 +380,38 @@ N8N_ID_HEALUP=
 - **Stat cards:** Siempre muestran el mes actual. Comparan con mes anterior (flecha ↑↓).
 - **Histórico de leads:** Muestra todos los meses desde enero 2026 (inicio del agente IA). Columnas: total, fríos, tibios, calientes, convertidos (pacientes agendados ese mes).
 - **Semáforo de leads:** Frío = `lead_status` contiene "fri", Tibio = "tibi", Caliente = "caliente".
+
+### Tabs de Facturación (`pages/pruebas/Healup.vue`)
+
+La sección de contabilidad tiene 3 tabs (la activa por defecto es `cobro_atencion`):
+
+| Tab value | Componente | Propósito |
+|---|---|---|
+| `cobro_atencion` | `HealupCobroAtencion` | Wizard de cobro guiado — flujo principal para el equipo |
+| `gcal_sync` | `HealupGCalSync` | Sincronizar Google Calendar ↔ dashboard. Importar citas de IG/FB que faltan |
+| `factura_electronica` | `FacturacionPSE` (company-id="healup") | Emisión libre de facturas/boletas (avanzado) |
+| `catalogo` | `HealupCatalogoProcedimientos` | CRUD del catálogo de procedimientos |
+
+### Flujo de Cobro de Atención (`HealupCobroAtencion.vue`)
+
+Wizard de 3 pasos que implementa las reglas de negocio de cobro:
+
+1. **Paso 1 — Seleccionar paciente**: Carga citas del día desde `healup_calendar_events`. Pre-llena nombre, apellido, DNI, email, teléfono y procedimiento desde la cita seleccionada (o entrada manual).
+
+2. **Paso 2 — Boleta de consulta**: Emite siempre una boleta B001 por S/50 (Consulta Médica, SKU `CON-001`, `valor_unitario=42.37`, `tipo_de_igv=1`). Actualiza `healup_calendar_events` con `boleta_consulta_*`.
+
+3. **Paso 3 — Procedimientos**: Selector del catálogo (filtrable por nombre/SKU, agrupado por `grupo`) con descuento S/50 auto-aplicado. Descuento pre-IGV = `50/1.18 = 42.37`. Enviado como `descuento_global` a NubeFact. Después de emitir: botones para enviar por email y WhatsApp. Actualiza `healup_calendar_events` con `boleta_proc_*` y `cobro_completado = true`.
+
+**Constantes clave en el componente:**
+```javascript
+CONSULTA_VALOR_UNIT = 42.37      // 50 / 1.18 — precio sin IGV de la consulta
+DESCUENTO_PRETAX   = 42.37      // descuento_global enviado a NubeFact
+SERIE_BOLETA       = 'B001'
+```
+
+**Numeración de boletas:** Consulta `MAX(numero)` en `comprobantes_pse` para la serie + 1. Posible race condition con múltiples operadores — futuro: migrar a secuencia SQL.
+
+> Ver guía completa de replicación en `referencia/facturacion/flujo-cobro-atencion.md`
 
 ### Funciones Helper Clave
 

@@ -19,8 +19,8 @@ UPDATE healup_procedures SET tipo = 'procedimiento' WHERE tipo IS NULL;
 --    price = 42.37 = 50/1.18  (valor_unitario sin IGV)
 --    Total con IGV 18% = S/ 50.00
 -- ──────────────────────────────────────────────────────────────────
-INSERT INTO healup_procedures (name, price, sku, grupo, tipo, cabina)
-VALUES ('Consulta Médica', 42.37, 'CON-001', 'CONSULTA', 'consulta', 'cabina1')
+INSERT INTO healup_procedures (name, price, sku, grupo, tipo)
+VALUES ('Consulta Médica', 42.37, 'CON-001', 'CONSULTA', 'consulta')
 ON CONFLICT DO NOTHING;
 
 -- Si el SKU ya existe (por re-runs), actualizarlo:

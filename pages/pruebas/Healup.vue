@@ -292,7 +292,14 @@
       <div v-else-if="activeView === 'calendario'" class="view-container">
         <header class="top-header">
           <h1>Calendario</h1>
-          <div style="display: flex; gap: 10px;">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn-secondary" @click="syncGCalToCalendar" :disabled="gcalSyncing">
+              <v-icon :icon="gcalSyncing ? 'mdi-loading mdi-spin' : 'mdi-google'" size="16" />
+              <span>{{ gcalSyncing ? 'Sincronizando...' : 'Sync Google Calendar' }}</span>
+            </button>
+            <span v-if="gcalSyncResult" style="font-size: 12px; color: var(--text-secondary);">
+              {{ gcalSyncResult }}
+            </span>
             <button class="btn-secondary" @click="openScheduleDialog">
               <v-icon icon="mdi-clock-outline" size="16" />
               <span>Configurar Horario</span>
@@ -1063,24 +1070,31 @@
           style="border-bottom: 1px solid var(--border);"
         >
           <v-tab value="cobro_atencion">🏥 Cobro de Atención</v-tab>
+          <v-tab value="gcal_sync">📅 Google Calendar</v-tab>
           <v-tab value="resumen">Resumen</v-tab>
           <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
-          <v-tab value="catalogo">📦 Catálogo</v-tab>
+          <v-tab value="ir_catalogo" @click.prevent="activeView = 'procedimientos'">📦 Catálogo →</v-tab>
         </v-tabs>
 
         <!-- Cobro de Atención: flujo guiado boleta consulta + procedimiento -->
-        <div v-show="facturacionTab === 'cobro_atencion'" style="padding: 0 0 2rem 0;">
-          <HealupCobroAtencion />
+        <div v-if="facturacionTab === 'cobro_atencion'" style="padding: 0 0 2rem 0;">
+          <ClientOnly>
+            <HealupCobroAtencion />
+          </ClientOnly>
+        </div>
+
+        <!-- Google Calendar Sync: importar citas de IG/FB que no están en el dashboard -->
+        <div v-if="facturacionTab === 'gcal_sync'" style="padding: 0 0 2rem 0;">
+          <ClientOnly>
+            <HealupGCalSync />
+          </ClientOnly>
         </div>
 
         <!-- PSE.PE: Factura Electrónica -->
-        <div v-show="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
-          <FacturacionPSE company-id="healup" />
-        </div>
-
-        <!-- Catálogo de procedimientos (CRUD) -->
-        <div v-show="facturacionTab === 'catalogo'" style="padding: 0 0 2rem 0;">
-          <HealupCatalogoProcedimientos />
+        <div v-if="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
+          <ClientOnly>
+            <FacturacionPSE company-id="healup" />
+          </ClientOnly>
         </div>
 
         <!-- Resumen original -->
@@ -5689,6 +5703,69 @@ function getCabinaForProcedure(procedureId: string | number): string {
   return getCabinaFromGrupo(proc.grupo)
 }
 
+/* ---------------- Google Calendar Auto-Sync ---------------- */
+const gcalSyncing = ref(false)
+const gcalSyncResult = ref('')
+
+async function syncGCalToCalendar() {
+  gcalSyncing.value = true
+  gcalSyncResult.value = ''
+  try {
+    // Sync today + next 7 days
+    const dates: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() + i)
+      dates.push(d.toISOString().split('T')[0])
+    }
+
+    let totalImported = 0
+    for (const date of dates) {
+      try {
+        const gcalData = await $fetch<any>(`/api/healup/gcal-events?date=${date}`)
+        const missing = (gcalData.events || []).filter((e: any) => !e.en_dashboard && e.gcal_id)
+
+        for (const ev of missing) {
+          try {
+            await $fetch('/api/healup/importar-gcal', {
+              method: 'POST',
+              body: {
+                date,
+                time: ev.time,
+                client_name: ev.client_name,
+                client_surname: ev.client_surname,
+                client_phone: ev.client_phone || '',
+                client_dni: ev.client_dni || '',
+                cabina: ev.cabina || 'cabina1',
+                gcal_id: ev.gcal_id
+              }
+            })
+            totalImported++
+          } catch (e) {
+            // Skip duplicates silently
+          }
+        }
+      } catch (e) {
+        // Skip dates that fail
+      }
+    }
+
+    // Reload calendar events
+    await fetchEvents()
+    gcalSyncResult.value = totalImported > 0
+      ? `${totalImported} cita${totalImported > 1 ? 's' : ''} importada${totalImported > 1 ? 's' : ''}`
+      : 'Todo sincronizado'
+
+    // Clear message after 5 seconds
+    setTimeout(() => { gcalSyncResult.value = '' }, 5000)
+  } catch (err: any) {
+    gcalSyncResult.value = 'Error al sincronizar'
+    console.error('[GCalSync]', err)
+  } finally {
+    gcalSyncing.value = false
+  }
+}
+
 /* ---------------- Calendar State ---------------- */
 const currentMonth = ref(new Date().getMonth())
 const currentYear = ref(new Date().getFullYear())
@@ -7985,7 +8062,10 @@ onMounted(() => {
   fetchLeads()
   handleZoom('Mes')
   fetchWorkingHours()
-  fetchEvents()
+  fetchEvents().then(() => {
+    // Auto-sync Google Calendar al cargar (silencioso, sin bloquear UI)
+    syncGCalToCalendar()
+  })
   fetchProcedures()
   fetchMedicalHistory()
   fetchEgresos()

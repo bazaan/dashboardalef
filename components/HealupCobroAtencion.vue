@@ -8,14 +8,14 @@
         <!-- Indicador de pasos -->
         <div class="steps-bar">
           <div
-            v-for="s in 3" :key="s"
+            v-for="s in 2" :key="s"
             :class="['step-dot', { active: paso === s, done: paso > s }]"
           >
             <v-icon v-if="paso > s" icon="mdi-check" size="12" />
             <span v-else>{{ s }}</span>
           </div>
           <div class="step-label">
-            {{ paso === 1 ? 'Paciente' : paso === 2 ? 'Boleta Consulta' : 'Precotización' }}
+            {{ paso === 1 ? 'Paciente' : 'Precotización' }}
           </div>
         </div>
       </div>
@@ -138,101 +138,6 @@
             prepend-icon="mdi-arrow-right"
             @click="paso = 2"
           >
-            Continuar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════
-         PASO 2 — BOLETA DE CONSULTA (S/ 50.00)
-    ═══════════════════════════════════════════════════════ -->
-    <div v-else-if="paso === 2" class="content-area">
-      <v-card flat class="cobro-card" style="max-width: 600px; margin: 0 auto;">
-        <v-card-title class="cobro-card-title">
-          <v-icon icon="mdi-receipt" color="primary" class="me-2" />
-          Boleta de Consulta
-        </v-card-title>
-
-        <v-card-text>
-          <v-alert type="info" variant="tonal" density="compact" icon="mdi-information-outline" class="mb-4">
-            Esta boleta se emite <strong>siempre</strong> al iniciar la atención.
-            Cubre el costo de la consulta médica (S/ 50.00) y se descontará de los procedimientos.
-          </v-alert>
-
-          <!-- Preview de la boleta -->
-          <div v-if="!boletaConsulta" class="boleta-preview">
-            <div class="boleta-preview-header">BOLETA DE VENTA ELECTRÓNICA</div>
-            <div class="boleta-field">
-              <span class="boleta-label">Paciente</span>
-              <strong>{{ nombreCompleto }}</strong>
-            </div>
-            <div class="boleta-field" v-if="paciente.doc_numero">
-              <span class="boleta-label">Documento</span>
-              {{ paciente.doc_tipo === 1 ? 'DNI' : 'Doc.' }} {{ paciente.doc_numero }}
-            </div>
-            <div class="boleta-field">
-              <span class="boleta-label">Concepto</span>
-              Consulta Médica (SKU: CON-001)
-            </div>
-            <div class="boleta-field">
-              <span class="boleta-label">Fecha</span>
-              {{ fechaHoyDisplay }}
-            </div>
-            <div class="boleta-field boleta-total">
-              <span class="boleta-label">TOTAL</span>
-              <strong style="font-size: 1.3rem; color: var(--primary, #6366f1);">S/ 50.00</strong>
-            </div>
-          </div>
-
-          <!-- Resultado exitoso -->
-          <div v-else class="success-mini">
-            <v-icon icon="mdi-check-circle" color="success" size="36" />
-            <div style="flex: 1;">
-              <div class="success-label">Boleta emitida — Aceptada por SUNAT</div>
-              <div class="success-numero">
-                {{ boletaConsulta.serie }}-{{ String(boletaConsulta.numero).padStart(8, '0') }}
-              </div>
-              <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 2px;">Total: S/ 50.00</div>
-            </div>
-            <v-btn
-              v-if="boletaConsulta.enlace_pdf"
-              size="small"
-              color="red"
-              variant="elevated"
-              prepend-icon="mdi-file-pdf-box"
-              :href="boletaConsulta.enlace_pdf"
-              target="_blank"
-            >
-              PDF
-            </v-btn>
-          </div>
-
-          <v-alert v-if="errorConsulta" type="error" variant="tonal" density="compact" class="mt-3">
-            {{ errorConsulta }}
-          </v-alert>
-        </v-card-text>
-
-        <v-card-actions class="pa-4">
-          <v-btn variant="text" @click="paso = 1">Atrás</v-btn>
-          <v-spacer />
-          <v-btn
-            v-if="!boletaConsulta"
-            color="primary"
-            variant="elevated"
-            :loading="emitiendoConsulta"
-            prepend-icon="mdi-send"
-            @click="emitirBoletaConsulta"
-          >
-            Emitir Boleta de Consulta
-          </v-btn>
-          <v-btn
-            v-else
-            color="primary"
-            variant="elevated"
-            prepend-icon="mdi-arrow-right"
-            @click="paso = 3"
-          >
             Continuar a Precotización
           </v-btn>
         </v-card-actions>
@@ -240,9 +145,9 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
-         PASO 3 — PRECOTIZACIÓN + EMISIÓN
+         PASO 2 — PRECOTIZACIÓN + EMISIÓN
     ═══════════════════════════════════════════════════════ -->
-    <div v-else-if="paso === 3" class="content-area">
+    <div v-else-if="paso === 2" class="content-area">
       <div class="paso3-grid">
 
         <!-- Panel izquierdo: Lista de procedimientos -->
@@ -322,7 +227,7 @@
               <v-icon icon="mdi-clipboard-text-off" size="44" />
               <div class="mt-2" style="font-size: 0.9rem;">
                 No hay procedimientos seleccionados.<br>
-                Usá el botón "Agregar procedimiento" o la cita ya debería estar precargada.
+                Usá el botón "Agregar procedimiento" o seleccioná una cita con procedimiento precargado.
               </div>
             </div>
 
@@ -395,7 +300,7 @@
               </div>
 
               <div v-if="boletaConsulta" class="mt-3 text-caption" style="opacity: 0.6; line-height: 1.5;">
-                Consulta ya facturada en
+                Consulta facturada en
                 {{ boletaConsulta.serie }}-{{ String(boletaConsulta.numero).padStart(8,'0') }}
                 (S/ 50.00)
               </div>
@@ -405,6 +310,17 @@
           <!-- Acciones: emitir + notificar -->
           <v-card flat class="cobro-card">
             <v-card-text>
+
+              <!-- Botón de volver -->
+              <v-btn
+                block
+                variant="text"
+                class="mb-3"
+                prepend-icon="mdi-arrow-left"
+                @click="paso = 1"
+              >
+                Volver a datos del paciente
+              </v-btn>
 
               <!-- Emitir boleta procedimiento -->
               <v-btn
@@ -420,7 +336,36 @@
                 Emitir Boleta de Procedimiento
               </v-btn>
 
-              <!-- Resultado de emisión -->
+              <!-- Boleta de consulta manual (opcional) -->
+              <v-btn
+                v-if="!boletaConsulta"
+                block
+                variant="outlined"
+                color="amber-darken-3"
+                class="mb-3"
+                size="small"
+                prepend-icon="mdi-receipt"
+                @click="showDialogConsulta = true"
+              >
+                Emitir boleta consulta S/50 (manual)
+              </v-btn>
+              <div v-else class="success-mini mb-3">
+                <v-icon icon="mdi-check-circle" color="success" size="20" />
+                <div style="flex: 1; font-size: 0.8rem;">
+                  Consulta: {{ boletaConsulta.serie }}-{{ String(boletaConsulta.numero).padStart(8, '0') }}
+                </div>
+                <v-btn
+                  v-if="boletaConsulta.enlace_pdf"
+                  size="x-small"
+                  color="red"
+                  variant="elevated"
+                  icon="mdi-file-pdf-box"
+                  :href="boletaConsulta.enlace_pdf"
+                  target="_blank"
+                />
+              </div>
+
+              <!-- Resultado de emisión procedimiento -->
               <template v-if="boletaProcedimiento">
                 <div class="success-mini mb-3">
                   <v-icon icon="mdi-check-circle" color="success" size="28" />
@@ -455,11 +400,11 @@
                   prepend-icon="mdi-email-fast"
                   @click="enviarEmail"
                 >
-                  {{ emailEnviado ? '✓ Email enviado' : 'Enviar boleta por correo' }}
+                  {{ emailEnviado ? 'Email enviado' : 'Enviar boleta por correo' }}
                 </v-btn>
                 <div v-else class="text-caption mb-2" style="opacity: 0.55;">
                   <v-icon icon="mdi-email-off" size="13" class="me-1" />
-                  Sin email registrado — no se puede enviar por correo
+                  Sin email registrado
                 </div>
 
                 <!-- Enviar por WhatsApp -->
@@ -473,11 +418,11 @@
                   prepend-icon="mdi-whatsapp"
                   @click="enviarWhatsApp"
                 >
-                  {{ whatsappEnviado ? '✓ WhatsApp enviado' : 'Enviar boleta por WhatsApp' }}
+                  {{ whatsappEnviado ? 'WhatsApp enviado' : 'Enviar boleta por WhatsApp' }}
                 </v-btn>
                 <div v-else class="text-caption" style="opacity: 0.55;">
                   <v-icon icon="mdi-whatsapp" size="13" class="me-1" />
-                  Sin teléfono registrado — no se puede enviar por WhatsApp
+                  Sin teléfono registrado
                 </div>
 
                 <v-alert v-if="errorNotificacion" type="error" variant="tonal" density="compact" class="mt-2">
@@ -494,6 +439,63 @@
         </div>
       </div>
     </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         DIALOG: BOLETA CONSULTA MANUAL (opcional)
+    ═══════════════════════════════════════════════════════ -->
+    <v-dialog v-model="showDialogConsulta" max-width="500" persistent>
+      <v-card>
+        <v-card-title class="d-flex align-center" style="gap: 0.5rem;">
+          <v-icon icon="mdi-receipt" color="amber-darken-3" />
+          Boleta de Consulta (Manual)
+        </v-card-title>
+
+        <v-card-text>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+            Esta boleta normalmente se genera <strong>automáticamente</strong> al agendar la cita.
+            Solo emitila manualmente si el automático no funcionó.
+          </v-alert>
+
+          <div class="boleta-preview">
+            <div class="boleta-preview-header">BOLETA DE VENTA ELECTRÓNICA</div>
+            <div class="boleta-field">
+              <span class="boleta-label">Paciente</span>
+              <strong>{{ nombreCompleto }}</strong>
+            </div>
+            <div class="boleta-field" v-if="paciente.doc_numero">
+              <span class="boleta-label">Documento</span>
+              {{ paciente.doc_tipo === 1 ? 'DNI' : 'Doc.' }} {{ paciente.doc_numero }}
+            </div>
+            <div class="boleta-field">
+              <span class="boleta-label">Concepto</span>
+              Consulta Médica (SKU: CON-001)
+            </div>
+            <div class="boleta-field boleta-total">
+              <span class="boleta-label">TOTAL</span>
+              <strong style="font-size: 1.3rem; color: var(--primary, #6366f1);">S/ 50.00</strong>
+            </div>
+          </div>
+
+          <v-alert v-if="errorConsulta" type="error" variant="tonal" density="compact" class="mt-3">
+            {{ errorConsulta }}
+          </v-alert>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-btn variant="text" @click="showDialogConsulta = false">Cancelar</v-btn>
+          <v-spacer />
+          <v-btn
+            color="amber-darken-3"
+            variant="elevated"
+            :loading="emitiendoConsulta"
+            prepend-icon="mdi-send"
+            @click="emitirBoletaConsulta"
+          >
+            Emitir Boleta S/ 50
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
   </div>
 </template>
@@ -525,7 +527,8 @@ const paciente = ref({
   event_id:   null as number | null
 })
 
-// Boleta consulta
+// Boleta consulta (dialog manual)
+const showDialogConsulta = ref(false)
 const boletaConsulta   = ref<any>(null)
 const emitiendoConsulta = ref(false)
 const errorConsulta    = ref('')
@@ -557,10 +560,6 @@ const nombreCompleto = computed(() =>
 )
 
 const fechaHoyISO = computed(() => new Date().toISOString().substring(0, 10))
-
-const fechaHoyDisplay = computed(() =>
-  new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-)
 
 // Suma de valor_unitario (sin IGV) de todos los procedimientos
 const subtotalProcValorUnit = computed(() =>
@@ -628,10 +627,15 @@ const citaLabel = (c: any) =>
 const cargarCitasHoy = async () => {
   loadingCitas.value = true
   try {
+    // Buscar en ambos formatos de fecha
+    const isoDate = fechaHoyISO.value
+    const [y, m, d] = isoDate.split('-')
+    const ddmmyyyy = `${d}-${m}-${y}`
+
     const { data, error } = await supabase
       .from('healup_calendar_events')
       .select('id, date, time, subject, client_name, client_surname, client_dni, client_phone, client_email, procedure_id')
-      .eq('date', fechaHoyISO.value)
+      .or(`date.eq.${isoDate},date.eq.${ddmmyyyy}`)
       .order('time', { ascending: true })
     if (error) throw error
     citasHoy.value = data || []
@@ -646,14 +650,15 @@ const cargarCatalogo = async () => {
   if (catalogoProcedimientos.value.length > 0) return
   loadingCatalogo.value = true
   try {
-    const { data, error } = await supabase
+    // Query con select('*') para ser resiliente a columnas que aún no existan (sku, grupo, tipo)
+    let query = supabase
       .from('healup_procedures')
-      .select('id, name, sku, grupo, price, tipo')
-      .neq('tipo', 'consulta')
-      .order('grupo')
+      .select('*')
       .order('name')
+    const { data, error } = await query
     if (error) throw error
-    catalogoProcedimientos.value = data || []
+    // Filtrar consulta client-side (la columna tipo puede no existir aún)
+    catalogoProcedimientos.value = (data || []).filter((p: any) => p.tipo !== 'consulta')
   } catch (e: any) {
     console.error('[CobroAtencion] Error cargando catálogo:', e?.message)
   } finally {
@@ -745,7 +750,7 @@ const calcItemNubefact = (valorUnitario: number, cantidad = 1, tipoIgv = 1, desc
 }
 
 /* ═══════════════════════════════════════════════════════════
-   EMITIR BOLETA DE CONSULTA (S/ 50.00)
+   EMITIR BOLETA DE CONSULTA (S/ 50.00) — MANUAL / OPCIONAL
 ═══════════════════════════════════════════════════════════ */
 const emitirBoletaConsulta = async () => {
   emitiendoConsulta.value = true
@@ -808,6 +813,8 @@ const emitirBoletaConsulta = async () => {
       }).eq('id', paciente.value.event_id)
     }
 
+    showDialogConsulta.value = false
+
   } catch (err: any) {
     errorConsulta.value = err?.statusMessage || err?.message || 'Error al emitir la boleta de consulta'
   } finally {
@@ -844,7 +851,6 @@ const emitirBoletaProcedimiento = async () => {
     })
 
     // Aplicar descuento global de S/50 (pre-IGV = 42.37)
-    // total_gravada = suma_subtotales - descuento_global
     const totalGravada = totalGravadaProc.value
     const totalIgv     = totalIgvProc.value
     const total        = totalProcConIgv.value
@@ -986,6 +992,7 @@ const resetFlujo = () => {
   errorNotificacion.value   = ''
   emailEnviado.value        = false
   whatsappEnviado.value     = false
+  showDialogConsulta.value  = false
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1108,7 +1115,7 @@ onMounted(async () => {
   color: #166534;
 }
 
-/* Paso 3 grid */
+/* Paso 2 grid (was paso 3) */
 .paso3-grid {
   display: grid;
   grid-template-columns: 1fr 360px;

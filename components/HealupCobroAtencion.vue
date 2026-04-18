@@ -683,21 +683,28 @@ const onSeleccionarCita = async (cita: any) => {
   paciente.value.email      = cita.client_email   || ''
   paciente.value.event_id   = cita.id
 
-  // Pre-cargar procedimiento de la cita
+  // Pre-cargar procedimiento de la cita (por ID o por nombre en subject)
+  await cargarCatalogo()
+  itemsProcedimiento.value = []
+
   if (cita.procedure_id) {
-    await cargarCatalogo()
+    // Buscar por ID numérico
     const proc = catalogoProcedimientos.value.find(p => p.id === cita.procedure_id)
-    if (proc && !itemsProcedimiento.value.find(it => it.id === proc.id)) {
+    if (proc) {
       agregarProcedimiento(proc)
-    } else if (!proc && cita.subject) {
-      // Procedimiento no en catálogo — agregar como ítem manual
-      itemsProcedimiento.value.push({
-        id:             `manual-${Date.now()}`,
-        name:           cita.subject,
-        sku:            '',
-        valor_unitario: 0,
-        tipo_de_igv:    1
-      })
+    }
+  }
+
+  // Si no se encontró por ID, intentar match por subject contra el catálogo
+  if (!itemsProcedimiento.value.length && cita.subject) {
+    const subjectLower = cita.subject.toLowerCase().trim()
+    const proc = catalogoProcedimientos.value.find(p =>
+      p.name.toLowerCase().trim() === subjectLower ||
+      subjectLower.includes(p.name.toLowerCase().trim()) ||
+      p.name.toLowerCase().trim().includes(subjectLower)
+    )
+    if (proc) {
+      agregarProcedimiento(proc)
     }
   }
 }

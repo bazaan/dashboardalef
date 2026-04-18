@@ -98,35 +98,37 @@ function calcularMontos(precioConIgv: number) {
 }
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
+  let body: any
+  try {
+    body = await readBody(event)
+  } catch (e: any) {
+    return { success: false, error: 'No se pudo leer el body', detail: e?.message }
+  }
 
   // ── Autenticación ──
   const apiKey = process.env.BOLETA_CONSULTA_API_KEY
   if (!apiKey) {
-    throw createError({ statusCode: 500, statusMessage: 'BOLETA_CONSULTA_API_KEY no configurado en .env' })
+    return { success: false, error: 'BOLETA_CONSULTA_API_KEY no configurado en env vars de Netlify' }
   }
   if (body?.api_key !== apiKey) {
-    throw createError({ statusCode: 401, statusMessage: 'API key inválida' })
+    return { success: false, error: 'API key inválida', recibida: body?.api_key ? '(presente pero incorrecta)' : '(no enviada)' }
   }
 
   // ── Validación de company_id ──
   if (!body?.company_id) {
-    throw createError({ statusCode: 400, statusMessage: 'company_id es requerido' })
+    return { success: false, error: 'company_id es requerido' }
   }
 
   const companyKey = body.company_id.toLowerCase().replace(/\s/g, '')
   const clinica = CLINICAS[companyKey]
   if (!clinica) {
     const disponibles = Object.keys(CLINICAS).join(', ')
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Clínica '${body.company_id}' no está registrada en PSE.PE. Disponibles: ${disponibles}`
-    })
+    return { success: false, error: `Clínica '${body.company_id}' no registrada en PSE.PE. Disponibles: ${disponibles}` }
   }
 
   // ── Validación de datos del cliente ──
   if (!body?.client_name) {
-    throw createError({ statusCode: 400, statusMessage: 'client_name es requerido' })
+    return { success: false, error: 'client_name es requerido' }
   }
 
   const clientName = (body.client_name || '').trim()
@@ -141,15 +143,25 @@ export default defineEventHandler(async (event) => {
   const precioConsulta = clinica.consulta_precio || DEFAULT_PRECIO_CONSULTA
   const montos = calcularMontos(precioConsulta)
 
-  const supabase = serverSupabaseServiceRole(event)
+  let supabase: any
+  try {
+    supabase = serverSupabaseServiceRole(event)
+  } catch (e: any) {
+    return { success: false, error: 'Error inicializando Supabase', detail: e?.message }
+  }
 
   // ── Verificar que no se haya emitido ya (si hay event_id) ──
+  try {
   if (eventId) {
-    const { data: existing } = await supabase
+    const { data: existing, error: existErr } = await supabase
       .from(clinica.calendar_table)
       .select('boleta_consulta_numero')
       .eq('id', eventId)
       .maybeSingle()
+
+    if (existErr) {
+      console.error(`[BoletaConsulta][${companyKey}] Error verificando existente:`, existErr.message)
+    }
 
     if (existing?.boleta_consulta_numero) {
       console.log(`[BoletaConsulta][${companyKey}] Ya emitida para event_id=${eventId}: ${serie}-${existing.boleta_consulta_numero}`)
@@ -177,7 +189,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // ── Obtener siguiente número de boleta ──
-  const { data: lastBoleta } = await supabase
+  const { data: lastBoleta, error: lastErr } = await supabase
     .from('comprobantes_pse')
     .select('numero')
     .eq('company_id', companyKey)
@@ -187,6 +199,9 @@ export default defineEventHandler(async (event) => {
     .limit(1)
     .maybeSingle()
 
+  if (lastErr) {
+    console.error(`[BoletaConsulta][${companyKey}] Error obteniendo último número:`, lastErr.message)
+  }
   const numero = (lastBoleta?.numero || 0) + 1
 
   // ── Fecha de emisión ──
@@ -332,6 +347,11 @@ export default defineEventHandler(async (event) => {
     aceptada_por_sunat: !!response?.aceptada_por_sunat,
     comprobante_id: comprobanteId,
     mensaje_wpp: buildMensajeWpp(clinica.display_name, serie, numero, fullName, montos.total, enlacePdf, enlace)
+  }
+
+  } catch (e: any) {
+    console.error(`[BoletaConsulta] Error no manejado:`, e?.message || e)
+    return { success: false, error: 'Error interno del servidor', detail: e?.message || String(e) }
   }
 })
 

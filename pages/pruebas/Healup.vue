@@ -1062,13 +1062,25 @@
           class="mb-4"
           style="border-bottom: 1px solid var(--border);"
         >
+          <v-tab value="cobro_atencion">🏥 Cobro de Atención</v-tab>
           <v-tab value="resumen">Resumen</v-tab>
           <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
+          <v-tab value="catalogo">📦 Catálogo</v-tab>
         </v-tabs>
+
+        <!-- Cobro de Atención: flujo guiado boleta consulta + procedimiento -->
+        <div v-show="facturacionTab === 'cobro_atencion'" style="padding: 0 0 2rem 0;">
+          <HealupCobroAtencion />
+        </div>
 
         <!-- PSE.PE: Factura Electrónica -->
         <div v-show="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
           <FacturacionPSE company-id="healup" />
+        </div>
+
+        <!-- Catálogo de procedimientos (CRUD) -->
+        <div v-show="facturacionTab === 'catalogo'" style="padding: 0 0 2rem 0;">
+          <HealupCatalogoProcedimientos />
         </div>
 
         <!-- Resumen original -->
@@ -4720,7 +4732,7 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
-const facturacionTab = ref('resumen')
+const facturacionTab = ref('cobro_atencion')
 
 const showUserMenu = ref(false)
 const showDashboardMenu = ref(false)

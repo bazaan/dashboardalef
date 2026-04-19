@@ -683,26 +683,28 @@ const onSeleccionarCita = async (cita: any) => {
   paciente.value.email      = cita.client_email   || ''
   paciente.value.event_id   = cita.id
 
-  // Pre-cargar procedimiento de la cita (por ID o por nombre en subject)
+  // Pre-cargar procedimiento de la cita
   await cargarCatalogo()
   itemsProcedimiento.value = []
 
-  if (cita.procedure_id) {
-    // Buscar por ID numérico
-    const proc = catalogoProcedimientos.value.find(p => p.id === cita.procedure_id)
-    if (proc) {
-      agregarProcedimiento(proc)
+  // procedure_id puede ser: ID numérico, nombre de texto, o null
+  const procId = cita.procedure_id
+  if (procId) {
+    let proc = null
+    if (typeof procId === 'number') {
+      // ID numérico directo
+      proc = catalogoProcedimientos.value.find(p => p.id === procId)
     }
-  }
-
-  // Si no se encontró por ID, intentar match por subject contra el catálogo
-  if (!itemsProcedimiento.value.length && cita.subject) {
-    const subjectLower = cita.subject.toLowerCase().trim()
-    const proc = catalogoProcedimientos.value.find(p =>
-      p.name.toLowerCase().trim() === subjectLower ||
-      subjectLower.includes(p.name.toLowerCase().trim()) ||
-      p.name.toLowerCase().trim().includes(subjectLower)
-    )
+    if (!proc) {
+      // Texto: buscar por nombre fuzzy (el agente IA guarda nombres como "Armonizacion Facial")
+      const procLower = String(procId).toLowerCase().trim()
+      proc = catalogoProcedimientos.value.find(p => {
+        const nameLower = p.name.toLowerCase().trim()
+        return nameLower === procLower
+          || nameLower.includes(procLower)
+          || procLower.includes(nameLower)
+      })
+    }
     if (proc) {
       agregarProcedimiento(proc)
     }

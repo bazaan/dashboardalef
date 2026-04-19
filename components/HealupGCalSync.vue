@@ -46,9 +46,27 @@
       </div>
     </div>
 
-    <!-- Alerta de error -->
+    <!-- Alerta de error con botón de renovar si es token expirado -->
     <v-alert v-if="error" type="error" variant="tonal" class="mb-4" closable @click:close="error = ''">
       {{ error }}
+      <template v-if="error.includes('expirado') || error.includes('invalid_grant') || error.includes('Refresh token')">
+        <br>
+        <v-btn
+          color="warning"
+          variant="elevated"
+          size="small"
+          class="mt-2"
+          prepend-icon="mdi-key-change"
+          href="/api/healup/gcal-auth"
+        >
+          Renovar acceso Google
+        </v-btn>
+      </template>
+    </v-alert>
+
+    <!-- Mensaje de éxito post-renovación -->
+    <v-alert v-if="gcalRenewed" type="success" variant="tonal" class="mb-4" closable @click:close="gcalRenewed = false">
+      Acceso a Google Calendar renovado correctamente. Sincronizá de nuevo.
     </v-alert>
 
     <!-- Tabla de eventos -->
@@ -169,6 +187,22 @@ const today = new Date().toISOString().split('T')[0]
 const selectedDate = ref(today)
 const loading = ref(false)
 const error = ref('')
+const gcalRenewed = ref(false)
+
+// Detectar si venimos del callback de GCal
+if (import.meta.client) {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('gcal_success') === '1') {
+    gcalRenewed.value = true
+    // Limpiar URL
+    window.history.replaceState({}, '', window.location.pathname)
+  }
+  const gcalError = params.get('gcal_error')
+  if (gcalError) {
+    error.value = `Error renovando Google Calendar: ${gcalError}`
+    window.history.replaceState({}, '', window.location.pathname)
+  }
+}
 
 const resultado = ref<any>(null)
 const events = ref<any[]>([])

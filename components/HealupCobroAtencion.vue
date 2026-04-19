@@ -693,16 +693,21 @@ const onSeleccionarCita = async (cita: any) => {
     const raw = String(procId).trim()
     let proc = null
 
+    // Helper: normaliza texto para comparar (quita tildes, espacios, %, #, números sueltos)
+    const normalize = (s: string) => s.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quitar tildes
+      .replace(/[^a-z]/g, '')  // solo letras
+
     // 1) Intentar como ID numérico (ej: 4, "25", "48")
     const asNum = Number(raw)
     if (!isNaN(asNum) && asNum > 0) {
-      proc = catalogoProcedimientos.value.find(p => p.id === asNum)
+      proc = catalogoProcedimientos.value.find((p: any) => p.id === asNum)
     }
 
-    // 2) Buscar por nombre fuzzy (ej: "Baby Botox", "Armonizacion Facial", "HIFU 22D")
+    // 2) Buscar por nombre exacto o contenido parcial
     if (!proc) {
       const procLower = raw.toLowerCase().replace(/\s+/g, ' ')
-      proc = catalogoProcedimientos.value.find(p => {
+      proc = catalogoProcedimientos.value.find((p: any) => {
         const nameLower = p.name.toLowerCase().trim().replace(/\s+/g, ' ')
         return nameLower === procLower
           || nameLower.includes(procLower)
@@ -710,9 +715,21 @@ const onSeleccionarCita = async (cita: any) => {
       })
     }
 
-    // 3) Buscar por SKU (ej: "PROC-001" legacy, o SKUs reales)
+    // 3) Buscar normalizado (sin tildes, sin espacios, sin caracteres especiales)
+    //    Cubre: "ArmonizacionFacial" vs "reserva armonizacion"
+    //           "BotoxFullFace" vs "Botox full face"
+    //           "GlassSkinBabe" vs "Facial Glass Skin Babe"
     if (!proc) {
-      proc = catalogoProcedimientos.value.find(p =>
+      const normInput = normalize(raw)
+      proc = catalogoProcedimientos.value.find((p: any) => {
+        const normName = normalize(p.name)
+        return normName.includes(normInput) || normInput.includes(normName)
+      })
+    }
+
+    // 4) Buscar por SKU (ej: "PROC-001" legacy, o SKUs reales)
+    if (!proc) {
+      proc = catalogoProcedimientos.value.find((p: any) =>
         (p.sku || '').toLowerCase().trim() === raw.toLowerCase()
       )
     }

@@ -183,7 +183,8 @@
 import { ref, computed } from 'vue'
 
 /* ─── Estado ─────────────────────────────────────── */
-const today = new Date().toISOString().split('T')[0]
+const now = new Date()
+const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 const selectedDate = ref(today)
 const loading = ref(false)
 const error = ref('')

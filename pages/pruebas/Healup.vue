@@ -364,22 +364,20 @@
                   'has-events': day.events.length > 0 || (day.isWorkingDay && day.events.length >= day.totalSlots)
                 }
               ]" @click="selectDay(day)">
-                <div class="d-flex justify-space-between align-center px-1" style="width: 100%;">
+                <div class="day-header-row">
                   <span class="day-number">{{ day.day }}</span>
-                  <v-chip
+                  <span
                     v-if="day.isWorkingDay && day.isCurrentMonth"
-                    size="x-small"
-                    :color="day.availableSlots > 0 ? 'success' : 'error'"
-                    variant="flat"
-                    style="font-size: 10px; height: 18px;"
+                    class="day-avail-badge"
+                    :class="day.availableSlots > 0 ? 'avail-ok' : 'avail-full'"
                   >
-                    {{ day.availableSlots > 0 ? `${day.availableSlots} disp.` : 'Lleno' }}
-                  </v-chip>
+                    {{ day.availableSlots > 0 ? `${day.availableSlots}` : '0' }}
+                  </span>
                 </div>
-                <div v-if="day.events.length > 0" class="event-list-in-day mt-1">
+                <div v-if="day.events.length > 0" class="event-list-in-day">
                   <div v-for="(event, eventIndex) in day.events.slice(0, 2)" :key="eventIndex" class="event-line"
                     :style="{ backgroundColor: getProcedureColor(event.procedureId) }" :title="event.subject">
-                    <span class="event-line-text">{{ event.subject }}</span>
+                    <span class="event-line-text">{{ event.time ? event.time + ' ' : '' }}{{ event.clientName || event.subject }}</span>
                   </div>
                   <span v-if="day.events.length > 2" class="more-events">+{{ day.events.length - 2 }} más</span>
                 </div>
@@ -5716,35 +5714,20 @@ async function syncGCalToCalendar() {
     for (let i = 0; i < 7; i++) {
       const d = new Date()
       d.setDate(d.getDate() + i)
-      dates.push(d.toISOString().split('T')[0])
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      dates.push(`${y}-${m}-${dd}`)
     }
 
     let totalImported = 0
     for (const date of dates) {
       try {
-        const gcalData = await $fetch<any>(`/api/healup/gcal-events?date=${date}`)
-        const missing = (gcalData.events || []).filter((e: any) => !e.en_dashboard && e.gcal_id)
-
-        for (const ev of missing) {
-          try {
-            await $fetch('/api/healup/importar-gcal', {
-              method: 'POST',
-              body: {
-                date,
-                time: ev.time,
-                client_name: ev.client_name,
-                client_surname: ev.client_surname,
-                client_phone: ev.client_phone || '',
-                client_dni: ev.client_dni || '',
-                cabina: ev.cabina || 'cabina1',
-                gcal_id: ev.gcal_id
-              }
-            })
-            totalImported++
-          } catch (e) {
-            // Skip duplicates silently
-          }
-        }
+        const res = await $fetch<any>('/api/healup/gcal-auto-sync', {
+          method: 'POST',
+          body: { date }
+        })
+        if (res.imported) totalImported += res.imported
       } catch (e) {
         // Skip dates that fail
       }

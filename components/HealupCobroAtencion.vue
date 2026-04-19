@@ -559,7 +559,13 @@ const nombreCompleto = computed(() =>
   [paciente.value.nombre, paciente.value.apellido].filter(Boolean).join(' ').trim() || 'CONSUMIDOR FINAL'
 )
 
-const fechaHoyISO = computed(() => new Date().toISOString().substring(0, 10))
+const fechaHoyISO = computed(() => {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+})
 
 // Suma de valor_unitario (sin IGV) de todos los procedimientos
 const subtotalProcValorUnit = computed(() =>
@@ -627,8 +633,19 @@ const citaLabel = (c: any) =>
 const cargarCitasHoy = async () => {
   loadingCitas.value = true
   try {
-    // Buscar en ambos formatos de fecha
     const isoDate = fechaHoyISO.value
+
+    // Auto-sync GCal → Supabase (silencioso, no bloquea si falla)
+    try {
+      await $fetch('/api/healup/gcal-auto-sync', {
+        method: 'POST',
+        body: { date: isoDate }
+      })
+    } catch (syncErr: any) {
+      console.warn('[CobroAtencion] Auto-sync GCal omitido:', syncErr?.message)
+    }
+
+    // Cargar citas desde Supabase (fuente única de verdad)
     const [y, m, d] = isoDate.split('-')
     const ddmmyyyy = `${d}-${m}-${y}`
 

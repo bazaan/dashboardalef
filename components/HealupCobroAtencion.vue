@@ -687,24 +687,36 @@ const onSeleccionarCita = async (cita: any) => {
   await cargarCatalogo()
   itemsProcedimiento.value = []
 
-  // procedure_id puede ser: ID numérico, nombre de texto, o null
+  // procedure_id puede ser: ID numérico, ID como string ("25"), nombre texto, o null
   const procId = cita.procedure_id
-  if (procId) {
+  if (procId && String(procId).trim()) {
+    const raw = String(procId).trim()
     let proc = null
-    if (typeof procId === 'number') {
-      // ID numérico directo
-      proc = catalogoProcedimientos.value.find(p => p.id === procId)
+
+    // 1) Intentar como ID numérico (ej: 4, "25", "48")
+    const asNum = Number(raw)
+    if (!isNaN(asNum) && asNum > 0) {
+      proc = catalogoProcedimientos.value.find(p => p.id === asNum)
     }
+
+    // 2) Buscar por nombre fuzzy (ej: "Baby Botox", "Armonizacion Facial", "HIFU 22D")
     if (!proc) {
-      // Texto: buscar por nombre fuzzy (el agente IA guarda nombres como "Armonizacion Facial")
-      const procLower = String(procId).toLowerCase().trim()
+      const procLower = raw.toLowerCase().replace(/\s+/g, ' ')
       proc = catalogoProcedimientos.value.find(p => {
-        const nameLower = p.name.toLowerCase().trim()
+        const nameLower = p.name.toLowerCase().trim().replace(/\s+/g, ' ')
         return nameLower === procLower
           || nameLower.includes(procLower)
           || procLower.includes(nameLower)
       })
     }
+
+    // 3) Buscar por SKU (ej: "PROC-001" legacy, o SKUs reales)
+    if (!proc) {
+      proc = catalogoProcedimientos.value.find(p =>
+        (p.sku || '').toLowerCase().trim() === raw.toLowerCase()
+      )
+    }
+
     if (proc) {
       agregarProcedimiento(proc)
     }

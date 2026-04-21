@@ -1526,7 +1526,7 @@ import { useExcelExport } from '@/composables/useExcelExport'
 const { logActivity } = useActivityLogger()
 const { downloadExcel } = useExcelExport()
 import type { ApexOptions } from 'apexcharts'
-import { isSuperAdmin, dashboards } from '@/utils/permissions'
+import { isSuperAdmin, canAccessSKIP, dashboards } from '@/utils/permissions'
 
 import SettingsView from '@/components/Settings/SettingsView.vue'
 
@@ -1539,8 +1539,8 @@ definePageMeta({
 // ... (skipping down to onMounted)
 
 onMounted(() => {
-  // Access Control
-  if (!isSuperAdmin(currentUser.value)) {
+  // Access Control — usar canAccessSKIP para permitir también admins/agentes de SKIP
+  if (!canAccessSKIP(currentUser.value)) {
     alert('No tienes permiso para acceder a este dashboard.')
     return navigateTo('/')
   }

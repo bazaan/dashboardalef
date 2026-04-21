@@ -1,10 +1,12 @@
 
-import { serverSupabaseClient, serverSupabaseUser } from '#supabase/server'
+import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import bcrypt from 'bcryptjs'
 import { logServerActivity } from '../../utils/logger'
 
 export default defineEventHandler(async (event) => {
-    const client = await serverSupabaseClient(event)
+    // Service role bypasa RLS para poder leer/escribir dashboardlogin
+    // sin importar si el solicitante tiene sesión en Supabase Auth o solo en la cookie
+    const client = serverSupabaseServiceRole(event)
     const body = await readBody(event)
     const { email, password, full_name, role, company_id } = body
 
@@ -71,7 +73,8 @@ export default defineEventHandler(async (event) => {
         // Si no se envía company_id, se asume 'Alef' o la del superadmin
     } else if (requesterRole === 'admin') {
         // Admin solo puede crear para su propia compañía
-        if (company_id && company_id !== requesterCompany) {
+        // Comparación case-insensitive para cubrir variaciones como "SKIP" vs "skip"
+        if (company_id && company_id.toLowerCase().trim() !== requesterCompany.toLowerCase().trim()) {
             throw createError({
                 statusCode: 403,
                 statusMessage: 'Forbidden: You can only create users for your own company'

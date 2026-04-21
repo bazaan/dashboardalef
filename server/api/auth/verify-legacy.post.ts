@@ -1,8 +1,10 @@
-import { serverSupabaseClient } from '#supabase/server'
+import { serverSupabaseServiceRole } from '#supabase/server'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
-    const client = await serverSupabaseClient(event)
+    // Usar service role para bypassear RLS — este endpoint no requiere sesión
+    // (el usuario está intentando autenticarse, no tiene cookie aún)
+    const client = serverSupabaseServiceRole(event)
     const body = await readBody(event)
     const { email, password } = body
 

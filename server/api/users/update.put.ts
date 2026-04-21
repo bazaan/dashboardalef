@@ -1,8 +1,8 @@
-import { serverSupabaseClient, serverSupabaseUser } from '#supabase/server'
+import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import { logServerActivity } from '../../utils/logger'
 
 export default defineEventHandler(async (event) => {
-    const client = await serverSupabaseClient(event)
+    const client = serverSupabaseServiceRole(event)
     const body = await readBody(event)
     const { id, email, full_name, company_id } = body
 

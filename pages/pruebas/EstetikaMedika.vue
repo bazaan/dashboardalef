@@ -3201,13 +3201,25 @@ const tabs = ref<Tab[]>([
 
 const activeTab = ref('pacientes_dashboard') // Changed default to pacientes_dashboard from outline
 
-const headersDashboardWpp = computed(() => {
-  return headersPacientesWpp.value.filter(h => h.key !== 'actions')
-})
+const headersDashboardWpp = computed(() => [
+  { title: 'Nombre', key: 'nombre', sortable: true },
+  { title: 'DNI', key: 'dni', sortable: true },
+  { title: 'Número', key: 'numero', sortable: true },
+  { title: 'Precio reserva', key: 'precio', sortable: true },
+  { title: 'Procedimiento', key: 'procedimiento', sortable: true },
+  { title: 'Fecha', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Estado', key: 'estado', sortable: true },
+])
 
-const headersDashboardFbIg = computed(() => {
-  return headersPacientesFbIg.value.filter(h => h.key !== 'actions')
-})
+const headersDashboardFbIg = computed(() => [
+  { title: 'Nombre', key: 'nombre', sortable: true },
+  { title: 'DNI', key: 'dni', sortable: true },
+  { title: 'Red Social', key: 'red_social', sortable: true },
+  { title: 'Precio reserva', key: 'precio', sortable: true },
+  { title: 'Procedimiento', key: 'procedimiento', sortable: true },
+  { title: 'Fecha', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Estado', key: 'estado', sortable: true },
+])
 
 const headersComprasDashboard = computed(() => {
   return headersCompras.value.slice(0, 10)

@@ -993,9 +993,13 @@
         <header class="top-header">
           <h1>Productos</h1>
           <div class="d-flex align-center" style="gap: 10px;">
-            <button class="btn-primary" @click="fetchProcedures">
+            <button class="btn-secondary" @click="fetchProcedures">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Actualizar</span>
+            </button>
+            <button class="btn-primary" @click="openProcedureDialog()">
+              <v-icon icon="mdi-plus" size="16" />
+              <span>Nuevo Producto</span>
             </button>
           </div>
         </header>
@@ -1048,6 +1052,27 @@
                   <span style="max-width: 200px; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" :title="item.descripcion">
                     {{ item.descripcion || '—' }}
                   </span>
+                </template>
+
+                <template v-slot:item.actions="{ item }">
+                  <div class="d-flex" style="gap: 4px;">
+                    <v-tooltip location="top">
+                      <template v-slot:activator="{ props }">
+                        <button v-bind="props" class="icon-btn" @click="openProcedureDialog(item)">
+                          <v-icon icon="mdi-pencil" size="16" color="primary" />
+                        </button>
+                      </template>
+                      <span>Editar</span>
+                    </v-tooltip>
+                    <v-tooltip location="top">
+                      <template v-slot:activator="{ props }">
+                        <button v-bind="props" class="icon-btn" @click="deleteProcedure(item.id)">
+                          <v-icon icon="mdi-delete" size="16" color="error" />
+                        </button>
+                      </template>
+                      <span>Eliminar</span>
+                    </v-tooltip>
+                  </div>
                 </template>
               </v-data-table>
             </v-card>
@@ -1436,59 +1461,141 @@
       </v-card>
     </v-dialog>
 
-    <!-- ==========  PROCEDURE CREATION/EDIT DIALOG  ========== -->
-    <v-dialog v-model="showProcedureDialog" max-width="600px" persistent>
+    <!-- ==========  PRODUCTO EDIT DIALOG  ========== -->
+    <v-dialog v-model="showProcedureDialog" max-width="680px" persistent>
       <v-card>
         <v-card-title class="event-dialog-title">
-          <span>{{ editingProcedure ? 'Editar Procedimiento' : 'Nuevo Procedimiento' }}</span>
+          <span>{{ editingProcedure ? 'Editar Producto' : 'Nuevo Producto' }}</span>
           <v-btn icon="mdi-close" variant="text" @click="closeProcedureDialog"></v-btn>
         </v-card-title>
 
         <v-card-text>
           <v-form ref="procedureForm">
-            <v-text-field v-model="procedureFormData.name" label="Nombre del Procedimiento" variant="outlined"
-              density="compact" :rules="[v => !!v || 'El nombre es requerido']"></v-text-field>
+            <v-row dense>
+              <!-- Nombre -->
+              <v-col cols="12">
+                <v-text-field
+                  v-model="procedureFormData.name"
+                  label="Nombre del Producto *"
+                  variant="outlined"
+                  density="compact"
+                  :rules="[v => !!v || 'El nombre es requerido']"
+                ></v-text-field>
+              </v-col>
 
-            <div class="mt-4 mb-2">
-              <label class="form-label">Color del Procedimiento</label>
-              <v-color-picker v-model="procedureFormData.color" mode="hex" width="100%" elevation="0"
-                hide-inputs></v-color-picker>
-              <v-text-field v-model="procedureFormData.color" label="Código de color" variant="outlined"
-                density="compact" readonly class="mt-2"></v-text-field>
-            </div>
+              <!-- Precio Lista -->
+              <v-col cols="6">
+                <v-text-field
+                  v-model.number="procedureFormData.precio_lista"
+                  label="Precio Lista"
+                  type="number"
+                  variant="outlined"
+                  density="compact"
+                  step="0.01"
+                  min="0"
+                ></v-text-field>
+              </v-col>
 
-            <v-text-field v-model.number="procedureFormData.price" label="Precio" type="number" variant="outlined"
-              density="compact" prefix="S/" :rules="[v => v >= 0 || 'El precio debe ser mayor o igual a 0']"
-              step="0.01"></v-text-field>
+              <!-- Precio Promocional -->
+              <v-col cols="6">
+                <v-text-field
+                  v-model.number="procedureFormData.precio_promocional"
+                  label="Precio Promocional"
+                  type="number"
+                  variant="outlined"
+                  density="compact"
+                  step="0.01"
+                  min="0"
+                ></v-text-field>
+              </v-col>
 
-            <v-text-field v-model.number="procedureFormData.discount" label="Descuento (%)" type="number"
-              variant="outlined" density="compact" suffix="%" :rules="[v => v >= 0 && v <= 100 || 'El descuento debe estar entre 0 y 100']"></v-text-field>
+              <!-- Moneda -->
+              <v-col cols="4">
+                <v-select
+                  v-model="procedureFormData.moneda"
+                  label="Moneda"
+                  :items="['S/', 'USD', 'EUR']"
+                  variant="outlined"
+                  density="compact"
+                ></v-select>
+              </v-col>
 
-            <div v-if="procedureFormData.discount > 0" class="discount-preview">
-              <div class="preview-row">
-                <span>Precio original:</span>
-                <span class="amount">S/ {{ procedureFormData.price.toLocaleString('es-PE', {
-                  minimumFractionDigits: 2
-                }) }}</span>
-              </div>
-              <div class="preview-row">
-                <span>Descuento ({{ procedureFormData.discount }}%):</span>
-                <span class="amount discount">-S/ {{ (procedureFormData.price * procedureFormData.discount /
-                  100).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</span>
-              </div>
-              <div class="preview-row final">
-                <span>Precio final:</span>
-                <span class="amount">S/ {{ (procedureFormData.price * (1 - procedureFormData.discount /
-                  100)).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</span>
-              </div>
-            </div>
+              <!-- Incluye IGV -->
+              <v-col cols="4" class="d-flex align-center">
+                <v-switch
+                  v-model="procedureFormData.incluye_igv"
+                  label="Incluye IGV"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                ></v-switch>
+              </v-col>
+
+              <!-- Stock -->
+              <v-col cols="4">
+                <v-text-field
+                  v-model.number="procedureFormData.stock"
+                  label="Stock"
+                  type="number"
+                  variant="outlined"
+                  density="compact"
+                  min="0"
+                ></v-text-field>
+              </v-col>
+
+              <!-- Unidades -->
+              <v-col cols="6">
+                <v-text-field
+                  v-model="procedureFormData.unidades"
+                  label="Unidades (ej: unid, kg, caja)"
+                  variant="outlined"
+                  density="compact"
+                ></v-text-field>
+              </v-col>
+
+              <!-- Tiempo de Entrega -->
+              <v-col cols="6">
+                <v-text-field
+                  v-model="procedureFormData.tiempo_entrega"
+                  label="Tiempo de Entrega (ej: 3-5 días)"
+                  variant="outlined"
+                  density="compact"
+                ></v-text-field>
+              </v-col>
+
+              <!-- Descripción -->
+              <v-col cols="12">
+                <v-textarea
+                  v-model="procedureFormData.descripcion"
+                  label="Descripción"
+                  variant="outlined"
+                  density="compact"
+                  rows="3"
+                  auto-grow
+                ></v-textarea>
+              </v-col>
+
+              <!-- Color -->
+              <v-col cols="12">
+                <v-text-field
+                  v-model="procedureFormData.color"
+                  label="Color (código hex, ej: #3b82f6)"
+                  variant="outlined"
+                  density="compact"
+                  :append-inner-icon="procedureFormData.color ? 'mdi-circle' : undefined"
+                  :style="procedureFormData.color ? `--v-icon-color: ${procedureFormData.color}` : ''"
+                ></v-text-field>
+              </v-col>
+            </v-row>
           </v-form>
         </v-card-text>
 
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn color="grey" variant="text" @click="closeProcedureDialog">Cancelar</v-btn>
-          <v-btn color="primary" variant="elevated" @click="saveProcedure">Guardar</v-btn>
+          <v-btn color="primary" variant="elevated" :loading="procedureSaving" @click="saveProcedure">
+            {{ editingProcedure ? 'Guardar Cambios' : 'Crear Producto' }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -3874,9 +3981,16 @@ async function fetchEvents() {
 interface Procedure {
   id: string
   name: string
+  precio_lista: number
+  precio_promocional: number
+  moneda: string
+  incluye_igv: boolean
+  unidades: string
+  stock: number
+  tiempo_entrega: string
+  descripcion: string
   color: string
-  price: number
-  discount: number
+  company_id: string
 }
 
 /* ---------------- Procedures State ---------------- */
@@ -3884,12 +3998,20 @@ const procedures = ref<Procedure[]>([])
 const procedureSearch = ref('')
 const showProcedureDialog = ref(false)
 const editingProcedure = ref<Procedure | null>(null)
-const procedureFormData = ref({
+const procedureFormData = ref<Partial<Procedure>>({
   name: '',
-  color: '#3b82f6',
-  price: 0,
-  discount: 0
+  precio_lista: 0,
+  precio_promocional: 0,
+  moneda: 'S/',
+  incluye_igv: false,
+  unidades: '',
+  stock: 0,
+  tiempo_entrega: '',
+  descripcion: '',
+  color: '',
+  company_id: 'estetikamedika',
 })
+const procedureSaving = ref(false)
 const procedureForm = ref<any>(null)
 
 /* ---------------- Procedures Constants ---------------- */
@@ -3908,6 +4030,7 @@ const procedureHeaders = [
   { title: 'Descripción', key: 'descripcion', sortable: false },
   { title: 'Color', key: 'color', sortable: false },
   { title: 'Empresa', key: 'company_id', sortable: true },
+  { title: 'Acciones', key: 'actions', sortable: false },
 ]
 
 /* ---------------- Procedures Functions ---------------- */
@@ -3919,9 +4042,16 @@ function openProcedureDialog(procedure?: Procedure) {
     editingProcedure.value = null
     procedureFormData.value = {
       name: '',
-      color: '#3b82f6',
-      price: 0,
-      discount: 0
+      precio_lista: 0,
+      precio_promocional: 0,
+      moneda: 'S/',
+      incluye_igv: false,
+      unidades: '',
+      stock: 0,
+      tiempo_entrega: '',
+      descripcion: '',
+      color: '',
+      company_id: 'estetikamedika',
     }
   }
   showProcedureDialog.value = true
@@ -3934,54 +4064,51 @@ function closeProcedureDialog() {
 
 async function saveProcedure() {
   if (!procedureFormData.value.name) {
-    alert('Por favor ingrese un nombre para el procedimiento')
+    alert('Por favor ingrese un nombre para el producto')
     return
   }
 
-  if (procedureFormData.value.price < 0) {
-    alert('El precio debe ser mayor o igual a 0')
-    return
-  }
-
-  // Supabase Logic
+  procedureSaving.value = true
   try {
-    if (editingProcedure.value) {
-      // Update
-      const { error } = await (client
-        .from('estetikamedika_productos') as any)
-        .update({
-          name: procedureFormData.value.name,
-          color: procedureFormData.value.color,
-          price: procedureFormData.value.price,
-          discount: procedureFormData.value.discount
-        })
-        .eq('id', editingProcedure.value.id)
+    const payload = {
+      name: procedureFormData.value.name,
+      precio_lista: procedureFormData.value.precio_lista ?? 0,
+      precio_promocional: procedureFormData.value.precio_promocional ?? 0,
+      moneda: procedureFormData.value.moneda || 'S/',
+      incluye_igv: procedureFormData.value.incluye_igv ?? false,
+      unidades: procedureFormData.value.unidades || '',
+      stock: procedureFormData.value.stock ?? 0,
+      tiempo_entrega: procedureFormData.value.tiempo_entrega || '',
+      descripcion: procedureFormData.value.descripcion || '',
+      color: procedureFormData.value.color || '',
+      company_id: procedureFormData.value.company_id || 'estetikamedika',
+    }
 
+    if (editingProcedure.value) {
+      const { error } = await client
+        .from('estetikamedika_productos')
+        .update(payload)
+        .eq('id', editingProcedure.value.id)
       if (error) throw error
     } else {
-      // Create
-      const { error } = await (client
-        .from('estetikamedika_productos') as any)
-        .insert({
-          name: procedureFormData.value.name,
-          color: procedureFormData.value.color,
-          price: procedureFormData.value.price,
-          discount: procedureFormData.value.discount
-        })
-
+      const { error } = await client
+        .from('estetikamedika_productos')
+        .insert(payload)
       if (error) throw error
     }
 
     await fetchProcedures()
     closeProcedureDialog()
   } catch (error) {
-    console.error('Error saving procedure:', error)
-    alert('Error al guardar el procedimiento')
+    console.error('Error saving producto:', error)
+    alert('Error al guardar el producto')
+  } finally {
+    procedureSaving.value = false
   }
 }
 
 async function deleteProcedure(procedureId: string) {
-  if (confirm('¿Estás seguro de que deseas eliminar este procedimiento?')) {
+  if (confirm('¿Estás seguro de que deseas eliminar este producto?')) {
     try {
       const { error } = await client
         .from('estetikamedika_productos')
@@ -3991,8 +4118,8 @@ async function deleteProcedure(procedureId: string) {
       if (error) throw error
       await fetchProcedures()
     } catch (error) {
-      console.error('Error deleting procedure:', error)
-      alert('Error al eliminar el procedimiento')
+      console.error('Error deleting producto:', error)
+      alert('Error al eliminar el producto')
     }
   }
 }

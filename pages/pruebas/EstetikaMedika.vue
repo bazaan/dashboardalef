@@ -384,150 +384,59 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: PACIENTES  ========== -->
-      <div v-else-if="activeView === 'pacientes'" class="view-container">
+      <!-- ==========  VISTA: VENTAS  ========== -->
+      <div v-else-if="activeView === 'ventas'" class="view-container">
         <header class="top-header">
-          <h1>Pacientes</h1>
-          <button class="btn-primary" @click="openPatientTypeDialog">
-            <v-icon icon="mdi-account-plus" size="16" />
-            <span>Nuevo Paciente</span>
-          </button>
+          <h1>Ventas</h1>
+          <div class="d-flex align-center" style="gap: 10px;">
+            <button class="btn-primary" @click="fetchVentas">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
         </header>
 
         <div class="content-area">
           <div class="stats-grid mini two-columns">
             <div class="stat-card center-content">
-              <div class="stat-value">{{ allPacientes.length }}</div>
-              <div class="stat-title">Total Histórico</div>
+              <div class="stat-value">{{ ventas.length }}</div>
+              <div class="stat-title">Total Ventas</div>
             </div>
-            <div class="stat-card">
-              <div class="stat-value">{{ contribuyentesMesActual.length }}</div>
-              <div class="stat-title">Nuevos este Mes</div>
-              <div class="stat-change" :class="contribuyentesGrowth >= 0 ? 'up' : 'down'">
-                {{ contribuyentesGrowth >= 0 ? '+' : '' }}{{ contribuyentesGrowth.toFixed(1) }}% vs mes anterior
+            <div class="stat-card center-content">
+              <div class="stat-value">
+                S/ {{ ventas.reduce((acc: number, v: any) => acc + (parseFloat(v.precio_promocional) || 0), 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
               </div>
+              <div class="stat-title">Ingreso Total</div>
             </div>
           </div>
 
           <div class="table-section">
-            <!-- Table 1: WhatsApp -->
-            <v-card flat class="custom-data-table" style="margin-bottom: 2rem;">
-              <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de pacientes whatsapp</span>
-                <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesWpp, headersPacientesWpp, 'estetika-pacientes-wpp')">
-                  <v-icon>mdi-file-excel</v-icon>
-                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
-                </v-btn>
-                <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
-                  density="compact" variant="outlined" class="search-field"></v-text-field>
-              </v-card-title>
-              <v-data-table :headers="headersPacientesWpp" :items="pacientesWpp" :search="search" :loading="loading"
-                class="elevation-0" no-data-text="No hay pacientes de WhatsApp">
-                <template v-slot:item.precio="{ item }">
-                  S/ {{ item.precio }}
-                </template>
-                <template v-slot:item.precio_tratamiento="{ item }">
-                  S/ {{ item.precio_tratamiento }}
-                </template>
-                <template v-slot:item.metodo_de_pago="{ item }">
-                  <div class="d-flex align-center">
-                    <v-icon v-if="item.metodo_de_pago === 'Yape'" color="purple-darken-1" size="small"
-                      class="mr-1">mdi-cellphone-marker</v-icon>
-                    <v-icon v-else-if="item.metodo_de_pago === 'Transferencia'" color="blue-darken-2" size="small"
-                      class="mr-1">mdi-bank-transfer-out</v-icon>
-                    <v-icon v-else-if="item.metodo_de_pago === 'Efectivo'" color="green" size="small"
-                      class="mr-1">mdi-cash</v-icon>
-                    <v-icon v-else-if="item.metodo_de_pago && item.metodo_de_pago.includes('Tarjeta')" color="orange"
-                      size="small" class="mr-1">mdi-credit-card</v-icon>
-                    <span>{{ item.metodo_de_pago }}</span>
-                  </div>
-                </template>
-                <template v-slot:item.estado="{ item }">
-                  <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
-                    <span class="status-dot" />
-                    {{ item.estado }}
-                  </span>
-                </template>
-                <template v-slot:item.fecha_agendamiento="{ item }">
-                  {{ formatDateAgendamiento(item.fecha_agendamiento) }}
-                </template>
-                <template v-slot:item.agendamiento="{ item }">
-                  <v-tooltip location="top">
-                    <template v-slot:activator="{ props }">
-                      <v-icon v-bind="props" :icon="item.agendamiento === 'IA' ? 'mdi-robot' : 'mdi-account'"
-                        :color="item.agendamiento === 'IA' ? 'primary' : 'success'" size="24"></v-icon>
-                    </template>
-                    <span>{{ item.agendamiento === 'IA' ? 'Inteligencia Artificial' : 'Agente Humano' }}</span>
-                  </v-tooltip>
-                </template>
-                <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="openPatientForm(item, 'wpp')">
-                    <v-icon icon="mdi-pencil" size="16" />
-                  </button>
-                  <button class="icon-btn" @click="deletePatient(item, 'wpp')">
-                    <v-icon icon="mdi-delete" size="16" />
-                  </button>
-                </template>
-              </v-data-table>
-            </v-card>
-
-            <!-- Table 2: Facebook e Instagram -->
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de pacientes Facebook e Instagram</span>
+                <span class="table-title">Registro de Ventas</span>
                 <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(pacientesFbIg, headersPacientesFbIg, 'estetika-pacientes-fbig')">
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(ventas, headersVentas, 'estetika-ventas')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
+                <v-text-field v-model="ventasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
+                  density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIg" :search="search" :loading="loading"
-                class="elevation-0" no-data-text="No hay pacientes de FB/IG">
-                <template v-slot:item.precio="{ item }">
-                  S/ {{ item.precio }}
-                </template>
-                <template v-slot:item.precio_tratamiento="{ item }">
-                  S/ {{ item.precio_tratamiento }}
-                </template>
-                <template v-slot:item.metodo_de_pago="{ item }">
-                  <div class="d-flex align-center">
-                    <v-icon v-if="item.metodo_de_pago === 'Yape'" color="purple-darken-1" size="small"
-                      class="mr-1">mdi-cellphone-marker</v-icon>
-                    <v-icon v-else-if="item.metodo_de_pago === 'Transferencia'" color="blue-darken-2" size="small"
-                      class="mr-1">mdi-bank-transfer-out</v-icon>
-                    <v-icon v-else-if="item.metodo_de_pago === 'Efectivo'" color="green" size="small"
-                      class="mr-1">mdi-cash</v-icon>
-                    <v-icon v-else-if="item.metodo_de_pago && item.metodo_de_pago.includes('Tarjeta')" color="orange"
-                      size="small" class="mr-1">mdi-credit-card</v-icon>
-                    <span>{{ item.metodo_de_pago }}</span>
-                  </div>
-                </template>
-                <template v-slot:item.estado="{ item }">
-                  <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
-                    <span class="status-dot" />
-                    {{ item.estado }}
+              <v-data-table :headers="headersVentas" :items="ventas" :search="ventasSearch" :loading="loading"
+                :items-per-page="15" class="elevation-0" no-data-text="No hay ventas registradas">
+                <template v-slot:item.precio_promocional="{ item }">
+                  <span class="font-weight-bold" style="color: #22c55e;">
+                    S/ {{ parseFloat(item.precio_promocional || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                   </span>
                 </template>
-                <template v-slot:item.fecha_agendamiento="{ item }">
-                  {{ formatDateAgendamiento(item.fecha_agendamiento) }}
+                <template v-slot:item.correo="{ item }">
+                  <span>{{ item.correo || '—' }}</span>
                 </template>
-                <template v-slot:item.agendamiento="{ item }">
-                  <v-tooltip location="top">
-                    <template v-slot:activator="{ props }">
-                      <v-icon v-bind="props" :icon="item.agendamiento === 'IA' ? 'mdi-robot' : 'mdi-account'"
-                        :color="item.agendamiento === 'IA' ? 'primary' : 'success'" size="24"></v-icon>
-                    </template>
-                    <span>{{ item.agendamiento === 'IA' ? 'Inteligencia Artificial' : 'Agente Humano' }}</span>
-                  </v-tooltip>
+                <template v-slot:item.direccion_envio="{ item }">
+                  <span>{{ item.direccion_envio || '—' }}</span>
                 </template>
-                <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="openPatientForm(item, 'fbig')">
-                    <v-icon icon="mdi-pencil" size="16" />
-                  </button>
-                  <button class="icon-btn" @click="deletePatient(item, 'fbig')">
-                    <v-icon icon="mdi-delete" size="16" />
-                  </button>
+                <template v-slot:item.RUC="{ item }">
+                  <span>{{ item.RUC || '—' }}</span>
                 </template>
               </v-data-table>
             </v-card>
@@ -1079,23 +988,25 @@
         </div><!-- fin tab resumen -->
       </div>
 
-      <!-- ==========  VISTA: PROCEDIMIENTOS  ========== -->
-      <div v-else-if="activeView === 'procedimientos'" class="view-container">
+      <!-- ==========  VISTA: PRODUCTOS  ========== -->
+      <div v-else-if="activeView === 'productos'" class="view-container">
         <header class="top-header">
-          <h1>Procedimientos</h1>
-          <button class="btn-primary" @click="() => openProcedureDialog()">
-            <v-icon icon="mdi-plus" size="16" />
-            <span>Agregar Procedimiento</span>
-          </button>
+          <h1>Productos</h1>
+          <div class="d-flex align-center" style="gap: 10px;">
+            <button class="btn-primary" @click="fetchProcedures">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
         </header>
 
         <div class="content-area">
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de Procedimientos</span>
+                <span class="table-title">Catálogo de Productos</span>
                 <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(procedures, procedureHeaders, 'estetika-procedimientos')">
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(procedures, procedureHeaders, 'estetika-productos')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
@@ -1103,37 +1014,40 @@
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
               <v-data-table :headers="procedureHeaders" :items="procedures" :search="procedureSearch"
-                :items-per-page="10" class="elevation-0" no-data-text="No hay procedimientos creados">
+                :items-per-page="15" class="elevation-0" no-data-text="No hay productos registrados">
                 <template v-slot:item.color="{ item }">
-                  <div class="color-preview" :style="{ backgroundColor: item.color }"></div>
+                  <div v-if="item.color" class="color-preview" :style="{ backgroundColor: item.color }"></div>
+                  <span v-else class="text-caption text-grey">—</span>
                 </template>
 
-                <template v-slot:item.price="{ item }">
-                  <span class="price-cell">S/ {{ item.price.toLocaleString('es-PE', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  }) }}</span>
-                </template>
-
-                <template v-slot:item.discount="{ item }">
-                  <span :class="['discount-badge', item.discount > 0 ? 'has-discount' : '']">
-                    {{ item.discount === 0 ? 'Sin descuento' : `${item.discount}%` }}
+                <template v-slot:item.precio_lista="{ item }">
+                  <span class="price-cell">
+                    {{ item.moneda || 'S/' }} {{ parseFloat(item.precio_lista || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                   </span>
                 </template>
 
-                <template v-slot:item.finalPrice="{ item }">
-                  <span class="final-price">S/ {{ (item.price * (1 - item.discount / 100)).toLocaleString('es-PE', {
-                    minimumFractionDigits: 2, maximumFractionDigits: 2
-                  }) }}</span>
+                <template v-slot:item.precio_promocional="{ item }">
+                  <span class="final-price" style="color: #22c55e; font-weight: 600;">
+                    {{ item.moneda || 'S/' }} {{ parseFloat(item.precio_promocional || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                  </span>
                 </template>
 
-                <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="openProcedureDialog(item)">
-                    <v-icon icon="mdi-pencil" size="16" />
-                  </button>
-                  <button class="icon-btn" @click="deleteProcedure(item.id)">
-                    <v-icon icon="mdi-delete" size="16" />
-                  </button>
+                <template v-slot:item.incluye_igv="{ item }">
+                  <v-chip :color="item.incluye_igv ? 'success' : 'default'" size="small" variant="tonal">
+                    {{ item.incluye_igv ? 'Sí' : 'No' }}
+                  </v-chip>
+                </template>
+
+                <template v-slot:item.stock="{ item }">
+                  <v-chip :color="(item.stock || 0) > 0 ? 'success' : 'error'" size="small" variant="tonal">
+                    {{ item.stock ?? '—' }}
+                  </v-chip>
+                </template>
+
+                <template v-slot:item.descripcion="{ item }">
+                  <span style="max-width: 200px; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" :title="item.descripcion">
+                    {{ item.descripcion || '—' }}
+                  </span>
                 </template>
               </v-data-table>
             </v-card>
@@ -1141,8 +1055,8 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: HISTORIAL CLÍNICO  ========== -->
-      <div v-else-if="activeView === 'historialClinico'" class="view-container">
+      <!-- ==========  VISTA: HISTORIAL CLÍNICO (OCULTO) ========== -->
+      <div v-if="false" class="view-container">
         <header class="top-header">
           <h1>Historial Clínico</h1>
           <div style="display: flex; gap: 10px;">
@@ -2057,6 +1971,8 @@ const loading = ref(false)
 const n8nLoading = ref(false)
 const pacientesWpp = ref<any[]>([])
 const pacientesFbIg = ref<any[]>([])
+const ventas = ref<any[]>([])
+const ventasSearch = ref('')
 const compras = ref<any[]>([])
 const leadsWpp = ref<any[]>([])
 const leadsFbIg = ref<any[]>([])
@@ -2077,34 +1993,16 @@ const headers = ref([
   { title: 'Actions', key: 'actions', sortable: false }
 ])
 
-/* Headers específicos para Pacientes */
-const headersPacientesWpp = ref([
-  { title: 'Nombre', key: 'nombre', sortable: true },
-  { title: 'DNI', key: 'dni', sortable: true },
-  { title: 'Número', key: 'numero', sortable: true },
-  { title: 'Precio de reserva', key: 'precio', sortable: true },
-  { title: 'Procedimiento', key: 'procedimiento', sortable: true },
-  { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
-  { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
-  { title: 'Método de pago', key: 'metodo_de_pago', sortable: true },
-  { title: 'Estado', key: 'estado', sortable: true },
-  { title: 'Agendado por', key: 'agendamiento', sortable: true, align: 'center' as const },
-  { title: 'Actions', key: 'actions', sortable: false }
-])
-
-const headersPacientesFbIg = ref([
-  { title: 'Nombre', key: 'nombre', sortable: true },
-  { title: 'DNI', key: 'dni', sortable: true },
-  { title: 'Número', key: 'numero', sortable: true },
-  { title: 'Red Social', key: 'red_social', sortable: true },
-  { title: 'Precio de reserva', key: 'precio', sortable: true },
-  { title: 'Procedimiento', key: 'procedimiento', sortable: true },
-  { title: 'Precio Tratamiento', key: 'precio_tratamiento', sortable: true },
-  { title: 'Fecha de Agendamiento', key: 'fecha_agendamiento', sortable: true },
-  { title: 'Método de pago', key: 'metodo_de_pago', sortable: true },
-  { title: 'Estado', key: 'estado', sortable: true },
-  { title: 'Agendado por', key: 'agendamiento', sortable: true, align: 'center' as const },
-  { title: 'Actions', key: 'actions', sortable: false }
+/* Headers para Ventas */
+const headersVentas = ref([
+  { title: 'ID', key: 'id', sortable: true },
+  { title: 'Nombre del Cliente', key: 'nombre_cliente', sortable: true },
+  { title: 'Producto', key: 'Producto', sortable: true },
+  { title: 'Cantidad', key: 'Cantidad', sortable: true },
+  { title: 'Precio Promocional', key: 'precio_promocional', sortable: true },
+  { title: 'Correo', key: 'correo', sortable: true },
+  { title: 'Dirección de Envío', key: 'direccion_envio', sortable: true },
+  { title: 'RUC', key: 'RUC', sortable: true },
 ])
 
 const headersCompras = ref([
@@ -2186,6 +2084,24 @@ const fetchPacientesFbIg = async () => {
     pacientesFbIg.value = data as any[]
   } catch (error) {
     console.error('Error al cargar pacientes FB/IG:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const fetchVentas = async () => {
+  loading.value = true
+  try {
+    const { data, error } = await client
+      .from('estetikamedika_ventas')
+      .select('*')
+      .order('id', { ascending: false })
+
+    if (error) throw error
+
+    ventas.value = data as any[]
+  } catch (error) {
+    console.error('Error al cargar ventas:', error)
   } finally {
     loading.value = false
   }
@@ -2623,7 +2539,7 @@ function logout() {
 const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
-  { icon: 'mdi-account-group', label: 'Pacientes', id: 'pacientes' },
+  { icon: 'mdi-cart-outline', label: 'Ventas', id: 'ventas' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' }
 ]
 
@@ -2648,8 +2564,7 @@ const financiasItems = [
 ]
 
 const documentItems = [
-  { icon: 'mdi-arrow-right-bold-circle', label: 'Procedimientos', id: 'procedimientos' },
-  { icon: 'mdi-folder', label: 'Historial Clínico', id: 'historialClinico' },
+  { icon: 'mdi-package-variant-closed', label: 'Productos', id: 'productos' },
   { icon: 'mdi-robot-mower', label: 'Meta', id: 'meta' }
 ]
 
@@ -3969,12 +3884,18 @@ const procedureForm = ref<any>(null)
 
 
 const procedureHeaders = [
-  { title: 'Nombre', key: 'name', sortable: true },
+  { title: 'ID', key: 'id', sortable: true },
+  { title: 'Nombre del Producto', key: 'name', sortable: true },
+  { title: 'Precio Lista', key: 'precio_lista', sortable: true },
+  { title: 'Precio Promocional', key: 'precio_promocional', sortable: true },
+  { title: 'Moneda', key: 'moneda', sortable: true },
+  { title: 'Incluye IGV', key: 'incluye_igv', sortable: true },
+  { title: 'Unidades', key: 'unidades', sortable: true },
+  { title: 'Stock', key: 'stock', sortable: true },
+  { title: 'Tiempo de Entrega', key: 'tiempo_entrega', sortable: true },
+  { title: 'Descripción', key: 'descripcion', sortable: false },
   { title: 'Color', key: 'color', sortable: false },
-  { title: 'Precio Original', key: 'price', sortable: true },
-  { title: 'Descuento', key: 'discount', sortable: true },
-  { title: 'Precio Final', key: 'finalPrice', sortable: true },
-  { title: 'Acciones', key: 'actions', sortable: false }
+  { title: 'Empresa', key: 'company_id', sortable: true },
 ]
 
 /* ---------------- Procedures Functions ---------------- */
@@ -4015,7 +3936,7 @@ async function saveProcedure() {
     if (editingProcedure.value) {
       // Update
       const { error } = await (client
-        .from('EstetikaMedika_procedures') as any)
+        .from('estetikamedika_productos') as any)
         .update({
           name: procedureFormData.value.name,
           color: procedureFormData.value.color,
@@ -4028,7 +3949,7 @@ async function saveProcedure() {
     } else {
       // Create
       const { error } = await (client
-        .from('EstetikaMedika_procedures') as any)
+        .from('estetikamedika_productos') as any)
         .insert({
           name: procedureFormData.value.name,
           color: procedureFormData.value.color,
@@ -4051,7 +3972,7 @@ async function deleteProcedure(procedureId: string) {
   if (confirm('¿Estás seguro de que deseas eliminar este procedimiento?')) {
     try {
       const { error } = await client
-        .from('EstetikaMedika_procedures')
+        .from('estetikamedika_productos')
         .delete()
         .eq('id', procedureId)
 
@@ -4068,7 +3989,7 @@ async function deleteProcedure(procedureId: string) {
 async function fetchProcedures() {
   try {
     const { data, error } = await client
-      .from('EstetikaMedika_procedures')
+      .from('estetikamedika_productos')
       .select('*')
       .order('id', { ascending: false })
 
@@ -4657,6 +4578,7 @@ onMounted(() => {
   fetchWorkingHours()
   fetchEvents()
   fetchProcedures()
+  fetchVentas()
   fetchMedicalHistory()
   fetchEgresos()
   setupRealtime()

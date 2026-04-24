@@ -100,9 +100,20 @@
             </div>
           </v-alert>
 
+          <!-- Filtros de estado -->
+          <div class="table-tabs">
+            <button
+              v-for="f in filtrosEstado" :key="f.value"
+              :class="['tab', { active: filtroComprobantes === f.value }]"
+              @click="filtroComprobantes = f.value">
+              {{ f.label }}
+              <span v-if="f.count > 0" class="badge" :style="{ background: f.badgeColor }">{{ f.count }}</span>
+            </button>
+          </div>
+
           <v-data-table
             :headers="headersComprobantes"
-            :items="comprobantes"
+            :items="comprobantesVista"
             :search="searchComprobantes"
             :loading="loadingComprobantes"
             class="elevation-0"
@@ -119,8 +130,13 @@
             </template>
 
             <template v-slot:item.sunat_ok="{ item }">
-              <v-icon :icon="item.sunat_ok ? 'mdi-check-circle' : 'mdi-alert-circle'"
-                :color="item.sunat_ok ? 'success' : 'error'" size="20" />
+              <v-chip
+                :color="item.anulado ? 'grey' : item.sunat_ok ? 'success' : 'warning'"
+                size="x-small" variant="tonal">
+                <v-icon :icon="item.anulado ? 'mdi-cancel' : item.sunat_ok ? 'mdi-check-circle' : 'mdi-clock-outline'"
+                  size="14" class="me-1" />
+                {{ item.anulado ? 'Anulado' : item.sunat_ok ? 'En SUNAT' : 'Pendiente PSE' }}
+              </v-chip>
             </template>
 
             <template v-slot:item.acciones="{ item }">
@@ -150,6 +166,31 @@
                   @click="abrirEnvioCorreoDesdeTabla(item)">
                   <v-icon icon="mdi-email-fast" size="18" />
                   <v-tooltip activator="parent">Enviar por correo</v-tooltip>
+                </v-btn>
+                <!-- Eliminar (solo pendientes PSE — no llegaron a SUNAT aún) -->
+                <v-btn icon size="x-small" variant="text"
+                  :color="!item.sunat_ok && !item.anulado ? 'orange' : 'grey'"
+                  :disabled="item.sunat_ok || item.anulado"
+                  @click="abrirEliminar(item)">
+                  <v-icon icon="mdi-delete-outline" size="18" />
+                  <v-tooltip activator="parent">
+                    {{ item.anulado ? 'Ya anulado'
+                      : item.sunat_ok ? 'Ya enviado a SUNAT — usa Anular'
+                      : 'Eliminar de PSE (pendiente SUNAT)' }}
+                  </v-tooltip>
+                </v-btn>
+                <!-- Anular (solo aceptadas por SUNAT) -->
+                <v-btn icon size="x-small" variant="text"
+                  :color="item.anulado ? 'grey' : 'error'"
+                  :disabled="item.anulado || item.tipo !== 2 || !item.sunat_ok"
+                  @click="abrirAnulacion(item)">
+                  <v-icon icon="mdi-cancel" size="18" />
+                  <v-tooltip activator="parent">
+                    {{ item.anulado ? 'Ya anulado'
+                      : item.tipo !== 2 ? 'Solo boletas (usa Nota de Crédito para facturas)'
+                      : !item.sunat_ok ? 'Solo se pueden anular boletas aceptadas por SUNAT'
+                      : 'Anular boleta (aceptada SUNAT)' }}
+                  </v-tooltip>
                 </v-btn>
               </div>
             </template>
@@ -210,6 +251,96 @@
             prepend-icon="mdi-send"
             @click="enviarCorreoRapido">
             Enviar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ════════════════════════════════════════════
+         DIALOG: ELIMINAR COMPROBANTE (pendiente PSE)
+    ════════════════════════════════════════════ -->
+    <v-dialog v-model="dialogEliminar" max-width="460px" persistent>
+      <v-card>
+        <v-card-title class="pa-4" style="border-bottom:1px solid rgba(0,0,0,.1);">
+          <v-icon icon="mdi-delete-outline" color="orange" class="me-2" />
+          Eliminar comprobante
+        </v-card-title>
+        <v-card-text class="pa-5">
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+            Este comprobante <strong>aún no llegó a SUNAT</strong>. Eliminarlo lo borrará
+            de NubeFact/PSE.PE y de la base de datos — no quedará rastro tributario.
+          </v-alert>
+
+          <div v-if="eliminarTarget" style="background:#fff7ed; border:1px solid #fed7aa; padding:10px 14px; border-radius:8px;">
+            <div style="font-size:12px; color:#9ca3af; text-transform:uppercase;">Comprobante a eliminar</div>
+            <div style="font-size:1.1rem; font-weight:700; color:#ea580c;">
+              {{ eliminarTarget.serie }}-{{ String(eliminarTarget.numero).padStart(8,'0') }}
+            </div>
+            <div style="font-size:13px; color:#6b7280;">{{ eliminarTarget.cliente }} · S/ {{ Number(eliminarTarget.total).toFixed(2) }}</div>
+          </div>
+
+          <v-alert v-if="errorEliminar" type="error" variant="tonal" density="compact" class="mt-3">
+            {{ errorEliminar }}
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4" style="border-top:1px solid rgba(0,0,0,.1);">
+          <v-spacer />
+          <v-btn variant="text" :disabled="eliminando" @click="dialogEliminar = false">Cancelar</v-btn>
+          <v-btn color="orange" variant="elevated"
+            :loading="eliminando"
+            prepend-icon="mdi-delete-outline"
+            @click="confirmarEliminar">
+            Eliminar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ════════════════════════════════════════════
+         DIALOG: ANULAR COMPROBANTE
+    ════════════════════════════════════════════ -->
+    <v-dialog v-model="dialogAnulacion" max-width="480px" persistent>
+      <v-card>
+        <v-card-title class="pa-4" style="border-bottom:1px solid rgba(0,0,0,.1);">
+          <v-icon icon="mdi-cancel" color="error" class="me-2" />
+          Anular comprobante
+        </v-card-title>
+        <v-card-text class="pa-5">
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+            Esta acción es <strong>irreversible</strong>. SUNAT solo permite anular
+            boletas dentro de los primeros 7 días desde la emisión.
+          </v-alert>
+
+          <div v-if="anulacionTarget" style="background:#fef2f2; border:1px solid #fecaca; padding:10px 14px; border-radius:8px; margin-bottom:16px;">
+            <div style="font-size:12px; color:#9ca3af; text-transform:uppercase;">Boleta a anular</div>
+            <div style="font-size:1.1rem; font-weight:700; color:#dc2626;">
+              {{ anulacionTarget.serie }}-{{ String(anulacionTarget.numero).padStart(8,'0') }}
+            </div>
+            <div style="font-size:13px; color:#6b7280;">{{ anulacionTarget.cliente }} · S/ {{ Number(anulacionTarget.total).toFixed(2) }}</div>
+          </div>
+
+          <v-text-field
+            v-model="motivoAnulacion"
+            label="Motivo de anulación *"
+            placeholder="Ej: Error en el monto, duplicado, solicitud del cliente..."
+            prepend-inner-icon="mdi-text"
+            variant="outlined"
+            density="compact"
+            :rules="[v => !!v?.trim() || 'El motivo es obligatorio']" />
+
+          <v-alert v-if="errorAnulacion" type="error" variant="tonal" density="compact" class="mt-2">
+            {{ errorAnulacion }}
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4" style="border-top:1px solid rgba(0,0,0,.1);">
+          <v-spacer />
+          <v-btn variant="text" :disabled="anulando" @click="dialogAnulacion = false">Cancelar</v-btn>
+          <v-btn color="error" variant="elevated"
+            :loading="anulando"
+            :disabled="!motivoAnulacion?.trim()"
+            prepend-icon="mdi-cancel"
+            @click="confirmarAnulacion">
+            Anular boleta
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -1425,6 +1556,36 @@ const mensajeExtraRapido   = ref('')
 const enviandoEmailRapido  = ref(false)
 const resultadoEmailRapido = ref<any>(null)
 
+// Filtro de estado en la tabla
+const filtroComprobantes = ref<'todos' | 'pendientes' | 'aceptados' | 'anulados'>('todos')
+
+const filtrosEstado = computed(() => [
+  { value: 'todos',      label: 'Todos',           badgeColor: '#6366f1', count: comprobantes.value.length },
+  { value: 'pendientes', label: 'Pendientes PSE',  badgeColor: '#f59e0b', count: comprobantes.value.filter(c => !c.sunat_ok && !c.anulado).length },
+  { value: 'aceptados',  label: 'En SUNAT',        badgeColor: '#22c55e', count: comprobantes.value.filter(c => c.sunat_ok && !c.anulado).length },
+  { value: 'anulados',   label: 'Anulados',        badgeColor: '#6b7280', count: comprobantes.value.filter(c => c.anulado).length },
+])
+
+const comprobantesVista = computed(() => {
+  if (filtroComprobantes.value === 'pendientes') return comprobantes.value.filter(c => !c.sunat_ok && !c.anulado)
+  if (filtroComprobantes.value === 'aceptados')  return comprobantes.value.filter(c => c.sunat_ok && !c.anulado)
+  if (filtroComprobantes.value === 'anulados')   return comprobantes.value.filter(c => c.anulado)
+  return comprobantes.value
+})
+
+// Eliminar (pendientes PSE)
+const dialogEliminar   = ref(false)
+const eliminarTarget   = ref<any>(null)
+const eliminando       = ref(false)
+const errorEliminar    = ref('')
+
+// Anulación
+const dialogAnulacion  = ref(false)
+const anulacionTarget  = ref<any>(null)
+const motivoAnulacion  = ref('')
+const anulando         = ref(false)
+const errorAnulacion   = ref('')
+
 // Historial de errores (persistente abajo del formulario)
 interface ErrorLog {
   hora:     string
@@ -1687,6 +1848,8 @@ const onTipoCambia = (v: number) => {
   else if (v === 3) form.value.serie = 'FC01'
   else if (v === 4) form.value.serie = 'FD01'
 
+  form.value.numero = siguienteNumero(v, form.value.serie)
+
   if (v === 1) {
     // Factura → cliente con RUC (SUNAT por defecto)
     form.value.cliente_tipo_de_documento   = 6
@@ -1716,6 +1879,13 @@ const eliminarCuota = (idx: number) => form.value.venta_al_credito.splice(idx, 1
 const agregarGuia  = () => form.value.guias.push({ guia_tipo: 1, guia_serie_numero: '' })
 const eliminarGuia = (idx: number) => form.value.guias.splice(idx, 1)
 
+const siguienteNumero = (tipo: number, serie: string): number => {
+  const max = comprobantes.value
+    .filter(c => c.tipo === tipo && c.serie === serie)
+    .reduce((m, c) => Math.max(m, Number(c.numero) || 0), 0)
+  return max + 1
+}
+
 const abrirNuevo = () => {
   // Empresas que aún no están dadas de alta en PSE.PE → mostrar aviso
   if (!empresaActiva.value) {
@@ -1723,6 +1893,8 @@ const abrirNuevo = () => {
     return
   }
   form.value           = formInicial()
+  // Auto-avanzar al siguiente número según historial ya cargado
+  form.value.numero    = siguienteNumero(form.value.tipo_de_comprobante, form.value.serie)
   respuestaSunat.value = null
   showDialog.value     = true
 }
@@ -1903,6 +2075,7 @@ const enviarFactura = async () => {
         fecha:      f.fecha_de_emision,
         total:      t.total,
         sunat_ok:   true,
+        anulado:    false,
         enlace:     res.enlace           || null,
         enlace_pdf: res.enlace_del_pdf   || null,
         enlace_xml: res.enlace_del_xml   || null,
@@ -2063,6 +2236,84 @@ const enviarCorreoRapido = async () => {
 }
 
 /* ═════════════════════════════════════════════════════════════
+   ELIMINAR COMPROBANTE (pendiente PSE, antes de SUNAT)
+   ═════════════════════════════════════════════════════════════ */
+const abrirEliminar = (item: any) => {
+  eliminarTarget.value = item
+  errorEliminar.value  = ''
+  dialogEliminar.value = true
+}
+
+const confirmarEliminar = async () => {
+  const item = eliminarTarget.value
+  if (!item) return
+  eliminando.value = true
+  errorEliminar.value = ''
+  try {
+    await $fetch('/api/pse/eliminar', {
+      method: 'POST',
+      body: {
+        company_id:          props.companyId,
+        tipo_de_comprobante: item.tipo,
+        serie:               item.serie,
+        numero:              item.numero,
+      }
+    })
+    // Quitar de la lista local
+    comprobantes.value = comprobantes.value.filter(
+      c => !(c.serie === item.serie && Number(c.numero) === Number(item.numero))
+    )
+    dialogEliminar.value = false
+  } catch (err: any) {
+    errorEliminar.value = err?.data?.statusMessage || err?.statusMessage || err?.message || 'Error al eliminar'
+  } finally {
+    eliminando.value = false
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════
+   ANULACIÓN DE COMPROBANTES
+   ═════════════════════════════════════════════════════════════ */
+const abrirAnulacion = (item: any) => {
+  anulacionTarget.value = item
+  motivoAnulacion.value = ''
+  errorAnulacion.value  = ''
+  dialogAnulacion.value = true
+}
+
+const confirmarAnulacion = async () => {
+  if (!anulacionTarget.value || !motivoAnulacion.value.trim()) return
+  const item = anulacionTarget.value
+  anulando.value       = true
+  errorAnulacion.value = ''
+
+  try {
+    await $fetch('/api/pse/anular', {
+      method: 'POST',
+      body: {
+        company_id:          props.companyId,
+        tipo_de_comprobante: item.tipo,
+        serie:               item.serie,
+        numero:              item.numero,
+        motivo:              motivoAnulacion.value.trim(),
+      }
+    })
+
+    // Marcar en la lista local como anulado
+    const idx = comprobantes.value.findIndex(
+      c => c.serie === item.serie && Number(c.numero) === Number(item.numero)
+    )
+    if (idx !== -1) comprobantes.value[idx].anulado = true
+
+    dialogAnulacion.value = false
+  } catch (err: any) {
+    errorAnulacion.value = err?.data?.statusMessage || err?.statusMessage || err?.message || 'Error al anular'
+  } finally {
+    anulando.value = false
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════
    CARGAR HISTORIAL DESDE SUPABASE
    ═════════════════════════════════════════════════════════════ */
 const cargarComprobantes = async () => {
@@ -2096,7 +2347,8 @@ const cargarComprobantes = async () => {
         enlace:     r.enlace,
         enlace_pdf: r.enlace_del_pdf,
         enlace_xml: r.enlace_del_xml,
-        enlace_cdr: r.enlace_del_cdr
+        enlace_cdr: r.enlace_del_cdr,
+        anulado:    !!r.anulado,
       }))
       console.log('[PSE] Historial cargado:', comprobantes.value.length, 'comprobantes')
     } else {

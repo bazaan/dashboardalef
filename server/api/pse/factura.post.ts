@@ -94,6 +94,25 @@ function sanitizarPayload(p: any, tipoComprobante: number) {
       out.cliente_denominacion        = nom || 'CONSUMIDOR FINAL'
     }
   }
+
+  // ── Normalizar número de documento del cliente ─────────
+  // PSE.PE valida longitud estricta: DNI=8 dígitos, RUC=11 dígitos.
+  {
+    const td  = Number(out.cliente_tipo_de_documento)
+    const raw = String(out.cliente_numero_de_documento || '')
+    const solo = raw.replace(/\D/g, '') // quitar espacios, guiones, letras
+
+    if (td === 1 && solo.length !== 8) {
+      throw createError({ statusCode: 400, statusMessage: `DNI inválido: debe tener exactamente 8 dígitos (recibido: "${raw}"). Corrígelo o usa "Consumidor Final".` })
+    }
+    if (td === 6 && solo.length !== 11) {
+      throw createError({ statusCode: 400, statusMessage: `RUC inválido: debe tener exactamente 11 dígitos (recibido: "${raw}").` })
+    }
+    // guardar versión limpia (solo dígitos)
+    if (td === 1 || td === 6) {
+      out.cliente_numero_de_documento = solo
+    }
+  }
   // Para factura el cliente_direccion es obligatorio → si viene vacío, poner "-"
   if (tipoComprobante === 1 && !out.cliente_direccion) {
     out.cliente_direccion = '-'
@@ -149,6 +168,7 @@ export default defineEventHandler(async (event) => {
     operacion: 'generar_comprobante',
     ...sanitizado,
     // Overrides finales — estas llaves NO deben ser sobreescribibles
+    sunat_transaction: sanitizado.sunat_transaction ?? 1,  // requerido por PSE.PE — sin esto lanza error 40
     enviar_automaticamente_a_la_sunat: true,
     enviar_automaticamente_al_cliente: false,
     porcentaje_de_igv: 18.00

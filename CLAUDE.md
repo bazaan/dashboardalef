@@ -296,6 +296,26 @@ Doble sistema para auditar acciones:
 - **Referencia completa de la API:** `referencia/facturacion/pse-nubefact-api.md` (estructura de payload, tipos IGV, descuentos, math)
 - **Flujo de cobro médico:** `referencia/facturacion/flujo-cobro-atencion.md` (guía para replicar en otras clínicas)
 
+#### Bugs conocidos y estado al 2026-04-21
+
+**Bug corregido — número de comprobante duplicado (código 23):**
+`FacturacionPSE.vue` tenía `formInicial()` con `numero: 1` hardcodeado. Al abrir el dialog fresco siempre mandaba B001-1 (ya existente → 400 código 23). Fix: `abrirNuevo()` y `onTipoCambia()` ahora llaman `siguienteNumero(tipo, serie)` que calcula `max(comprobantes filtrados por tipo+serie) + 1`.
+
+**Problema pendiente — `aceptada_por_sunat: false` en HealUp:**
+Las 16 boletas emitidas por HealUp tienen `aceptada_por_sunat: false` y CDR vacío — SUNAT nunca confirmó recepción. Además, intentar emitir boleta nueva da **error interno PSE.PE código 40** (`undefined method 'codigo' for nil`, excepción Ruby en backend NubeFact). Confirmado llamando directamente a `api.pse.pe` — no es un bug de nuestro código.
+
+**Causa probable:** El certificado digital de HealUp en PSE.PE está vencido o la empresa no completó la inscripción como emisor electrónico ante SUNAT.
+
+**Acción requerida:** Entrar al panel PSE.PE → cuenta HealUp → verificar vigencia del certificado digital SUNAT y estado de inscripción como emisor electrónico. O contactar soporte PSE.PE con el código de error 40.
+
+> Para diagnosticar PSE.PE directamente sin levantar el servidor Nuxt:
+> ```bash
+> curl -s -X POST "https://api.pse.pe/api/v1/b3a349e648c543088a5e807bd36c4337b261a1b468974863ba49762bd2dd3600" \
+>   -H "Content-Type: application/json; charset=utf-8" \
+>   -H "Authorization: <JWT_HEALUP>" \
+>   -d '{"operacion": "consultar_comprobante", "tipo_de_comprobante": 2, "serie": "B001", "numero": 16}'
+> ```
+
 ### n8n (Automatización)
 - Toggle de workflows desde el dashboard
 - Empresas configuradas: Alegrated (ImportaMaster), Brada, Healup

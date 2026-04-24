@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
   // Query simple en una sola línea (evita issues de parseo con multilínea)
   const { data, error } = await supabase
     .from('comprobantes_pse')
-    .select('id, created_at, tipo_de_comprobante, serie, numero, fecha_de_emision, cliente_tipo_de_documento, cliente_numero_de_documento, cliente_denominacion, cliente_email, moneda, total_gravada, total_igv, total, aceptada_por_sunat, sunat_description, enlace, enlace_del_pdf, enlace_del_xml, enlace_del_cdr, correo_enviado_a, ultimo_envio_correo')
+    .select('id, created_at, tipo_de_comprobante, serie, numero, fecha_de_emision, cliente_tipo_de_documento, cliente_numero_de_documento, cliente_denominacion, cliente_email, moneda, total_gravada, total_igv, total, aceptada_por_sunat, sunat_description, enlace, enlace_del_pdf, enlace_del_xml, enlace_del_cdr, correo_enviado_a, ultimo_envio_correo, anulado')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(limit)

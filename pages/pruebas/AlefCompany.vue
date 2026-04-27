@@ -35,6 +35,7 @@
             @click="activeView = item.id">
             <v-icon :icon="item.icon" size="18" />
             <span>{{ item.label }}</span>
+            <span v-if="item.id === 'alertas_crm' && alertasCRMCount > 0" class="nav-badge">{{ alertasCRMCount }}</span>
           </button>
         </div>
 
@@ -235,7 +236,7 @@
           <h1>Calendario</h1>
           <button class="btn-primary" @click="() => openCreateEventDialog()">
             <v-icon icon="mdi-calendar-plus" size="16" />
-            <span>Nuevo Evento</span>
+            <span>Nueva Reunión</span>
           </button>
         </header>
 
@@ -275,7 +276,7 @@
                 <span class="day-number">{{ day.day }}</span>
                 <div v-if="day.events.length > 0" class="event-list-in-day">
                   <div v-for="(event, eventIndex) in day.events.slice(0, 2)" :key="eventIndex" class="event-line"
-                    :style="{ backgroundColor: getProcedureColor(event.procedureId) }" :title="event.subject">
+                    :style="{ backgroundColor: getMeetingColor(event.tipo) }" :title="event.subject">
                     <span class="event-line-text">{{ event.subject }}</span>
                   </div>
                   <span v-if="day.events.length > 2" class="more-events">+{{ day.events.length - 2 }} más</span>
@@ -293,14 +294,14 @@
             </div>
             <div v-else class="event-list">
               <div v-for="event in upcomingEvents" :key="event.id" class="event-item" @click="openEventDetail(event)">
-                <div class="event-color-bar" :style="{ backgroundColor: getProcedureColor(event.procedureId) }"></div>
+                <div class="event-color-bar" :style="{ backgroundColor: getMeetingColor(event.tipo) }"></div>
                 <div class="event-info">
                   <div class="event-title">{{ event.subject }}</div>
                   <div class="event-meta">
                     <v-icon icon="mdi-clock-outline" size="14" />
                     {{ formatEventDate(event.date) }} - {{ event.time }}
                   </div>
-                  <div class="event-client">{{ event.clientName }} {{ event.clientSurname }}</div>
+                  <div class="event-client">{{ tiposReunion.find(t => t.value === event.tipo)?.label || event.tipo }}</div>
                 </div>
               </div>
             </div>
@@ -904,6 +905,118 @@
         </div>
       </div>
 
+      <!-- ══════════════════════════════════════════
+           ALERTAS CRM — Conversaciones sin responder
+      ══════════════════════════════════════════ -->
+      <div v-else-if="activeView === 'alertas_crm'" class="view-container">
+        <header class="top-header">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <h1>Alertas CRM</h1>
+            <span v-if="alertasCRMCount > 0" class="alertas-badge-header">
+              {{ alertasCRMCount }} sin responder
+            </span>
+          </div>
+          <button class="btn-primary" @click="fetchAlertasCRM" :disabled="loadingAlertas">
+            <v-icon icon="mdi-refresh" size="16" />
+            <span>Actualizar</span>
+          </button>
+        </header>
+
+        <div class="content-area">
+
+          <!-- Estado vacío -->
+          <div v-if="!loadingAlertas && alertasCRM.length === 0" class="alertas-empty">
+            <v-icon icon="mdi-check-circle-outline" size="52" color="success" />
+            <div class="alertas-empty-title">Todo al día</div>
+            <div class="alertas-empty-sub">No hay conversaciones sin responder en este momento.</div>
+          </div>
+
+          <!-- Loading -->
+          <div v-else-if="loadingAlertas" style="text-align: center; padding: 4rem;">
+            <v-progress-circular indeterminate color="primary" />
+          </div>
+
+          <!-- Carpetas por empresa -->
+          <div v-else class="alertas-empresas">
+            <div
+              v-for="grupo in alertasPorEmpresa"
+              :key="grupo.name"
+              class="empresa-folder"
+            >
+              <!-- Header de la carpeta (clickeable para colapsar) -->
+              <button
+                class="empresa-folder-header"
+                @click="toggleEmpresa(grupo.name)"
+              >
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                  <v-icon
+                    :icon="empresasAbiertas.has(grupo.name) ? 'mdi-folder-open' : 'mdi-folder'"
+                    size="18"
+                    style="color: #daa520;"
+                  />
+                  <span class="empresa-folder-name">{{ grupo.name }}</span>
+                  <span class="empresa-folder-count">{{ grupo.alertas.length }}</span>
+                </div>
+                <v-icon
+                  :icon="empresasAbiertas.has(grupo.name) ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  size="18"
+                  style="opacity: 0.5;"
+                />
+              </button>
+
+              <!-- Filas de alertas -->
+              <div v-if="empresasAbiertas.has(grupo.name)" class="empresa-alertas">
+                <a
+                  v-for="alerta in grupo.alertas"
+                  :key="alerta.id"
+                  :href="alerta.conversation_url"
+                  target="_blank"
+                  class="alerta-row"
+                >
+                  <!-- Avatar -->
+                  <div class="alerta-row-avatar">
+                    {{ (alerta.contact_name || '?')[0].toUpperCase() }}
+                  </div>
+
+                  <!-- Info -->
+                  <div class="alerta-row-info">
+                    <div class="alerta-row-nombre">{{ alerta.contact_name || 'Desconocido' }}</div>
+                    <div class="alerta-row-meta">
+                      <span>{{ alerta.inbox_name }}</span>
+                      <span v-if="alerta.contact_phone"> · {{ alerta.contact_phone }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Tiempo -->
+                  <div class="alerta-row-tiempo" :class="tiempoEsperandoClase(alerta.waiting_since)">
+                    <v-icon icon="mdi-clock-outline" size="12" />
+                    {{ tiempoEsperando(alerta.waiting_since) }}
+                  </div>
+
+                  <!-- Botón descartar -->
+                  <button
+                    class="alerta-dismiss-btn"
+                    title="Marcar como atendida"
+                    @click.prevent.stop="dismissAlerta(alerta.id)"
+                  >
+                    <v-icon icon="mdi-check" size="14" />
+                  </button>
+
+                  <!-- Flecha -->
+                  <v-icon icon="mdi-chevron-right" size="16" style="opacity: 0.35; flex-shrink: 0;" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Última actualización -->
+          <div v-if="!loadingAlertas" class="alertas-footer">
+            Actualizado {{ ultimaActualizacionAlertas }} · Refresco automático cada 5 min
+          </div>
+
+        </div>
+      </div>
+
     </div>
 
     <!-- ==========  EGRESOS DIALOG  ========== -->
@@ -939,7 +1052,7 @@
     <v-dialog v-model="showEventDialog" max-width="600px" persistent>
       <v-card>
         <v-card-title class="event-dialog-title">
-          <span>{{ editingEvent ? 'Editar Evento' : 'Nuevo Evento' }}</span>
+          <span>{{ editingEvent ? 'Editar Reunión' : 'Nueva Reunión' }}</span>
           <v-btn icon="mdi-close" variant="text" @click="closeEventDialog"></v-btn>
         </v-card-title>
 
@@ -956,56 +1069,36 @@
               </v-col>
             </v-row>
 
-            <v-text-field v-model="eventFormData.subject" label="Asunto / Nombre del Evento" variant="outlined"
-              density="compact" :rules="[v => !!v || 'El asunto es requerido']"></v-text-field>
+            <v-text-field v-model="eventFormData.subject" label="Título de la Reunión" variant="outlined"
+              density="compact" :rules="[v => !!v || 'El título es requerido']"></v-text-field>
 
-            <v-textarea v-model="eventFormData.description" label="Descripción" variant="outlined" density="compact"
-              rows="3"></v-textarea>
-
-            <v-select v-model="eventFormData.procedureId" label="Procedimiento" :items="procedures" item-title="name"
-              item-value="id" variant="outlined" density="compact"
-              :rules="[v => !!v || 'Debe seleccionar un procedimiento']">
+            <v-select v-model="eventFormData.tipo" label="Tipo de Reunión" :items="tiposReunion" item-title="label"
+              item-value="value" variant="outlined" density="compact"
+              :rules="[v => !!v || 'Selecciona el tipo']">
               <template v-slot:item="{ props, item }">
                 <v-list-item v-bind="props">
                   <template v-slot:prepend>
-                    <div class="color-preview mr-2" :style="{ backgroundColor: item.raw.color }"></div>
+                    <div :style="{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: item.raw.color, marginRight: '8px', flexShrink: 0 }"></div>
                   </template>
                 </v-list-item>
               </template>
               <template v-slot:selection="{ item }">
-                <div class="d-flex align-center">
-                  <div class="color-preview mr-2"
-                    :style="{ backgroundColor: item.raw.color, width: '20px', height: '20px' }"></div>
-                  <span>{{ item.raw.name }}</span>
+                <div class="d-flex align-center" style="gap: 8px;">
+                  <div :style="{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: item.raw.color, flexShrink: 0 }"></div>
+                  <span>{{ item.raw.label }}</span>
                 </div>
               </template>
             </v-select>
 
-            <v-divider class="my-4"></v-divider>
+            <v-text-field v-model="eventFormData.participantes" label="Participantes (separados por coma)"
+              variant="outlined" density="compact" placeholder="Juan, María, Pedro..."></v-text-field>
 
-            <h4 class="mb-3">Datos del Cliente</h4>
+            <v-text-field v-model="eventFormData.direccion" label="Dirección (opcional)"
+              variant="outlined" density="compact" placeholder="Av. Ejemplo 123, Lima"
+              prepend-inner-icon="mdi-map-marker"></v-text-field>
 
-            <v-row>
-              <v-col cols="12" sm="6">
-                <v-text-field v-model="eventFormData.clientName" label="Nombre" variant="outlined" density="compact"
-                  :rules="[v => !!v || 'El nombre es requerido']"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-text-field v-model="eventFormData.clientSurname" label="Apellido" variant="outlined"
-                  density="compact" :rules="[v => !!v || 'El apellido es requerido']"></v-text-field>
-              </v-col>
-            </v-row>
-
-            <v-row>
-              <v-col cols="12" sm="6">
-                <v-text-field v-model="eventFormData.clientDNI" label="DNI" variant="outlined" density="compact"
-                  :rules="[v => !!v || 'El DNI es requerido']"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-select v-model="eventFormData.eventReason" label="Razón del Evento" :items="eventReasons"
-                  variant="outlined" density="compact" :rules="[v => !!v || 'La razón es requerida']"></v-select>
-              </v-col>
-            </v-row>
+            <v-textarea v-model="eventFormData.description" label="Descripción / Agenda" variant="outlined" density="compact"
+              rows="3"></v-textarea>
           </v-form>
         </v-card-text>
 
@@ -1054,26 +1147,29 @@
             <v-divider class="my-3"></v-divider>
 
             <div class="detail-row">
-              <v-icon icon="mdi-account" class="detail-icon" />
+              <v-icon icon="mdi-tag" class="detail-icon" />
               <div>
-                <div class="detail-label">Cliente</div>
-                <div class="detail-value">{{ selectedEvent.clientName }} {{ selectedEvent.clientSurname }}</div>
+                <div class="detail-label">Tipo</div>
+                <div class="detail-value d-flex align-center" style="gap: 8px;">
+                  <div :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: getMeetingColor(selectedEvent.tipo), flexShrink: 0 }"></div>
+                  {{ tiposReunion.find(t => t.value === selectedEvent.tipo)?.label || selectedEvent.tipo }}
+                </div>
               </div>
             </div>
 
-            <div class="detail-row">
-              <v-icon icon="mdi-card-account-details" class="detail-icon" />
+            <div v-if="selectedEvent.participantes" class="detail-row">
+              <v-icon icon="mdi-account-group" class="detail-icon" />
               <div>
-                <div class="detail-label">DNI</div>
-                <div class="detail-value">{{ selectedEvent.clientDNI }}</div>
+                <div class="detail-label">Participantes</div>
+                <div class="detail-value">{{ selectedEvent.participantes }}</div>
               </div>
             </div>
 
-            <div class="detail-row">
-              <v-icon icon="mdi-information" class="detail-icon" />
+            <div v-if="selectedEvent.direccion" class="detail-row">
+              <v-icon icon="mdi-map-marker" class="detail-icon" />
               <div>
-                <div class="detail-label">Razón</div>
-                <div class="detail-value">{{ selectedEvent.eventReason }}</div>
+                <div class="detail-label">Dirección</div>
+                <div class="detail-value">{{ selectedEvent.direccion }}</div>
               </div>
             </div>
           </div>
@@ -1105,12 +1201,12 @@
           <div class="day-events-list">
             <div v-for="event in selectedDayEvents" :key="event.id" class="day-event-item"
               @click="openEventDetailFromDay(event)">
-              <div class="event-color-indicator" :style="{ backgroundColor: getProcedureColor(event.procedureId) }">
+              <div class="event-color-indicator" :style="{ backgroundColor: getMeetingColor(event.tipo) }">
               </div>
               <div class="day-event-info">
                 <div class="day-event-time">{{ event.time }}</div>
                 <div class="day-event-subject">{{ event.subject }}</div>
-                <div class="day-event-client">{{ event.clientName }} {{ event.clientSurname }}</div>
+                <div class="day-event-client">{{ tiposReunion.find(t => t.value === event.tipo)?.label || event.tipo }}</div>
               </div>
               <v-icon icon="mdi-chevron-right" size="20" />
             </div>
@@ -1316,7 +1412,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
 
@@ -1601,7 +1697,8 @@ const menuItems = [
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
   { icon: 'mdi-clipboard-list', label: 'Actividades', id: 'actividades' },
   { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'conversaciones' },
-  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' }
+  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
+  { icon: 'mdi-bell-alert', label: 'Alertas CRM', id: 'alertas_crm' }
 ]
 
 const financiasItems = [
@@ -1750,11 +1847,9 @@ interface CalendarEvent {
   time: string
   subject: string
   description: string
-  procedureId: string
-  clientName: string
-  clientSurname: string
-  clientDNI: string
-  eventReason: string
+  tipo: string
+  participantes: string
+  direccion?: string
   color?: string
 }
 
@@ -1786,13 +1881,11 @@ const selectedDayDate = ref('')
 const eventFormData = ref({
   date: '',
   time: '',
+  direccion: '',
   subject: '',
   description: '',
-  procedureId: '',
-  clientName: '',
-  clientSurname: '',
-  clientDNI: '',
-  eventReason: ''
+  tipo: 'equipo',
+  participantes: ''
 })
 
 const eventForm = ref<any>(null)
@@ -1806,14 +1899,11 @@ const monthNames = [
 
 
 
-const eventReasons = [
-  'Consulta General',
-  'Seguimiento',
-  'Emergencia',
-  'Chequeo de Rutina',
-  'Tratamiento',
-  'Evaluación',
-  'Otro'
+const tiposReunion = [
+  { value: 'equipo', label: '👥 Equipo Interno', color: '#6366f1' },
+  { value: 'comercial', label: '💼 Reunión Comercial', color: '#f59e0b' },
+  { value: 'cliente', label: '🤝 Con Cliente', color: '#10b981' },
+  { value: 'otro', label: '📌 Otro', color: '#64748b' }
 ]
 
 /* ---------------- Calendar Computed Properties ---------------- */
@@ -1958,11 +2048,9 @@ function openCreateEventDialog(date?: string) {
     time: '09:00',
     subject: '',
     description: '',
-    procedureId: '',
-    clientName: '',
-    clientSurname: '',
-    clientDNI: '',
-    eventReason: ''
+    tipo: 'equipo',
+    participantes: '',
+    direccion: ''
   }
   showEventDialog.value = true
 }
@@ -1979,10 +2067,7 @@ async function saveEvent() {
   const isValid = eventFormData.value.date &&
     eventFormData.value.time &&
     eventFormData.value.subject &&
-    eventFormData.value.clientName &&
-    eventFormData.value.clientSurname &&
-    eventFormData.value.clientDNI &&
-    eventFormData.value.eventReason
+    eventFormData.value.tipo
 
   if (!isValid) {
     alert('Por favor complete todos los campos requeridos')
@@ -1995,17 +2080,15 @@ async function saveEvent() {
       time: eventFormData.value.time,
       subject: eventFormData.value.subject,
       description: eventFormData.value.description,
-      procedure_id: eventFormData.value.procedureId,
-      client_name: eventFormData.value.clientName,
-      client_surname: eventFormData.value.clientSurname,
-      client_dni: eventFormData.value.clientDNI,
-      event_reason: eventFormData.value.eventReason
+      tipo: eventFormData.value.tipo,
+      participantes: eventFormData.value.participantes,
+      direccion: eventFormData.value.direccion || null
     }
 
     if (editingEvent.value) {
       // Update
       const { error } = await (client
-        .from('alef_calendar_events') as any)
+        .from('alef_meetings') as any)
         .update(payload)
         .eq('id', editingEvent.value.id)
 
@@ -2013,7 +2096,7 @@ async function saveEvent() {
     } else {
       // Create
       const { error } = await (client
-        .from('alef_calendar_events') as any)
+        .from('alef_meetings') as any)
         .insert(payload)
 
       if (error) throw error
@@ -2058,7 +2141,7 @@ function confirmDeleteEvent() {
 async function deleteEvent(eventId: string) {
   try {
     const { error } = await client
-      .from('alef_calendar_events')
+      .from('alef_meetings')
       .delete()
       .eq('id', eventId)
 
@@ -2081,9 +2164,9 @@ function openEventDetailFromDay(event: CalendarEvent) {
   openEventDetail(event)
 }
 
-function getProcedureColor(procedureId: string): string {
-  const procedure = procedures.value.find(p => p.id === procedureId)
-  return procedure ? procedure.color : '#3b82f6'
+function getMeetingColor(tipo: string): string {
+  const t = tiposReunion.find(t => t.value === tipo)
+  return t ? t.color : '#3b82f6'
 }
 
 function downloadMedicalAttachment(item: MedicalHistoryEntry) {
@@ -2098,9 +2181,10 @@ function downloadMedicalAttachment(item: MedicalHistoryEntry) {
 
 async function fetchEvents() {
   try {
-    const { data, error } = await client
-      .from('alef_calendar_events')
+    const { data, error } = await (client as any)
+      .from('alef_meetings')
       .select('*')
+      .order('date', { ascending: true })
 
     if (error) throw error
 
@@ -2110,14 +2194,12 @@ async function fetchEvents() {
       time: e.time,
       subject: e.subject,
       description: e.description,
-      procedureId: e.procedure_id,
-      clientName: e.client_name,
-      clientSurname: e.client_surname,
-      clientDNI: e.client_dni,
-      eventReason: e.event_reason
+      tipo: e.tipo || 'equipo',
+      participantes: e.participantes || '',
+      direccion: e.direccion || ''
     }))
   } catch (error) {
-    console.error('Error loading events:', error)
+    console.error('Error loading meetings:', error)
   }
 }
 
@@ -2729,6 +2811,108 @@ function formatDateShort(dateStr?: string) {
 onMounted(() => {
   fetchActivities()
 })
+
+/* ══════════════════════════════════════════
+   ALERTAS CRM
+══════════════════════════════════════════ */
+const alertasCRM = ref<any[]>([])
+const loadingAlertas = ref(false)
+const ultimaActualizacionAlertas = ref('—')
+let alertasInterval: ReturnType<typeof setInterval> | null = null
+
+const alertasCRMCount = computed(() => alertasCRM.value.length)
+
+// Empresas cuyas carpetas están abiertas (todas abiertas por defecto)
+const empresasAbiertas = ref<Set<string>>(new Set())
+
+const toggleEmpresa = (name: string) => {
+  if (empresasAbiertas.value.has(name)) {
+    empresasAbiertas.value.delete(name)
+  } else {
+    empresasAbiertas.value.add(name)
+  }
+  // Forzar reactividad
+  empresasAbiertas.value = new Set(empresasAbiertas.value)
+}
+
+// Agrupa y ordena alertas por empresa, más reciente primero dentro de cada grupo
+const alertasPorEmpresa = computed(() => {
+  const grupos: Record<string, any[]> = {}
+  for (const alerta of alertasCRM.value) {
+    const key = alerta.account_name
+    if (!grupos[key]) grupos[key] = []
+    grupos[key].push(alerta)
+  }
+  // Dentro de cada grupo: más reciente primero (waiting_since mayor = esperando desde hace menos tiempo)
+  for (const key in grupos) {
+    grupos[key].sort((a, b) =>
+      new Date(b.waiting_since).getTime() - new Date(a.waiting_since).getTime()
+    )
+  }
+  // Ordenar grupos: más alertas primero
+  return Object.entries(grupos)
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([name, alertas]) => ({ name, alertas }))
+})
+
+const fetchAlertasCRM = async () => {
+  loadingAlertas.value = true
+  try {
+    const { data, error } = await client
+      .from('chatwoot_alerts')
+      .select('*')
+      .eq('is_active', true)
+      .order('waiting_since', { ascending: true })
+    if (!error && data) {
+      alertasCRM.value = data
+      // Abrir todas las carpetas por defecto
+      empresasAbiertas.value = new Set(data.map((a: any) => a.account_name))
+      const now = new Date()
+      ultimaActualizacionAlertas.value = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+    }
+  } catch (e) {
+    console.error('[AlertasCRM]', e)
+  } finally {
+    loadingAlertas.value = false
+  }
+}
+
+// Cuánto tiempo lleva esperando en formato legible
+const tiempoEsperando = (waitingSinceISO: string): string => {
+  if (!waitingSinceISO) return '—'
+  const ms = Date.now() - new Date(waitingSinceISO).getTime()
+  const mins = Math.floor(ms / 60000)
+  if (mins < 60) return `${mins} min`
+  const hrs = Math.floor(mins / 60)
+  const rem = mins % 60
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`
+}
+
+// Clase de color según urgencia
+const tiempoEsperandoClase = (waitingSinceISO: string): string => {
+  if (!waitingSinceISO) return ''
+  const mins = Math.floor((Date.now() - new Date(waitingSinceISO).getTime()) / 60000)
+  if (mins >= 30) return 'tiempo-critico'
+  if (mins >= 10) return 'tiempo-urgente'
+  return 'tiempo-normal'
+}
+
+const dismissAlerta = async (id: number) => {
+  // Optimistic UI: sacar de la lista inmediatamente
+  alertasCRM.value = alertasCRM.value.filter((a: any) => a.id !== id)
+  // Marcar como dismissed en Supabase para que el cron no la vuelva a traer
+  await client.from('chatwoot_alerts' as any).update({ dismissed: true, is_active: false }).eq('id', id)
+}
+
+onMounted(() => {
+  fetchAlertasCRM()
+  // Auto-refresh cada 5 minutos
+  alertasInterval = setInterval(fetchAlertasCRM, 5 * 60 * 1000)
+})
+
+onUnmounted(() => {
+  if (alertasInterval) clearInterval(alertasInterval)
+})
 </script>
 
 <style scoped>
@@ -2980,5 +3164,191 @@ onMounted(() => {
 .back-btn {
   width: 32px;
   flex: 0 0 auto;
+}
+
+/* ══ Alertas CRM ══ */
+.nav-badge {
+  margin-left: auto;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+
+.alertas-badge-header {
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 99px;
+}
+
+.alertas-empty {
+  text-align: center;
+  padding: 4rem 2rem;
+  opacity: 0.5;
+}
+.alertas-empty-title {
+  margin-top: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--card-foreground);
+}
+.alertas-empty-sub {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  color: var(--card-foreground);
+}
+
+.alertas-footer {
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.45;
+  margin-top: 1.5rem;
+  color: var(--card-foreground);
+}
+
+/* Carpetas por empresa */
+.alertas-empresas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.empresa-folder {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.empresa-folder-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--card-foreground);
+  transition: background 0.15s;
+}
+.empresa-folder-header:hover {
+  background: rgba(218, 165, 32, 0.07);
+}
+
+.empresa-folder-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--card-foreground);
+}
+
+.empresa-folder-count {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 99px;
+}
+
+/* Filas de alertas */
+.empresa-alertas {
+  border-top: 1px solid var(--border);
+}
+
+.alerta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--card-foreground);
+  transition: background 0.12s;
+  cursor: pointer;
+}
+.alerta-row:last-child { border-bottom: none; }
+.alerta-row:hover { background: rgba(99, 102, 241, 0.06); }
+
+.alerta-row-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366f1;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.alerta-row-info {
+  flex: 1;
+  min-width: 0;
+}
+.alerta-row-nombre {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--card-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.alerta-row-meta {
+  font-size: 0.75rem;
+  opacity: 0.5;
+  color: var(--card-foreground);
+  margin-top: 1px;
+}
+
+.alerta-row-tiempo {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 5px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tiempo-normal  { background: rgba(234,179,8,0.15);  color: #ca8a04; }
+.tiempo-urgente { background: rgba(249,115,22,0.15); color: #ea580c; }
+.tiempo-critico { background: rgba(239,68,68,0.15);  color: #dc2626; }
+
+.alerta-dismiss-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--card-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.4;
+  flex-shrink: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.alerta-row:hover .alerta-dismiss-btn { opacity: 1; }
+.alerta-dismiss-btn:hover {
+  background: rgba(34,197,94,0.15);
+  color: #16a34a;
+  border-color: #16a34a;
+  opacity: 1;
 }
 </style>

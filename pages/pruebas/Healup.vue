@@ -1621,6 +1621,273 @@
         </div>
       </div>
 
+      <!-- ==========  VISTA: META ADS  ========== -->
+      <div v-else-if="activeView === 'meta'" class="view-container">
+        <header class="top-header">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <h1 style="display:flex;align-items:center;gap:12px;margin:0;">
+              <span class="meta-logo-badge">
+                <v-icon icon="mdi-alpha-f-box" size="24" color="white" />
+              </span>
+              Meta ADS
+            </h1>
+            <span style="color:var(--text-muted,#888);font-size:0.82rem;">Performance de campañas publicitarias · Healup Aesthetic Lab</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <div v-if="loadingMeta" style="display:flex;align-items:center;gap:6px;color:var(--text-muted);font-size:0.8rem;">
+              <v-progress-circular size="14" width="2" indeterminate color="#1877F2" />
+              Cargando...
+            </div>
+            <button class="btn-primary" @click="fetchMetaData" :disabled="loadingMeta">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="content-area">
+
+          <!-- ── Month selector ── -->
+          <div class="meta-month-selector">
+            <button
+              v-for="r in metaResumen" :key="r.mes"
+              :class="['meta-month-tab', { active: mesSeleccionadoMeta === r.mes }]"
+              @click="mesSeleccionadoMeta = r.mes">
+              {{ metaMesLabel(r.mes) }}
+            </button>
+          </div>
+
+          <!-- ── KPI Cards ── -->
+          <div class="meta-kpi-grid" v-if="mesActualMeta">
+            <div class="meta-kpi-card" style="--kpi-color:#1877F2;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(24,119,242,0.15);">
+                <v-icon icon="mdi-cash-multiple" size="20" color="#1877F2" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Inversión Total</div>
+                <div class="meta-kpi-value">S/ {{ fmtNum(mesActualMeta.inversion_total) }}</div>
+                <div class="meta-kpi-sub">Gasto en Meta ADS</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#10b981;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(16,185,129,0.15);">
+                <v-icon icon="mdi-account-group" size="20" color="#10b981" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Leads Totales</div>
+                <div class="meta-kpi-value">{{ mesActualMeta.leads_totales }}</div>
+                <div class="meta-kpi-sub">Registros captados</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#f59e0b;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(245,158,11,0.15);">
+                <v-icon icon="mdi-tag-outline" size="20" color="#f59e0b" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">CPA Promedio</div>
+                <div class="meta-kpi-value">S/ {{ fmtNum(mesActualMeta.cpa_promedio) }}</div>
+                <div class="meta-kpi-sub">Costo por lead</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#8b5cf6;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(139,92,246,0.15);">
+                <v-icon icon="mdi-eye-outline" size="20" color="#8b5cf6" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Alcance</div>
+                <div class="meta-kpi-value">{{ fmtNumInt(mesActualMeta.alcance_total) }}</div>
+                <div class="meta-kpi-sub">Personas únicas</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#ec4899;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(236,72,153,0.15);">
+                <v-icon icon="mdi-chart-bar" size="20" color="#ec4899" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Impresiones</div>
+                <div class="meta-kpi-value">{{ fmtNumInt(mesActualMeta.impresiones_total) }}</div>
+                <div class="meta-kpi-sub">Total impresiones</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#daa520;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(218,165,32,0.15);">
+                <v-icon icon="mdi-sale" size="20" color="#daa520" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Inv. SALE</div>
+                <div class="meta-kpi-value">S/ {{ fmtNum(mesActualMeta.inversion_sale) }}</div>
+                <div class="meta-kpi-sub">{{ mesActualMeta.leads_sale }} leads SALE</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Gráfico histórico ── -->
+          <div class="chart-section">
+            <div class="chart-header">
+              <div class="chart-title-section">
+                <h2>Histórico de Performance</h2>
+                <div class="chart-subtitle">Inversión vs Leads — todos los meses</div>
+              </div>
+              <div style="display:flex;gap:16px;align-items:center;font-size:0.78rem;color:var(--text-muted);">
+                <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#1877F2;display:inline-block;"></span>Inversión (S/)</span>
+                <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:3px;background:#daa520;display:inline-block;border-radius:2px;"></span>Leads</span>
+              </div>
+            </div>
+            <div class="chart-area">
+              <client-only>
+                <apexchart type="bar" height="280" :options="metaChartOptions" :series="metaChartSeries" />
+              </client-only>
+            </div>
+          </div>
+
+          <!-- ── Distribución del mes seleccionado ── -->
+          <div v-if="mesActualMeta && (mesActualMeta.inversion_sale > 0 || mesActualMeta.inversion_sin_sale > 0)"
+            class="meta-split-row">
+            <div class="meta-split-card">
+              <div class="meta-split-label">
+                <span class="meta-tipo-badge sin-sale">SIN SALE</span>
+              </div>
+              <div class="meta-split-stats">
+                <div class="meta-split-item">
+                  <span>Inversión</span>
+                  <strong>S/ {{ fmtNum(mesActualMeta.inversion_sin_sale) }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>Leads</span>
+                  <strong>{{ mesActualMeta.leads_sin_sale }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>CPA</span>
+                  <strong>{{ mesActualMeta.leads_sin_sale > 0 ? 'S/ ' + fmtNum(mesActualMeta.inversion_sin_sale / mesActualMeta.leads_sin_sale) : '—' }}</strong>
+                </div>
+              </div>
+              <div class="meta-split-bar-wrap">
+                <div class="meta-split-bar" :style="{ width: mesActualMeta.inversion_total > 0 ? (mesActualMeta.inversion_sin_sale / mesActualMeta.inversion_total * 100) + '%' : '0%', background: '#64748b' }"></div>
+                <span class="meta-split-pct">{{ mesActualMeta.inversion_total > 0 ? Math.round(mesActualMeta.inversion_sin_sale / mesActualMeta.inversion_total * 100) : 0 }}%</span>
+              </div>
+            </div>
+            <div class="meta-split-card">
+              <div class="meta-split-label">
+                <span class="meta-tipo-badge sale">SALE</span>
+              </div>
+              <div class="meta-split-stats">
+                <div class="meta-split-item">
+                  <span>Inversión</span>
+                  <strong>S/ {{ fmtNum(mesActualMeta.inversion_sale) }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>Leads</span>
+                  <strong>{{ mesActualMeta.leads_sale }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>CPA</span>
+                  <strong>{{ mesActualMeta.cpa_sale ? 'S/ ' + fmtNum(mesActualMeta.cpa_sale) : '—' }}</strong>
+                </div>
+              </div>
+              <div class="meta-split-bar-wrap">
+                <div class="meta-split-bar" :style="{ width: mesActualMeta.inversion_total > 0 ? (mesActualMeta.inversion_sale / mesActualMeta.inversion_total * 100) + '%' : '0%', background: '#daa520' }"></div>
+                <span class="meta-split-pct">{{ mesActualMeta.inversion_total > 0 ? Math.round(mesActualMeta.inversion_sale / mesActualMeta.inversion_total * 100) : 0 }}%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Tablas de campañas ── -->
+          <div class="meta-campaigns-section">
+
+            <!-- SIN SALE -->
+            <div class="meta-table-block">
+              <div class="meta-table-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span class="meta-tipo-badge sin-sale">SIN SALE</span>
+                  <span style="font-size:0.8rem;color:var(--text-muted);">{{ campanasSinSaleMes.length }} campañas</span>
+                </div>
+                <span style="font-size:0.82rem;color:var(--text-muted);">
+                  S/ {{ fmtNum(campanasSinSaleMes.reduce((s, c) => s + (parseFloat(c.inversion) || 0), 0)) }} total invertido
+                </span>
+              </div>
+              <div v-if="campanasSinSaleMes.length === 0" class="meta-empty-state">
+                <v-icon icon="mdi-information-outline" size="20" color="#555" />
+                <span>Sin campañas SIN SALE este mes</span>
+              </div>
+              <div v-else class="meta-table-wrap">
+                <table class="meta-table">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Campaña</th>
+                      <th>Inversión</th>
+                      <th>Leads</th>
+                      <th>CPA</th>
+                      <th>Alcance</th>
+                      <th>Impresiones</th>
+                      <th>Inicio</th>
+                      <th>Fin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="c in campanasSinSaleMes" :key="c.id" class="meta-table-row">
+                      <td><span :class="['meta-estado-badge', (c.estado || '').toLowerCase()]">{{ c.estado }}</span></td>
+                      <td class="meta-nombre-cell" :title="c.nombre_campana">{{ c.nombre_campana }}</td>
+                      <td class="meta-num-cell">S/ {{ fmtNum(c.inversion) }}</td>
+                      <td class="meta-num-cell">{{ c.leads }}</td>
+                      <td class="meta-num-cell">{{ c.cpa ? 'S/ ' + fmtNum(c.cpa) : '—' }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.alcance) }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.impresiones) }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_inicio || '—' }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_fin || '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SALE -->
+            <div class="meta-table-block" v-if="campanasSaleMes.length > 0">
+              <div class="meta-table-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span class="meta-tipo-badge sale">SALE</span>
+                  <span style="font-size:0.8rem;color:var(--text-muted);">{{ campanasSaleMes.length }} campañas</span>
+                </div>
+                <span style="font-size:0.82rem;color:var(--text-muted);">
+                  S/ {{ fmtNum(campanasSaleMes.reduce((s, c) => s + (parseFloat(c.inversion) || 0), 0)) }} total invertido
+                </span>
+              </div>
+              <div class="meta-table-wrap">
+                <table class="meta-table">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Campaña</th>
+                      <th>Inversión</th>
+                      <th>Leads</th>
+                      <th>CPA</th>
+                      <th>Alcance</th>
+                      <th>Impresiones</th>
+                      <th>Inicio</th>
+                      <th>Fin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="c in campanasSaleMes" :key="c.id" class="meta-table-row">
+                      <td><span :class="['meta-estado-badge', (c.estado || '').toLowerCase()]">{{ c.estado }}</span></td>
+                      <td class="meta-nombre-cell" :title="c.nombre_campana">{{ c.nombre_campana }}</td>
+                      <td class="meta-num-cell">S/ {{ fmtNum(c.inversion) }}</td>
+                      <td class="meta-num-cell">{{ c.leads }}</td>
+                      <td class="meta-num-cell">{{ c.cpa ? 'S/ ' + fmtNum(c.cpa) : '—' }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.alcance) }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.impresiones) }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_inicio || '—' }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_fin || '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
@@ -4093,6 +4360,327 @@
   color: var(--text-muted, #666);
   font-style: italic;
   margin-top: 2px;
+}
+
+/* =============================================
+   META ADS VIEW
+   ============================================= */
+
+.meta-logo-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1877F2 0%, #0d5fd8 100%);
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.4);
+  flex-shrink: 0;
+}
+
+.meta-month-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.meta-month-tab {
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted, #888);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.04em;
+}
+
+.meta-month-tab:hover {
+  border-color: rgba(24,119,242,0.4);
+  background: rgba(24,119,242,0.08);
+  color: #1877F2;
+}
+
+.meta-month-tab.active {
+  border-color: #1877F2;
+  background: rgba(24,119,242,0.15);
+  color: #1877F2;
+  font-weight: 600;
+}
+
+.meta-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.meta-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--card-bg, rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.meta-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  border-color: color-mix(in srgb, var(--kpi-color) 30%, transparent);
+}
+
+.meta-kpi-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.meta-kpi-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.meta-kpi-label {
+  font-size: 0.73rem;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+.meta-kpi-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  line-height: 1.2;
+}
+
+.meta-kpi-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted, #777);
+}
+
+.meta-split-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.meta-split-card {
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: var(--card-bg, rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.meta-split-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.meta-split-stats {
+  display: flex;
+  gap: 20px;
+}
+
+.meta-split-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-split-item span {
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+}
+
+.meta-split-item strong {
+  font-size: 0.95rem;
+  color: var(--text-primary, #fff);
+  font-weight: 600;
+}
+
+.meta-split-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  height: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.meta-split-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+
+.meta-split-pct {
+  position: absolute;
+  right: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+}
+
+.meta-campaigns-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.meta-table-block {
+  background: var(--card-bg, rgba(255,255,255,0.03));
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.meta-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.meta-table-wrap {
+  overflow-x: auto;
+}
+
+.meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.meta-table thead tr th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #777);
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  white-space: nowrap;
+}
+
+.meta-table-row td {
+  padding: 10px 14px;
+  color: var(--text-primary, #eee);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  white-space: nowrap;
+}
+
+.meta-table-row:last-child td {
+  border-bottom: none;
+}
+
+.meta-table-row:hover td {
+  background: rgba(255,255,255,0.03);
+}
+
+.meta-nombre-cell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-num-cell {
+  text-align: right;
+}
+
+.meta-date-cell {
+  font-size: 0.78rem;
+  color: var(--text-muted, #888);
+}
+
+.meta-estado-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.meta-estado-badge.activo {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.meta-estado-badge.desactivado {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.meta-estado-badge.pausado {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.meta-tipo-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.meta-tipo-badge.sin-sale {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.meta-tipo-badge.sale {
+  background: rgba(218, 165, 32, 0.15);
+  color: #daa520;
+  border: 1px solid rgba(218, 165, 32, 0.35);
+}
+
+.meta-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 18px;
+  color: var(--text-muted, #666);
+  font-size: 0.83rem;
+}
+
+@media (max-width: 768px) {
+  .meta-kpi-grid { grid-template-columns: 1fr 1fr; }
+  .meta-split-row { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .meta-kpi-grid { grid-template-columns: 1fr; }
 }
 </style>
 
@@ -8027,6 +8615,125 @@ const deleteEgreso = async (id: string) => {
   }
 }
 
+// =============================================
+// META ADS
+// =============================================
+
+const metaResumen = ref<any[]>([])
+const metaCampanas = ref<any[]>([])
+const loadingMeta = ref(false)
+const mesSeleccionadoMeta = ref('2026-04-01')
+
+const MES_LABELS: Record<string, string> = {
+  '2025-11-01': 'NOV 2025',
+  '2025-12-01': 'DIC 2025',
+  '2026-01-01': 'ENE 2026',
+  '2026-02-01': 'FEB 2026',
+  '2026-03-01': 'MAR 2026',
+  '2026-04-01': 'ABR 2026',
+}
+const metaMesLabel = (mes: string) => MES_LABELS[mes] || mes.substring(0, 7)
+
+const fmtNum = (n: any) =>
+  parseFloat(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtNumInt = (n: any) =>
+  (parseInt(n || 0) || 0).toLocaleString('es-PE')
+
+const mesActualMeta = computed(() =>
+  metaResumen.value.find((r) => r.mes === mesSeleccionadoMeta.value) || null
+)
+
+const campanasSinSaleMes = computed(() =>
+  metaCampanas.value.filter(
+    (c) =>
+      c.mes?.substring(0, 7) === mesSeleccionadoMeta.value?.substring(0, 7) &&
+      c.tipo === 'sin_sale'
+  )
+)
+
+const campanasSaleMes = computed(() =>
+  metaCampanas.value.filter(
+    (c) =>
+      c.mes?.substring(0, 7) === mesSeleccionadoMeta.value?.substring(0, 7) &&
+      c.tipo === 'sale'
+  )
+)
+
+const metaChartOptions = computed(() => ({
+  chart: {
+    type: 'bar',
+    background: 'transparent',
+    toolbar: { show: false },
+    fontFamily: 'inherit',
+  },
+  colors: ['#1877F2', '#daa520'],
+  plotOptions: {
+    bar: { columnWidth: '55%', borderRadius: 4 },
+  },
+  dataLabels: { enabled: false },
+  stroke: { width: [0, 3], curve: 'smooth' },
+  xaxis: {
+    categories: metaResumen.value.map((r) => metaMesLabel(r.mes)),
+    labels: { style: { colors: '#888', fontSize: '0.75rem' } },
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+  },
+  yaxis: [
+    {
+      title: { text: 'Inversión (S/)', style: { color: '#888', fontSize: '0.72rem' } },
+      labels: { style: { colors: '#888', fontSize: '0.72rem' }, formatter: (v: number) => 'S/ ' + v.toLocaleString('es-PE') },
+    },
+    {
+      opposite: true,
+      title: { text: 'Leads', style: { color: '#888', fontSize: '0.72rem' } },
+      labels: { style: { colors: '#888', fontSize: '0.72rem' } },
+    },
+  ],
+  legend: { labels: { colors: '#aaa' } },
+  grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+  tooltip: {
+    theme: 'dark',
+    y: [
+      { formatter: (v: number) => 'S/ ' + v.toLocaleString('es-PE', { minimumFractionDigits: 2 }) },
+      { formatter: (v: number) => v + ' leads' },
+    ],
+  },
+}))
+
+const metaChartSeries = computed(() => [
+  {
+    name: 'Inversión',
+    type: 'bar',
+    data: metaResumen.value.map((r) => parseFloat(r.inversion_total) || 0),
+  },
+  {
+    name: 'Leads',
+    type: 'line',
+    data: metaResumen.value.map((r) => parseInt(r.leads_totales) || 0),
+  },
+])
+
+const fetchMetaData = async () => {
+  loadingMeta.value = true
+  try {
+    const [{ data: resumen }, { data: campanas }] = await Promise.all([
+      (client.from('healup_meta_resumen_mensual') as any)
+        .select('*')
+        .order('mes', { ascending: true }),
+      (client.from('healup_meta_campanas') as any)
+        .select('*')
+        .order('mes', { ascending: true }),
+    ])
+    metaResumen.value = resumen || []
+    metaCampanas.value = campanas || []
+    if (resumen?.length) {
+      mesSeleccionadoMeta.value = resumen[resumen.length - 1].mes
+    }
+  } finally {
+    loadingMeta.value = false
+  }
+}
+
 onMounted(() => {
   // Access Control
   // const userEmail = currentUser.value.email?.toLowerCase() // Deprecated
@@ -8053,6 +8760,7 @@ onMounted(() => {
   fetchMedicalHistory()
   fetchEgresos()
   fetchStockData()
+  fetchMetaData()
   setupRealtime()
 })
 </script>

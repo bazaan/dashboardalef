@@ -8624,15 +8624,11 @@ const metaCampanas = ref<any[]>([])
 const loadingMeta = ref(false)
 const mesSeleccionadoMeta = ref('2026-04-01')
 
-const MES_LABELS: Record<string, string> = {
-  '2025-11-01': 'NOV 2025',
-  '2025-12-01': 'DIC 2025',
-  '2026-01-01': 'ENE 2026',
-  '2026-02-01': 'FEB 2026',
-  '2026-03-01': 'MAR 2026',
-  '2026-04-01': 'ABR 2026',
+const metaMesLabel = (mes: string) => {
+  if (!mes) return mes
+  const d = new Date(mes + 'T12:00:00Z')
+  return d.toLocaleDateString('es-PE', { month: 'short', year: 'numeric' }).toUpperCase().replace('.', '')
 }
-const metaMesLabel = (mes: string) => MES_LABELS[mes] || mes.substring(0, 7)
 
 const fmtNum = (n: any) =>
   parseFloat(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

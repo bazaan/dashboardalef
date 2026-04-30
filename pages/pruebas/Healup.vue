@@ -5826,14 +5826,15 @@ const totalLeadsCount = computed(() => leadsMesActual.value.length)
 const totalLeads = computed(() => leads.value.length) // total histórico (usado en otros lugares)
 
 // Status counts del MES ACTUAL
-const coldLeadsCount = computed(() => leadsMesActual.value.filter((l: any) => l.lead_status?.toLowerCase().includes('fri')).length)
-const warmLeadsCount = computed(() => leadsMesActual.value.filter((l: any) => l.lead_status?.toLowerCase().includes('tibi')).length)
+// Lógica consistente con histórico: si no es caliente ni tibio → frío (incluye null/vacío/otros)
 const hotLeadsCount = computed(() => leadsMesActual.value.filter((l: any) => l.lead_status?.toLowerCase().includes('caliente')).length)
+const warmLeadsCount = computed(() => leadsMesActual.value.filter((l: any) => l.lead_status?.toLowerCase().includes('tibi')).length)
+const coldLeadsCount = computed(() => totalLeadsCount.value - hotLeadsCount.value - warmLeadsCount.value)
 
 // Comparativa mes anterior (para subtítulo de cada card)
-const coldLeadsCountPrev = computed(() => leadsMesAnterior.value.filter((l: any) => l.lead_status?.toLowerCase().includes('fri')).length)
-const warmLeadsCountPrev = computed(() => leadsMesAnterior.value.filter((l: any) => l.lead_status?.toLowerCase().includes('tibi')).length)
 const hotLeadsCountPrev = computed(() => leadsMesAnterior.value.filter((l: any) => l.lead_status?.toLowerCase().includes('caliente')).length)
+const warmLeadsCountPrev = computed(() => leadsMesAnterior.value.filter((l: any) => l.lead_status?.toLowerCase().includes('tibi')).length)
+const coldLeadsCountPrev = computed(() => leadsMesAnterior.value.length - hotLeadsCountPrev.value - warmLeadsCountPrev.value)
 
 const conversionRate = computed(() => {
   if (totalLeadsCount.value === 0) return 0

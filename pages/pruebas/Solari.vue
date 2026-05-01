@@ -1209,6 +1209,273 @@
         </div>
       </div>
 
+      <!-- ==========  VISTA: META ADS  ========== -->
+      <div v-else-if="activeView === 'meta'" class="view-container">
+        <header class="top-header">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <h1 style="display:flex;align-items:center;gap:12px;margin:0;">
+              <span class="meta-logo-badge">
+                <v-icon icon="mdi-alpha-f-box" size="24" color="white" />
+              </span>
+              Meta ADS
+            </h1>
+            <span style="color:var(--text-muted,#888);font-size:0.82rem;">Performance de campañas publicitarias · Solari</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <div v-if="loadingMeta" style="display:flex;align-items:center;gap:6px;color:var(--text-muted);font-size:0.8rem;">
+              <v-progress-circular size="14" width="2" indeterminate color="#1877F2" />
+              Cargando...
+            </div>
+            <button class="btn-primary" @click="fetchMetaData" :disabled="loadingMeta">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="content-area">
+
+          <!-- ── Month selector ── -->
+          <div class="meta-month-selector">
+            <button
+              v-for="r in metaResumen" :key="r.mes"
+              :class="['meta-month-tab', { active: mesSeleccionadoMeta === r.mes }]"
+              @click="mesSeleccionadoMeta = r.mes">
+              {{ metaMesLabel(r.mes) }}
+            </button>
+          </div>
+
+          <!-- ── KPI Cards ── -->
+          <div class="meta-kpi-grid" v-if="mesActualMeta">
+            <div class="meta-kpi-card" style="--kpi-color:#1877F2;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(24,119,242,0.15);">
+                <v-icon icon="mdi-cash-multiple" size="20" color="#1877F2" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Inversión Total</div>
+                <div class="meta-kpi-value">S/ {{ fmtNum(mesActualMeta.inversion_total) }}</div>
+                <div class="meta-kpi-sub">Gasto en Meta ADS</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#10b981;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(16,185,129,0.15);">
+                <v-icon icon="mdi-account-group" size="20" color="#10b981" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Leads Totales</div>
+                <div class="meta-kpi-value">{{ mesActualMeta.leads_totales }}</div>
+                <div class="meta-kpi-sub">Registros captados</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#f59e0b;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(245,158,11,0.15);">
+                <v-icon icon="mdi-tag-outline" size="20" color="#f59e0b" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">CPA Promedio</div>
+                <div class="meta-kpi-value">S/ {{ fmtNum(mesActualMeta.cpa_promedio) }}</div>
+                <div class="meta-kpi-sub">Costo por lead</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#8b5cf6;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(139,92,246,0.15);">
+                <v-icon icon="mdi-eye-outline" size="20" color="#8b5cf6" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Alcance</div>
+                <div class="meta-kpi-value">{{ fmtNumInt(mesActualMeta.alcance_total) }}</div>
+                <div class="meta-kpi-sub">Personas únicas</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#ec4899;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(236,72,153,0.15);">
+                <v-icon icon="mdi-chart-bar" size="20" color="#ec4899" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Impresiones</div>
+                <div class="meta-kpi-value">{{ fmtNumInt(mesActualMeta.impresiones_total) }}</div>
+                <div class="meta-kpi-sub">Total impresiones</div>
+              </div>
+            </div>
+            <div class="meta-kpi-card" style="--kpi-color:#daa520;">
+              <div class="meta-kpi-icon-wrap" style="background:rgba(218,165,32,0.15);">
+                <v-icon icon="mdi-sale" size="20" color="#daa520" />
+              </div>
+              <div class="meta-kpi-body">
+                <div class="meta-kpi-label">Inv. SALE</div>
+                <div class="meta-kpi-value">S/ {{ fmtNum(mesActualMeta.inversion_sale) }}</div>
+                <div class="meta-kpi-sub">{{ mesActualMeta.leads_sale }} leads SALE</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Gráfico histórico ── -->
+          <div class="chart-section">
+            <div class="chart-header">
+              <div class="chart-title-section">
+                <h2>Histórico de Performance</h2>
+                <div class="chart-subtitle">Inversión vs Leads — todos los meses</div>
+              </div>
+              <div style="display:flex;gap:16px;align-items:center;font-size:0.78rem;color:var(--text-muted);">
+                <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#1877F2;display:inline-block;"></span>Inversión (S/)</span>
+                <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:3px;background:#daa520;display:inline-block;border-radius:2px;"></span>Leads</span>
+              </div>
+            </div>
+            <div class="chart-area">
+              <client-only>
+                <apexchart type="bar" height="280" :options="metaChartOptions" :series="metaChartSeries" />
+              </client-only>
+            </div>
+          </div>
+
+          <!-- ── Distribución del mes seleccionado ── -->
+          <div v-if="mesActualMeta && (mesActualMeta.inversion_sale > 0 || mesActualMeta.inversion_sin_sale > 0)"
+            class="meta-split-row">
+            <div class="meta-split-card">
+              <div class="meta-split-label">
+                <span class="meta-tipo-badge sin-sale">SIN SALE</span>
+              </div>
+              <div class="meta-split-stats">
+                <div class="meta-split-item">
+                  <span>Inversión</span>
+                  <strong>S/ {{ fmtNum(mesActualMeta.inversion_sin_sale) }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>Leads</span>
+                  <strong>{{ mesActualMeta.leads_sin_sale }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>CPA</span>
+                  <strong>{{ mesActualMeta.leads_sin_sale > 0 ? 'S/ ' + fmtNum(mesActualMeta.inversion_sin_sale / mesActualMeta.leads_sin_sale) : '—' }}</strong>
+                </div>
+              </div>
+              <div class="meta-split-bar-wrap">
+                <div class="meta-split-bar" :style="{ width: mesActualMeta.inversion_total > 0 ? (mesActualMeta.inversion_sin_sale / mesActualMeta.inversion_total * 100) + '%' : '0%', background: '#64748b' }"></div>
+                <span class="meta-split-pct">{{ mesActualMeta.inversion_total > 0 ? Math.round(mesActualMeta.inversion_sin_sale / mesActualMeta.inversion_total * 100) : 0 }}%</span>
+              </div>
+            </div>
+            <div class="meta-split-card">
+              <div class="meta-split-label">
+                <span class="meta-tipo-badge sale">SALE</span>
+              </div>
+              <div class="meta-split-stats">
+                <div class="meta-split-item">
+                  <span>Inversión</span>
+                  <strong>S/ {{ fmtNum(mesActualMeta.inversion_sale) }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>Leads</span>
+                  <strong>{{ mesActualMeta.leads_sale }}</strong>
+                </div>
+                <div class="meta-split-item">
+                  <span>CPA</span>
+                  <strong>{{ mesActualMeta.cpa_sale ? 'S/ ' + fmtNum(mesActualMeta.cpa_sale) : '—' }}</strong>
+                </div>
+              </div>
+              <div class="meta-split-bar-wrap">
+                <div class="meta-split-bar" :style="{ width: mesActualMeta.inversion_total > 0 ? (mesActualMeta.inversion_sale / mesActualMeta.inversion_total * 100) + '%' : '0%', background: '#daa520' }"></div>
+                <span class="meta-split-pct">{{ mesActualMeta.inversion_total > 0 ? Math.round(mesActualMeta.inversion_sale / mesActualMeta.inversion_total * 100) : 0 }}%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Tablas de campañas ── -->
+          <div class="meta-campaigns-section">
+
+            <!-- SIN SALE -->
+            <div class="meta-table-block">
+              <div class="meta-table-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span class="meta-tipo-badge sin-sale">SIN SALE</span>
+                  <span style="font-size:0.8rem;color:var(--text-muted);">{{ campanasSinSaleMes.length }} campañas</span>
+                </div>
+                <span style="font-size:0.82rem;color:var(--text-muted);">
+                  S/ {{ fmtNum(campanasSinSaleMes.reduce((s, c) => s + (parseFloat(c.inversion) || 0), 0)) }} total invertido
+                </span>
+              </div>
+              <div v-if="campanasSinSaleMes.length === 0" class="meta-empty-state">
+                <v-icon icon="mdi-information-outline" size="20" color="#555" />
+                <span>Sin campañas SIN SALE este mes</span>
+              </div>
+              <div v-else class="meta-table-wrap">
+                <table class="meta-table">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Campaña</th>
+                      <th>Inversión</th>
+                      <th>Leads</th>
+                      <th>CPA</th>
+                      <th>Alcance</th>
+                      <th>Impresiones</th>
+                      <th>Inicio</th>
+                      <th>Fin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="c in campanasSinSaleMes" :key="c.id" class="meta-table-row">
+                      <td><span :class="['meta-estado-badge', (c.estado || '').toLowerCase()]">{{ c.estado }}</span></td>
+                      <td class="meta-nombre-cell" :title="c.nombre_campana">{{ c.nombre_campana }}</td>
+                      <td class="meta-num-cell">S/ {{ fmtNum(c.inversion) }}</td>
+                      <td class="meta-num-cell">{{ c.leads }}</td>
+                      <td class="meta-num-cell">{{ c.cpa ? 'S/ ' + fmtNum(c.cpa) : '—' }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.alcance) }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.impresiones) }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_inicio || '—' }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_fin || '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SALE -->
+            <div class="meta-table-block" v-if="campanasSaleMes.length > 0">
+              <div class="meta-table-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span class="meta-tipo-badge sale">SALE</span>
+                  <span style="font-size:0.8rem;color:var(--text-muted);">{{ campanasSaleMes.length }} campañas</span>
+                </div>
+                <span style="font-size:0.82rem;color:var(--text-muted);">
+                  S/ {{ fmtNum(campanasSaleMes.reduce((s, c) => s + (parseFloat(c.inversion) || 0), 0)) }} total invertido
+                </span>
+              </div>
+              <div class="meta-table-wrap">
+                <table class="meta-table">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Campaña</th>
+                      <th>Inversión</th>
+                      <th>Leads</th>
+                      <th>CPA</th>
+                      <th>Alcance</th>
+                      <th>Impresiones</th>
+                      <th>Inicio</th>
+                      <th>Fin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="c in campanasSaleMes" :key="c.id" class="meta-table-row">
+                      <td><span :class="['meta-estado-badge', (c.estado || '').toLowerCase()]">{{ c.estado }}</span></td>
+                      <td class="meta-nombre-cell" :title="c.nombre_campana">{{ c.nombre_campana }}</td>
+                      <td class="meta-num-cell">S/ {{ fmtNum(c.inversion) }}</td>
+                      <td class="meta-num-cell">{{ c.leads }}</td>
+                      <td class="meta-num-cell">{{ c.cpa ? 'S/ ' + fmtNum(c.cpa) : '—' }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.alcance) }}</td>
+                      <td class="meta-num-cell">{{ fmtNumInt(c.impresiones) }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_inicio || '—' }}</td>
+                      <td class="meta-date-cell">{{ c.fecha_fin || '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
@@ -4423,6 +4690,121 @@ const deleteEgreso = async (id: string) => {
   }
 }
 
+// =============================================
+// META ADS
+// =============================================
+
+const metaResumen = ref<any[]>([])
+const metaCampanas = ref<any[]>([])
+const loadingMeta = ref(false)
+const mesSeleccionadoMeta = ref('')
+
+const metaMesLabel = (mes: string) => {
+  if (!mes) return mes
+  const d = new Date(mes + 'T12:00:00Z')
+  return d.toLocaleDateString('es-PE', { month: 'short', year: 'numeric' }).toUpperCase().replace('.', '')
+}
+
+const fmtNum = (n: any) =>
+  parseFloat(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtNumInt = (n: any) =>
+  (parseInt(n || 0) || 0).toLocaleString('es-PE')
+
+const mesActualMeta = computed(() =>
+  metaResumen.value.find((r) => r.mes === mesSeleccionadoMeta.value) || null
+)
+
+const campanasSinSaleMes = computed(() =>
+  metaCampanas.value.filter(
+    (c) =>
+      c.mes?.substring(0, 7) === mesSeleccionadoMeta.value?.substring(0, 7) &&
+      c.tipo === 'sin_sale'
+  )
+)
+
+const campanasSaleMes = computed(() =>
+  metaCampanas.value.filter(
+    (c) =>
+      c.mes?.substring(0, 7) === mesSeleccionadoMeta.value?.substring(0, 7) &&
+      c.tipo === 'sale'
+  )
+)
+
+const metaChartOptions = computed(() => ({
+  chart: {
+    type: 'bar',
+    background: 'transparent',
+    toolbar: { show: false },
+    fontFamily: 'inherit',
+  },
+  colors: ['#1877F2', '#daa520'],
+  plotOptions: {
+    bar: { columnWidth: '55%', borderRadius: 4 },
+  },
+  dataLabels: { enabled: false },
+  stroke: { width: [0, 3], curve: 'smooth' },
+  xaxis: {
+    categories: metaResumen.value.map((r) => metaMesLabel(r.mes)),
+    labels: { style: { colors: '#888', fontSize: '0.75rem' } },
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+  },
+  yaxis: [
+    {
+      title: { text: 'Inversión (S/)', style: { color: '#888', fontSize: '0.72rem' } },
+      labels: { style: { colors: '#888', fontSize: '0.72rem' }, formatter: (v: number) => 'S/ ' + v.toLocaleString('es-PE') },
+    },
+    {
+      opposite: true,
+      title: { text: 'Leads', style: { color: '#888', fontSize: '0.72rem' } },
+      labels: { style: { colors: '#888', fontSize: '0.72rem' } },
+    },
+  ],
+  legend: { labels: { colors: '#aaa' } },
+  grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+  tooltip: {
+    theme: 'dark',
+    y: [
+      { formatter: (v: number) => 'S/ ' + v.toLocaleString('es-PE', { minimumFractionDigits: 2 }) },
+      { formatter: (v: number) => v + ' leads' },
+    ],
+  },
+}))
+
+const metaChartSeries = computed(() => [
+  {
+    name: 'Inversión',
+    type: 'bar',
+    data: metaResumen.value.map((r) => parseFloat(r.inversion_total) || 0),
+  },
+  {
+    name: 'Leads',
+    type: 'line',
+    data: metaResumen.value.map((r) => parseInt(r.leads_totales) || 0),
+  },
+])
+
+const fetchMetaData = async () => {
+  loadingMeta.value = true
+  try {
+    const [{ data: resumen }, { data: campanas }] = await Promise.all([
+      (client.from('SOLARI_meta_resumen_mensual') as any)
+        .select('*')
+        .order('mes', { ascending: true }),
+      (client.from('SOLARI_meta_campanas') as any)
+        .select('*')
+        .order('mes', { ascending: true }),
+    ])
+    metaResumen.value = resumen || []
+    metaCampanas.value = campanas || []
+    if (resumen?.length) {
+      mesSeleccionadoMeta.value = resumen[resumen.length - 1].mes
+    }
+  } finally {
+    loadingMeta.value = false
+  }
+}
+
 onMounted(() => {
   // Access Control
   // const userEmail = currentUser.value.email?.toLowerCase() // Deprecated
@@ -4445,6 +4827,7 @@ onMounted(() => {
   fetchProcedures()
   fetchMedicalHistory()
   fetchEgresos()
+  fetchMetaData()
   setupRealtime()
 })
 </script>

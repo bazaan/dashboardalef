@@ -6314,12 +6314,14 @@ const pacientesMesAnterior = computed(() => {
   })
 })
 
+// BUG FIX: estos sumaban TODOS los pacientes históricos, no solo el mes
+// actual. Ahora filtran al mes actual igual que el resto de KPIs.
 const revenueReservaCurrentMonth = computed(() => {
-  return allPacientes.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
+  return pacientesMesActual.value.reduce((sum, item) => sum + parseCurrency(item.precio), 0)
 })
 
 const revenueTratamientoCurrentMonth = computed(() => {
-  return allPacientes.value.reduce((sum, item) => sum + parseCurrency(item.precio_tratamiento), 0)
+  return pacientesMesActual.value.reduce((sum, item) => sum + parseCurrency(item.precio_tratamiento), 0)
 })
 
 const revenueCurrentMonth = computed(() => {
@@ -6367,10 +6369,26 @@ const revenueGrowth = computed(() => {
   return 0
 })
 
-const salesCountCurrentMonth = computed(() => allPacientes.value.length)
-const salesCountPreviousMonth = computed(() => pacientesMesAnterior.value.length)
+// BUG FIX: antes contaba allPacientes.value (TODOS los registros históricos
+// de WPP+FBIG), no solo el mes actual y sin dedup. Ahora delegamos en la
+// función pura compartida que dedupea entre WPP/FBIG/calendar.
+const salesCountCurrentMonth = computed(() => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return buildPacientesAgendadosBase(thisMonth).length
+})
+const salesCountPreviousMonth = computed(() => {
+  const now = new Date()
+  let m = now.getMonth() - 1
+  let y = now.getFullYear()
+  if (m < 0) { m = 11; y-- }
+  const prevMonth = `${y}-${String(m + 1).padStart(2, '0')}`
+  return buildPacientesAgendadosBase(prevMonth).length
+})
 const salesGrowth = computed(() => {
-  return 0
+  const prev = salesCountPreviousMonth.value
+  if (prev === 0) return salesCountCurrentMonth.value > 0 ? 100 : 0
+  return ((salesCountCurrentMonth.value - prev) / prev) * 100
 })
 
 const averageOrderValue = computed(() => {

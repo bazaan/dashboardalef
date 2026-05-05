@@ -5,6 +5,9 @@
   "engines": {
     "node": ">=18.x"
   },
+  "imports": {
+    "#internal/nuxt/paths": "./shims/nuxt-paths.mjs"
+  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",

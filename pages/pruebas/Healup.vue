@@ -6230,16 +6230,13 @@ const pacientesAgendadosMesSel = ref('') // YYYY-MM seleccionado (vacío = mes a
 // Etiquetas de meses (compartido entre dialogs/viñetas; el contador usa el mismo array más abajo)
 const NOMBRES_MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-// Meses disponibles: une fecha_agendamiento de WPP/FBIG + date de healup_calendar_events
+// Meses disponibles: SOLO desde fecha_agendamiento de pacientes en redes
+// (WPP + FBIG). El calendario es referencia operativa, no fuente de pacientes.
 const pacientesAgendadosMesesDisponibles = computed(() => {
   const set = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
     const fa = p.fecha_agendamiento
     if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
-  })
-  events.value.forEach((e: any) => {
-    const d = e?.date
-    if (d && /^\d{4}-\d{2}/.test(d)) set.add(d.slice(0, 7))
   })
   // Asegurar mes actual presente aunque esté vacío
   const now = new Date()
@@ -6453,64 +6450,32 @@ const pacientesAgendadosMes = computed(() => {
     }
   }
 
-  // Mapper para citas creadas directo en el calendario (sin paciente en WPP/FBIG)
-  const buildRowFromEvent = (e: any) => {
-    const procName  = getProcedureName(e.procedureId) || e.procedimientoSolicitado || e.subject || '—'
-    const procSku   = getProcedureSku(e.procedureId) || ''
-    const procGrupo = getProcedureGrupo(e.procedureId) || ''
-    const anticipo  = Number(e.montoReserva) || 0
-    const tel       = e.clientPhone ? normalizePhone(String(e.clientPhone).replace(/[^\d]/g, '')) : ''
-    const cw = (() => {
-      const base = 'https://chats.alef.company/app/accounts/2'
-      const q = e.clientPhone || e.clientName || ''
-      return q ? `${base}/contacts?search=${encodeURIComponent(String(q).trim())}` : ''
-    })()
-    return {
-      id: 'cal-' + e.id,
-      dni: e.clientDNI || '',
-      nombre: `${e.clientName || ''} ${e.clientSurname || ''}`.trim() || '—',
-      telefono: tel || '—',
-      procedimiento: procName,
-      procedure_sku: procSku,
-      procedure_grupo: procGrupo,
-      booking_sku: '',
-      anticipo,
-      saldo: 0,
-      total_acordado: anticipo,
-      metodo_pago: String(e.metodoReserva || '').trim(),
-      conversation_url: cw,
-      created_at: e.created_at || '',
-      fecha_agendamiento: e.date || '',
-      fuente_label: 'Calendario',
-      fuente_color: 'amber',
-      fuente_icon: 'mdi-calendar-edit',
-      verif_estado: 'sin_boleta',
-      verif_mensaje: 'Cita agendada directamente en el calendario',
-      verif_serie: '',
-      verif_numero: '',
-      verif_total: 0,
-      verif_sku: '',
-      verif_pdf: '',
-      verif_medio_pago: '',
-      verif_sunat_ok: false,
-    }
-  }
-
-  const wpp = pacientesWpp.value
+  // SOLO pacientes en redes (WPP + FBIG). El calendario es referencia
+  // operativa y NO es fuente de pacientes — la clínica vende por
+  // WhatsApp / TikTok / Instagram / Facebook. Eventos del calendario
+  // sin contraparte en redes son bloqueos, reuniones o data legacy.
+  const wppRaw = pacientesWpp.value
     .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'wpp'))
-  const fbig = pacientesFbIg.value
+  const fbigRaw = pacientesFbIg.value
     .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'fbig'))
 
-  // Citas del calendario en el mes que NO tienen contraparte en WPP/FBIG
-  const claves = new Set<string>([...wpp, ...fbig].map(dedupKeyForAgendado))
-  const calendario = events.value
-    .filter((e: any) => String(e.date || '').startsWith(targetMonth))
-    .map(buildRowFromEvent)
-    .filter((r: any) => !claves.has(dedupKeyForAgendado(r)))
+  // Dedup en cascada — mismo paciente en WPP y FBIG cuenta una vez.
+  // Misma clave usada por hotLeadsConvertedCount, así ambos números coinciden.
+  const claves = new Set<string>()
+  const wpp: any[] = []
+  for (const r of wppRaw) {
+    const k = dedupKeyForAgendado(r)
+    if (!claves.has(k)) { claves.add(k); wpp.push(r) }
+  }
+  const fbig: any[] = []
+  for (const r of fbigRaw) {
+    const k = dedupKeyForAgendado(r)
+    if (!claves.has(k)) { claves.add(k); fbig.push(r) }
+  }
 
-  return [...wpp, ...fbig, ...calendario].sort((a, b) =>
+  return [...wpp, ...fbig].sort((a, b) =>
     String(b.fecha_agendamiento).localeCompare(String(a.fecha_agendamiento))
   )
 })

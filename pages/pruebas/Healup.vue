@@ -6196,13 +6196,34 @@ const normalizePhone = (num: any): string => {
   return n
 }
 
-// Convertidos del mes actual = todos los pacientes con fecha_agendamiento en el mes actual
+// Clave única para deduplicar pacientes/citas entre las 3 fuentes
+// (PacientesBDwppHEALUP, PacientesBDfbigHEALUP, healup_calendar_events).
+const dedupKeyForAgendado = (row: any): string => {
+  const dni = String(row?.dni || row?.client_dni || row?.clientDNI || '').trim()
+  if (dni) return 'dni:' + dni
+  const tel = String(row?.telefono || row?.numero || row?.client_phone || row?.clientPhone || '')
+    .replace(/[^\d]/g, '')
+  if (tel) return 'tel:' + (tel.length === 11 && tel.startsWith('51') ? tel.slice(2) : tel)
+  const email = String(row?.email || row?.client_email || row?.clientEmail || '').trim().toLowerCase()
+  if (email) return 'email:' + email
+  const name = `${row?.nombre || row?.clientName || row?.client_name || ''} ${row?.client_surname || row?.clientSurname || ''}`
+    .trim().toLowerCase().replace(/\s+/g, ' ')
+  return 'name:' + name
+}
+
+// Convertidos = pacientes en WPP/FBIG con fecha_agendamiento en el mes
+//   + citas del calendario en el mes que NO tienen match con esos pacientes.
 const hotLeadsConvertedCount = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  return [...pacientesWpp.value, ...pacientesFbIg.value].filter((p: any) =>
-    p.fecha_agendamiento?.startsWith(thisMonth)
-  ).length
+  const claves = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(thisMonth))
+    .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
+  events.value
+    .filter((e: any) => String(e.date || '').startsWith(thisMonth))
+    .forEach((e: any) => claves.add(dedupKeyForAgendado(e)))
+  return claves.size
 })
 
 // ── Detalle de pacientes agendados (drill-down con navegación por mes) ──
@@ -6213,12 +6234,16 @@ const pacientesAgendadosMesSel = ref('') // YYYY-MM seleccionado (vacío = mes a
 // Etiquetas de meses (compartido entre dialogs/viñetas; el contador usa el mismo array más abajo)
 const NOMBRES_MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-// Meses disponibles según fecha_agendamiento real de los pacientes (más reciente primero)
+// Meses disponibles: une fecha_agendamiento de WPP/FBIG + date de healup_calendar_events
 const pacientesAgendadosMesesDisponibles = computed(() => {
   const set = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
     const fa = p.fecha_agendamiento
     if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
+  })
+  events.value.forEach((e: any) => {
+    const d = e?.date
+    if (d && /^\d{4}-\d{2}/.test(d)) set.add(d.slice(0, 7))
   })
   // Asegurar mes actual presente aunque esté vacío
   const now = new Date()
@@ -6432,6 +6457,49 @@ const pacientesAgendadosMes = computed(() => {
     }
   }
 
+  // Mapper para citas creadas directo en el calendario (sin paciente en WPP/FBIG)
+  const buildRowFromEvent = (e: any) => {
+    const procName  = getProcedureName(e.procedureId) || e.procedimientoSolicitado || e.subject || '—'
+    const procSku   = getProcedureSku(e.procedureId) || ''
+    const procGrupo = getProcedureGrupo(e.procedureId) || ''
+    const anticipo  = Number(e.montoReserva) || 0
+    const tel       = e.clientPhone ? normalizePhone(String(e.clientPhone).replace(/[^\d]/g, '')) : ''
+    const cw = (() => {
+      const base = 'https://chats.alef.company/app/accounts/2'
+      const q = e.clientPhone || e.clientName || ''
+      return q ? `${base}/contacts?search=${encodeURIComponent(String(q).trim())}` : ''
+    })()
+    return {
+      id: 'cal-' + e.id,
+      dni: e.clientDNI || '',
+      nombre: `${e.clientName || ''} ${e.clientSurname || ''}`.trim() || '—',
+      telefono: tel || '—',
+      procedimiento: procName,
+      procedure_sku: procSku,
+      procedure_grupo: procGrupo,
+      booking_sku: '',
+      anticipo,
+      saldo: 0,
+      total_acordado: anticipo,
+      metodo_pago: String(e.metodoReserva || '').trim(),
+      conversation_url: cw,
+      created_at: e.created_at || '',
+      fecha_agendamiento: e.date || '',
+      fuente_label: 'Calendario',
+      fuente_color: 'amber',
+      fuente_icon: 'mdi-calendar-edit',
+      verif_estado: 'sin_boleta',
+      verif_mensaje: 'Cita agendada directamente en el calendario',
+      verif_serie: '',
+      verif_numero: '',
+      verif_total: 0,
+      verif_sku: '',
+      verif_pdf: '',
+      verif_medio_pago: '',
+      verif_sunat_ok: false,
+    }
+  }
+
   const wpp = pacientesWpp.value
     .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'wpp'))
@@ -6439,7 +6507,14 @@ const pacientesAgendadosMes = computed(() => {
     .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'fbig'))
 
-  return [...wpp, ...fbig].sort((a, b) =>
+  // Citas del calendario en el mes que NO tienen contraparte en WPP/FBIG
+  const claves = new Set<string>([...wpp, ...fbig].map(dedupKeyForAgendado))
+  const calendario = events.value
+    .filter((e: any) => String(e.date || '').startsWith(targetMonth))
+    .map(buildRowFromEvent)
+    .filter((r: any) => !claves.has(dedupKeyForAgendado(r)))
+
+  return [...wpp, ...fbig, ...calendario].sort((a, b) =>
     String(b.fecha_agendamiento).localeCompare(String(a.fecha_agendamiento))
   )
 })

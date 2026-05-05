@@ -5,16 +5,6 @@
   "engines": {
     "node": ">=18.x"
   },
-  "imports": {
-    "#internal/nuxt/paths": {
-      "import": "./node_modules/@nuxt/nitro-server/dist/runtime/utils/paths.mjs",
-      "require": "./node_modules/@nuxt/nitro-server/dist/runtime/utils/paths.mjs"
-    },
-    "#app-manifest": {
-      "import": "./.nuxt/manifest/latest.json",
-      "require": "./.nuxt/manifest/latest.json"
-    }
-  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",

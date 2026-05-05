@@ -182,5 +182,12 @@ export default defineNuxtConfig({
     preset: 'netlify',
   },
 
+  experimental: {
+    // Evita que Vite intente resolver "#app-manifest" en dev (incompatible con
+    // setup actual del proyecto). El SSR no lo usa y el build production
+    // tampoco depende de él.
+    appManifest: false,
+  },
+
   compatibilityDate: "2024-07-15",
 });

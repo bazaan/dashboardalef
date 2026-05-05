@@ -3106,9 +3106,9 @@
         <div class="pa-4" style="display:flex; gap:8px; flex-wrap:wrap; background: var(--surface-2, rgba(255,255,255,0.02));">
           <v-chip v-for="(count, label) in pacientesAgendadosResumen" :key="label"
             size="small" variant="tonal"
-            :color="label === 'TikTok' ? 'deep-purple' : label === 'WhatsApp' ? 'green' : label === 'Instagram' ? 'pink' : label === 'Calendario' ? 'amber' : 'blue'">
+            :color="label === 'TikTok' ? 'deep-purple' : label === 'WhatsApp' ? 'green' : label === 'Instagram' ? 'pink' : 'blue'">
             <v-icon start size="14"
-              :icon="label === 'TikTok' ? 'mdi-music-note' : label === 'WhatsApp' ? 'mdi-whatsapp' : label === 'Instagram' ? 'mdi-instagram' : label === 'Calendario' ? 'mdi-calendar-edit' : 'mdi-facebook'" />
+              :icon="label === 'TikTok' ? 'mdi-music-note' : label === 'WhatsApp' ? 'mdi-whatsapp' : label === 'Instagram' ? 'mdi-instagram' : 'mdi-facebook'" />
             {{ label }}: {{ count }}
           </v-chip>
           <v-spacer />
@@ -6675,15 +6675,6 @@ const dedupKeyForAgendado = (row: any): string => {
   return 'name:' + name
 }
 
-// Filtra eventos del calendario que SÍ representan un paciente real
-// (excluye bloqueos, eventos sin datos del paciente).
-const eventoEsPacienteReal = (e: any): boolean => {
-  const nombre = String(e.clientName || e.client_name || '').trim()
-  const dni    = String(e.clientDNI  || e.client_dni  || '').trim()
-  const tel    = String(e.clientPhone|| e.client_phone|| '').trim()
-  return !!(nombre || dni || tel)
-}
-
 // Stat card "Pacientes este mes" — comparte EXACTAMENTE la misma función
 // que el dialog (buildPacientesAgendadosBase) para garantizar que ambos
 // conteos coincidan a la unidad. Sin filtros UI aplicados.
@@ -6712,16 +6703,12 @@ const ESTADOS_CITA = [
 // Etiquetas de meses (compartido entre dialogs/viñetas; el contador usa el mismo array más abajo)
 const NOMBRES_MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-// Meses disponibles: une fecha_agendamiento de WPP/FBIG + date de healup_calendar_events
+// Meses disponibles: SOLO desde fecha_agendamiento de WPP/FBIG (no del calendario)
 const pacientesAgendadosMesesDisponibles = computed(() => {
   const set = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
     const fa = p.fecha_agendamiento
     if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
-  })
-  events.value.forEach((e: any) => {
-    const d = e?.date
-    if (d && /^\d{4}-\d{2}/.test(d)) set.add(d.slice(0, 7))
   })
   // Asegurar mes actual presente aunque esté vacío
   const now = new Date()
@@ -6929,53 +6916,11 @@ function buildPacienteRow(p: any, origen: 'wpp' | 'fbig'): any {
   }
 }
 
-function buildRowFromCalendarEvent(e: any): any {
-  const procName  = getProcedureName(e.procedureId) || e.procedimientoSolicitado || e.subject || '—'
-  const procSku   = getProcedureSku(e.procedureId) || ''
-  const procGrupo = getProcedureGrupo(e.procedureId) || ''
-  const anticipo  = Number(e.montoReserva) || 0
-  const tel       = e.clientPhone ? normalizePhone(String(e.clientPhone).replace(/[^\d]/g, '')) : ''
-  const cw = (() => {
-    const base = 'https://chats.alef.company/app/accounts/2'
-    const q = e.clientPhone || e.clientName || ''
-    return q ? `${base}/contacts?search=${encodeURIComponent(String(q).trim())}` : ''
-  })()
-  return {
-    id: 'cal-' + e.id,
-    dni: e.clientDNI || '',
-    nombre: `${e.clientName || ''} ${e.clientSurname || ''}`.trim() || '—',
-    telefono: tel || '—',
-    procedimiento: procName,
-    procedure_sku: procSku,
-    procedure_grupo: procGrupo,
-    booking_sku: '',
-    anticipo,
-    saldo: 0,
-    total_acordado: anticipo,
-    metodo_pago: String(e.metodoReserva || '').trim(),
-    conversation_url: cw,
-    created_at: e.created_at || '',
-    fecha_agendamiento: e.date || '',
-    estado: e.estado || 'RESERVADA',
-    cabina: e.cabina || '',
-    fuente_label: 'Calendario',
-    fuente_color: 'amber',
-    fuente_icon: 'mdi-calendar-edit',
-    verif_estado: 'sin_boleta',
-    verif_mensaje: 'Cita agendada directamente en el calendario',
-    verif_serie: '',
-    verif_numero: '',
-    verif_total: 0,
-    verif_sku: '',
-    verif_pdf: '',
-    verif_medio_pago: '',
-    verif_sunat_ok: false,
-  }
-}
-
 // ─── Función pura compartida: pacientes únicos del mes (sin filtros UI) ───
-// La usan tanto la stat card como pacientesAgendadosMes — garantiza que
-// los conteos coincidan exactamente.
+// SOLO cuenta pacientes registrados en PacientesBDwppHEALUP / PacientesBDfbigHEALUP
+// (reglas de la clínica: todos los pacientes reales vienen por WhatsApp,
+// TikTok, Instagram o Facebook). Los eventos del calendario sin paciente
+// asociado son bloqueos / reuniones / pruebas y NO se cuentan.
 function buildPacientesAgendadosBase(monthYYYYMM: string): any[] {
   if (!monthYYYYMM) return []
   const wppBuilt = pacientesWpp.value
@@ -6985,7 +6930,7 @@ function buildPacientesAgendadosBase(monthYYYYMM: string): any[] {
     .filter((p: any) => p.fecha_agendamiento?.startsWith(monthYYYYMM))
     .map((p: any) => buildPacienteRow(p, 'fbig'))
 
-  // Dedup en cascada: WPP primero, FBIG no-dup contra WPP, calendar no-dup contra ambos
+  // Dedup entre WPP y FBIG (mismo paciente registrado en ambas tablas)
   const claves = new Set<string>()
   const wpp: any[] = []
   for (const r of wppBuilt) {
@@ -6997,17 +6942,7 @@ function buildPacientesAgendadosBase(monthYYYYMM: string): any[] {
     const k = dedupKeyForAgendado(r)
     if (!claves.has(k)) { claves.add(k); fbig.push(r) }
   }
-  const calendario: any[] = []
-  for (const e of events.value) {
-    if (!String(e.date || '').startsWith(monthYYYYMM)) continue
-    if (!eventoEsPacienteReal(e)) continue
-    const r = buildRowFromCalendarEvent(e)
-    const k = dedupKeyForAgendado(r)
-    if (claves.has(k)) continue
-    claves.add(k)
-    calendario.push(r)
-  }
-  return [...wpp, ...fbig, ...calendario]
+  return [...wpp, ...fbig]
 }
 
 const pacientesAgendadosMes = computed(() => {
@@ -9926,19 +9861,19 @@ const cierreMesesDisponibles = computed(() => {
   })
 })
 
+// Cierre mensual: SOLO usa pacientes reales (WPP + FBIG). El calendario
+// es referencial y NO genera ingresos por sí mismo.
 const cierrePacientesDelMes = computed(() => {
   const m = cierreMesSel.value
   const wpp = pacientesWpp.value.filter((p: any) => p.fecha_agendamiento?.startsWith(m))
   const fbig = pacientesFbIg.value.filter((p: any) => p.fecha_agendamiento?.startsWith(m))
-  const cal = events.value.filter((e: any) => String(e.date || '').startsWith(m))
-  return { wpp, fbig, cal }
+  return { wpp, fbig }
 })
 
 const cierreIngresos = computed(() => {
-  const { wpp, fbig, cal } = cierrePacientesDelMes.value
+  const { wpp, fbig } = cierrePacientesDelMes.value
   const sumPac = (arr: any[]) => arr.reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
-  const sumCal = cal.reduce((s, e: any) => s + (Number(e.montoReserva) || 0), 0)
-  return sumPac(wpp) + sumPac(fbig) + sumCal
+  return sumPac(wpp) + sumPac(fbig)
 })
 
 const cierreEgresosFiltrados = computed(() =>
@@ -9958,25 +9893,27 @@ const cierreEgresosCount = computed(() => cierreEgresosFiltrados.value.length)
 const cierreUtilidad = computed(() => cierreIngresos.value - cierreEgresos.value)
 
 const cierrePacientes = computed(() => {
-  const { wpp, fbig, cal } = cierrePacientesDelMes.value
-  return wpp.length + fbig.length + cal.length
+  const { wpp, fbig } = cierrePacientesDelMes.value
+  return wpp.length + fbig.length
 })
 
+// Breakdown por cabina: usa el campo `cabina` de cada paciente WPP/FBIG.
+// Si el paciente no tiene cabina (data legacy), se asume Cabina 1 (doctora).
 const cierrePorCabina = computed(() => {
-  const { cal } = cierrePacientesDelMes.value
+  const { wpp, fbig } = cierrePacientesDelMes.value
   const r = { cabina1: 0, cabina2: 0 }
-  cal.forEach((e: any) => {
-    const k = (e.cabina === 'cabina2' ? 'cabina2' : 'cabina1')
-    r[k] += (Number(e.montoReserva) || 0)
+  ;[...wpp, ...fbig].forEach((p: any) => {
+    const k = (p.cabina === 'cabina2' ? 'cabina2' : 'cabina1')
+    r[k] += (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0)
   })
   return r
 })
 
 const cierrePacientesPorCabina = computed(() => {
-  const { cal } = cierrePacientesDelMes.value
+  const { wpp, fbig } = cierrePacientesDelMes.value
   const r = { cabina1: 0, cabina2: 0 }
-  cal.forEach((e: any) => {
-    const k = (e.cabina === 'cabina2' ? 'cabina2' : 'cabina1')
+  ;[...wpp, ...fbig].forEach((p: any) => {
+    const k = (p.cabina === 'cabina2' ? 'cabina2' : 'cabina1')
     r[k]++
   })
   return r
@@ -9984,7 +9921,7 @@ const cierrePacientesPorCabina = computed(() => {
 
 const cierrePorFuente = computed(() => {
   const r: Record<string, number> = {}
-  const { wpp, fbig, cal } = cierrePacientesDelMes.value
+  const { wpp, fbig } = cierrePacientesDelMes.value
   wpp.forEach((p: any) => {
     const f = !p.numero || isEncrypted(p.numero) ? 'TikTok' : 'WhatsApp'
     r[f] = (r[f] || 0) + 1
@@ -9994,7 +9931,6 @@ const cierrePorFuente = computed(() => {
     const f = rs.includes('facebook') ? 'Facebook' : 'Instagram'
     r[f] = (r[f] || 0) + 1
   })
-  if (cal.length) r['Calendario'] = (r['Calendario'] || 0) + cal.length
   return r
 })
 
@@ -10044,38 +9980,26 @@ const exportarCierreMensualPDF = () => {
 }
 
 // ── 2.3 Reconciliación caja: ingresos por método (mes actual) ──
+// Solo cuenta ingresos de pacientes reales en WPP/FBIG. Las citas del
+// calendario son referencia operativa, no fuente de ingresos.
 const ingresosEfectivoMesActual = computed(() => {
   const now = new Date()
   const m = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  // Pacientes WPP/FBIG con metodo_de_pago Efectivo
-  const sumLegacy = [...pacientesWpp.value, ...pacientesFbIg.value]
+  return [...pacientesWpp.value, ...pacientesFbIg.value]
     .filter((p: any) => p.fecha_agendamiento?.startsWith(m) && (p.metodo_de_pago || '').toUpperCase() === 'EFECTIVO')
     .reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
-  // Citas de calendario con metodo_reserva = EFECTIVO
-  const sumCal = events.value
-    .filter((e: any) => String(e.date || '').startsWith(m) && (e.metodoReserva || '').toUpperCase() === 'EFECTIVO')
-    .reduce((s, e: any) => s + (Number(e.montoReserva) || 0), 0)
-  return sumLegacy + sumCal
 })
 
 const ingresosNoEfectivoMesActual = computed(() => {
   const now = new Date()
   const m = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const sumLegacy = [...pacientesWpp.value, ...pacientesFbIg.value]
+  return [...pacientesWpp.value, ...pacientesFbIg.value]
     .filter((p: any) => {
       if (!p.fecha_agendamiento?.startsWith(m)) return false
       const mp = (p.metodo_de_pago || '').toUpperCase()
       return mp && mp !== 'EFECTIVO'
     })
     .reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
-  const sumCal = events.value
-    .filter((e: any) => {
-      if (!String(e.date || '').startsWith(m)) return false
-      const mp = (e.metodoReserva || '').toUpperCase()
-      return mp && mp !== 'EFECTIVO' && mp !== 'SIN RESERVA'
-    })
-    .reduce((s, e: any) => s + (Number(e.montoReserva) || 0), 0)
-  return sumLegacy + sumCal
 })
 
 const saldoCajaChica = computed(() => ingresosEfectivoMesActual.value - egresosEfectivoMesActual.value)
@@ -10129,11 +10053,16 @@ const cerrarDia = async () => {
 /* ============================================================
    2.10 Walk-in registration (paciente sin agendamiento de IA)
    ============================================================ */
+// Fuentes reales: la clínica vende sólo por redes sociales.
+// Mapeo a tabla:
+//   WhatsApp / TikTok → PacientesBDwppHEALUP
+//   Instagram / Facebook → PacientesBDfbigHEALUP
 const WALKIN_FUENTES = [
-  { value: 'IA_FALLO',  label: 'IA falló (paciente pagó pero no se agendó)' },
-  { value: 'TIKTOK',    label: 'TikTok / Instagram orgánico' },
-  { value: 'REFERIDO',  label: 'Referido por paciente / contacto' },
-  { value: 'WALK_IN',   label: 'Walk-in puro (llegó sin contacto previo)' }
+  { value: 'WHATSAPP',  label: 'WhatsApp',                tabla: 'wpp',  red: 'whatsapp'  },
+  { value: 'TIKTOK',    label: 'TikTok',                  tabla: 'wpp',  red: 'tiktok'    },
+  { value: 'INSTAGRAM', label: 'Instagram',               tabla: 'fbig', red: 'instagram' },
+  { value: 'FACEBOOK',  label: 'Facebook',                tabla: 'fbig', red: 'facebook'  },
+  { value: 'REFERIDO',  label: 'Referido (otro paciente)', tabla: 'wpp', red: 'whatsapp'  }
 ]
 
 const showWalkInDialog = ref(false)
@@ -10150,7 +10079,7 @@ const walkInData = ref<{
   pagos: Array<{ metodo: string; monto: number; referencia: string }>
 }>({
   nombre: '', dni: '', telefono: '',
-  fuente: 'IA_FALLO',
+  fuente: 'WHATSAPP',
   cabina: 'cabina1',
   fecha: todayISODate(),
   procedimientos: [{ procedure_id: null, nombre_libre: '', cantidad: 1, precio: 0 }],
@@ -10168,7 +10097,7 @@ const walkInBalance = computed(() => walkInTotalProc.value - walkInTotalPagos.va
 const openWalkInDialog = () => {
   walkInData.value = {
     nombre: '', dni: '', telefono: '',
-    fuente: 'IA_FALLO',
+    fuente: 'WHATSAPP',
     cabina: 'cabina1',
     fecha: todayISODate(),
     procedimientos: [{ procedure_id: null, nombre_libre: '', cantidad: 1, precio: 0 }],
@@ -10189,26 +10118,54 @@ const saveWalkIn = async () => {
   try {
     const audit = useHealupAudit()
 
-    // 1. Crear cita en healup_calendar_events
+    // Resolver tabla y red social según fuente elegida
+    const fuenteCfg = WALKIN_FUENTES.find(f => f.value === wd.fuente)
+    const tablaPaciente = fuenteCfg?.tabla === 'fbig'
+      ? 'PacientesBDfbigHEALUP'
+      : 'PacientesBDwppHEALUP'
+    const redSocial = fuenteCfg?.red || 'whatsapp'
+
+    // 1. Crear paciente en la tabla de redes correspondiente (fuente de verdad)
     const procPrincipal = wd.procedimientos[0]
-    const subject = procPrincipal.nombre_libre || 'Walk-in'
     const totalPagado = walkInTotalPagos.value
     const metodoPrincipal = wd.pagos[0]?.metodo || ''
+    const procFromCat = procedures.value.find((p: any) => Number(p.id) === Number(procPrincipal.procedure_id))
+    const pacientePayload: any = {
+      nombre:               wd.nombre,
+      dni:                  wd.dni || null,
+      numero:               wd.telefono || null,
+      red_social:           redSocial,
+      fecha_agendamiento:   wd.fecha,
+      precio:               totalPagado || 0,
+      precio_tratamiento:   walkInBalance.value > 0 ? walkInBalance.value : 0,
+      metodo_de_pago:       metodoPrincipal || null,
+      procedimiento:        procPrincipal.nombre_libre || procFromCat?.name || null,
+      procedure_id:         procPrincipal.procedure_id ? String(procPrincipal.procedure_id) : null,
+      booking_sku:          procFromCat?.sku || null,
+      cabina:               wd.cabina
+    }
+    const { data: pacienteCreated, error: pacienteErr } = await (client.from(tablaPaciente) as any)
+      .insert(pacientePayload).select().single()
+    if (pacienteErr) throw pacienteErr
+    const pacienteId = (pacienteCreated as any)?.id
+
+    // 2. Crear cita en healup_calendar_events (referencial)
+    const subject = procPrincipal.nombre_libre || procFromCat?.name || 'Walk-in'
     const citaPayload: any = {
       date: wd.fecha,
       time: '00:00',
       subject,
-      description: `Walk-in (${wd.fuente})`,
+      description: `Walk-in registrado vía dashboard (${wd.fuente})`,
       procedure_id: procPrincipal.procedure_id ? String(procPrincipal.procedure_id) : null,
       client_name: wd.nombre,
       client_dni: wd.dni || '',
       client_phone: wd.telefono || '',
+      client_email: '',
       cabina: wd.cabina,
       metodo_reserva: metodoPrincipal || null,
       monto_reserva: totalPagado || null,
       estado: 'FINALIZADA',
       cobro_completado: walkInBalance.value <= 0.01,
-      // Marca "agendado_por" — la columna se crea on-demand abajo si no existe
       agendado_por: 'WALK_IN'
     }
 
@@ -10268,15 +10225,19 @@ const saveWalkIn = async () => {
     // 4. Audit log
     await audit.log({
       entidad: 'walk_in',
-      entidad_id: citaId,
+      entidad_id: pacienteId,
       accion: 'create',
-      valor_despues: { nombre: wd.nombre, dni: wd.dni, fuente: wd.fuente, total_proc: walkInTotalProc.value, total_pago: walkInTotalPagos.value },
-      notas: `Walk-in registrado vía dashboard (${wd.fuente})`
+      valor_despues: {
+        paciente_id: pacienteId, cita_id: citaId, tabla: tablaPaciente,
+        nombre: wd.nombre, dni: wd.dni, fuente: wd.fuente,
+        total_proc: walkInTotalProc.value, total_pago: walkInTotalPagos.value
+      },
+      notas: `Walk-in registrado en ${tablaPaciente} (fuente: ${wd.fuente})`
     })
 
-    alert(`✅ Paciente walk-in registrado correctamente.\nCita ID: ${citaId}\nProcedimientos: ${wd.procedimientos.length}\nPagos: ${wd.pagos.length}`)
+    alert(`✅ Paciente walk-in registrado correctamente.\nFuente: ${wd.fuente}\nTabla: ${tablaPaciente}\nPaciente ID: ${pacienteId}\nProcedimientos: ${wd.procedimientos.length}\nPagos: ${wd.pagos.length}`)
     closeWalkInDialog()
-    await fetchEvents()
+    await Promise.all([fetchEvents(), fetchPacientesWpp(), fetchPacientesFbIg()])
   } catch (err: any) {
     console.error('Error walk-in:', err)
     alert(`Error al registrar walk-in:\n${err?.message || err}`)

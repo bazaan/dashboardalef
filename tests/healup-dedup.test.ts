@@ -30,14 +30,7 @@ const dedupKeyForAgendado = (row: any): string => {
   return 'name:' + name
 }
 
-const eventoEsPacienteReal = (e: any): boolean => {
-  const nombre = String(e.clientName || e.client_name || '').trim()
-  const dni    = String(e.clientDNI  || e.client_dni  || '').trim()
-  const tel    = String(e.clientPhone|| e.client_phone|| '').trim()
-  return !!(nombre || dni || tel)
-}
-
-// Builders simplificados (sólo los campos que usa la dedup)
+// Builder simplificado (sólo los campos que usa la dedup)
 const buildPacienteRow = (p: any): any => {
   const isEnc = isEncrypted(p.numero)
   const telCrudo = isEnc ? '' : (p.numero ? String(p.numero) : '')
@@ -49,18 +42,12 @@ const buildPacienteRow = (p: any): any => {
     email: p.email || ''
   }
 }
-const buildRowFromCalendarEvent = (e: any): any => {
-  const tel = e.clientPhone ? normalizePhone(String(e.clientPhone).replace(/[^\d]/g, '')) : ''
-  return {
-    dni: e.clientDNI || '',
-    nombre: `${e.clientName || ''} ${e.clientSurname || ''}`.trim() || '—',
-    telefono: tel || '—',
-    email: e.clientEmail || ''
-  }
-}
 
-// Función pura idéntica a la del componente
-function buildPacientesAgendadosBase(monthYYYYMM: string, sources: { wpp: any[]; fbig: any[]; events: any[] }): any[] {
+// Función pura idéntica a la del componente: solo cuenta WPP+FBIG.
+// Los eventos del calendario NO son fuente de pacientes (la clínica
+// vende solo por redes sociales — los eventos sin paciente real son
+// bloqueos / reuniones / pruebas y se ignoran).
+function buildPacientesAgendadosBase(monthYYYYMM: string, sources: { wpp: any[]; fbig: any[] }): any[] {
   if (!monthYYYYMM) return []
   const wppBuilt = sources.wpp
     .filter((p: any) => p.fecha_agendamiento?.startsWith(monthYYYYMM))
@@ -80,88 +67,44 @@ function buildPacientesAgendadosBase(monthYYYYMM: string, sources: { wpp: any[];
     const k = dedupKeyForAgendado(r)
     if (!claves.has(k)) { claves.add(k); fbig.push(r) }
   }
-  const calendario: any[] = []
-  for (const e of sources.events) {
-    if (!String(e.date || '').startsWith(monthYYYYMM)) continue
-    if (!eventoEsPacienteReal(e)) continue
-    const r = buildRowFromCalendarEvent(e)
-    const k = dedupKeyForAgendado(r)
-    if (claves.has(k)) continue
-    claves.add(k)
-    calendario.push(r)
-  }
-  return [...wpp, ...fbig, ...calendario]
+  return [...wpp, ...fbig]
 }
 
 // ─── Tests ────────────────────────────────────────────────
 
-describe('Bug 56 vs 15: dedup entre 3 fuentes', () => {
-  it('una persona en las 3 tablas con DNI consistente cuenta 1', () => {
+describe('Bug 56 vs 15: SOLO contamos pacientes en redes (WPP+FBIG)', () => {
+  it('una persona en WPP y en FBIG con DNI consistente cuenta 1', () => {
     const sources = {
       wpp:    [{ dni: '12345678', nombre: 'Ana Perez', numero: '999111222', fecha_agendamiento: '2026-05-01' }],
-      fbig:   [{ dni: '12345678', nombre: 'Ana Perez', numero: '999111222', fecha_agendamiento: '2026-05-02' }],
-      events: [{ clientDNI: '12345678', clientName: 'Ana', clientSurname: 'Perez', clientPhone: '999111222', date: '2026-05-03' }]
+      fbig:   [{ dni: '12345678', nombre: 'Ana Perez', numero: '999111222', fecha_agendamiento: '2026-05-02' }]
     }
     expect(buildPacientesAgendadosBase('2026-05', sources).length).toBe(1)
   })
 
-  it('mismo paciente con telefono +51 en WPP y sin 51 en calendar → 1', () => {
+  it('eventos del calendario NO se cuentan (la clínica solo vende por redes)', () => {
+    // Las funciones reales reciben { wpp, fbig } solamente.
+    // Eventos del calendario sin contraparte en redes son bloqueos /
+    // pruebas / data antigua y NO son pacientes reales.
     const sources = {
-      wpp:    [{ nombre: 'Lorena Manco', numero: '51999111222', fecha_agendamiento: '2026-05-01' }],
-      fbig:   [],
-      events: [{ clientName: 'Lorena Manco', clientPhone: '999111222', date: '2026-05-03' }]
-    }
-    expect(buildPacientesAgendadosBase('2026-05', sources).length).toBe(1)
-  })
-
-  it('paciente WPP con telefono encriptado base64 → cae a name dedup', () => {
-    const sources = {
-      wpp:    [{ nombre: 'Jessica Camacho', numero: 'u5Bkps+uBQhtO+xuEE9b81yi1A==', fecha_agendamiento: '2026-05-01' }],
-      fbig:   [],
-      events: [{ clientName: 'Jessica', clientSurname: 'Camacho', date: '2026-05-03' }]
-    }
-    // Ambos sin DNI ni tel real → matchean por nombre completo
-    expect(buildPacientesAgendadosBase('2026-05', sources).length).toBe(1)
-  })
-
-  it('eventos sin nombre/dni/tel (bloqueos) NO suman al conteo', () => {
-    const sources = {
-      wpp:    [{ nombre: 'Real', dni: '11111111', fecha_agendamiento: '2026-05-01' }],
-      fbig:   [],
-      events: [
-        { subject: 'BLOQUEO',   date: '2026-05-02' },                  // sin paciente
-        { subject: 'Reunion',   date: '2026-05-03' },                  // sin paciente
-        { clientName: 'Otro',   date: '2026-05-04' }                   // este SÍ cuenta
-      ]
+      wpp:    [{ dni: '111', nombre: 'Real WPP', fecha_agendamiento: '2026-05-01' }],
+      fbig:   [{ dni: '222', nombre: 'Real IG',  fecha_agendamiento: '2026-05-02' }]
     }
     expect(buildPacientesAgendadosBase('2026-05', sources).length).toBe(2)
   })
 
-  it('escenario reportado por usuario: 56 inflado → 15 reales', () => {
-    // Simulación: 15 pacientes únicos repartidos entre WPP+FBIG+calendar
-    // pero 41 entradas duplicadas entre fuentes deberían colapsar.
+  it('escenario reportado: 56 inflado → 15 reales', () => {
+    // 15 pacientes únicos en redes; el calendar tenía bloqueos y registros
+    // viejos que inflaban la cuenta. Con la nueva lógica solo cuentan WPP+FBIG.
     const pacientes = Array.from({ length: 15 }, (_, i) => ({
       dni: `1000000${i.toString().padStart(2, '0')}`,
       nombre: `Paciente ${i + 1}`,
       numero: `99000000${i}`,
+      fecha_agendamiento: '2026-05-01'
     }))
     const sources = {
-      // WPP: 15 pacientes
-      wpp: pacientes.map(p => ({ ...p, fecha_agendamiento: '2026-05-01' })),
-      // FBIG: los mismos 15 duplicados (con red social)
-      fbig: pacientes.map(p => ({ ...p, fecha_agendamiento: '2026-05-02', red_social: 'instagram.com/' + p.nombre.toLowerCase() })),
-      // Calendar: los mismos 15 con cita explícita + 26 bloqueos sin paciente
-      events: [
-        ...pacientes.map(p => ({
-          clientDNI: p.dni, clientName: p.nombre.split(' ')[0],
-          clientSurname: p.nombre.split(' ')[1], clientPhone: p.numero,
-          date: '2026-05-03'
-        })),
-        ...Array.from({ length: 26 }, (_, i) => ({ subject: `BLOQUEO ${i}`, date: '2026-05-04' }))
-      ]
+      wpp: pacientes,
+      fbig: pacientes.map(p => ({ ...p, red_social: 'instagram.com/' + p.nombre.toLowerCase() }))
     }
-    // Sin la fix: 15 (WPP) + 15 (FBIG) + 15 (calendar con datos) + 26 (bloqueos) = 71 → fallaba
-    // Con eventoEsPacienteReal y dedup en cascada: solo 15 únicos
     expect(buildPacientesAgendadosBase('2026-05', sources).length).toBe(15)
   })
 
@@ -169,12 +112,10 @@ describe('Bug 56 vs 15: dedup entre 3 fuentes', () => {
     const sources = {
       wpp: [
         { nombre: 'Paola Bermudez', fecha_agendamiento: '2026-05-01' },
-        { nombre: 'Paola Bermudez', fecha_agendamiento: '2026-05-02' },  // sin datos diferenciadores
+        { nombre: 'Paola Bermudez', fecha_agendamiento: '2026-05-02' },
       ],
-      fbig: [],
-      events: []
+      fbig: []
     }
-    // Ambas filas tienen la misma key 'name:paola bermudez' → se deduplican
     expect(buildPacientesAgendadosBase('2026-05', sources).length).toBe(1)
   })
 
@@ -185,8 +126,7 @@ describe('Bug 56 vs 15: dedup entre 3 fuentes', () => {
         { dni: '22', nombre: 'B', fecha_agendamiento: '2026-05-10' },
         { dni: '33', nombre: 'C', fecha_agendamiento: '2026-06-01' },
       ],
-      fbig: [],
-      events: []
+      fbig: []
     }
     expect(buildPacientesAgendadosBase('2026-04', sources).length).toBe(1)
     expect(buildPacientesAgendadosBase('2026-05', sources).length).toBe(1)
@@ -194,24 +134,8 @@ describe('Bug 56 vs 15: dedup entre 3 fuentes', () => {
   })
 
   it('mes vacío devuelve 0', () => {
-    expect(buildPacientesAgendadosBase('2026-05', { wpp: [], fbig: [], events: [] }).length).toBe(0)
-    expect(buildPacientesAgendadosBase('', { wpp: [], fbig: [], events: [] }).length).toBe(0)
-  })
-})
-
-describe('eventoEsPacienteReal', () => {
-  it('evento sólo con subject (bloqueo) → false', () => {
-    expect(eventoEsPacienteReal({ subject: 'BLOQUEO' })).toBe(false)
-    expect(eventoEsPacienteReal({ subject: 'Reunion equipo' })).toBe(false)
-  })
-  it('evento con clientName → true', () => {
-    expect(eventoEsPacienteReal({ clientName: 'Ana' })).toBe(true)
-  })
-  it('evento con sólo client_phone (snake_case) → true', () => {
-    expect(eventoEsPacienteReal({ client_phone: '999111222' })).toBe(true)
-  })
-  it('evento con strings vacíos → false', () => {
-    expect(eventoEsPacienteReal({ clientName: '', clientDNI: '', clientPhone: '' })).toBe(false)
+    expect(buildPacientesAgendadosBase('2026-05', { wpp: [], fbig: [] }).length).toBe(0)
+    expect(buildPacientesAgendadosBase('', { wpp: [], fbig: [] }).length).toBe(0)
   })
 })
 

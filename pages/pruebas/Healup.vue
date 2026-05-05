@@ -440,20 +440,38 @@
             </div>
           </div>
 
+          <!-- 2.5 Filtros: chips de mes (default mes actual) + chip "Todos" -->
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 6px 0 12px;">
+            <v-icon icon="mdi-calendar-month" size="14" style="opacity:0.5;" />
+            <v-chip
+              :color="pacienteMesFiltro === '' ? 'primary' : 'default'"
+              :variant="pacienteMesFiltro === '' ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="pacienteMesFiltro = ''"
+            >Todos</v-chip>
+            <v-chip
+              v-for="m in pacienteMesesDisponibles" :key="m.value"
+              :color="pacienteMesFiltro === m.value ? 'primary' : 'default'"
+              :variant="pacienteMesFiltro === m.value ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="pacienteMesFiltro = pacienteMesFiltro === m.value ? '' : m.value"
+            >{{ m.label }}</v-chip>
+          </div>
+
           <div class="table-section">
             <!-- Table 1: WhatsApp -->
             <v-card flat class="custom-data-table" style="margin-bottom: 2rem;">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de pacientes whatsapp</span>
+                <span class="table-title">Lista de pacientes whatsapp ({{ pacientesWppFiltrados.length }})</span>
                 <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesWpp, headersPacientesWpp, 'healup-pacientes-wpp')">
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesWppFiltrados, headersPacientesWpp, 'healup-pacientes-wpp')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
                 <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
                   density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersPacientesWpp" :items="pacientesWpp" :search="search" :loading="loading"
+              <v-data-table :headers="headersPacientesWpp" :items="pacientesWppFiltrados" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de WhatsApp">
                 <template v-slot:item.booking_sku="{ item }">
                   <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
@@ -519,14 +537,14 @@
             <!-- Table 2: Facebook e Instagram -->
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de pacientes Facebook e Instagram</span>
+                <span class="table-title">Lista de pacientes Facebook e Instagram ({{ pacientesFbIgFiltrados.length }})</span>
                 <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(pacientesFbIg, headersPacientesFbIg, 'healup-pacientes-fbig')">
+                <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(pacientesFbIgFiltrados, headersPacientesFbIg, 'healup-pacientes-fbig')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
               </v-card-title>
-              <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIg" :search="search" :loading="loading"
+              <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIgFiltrados" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de FB/IG">
                 <template v-slot:item.booking_sku="{ item }">
                   <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
@@ -6068,6 +6086,32 @@ const parseCurrency = (val: string | number) => {
 
 // Computeds para Facturación (Basado en Pacientes)
 const allPacientes = computed(() => [...pacientesWpp.value, ...pacientesFbIg.value])
+
+// 2.5 Filtros de la vista Pacientes (mes seleccionado, default actual)
+const pacienteMesFiltro = ref<string>(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+
+const pacienteMesesDisponibles = computed(() => {
+  const set = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
+    const fa = p.fecha_agendamiento
+    if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
+  })
+  const now = new Date()
+  set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+  return [...set].sort((a, b) => b.localeCompare(a)).map(value => {
+    const [y, m] = value.split('-')
+    return { value, label: `${NOMBRES_MESES_LABEL[parseInt(m) - 1]} ${y}` }
+  })
+})
+
+const pacientesWppFiltrados = computed(() => {
+  if (!pacienteMesFiltro.value) return pacientesWpp.value
+  return pacientesWpp.value.filter((p: any) => p.fecha_agendamiento?.startsWith(pacienteMesFiltro.value))
+})
+const pacientesFbIgFiltrados = computed(() => {
+  if (!pacienteMesFiltro.value) return pacientesFbIg.value
+  return pacientesFbIg.value.filter((p: any) => p.fecha_agendamiento?.startsWith(pacienteMesFiltro.value))
+})
 
 const pacientesMesActual = computed(() => {
   const now = new Date()

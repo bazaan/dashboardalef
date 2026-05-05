@@ -6657,19 +6657,33 @@ const dedupKeyForAgendado = (row: any): string => {
   return 'name:' + name
 }
 
-// Convertidos = pacientes en WPP/FBIG con fecha_agendamiento en el mes
-//   + citas del calendario en el mes que NO tienen match con esos pacientes.
+// Filtra eventos del calendario que SÍ representan un paciente real
+// (excluye bloqueos, eventos sin datos del paciente).
+const eventoEsPacienteReal = (e: any): boolean => {
+  const nombre = String(e.clientName || e.client_name || '').trim()
+  const dni    = String(e.clientDNI  || e.client_dni  || '').trim()
+  const tel    = String(e.clientPhone|| e.client_phone|| '').trim()
+  return !!(nombre || dni || tel)
+}
+
+// Pacientes únicos agendados en un mes dado, deduplicados entre WPP, FBIG
+// y healup_calendar_events (clave: DNI → tel norm. → email → nombre).
+function pacientesUnicosAgendados(monthYYYYMM: string): number {
+  const claves = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(monthYYYYMM))
+    .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
+  events.value
+    .filter((e: any) => String(e.date || '').startsWith(monthYYYYMM) && eventoEsPacienteReal(e))
+    .forEach((e: any) => claves.add(dedupKeyForAgendado(e)))
+  return claves.size
+}
+
+// Stat card "Pacientes este mes" — usa la misma lógica que la lista del dialog.
 const hotLeadsConvertedCount = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const claves = new Set<string>()
-  ;[...pacientesWpp.value, ...pacientesFbIg.value]
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(thisMonth))
-    .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
-  events.value
-    .filter((e: any) => String(e.date || '').startsWith(thisMonth))
-    .forEach((e: any) => claves.add(dedupKeyForAgendado(e)))
-  return claves.size
+  return pacientesUnicosAgendados(thisMonth)
 })
 
 // ── Detalle de pacientes agendados (drill-down con navegación por mes) ──
@@ -6961,19 +6975,37 @@ const pacientesAgendadosMes = computed(() => {
     }
   }
 
-  const wpp = pacientesWpp.value
+  const wppRaw = pacientesWpp.value
     .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'wpp'))
-  const fbig = pacientesFbIg.value
+  const fbigRaw = pacientesFbIg.value
     .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'fbig'))
 
+  // Dedup entre WPP y FBIG (mismo paciente registrado en ambas tablas)
+  const claves = new Set<string>()
+  const wpp: any[] = []
+  for (const r of wppRaw) {
+    const k = dedupKeyForAgendado(r)
+    if (!claves.has(k)) { claves.add(k); wpp.push(r) }
+  }
+  const fbig: any[] = []
+  for (const r of fbigRaw) {
+    const k = dedupKeyForAgendado(r)
+    if (!claves.has(k)) { claves.add(k); fbig.push(r) }
+  }
+
   // Citas del calendario en el mes que NO tienen contraparte en WPP/FBIG
-  const claves = new Set<string>([...wpp, ...fbig].map(dedupKeyForAgendado))
+  // (excluye bloqueos / eventos sin datos del paciente)
   const calendario = events.value
-    .filter((e: any) => String(e.date || '').startsWith(targetMonth))
+    .filter((e: any) => String(e.date || '').startsWith(targetMonth) && eventoEsPacienteReal(e))
     .map(buildRowFromEvent)
-    .filter((r: any) => !claves.has(dedupKeyForAgendado(r)))
+    .filter((r: any) => {
+      const k = dedupKeyForAgendado(r)
+      if (claves.has(k)) return false
+      claves.add(k)
+      return true
+    })
 
   let filas = [...wpp, ...fbig, ...calendario]
 

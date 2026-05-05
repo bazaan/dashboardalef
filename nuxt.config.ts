@@ -66,7 +66,8 @@ export default defineNuxtConfig({
     redirect: false,
     // Forzamos las credenciales aquí si el .env falla
     url: process.env.SUPABASE_URL,
-    key: process.env.SUPABASE_KEY
+    key: process.env.SUPABASE_KEY,
+    serviceKey: process.env.NUXT_SUPABASE_SECRET_KEY
   },
 
 

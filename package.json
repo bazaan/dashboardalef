@@ -5,6 +5,16 @@
   "engines": {
     "node": ">=18.x"
   },
+  "imports": {
+    "#internal/nuxt/paths": {
+      "import": "./node_modules/@nuxt/nitro-server/dist/runtime/utils/paths.mjs",
+      "require": "./node_modules/@nuxt/nitro-server/dist/runtime/utils/paths.mjs"
+    },
+    "#app-manifest": {
+      "import": "./.nuxt/manifest/latest.json",
+      "require": "./.nuxt/manifest/latest.json"
+    }
+  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -24,6 +34,10 @@
   "dependencies": {
     "@mdi/font": "^7.4.47",
     "@nuxtjs/supabase": "^2.0.3",
+    "@oxc-minify/binding-darwin-x64": "^0.117.0",
+    "@oxc-parser/binding-darwin-x64": "^0.117.0",
+    "@oxc-resolver/binding-darwin-x64": "^11.19.1",
+    "@oxc-transform/binding-darwin-x64": "^0.117.0",
     "@types/bcryptjs": "^2.4.6",
     "apexcharts": "^5.3.5",
     "axios": "^1.13.2",

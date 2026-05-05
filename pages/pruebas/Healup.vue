@@ -887,6 +887,39 @@
             </div>
           </div>
 
+          <!-- Filtros: chips de categoría + chips de método de pago -->
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 6px 0 8px;">
+            <v-icon icon="mdi-tag" size="14" style="opacity:0.5;" />
+            <v-chip
+              :color="egresoCatFiltro === '' ? 'grey-darken-2' : 'default'"
+              :variant="egresoCatFiltro === '' ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="egresoCatFiltro = ''"
+            >Todas categorías</v-chip>
+            <v-chip
+              v-for="c in EGRESO_CATEGORIAS" :key="c.value"
+              :color="egresoCatFiltro === c.value ? c.color : 'default'"
+              :variant="egresoCatFiltro === c.value ? 'flat' : 'outlined'"
+              size="x-small" :prepend-icon="c.icon" style="cursor:pointer;"
+              @click="egresoCatFiltro = egresoCatFiltro === c.value ? '' : c.value"
+            >{{ c.value }}</v-chip>
+            <span style="opacity:0.3; padding: 0 4px;">·</span>
+            <v-icon icon="mdi-cash-multiple" size="14" style="opacity:0.5;" />
+            <v-chip
+              :color="egresoMetodoFiltro === '' ? 'grey-darken-2' : 'default'"
+              :variant="egresoMetodoFiltro === '' ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="egresoMetodoFiltro = ''"
+            >Todos métodos</v-chip>
+            <v-chip
+              v-for="m in EGRESO_METODOS" :key="m"
+              :color="egresoMetodoFiltro === m ? 'primary' : 'default'"
+              :variant="egresoMetodoFiltro === m ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="egresoMetodoFiltro = egresoMetodoFiltro === m ? '' : m"
+            >{{ m }}</v-chip>
+          </div>
+
           <div class="table-section">
              <v-card flat class="custom-data-table">
                <v-card-title class="table-search-bar">
@@ -898,14 +931,30 @@
                  </v-btn>
                </v-card-title>
                <v-data-table :headers="egresosHeaders" :items="egresosFiltrados" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados en este mes">
+                 <template v-slot:item.categoria="{ item }">
+                   <v-chip
+                     v-if="item.categoria"
+                     :color="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).color || 'grey'"
+                     :prepend-icon="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).icon || 'mdi-tag'"
+                     size="x-small" variant="tonal" label
+                   >{{ item.categoria }}</v-chip>
+                   <span v-else style="opacity:0.5; font-size:0.75rem;">{{ item.tipo_egreso || '—' }}</span>
+                 </template>
+                 <template v-slot:item.metodo_pago="{ item }">
+                   <v-chip v-if="item.metodo_pago" size="x-small" variant="outlined"
+                     :color="item.metodo_pago === 'EFECTIVO' ? 'success' : 'primary'"
+                     :prepend-icon="item.metodo_pago === 'EFECTIVO' ? 'mdi-cash' : 'mdi-bank-transfer'"
+                   >{{ item.metodo_pago }}</v-chip>
+                   <span v-else style="opacity:0.4;">—</span>
+                 </template>
                  <template v-slot:item.precio="{ item }">
-                   S/ {{ item.precio.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                   S/ {{ Number(item.precio || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                  </template>
                  <template v-slot:item.total="{ item }">
-                   S/ {{ (item.precio * item.cantidad).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                   <strong>S/ {{ ((Number(item.precio) || 0) * (Number(item.cantidad) || 0)).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</strong>
                  </template>
                  <template v-slot:item.created_at="{ item }">
-                   {{ new Date(item.created_at).toLocaleDateString() }}
+                   <span style="font-size:0.78rem;">{{ new Date(item.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) }}</span>
                  </template>
                  <template v-slot:item.actions="{ item }">
                    <button class="icon-btn" @click="openEgresoDialog(item)">
@@ -1933,7 +1982,7 @@
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
 
     <!-- ==========  EGRESOS DIALOG  ========== -->
-    <v-dialog v-model="showEgresoDialog" max-width="500px" persistent>
+    <v-dialog v-model="showEgresoDialog" max-width="640px" persistent>
       <v-card>
         <v-card-title>
           <span>{{ editingEgreso ? 'Editar Egreso' : 'Nuevo Egreso' }}</span>
@@ -1941,17 +1990,83 @@
         </v-card-title>
         <v-card-text>
           <v-form ref="egresoForm">
-            <v-text-field v-model="egresoFormData.tipo_egreso" label="Tipo de Egreso" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
-            <v-text-field v-model="egresoFormData.nombre" label="Nombre/Descripción" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
-            <v-text-field v-model="egresoFormData.fecha" label="Fecha del egreso" type="date" variant="outlined" density="compact" prepend-inner-icon="mdi-calendar" hint="Determina en qué mes aparece este egreso" persistent-hint :rules="[v => !!v || 'Requerido']"></v-text-field>
             <v-row>
-              <v-col cols="6">
-                <v-text-field v-model.number="egresoFormData.precio" label="Precio" type="number" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              <v-col cols="12" sm="6">
+                <v-select v-model="egresoFormData.categoria" :items="EGRESO_CATEGORIAS"
+                  item-title="label" item-value="value" label="Categoría"
+                  variant="outlined" density="compact" prepend-inner-icon="mdi-tag">
+                  <template v-slot:item="{ props, item }">
+                    <v-list-item v-bind="props" :title="item.raw.label">
+                      <template v-slot:prepend>
+                        <v-icon :icon="item.raw.icon" :color="item.raw.color" size="18" class="mr-2" />
+                      </template>
+                    </v-list-item>
+                  </template>
+                </v-select>
               </v-col>
-              <v-col cols="6">
-                <v-text-field v-model.number="egresoFormData.cantidad" label="Cantidad" type="number" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              <v-col cols="12" sm="6">
+                <v-select v-model="egresoFormData.metodo_pago" :items="EGRESO_METODOS"
+                  label="Método de pago" variant="outlined" density="compact"
+                  prepend-inner-icon="mdi-cash-multiple" />
               </v-col>
             </v-row>
+            <v-text-field v-model="egresoFormData.tipo_egreso" label="Tipo de Egreso (texto libre)"
+              variant="outlined" density="compact" hint="Campo legacy — opcional"
+              persistent-hint />
+            <v-text-field v-model="egresoFormData.nombre" label="Nombre/Descripción"
+              variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']" />
+            <v-row>
+              <v-col cols="12" sm="7">
+                <v-text-field v-model="egresoFormData.fecha" label="Fecha del egreso" type="date"
+                  variant="outlined" density="compact" prepend-inner-icon="mdi-calendar"
+                  hint="Determina en qué mes aparece este egreso" persistent-hint
+                  :rules="[v => !!v || 'Requerido']" />
+              </v-col>
+              <v-col cols="12" sm="5">
+                <v-text-field v-model="egresoFormData.referencia" label="Referencia / Voucher"
+                  variant="outlined" density="compact" prepend-inner-icon="mdi-receipt-text"
+                  hint="# transferencia, voucher, nota libre" persistent-hint />
+              </v-col>
+            </v-row>
+
+            <!-- Bloque INSUMOS condicional -->
+            <div v-if="egresoFormData.categoria === 'INSUMOS'"
+              style="background: rgba(236,72,153,0.06); border-radius: 8px; padding: 12px; margin: 8px 0;">
+              <div style="font-size: 0.78rem; color: #ec4899; margin-bottom: 8px; font-weight: 600;">
+                <v-icon icon="mdi-medical-bag" size="14" class="me-1" /> Detalle de insumo
+              </div>
+              <v-text-field v-model="egresoFormData.producto"
+                label="Producto" placeholder="Ej. Toxina Botox 200 UI"
+                variant="outlined" density="compact" />
+              <v-row>
+                <v-col cols="6">
+                  <v-select v-model="egresoFormData.unidad" :items="EGRESO_UNIDADES"
+                    label="Unidad" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field v-model.number="egresoFormData.precio_unitario"
+                    label="Precio unitario" type="number" min="0" step="0.10"
+                    variant="outlined" density="compact"
+                    hint="Si lo llenás, sobreescribe Precio" persistent-hint />
+                </v-col>
+              </v-row>
+            </div>
+
+            <v-row>
+              <v-col cols="6">
+                <v-text-field v-model.number="egresoFormData.precio" label="Precio (S/)"
+                  type="number" min="0" step="0.10" variant="outlined" density="compact"
+                  :rules="[v => v >= 0 || 'Requerido']" />
+              </v-col>
+              <v-col cols="6">
+                <v-text-field v-model.number="egresoFormData.cantidad" label="Cantidad"
+                  type="number" min="1" variant="outlined" density="compact"
+                  :rules="[v => v > 0 || 'Requerido']" />
+              </v-col>
+            </v-row>
+
+            <v-checkbox v-model="egresoFormData.descartado" density="compact" hide-details
+              label="Descartar (no se incluye en reportes — usá esto para movimientos cargados por error)" />
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -9312,6 +9427,20 @@ const isoToInputDate = (iso: string | null | undefined) => {
   if (isNaN(d.getTime())) return todayISODate()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+// ── 2.4 Catálogos de categorías y métodos de pago de egresos ──
+// Las columnas nuevas en egresos_healup son opcionales — los campos
+// legacy (tipo_egreso, precio, cantidad) siguen siendo la fuente principal.
+const EGRESO_CATEGORIAS = [
+  { value: 'INSUMOS',       label: 'Insumos / Productos médicos', icon: 'mdi-medical-bag',     color: 'pink' },
+  { value: 'DELIVERY',      label: 'Delivery / Envíos',           icon: 'mdi-truck',           color: 'blue' },
+  { value: 'MARKETING',     label: 'Marketing (Meta / TikTok)',   icon: 'mdi-bullhorn',        color: 'purple' },
+  { value: 'MANTENIMIENTO', label: 'Mantenimiento / Limpieza',    icon: 'mdi-broom',           color: 'orange' },
+  { value: 'SUELDOS',       label: 'Sueldos / Honorarios',        icon: 'mdi-account-cash',    color: 'teal' },
+  { value: 'OTROS',         label: 'Otros',                       icon: 'mdi-dots-horizontal', color: 'grey' },
+]
+const EGRESO_METODOS = ['EFECTIVO', 'YAPE', 'PLIN', 'TRANSFERENCIA', 'TARJETA_CREDITO', 'QR']
+const EGRESO_UNIDADES = ['UI', 'ML', 'frascos', 'unidad', 'cajas', 'kg']
+
 const egresoFormData = ref({
   id: '',
   tipo_egreso: '',
@@ -9319,21 +9448,46 @@ const egresoFormData = ref({
   precio: 0,
   cantidad: 1,
   fecha: todayISODate(),
+  // Campos nuevos (2.4) — opcionales hasta que se aplique la migración SQL
+  categoria: 'OTROS',
+  metodo_pago: 'EFECTIVO',
+  referencia: '',
+  producto: '',
+  unidad: 'unidad',
+  precio_unitario: 0,
+  descartado: false,
   company_id: 'healup'
 })
+// Filtros UI (chips)
+const egresoCatFiltro = ref<string>('')
+const egresoMetodoFiltro = ref<string>('')
+
 const egresosHeaders = [
-  { title: 'Fecha', key: 'created_at' },
-  { title: 'Tipo', key: 'tipo_egreso' },
-  { title: 'Nombre', key: 'nombre' },
-  { title: 'Precio', key: 'precio' },
-  { title: 'Cantidad', key: 'cantidad' },
-  { title: 'Total', key: 'total' },
-  { title: 'Acciones', key: 'actions', sortable: false }
+  { title: 'Fecha',      key: 'created_at',  width: '105px' },
+  { title: 'Categoría',  key: 'categoria',   width: '160px' },
+  { title: 'Nombre',     key: 'nombre' },
+  { title: 'Método',     key: 'metodo_pago', width: '130px' },
+  { title: 'Precio',     key: 'precio',      width: '90px',  align: 'end' as const },
+  { title: 'Cantidad',   key: 'cantidad',    width: '70px',  align: 'end' as const },
+  { title: 'Total',      key: 'total',       width: '110px', align: 'end' as const },
+  { title: 'Acciones',   key: 'actions',     width: '90px',  sortable: false },
 ]
 
 const fetchEgresos = async () => {
   loadingEgresos.value = true
-  const { data, error } = await (client.from('egresos_healup') as any).select('*').order('created_at', { ascending: false })
+  // Filtra deleted_at NULL si la columna existe; si no, la cláusula es no-op
+  // gracias al fallback automático del SDK.
+  const q = (client.from('egresos_healup') as any).select('*')
+  // Intentamos filtrar deleted_at — si la columna no existe el query devuelve error,
+  // entonces hacemos retry sin filtro.
+  let data: any = null, error: any = null
+  const r1 = await q.is('deleted_at', null).order('created_at', { ascending: false })
+  if (r1.error) {
+    const r2 = await (client.from('egresos_healup') as any).select('*').order('created_at', { ascending: false })
+    data = r2.data; error = r2.error
+  } else {
+    data = r1.data; error = r1.error
+  }
   if (!error && data) {
     egresosList.value = data
   }
@@ -9368,13 +9522,18 @@ const egresosMesLabel = computed(() => {
 })
 
 const egresosFiltrados = computed(() => {
-  if (!egresosMesSel.value) return egresosList.value
   return egresosList.value.filter(e => {
-    if (!e.created_at) return false
-    const d = new Date(e.created_at)
-    if (isNaN(d.getTime())) return false
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    return key === egresosMesSel.value
+    if (e.descartado) return false
+    if (egresosMesSel.value) {
+      if (!e.created_at) return false
+      const d = new Date(e.created_at)
+      if (isNaN(d.getTime())) return false
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (key !== egresosMesSel.value) return false
+    }
+    if (egresoCatFiltro.value && (e.categoria || 'OTROS') !== egresoCatFiltro.value) return false
+    if (egresoMetodoFiltro.value && (e.metodo_pago || '') !== egresoMetodoFiltro.value) return false
+    return true
   })
 })
 
@@ -9387,9 +9546,10 @@ const totalEgresosMesActual = computed(() => {
   const m = now.getMonth()
   const y = now.getFullYear()
   return egresosList.value.filter(e => {
+    if (e.descartado) return false
     const d = new Date(e.created_at)
     return d.getMonth() === m && d.getFullYear() === y
-  }).reduce((sum, e) => sum + (e.precio * e.cantidad), 0)
+  }).reduce((sum, e) => sum + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
 })
 
 const totalEgresosMesPasado = computed(() => {
@@ -9411,10 +9571,31 @@ const gananciaNetaTotal = computed(() => {
 const openEgresoDialog = (item?: any) => {
   if (item && item.id) {
     editingEgreso.value = true
-    egresoFormData.value = { ...item, fecha: isoToInputDate(item.created_at) }
+    egresoFormData.value = {
+      id: item.id,
+      tipo_egreso: item.tipo_egreso || '',
+      nombre: item.nombre || '',
+      precio: Number(item.precio) || 0,
+      cantidad: Number(item.cantidad) || 1,
+      fecha: isoToInputDate(item.created_at),
+      categoria: item.categoria || 'OTROS',
+      metodo_pago: item.metodo_pago || 'EFECTIVO',
+      referencia: item.referencia || '',
+      producto: item.producto || '',
+      unidad: item.unidad || 'unidad',
+      precio_unitario: Number(item.precio_unitario) || 0,
+      descartado: !!item.descartado,
+      company_id: 'healup'
+    }
   } else {
     editingEgreso.value = false
-    egresoFormData.value = { id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1, fecha: todayISODate(), company_id: 'healup' }
+    egresoFormData.value = {
+      id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1,
+      fecha: todayISODate(),
+      categoria: 'OTROS', metodo_pago: 'EFECTIVO', referencia: '',
+      producto: '', unidad: 'unidad', precio_unitario: 0, descartado: false,
+      company_id: 'healup'
+    }
   }
   showEgresoDialog.value = true
 }
@@ -9425,32 +9606,70 @@ const closeEgresoDialog = () => {
 
 const saveEgreso = async () => {
   savingEgreso.value = true
-  const fechaIso = egresoFormData.value.fecha
-    ? new Date(`${egresoFormData.value.fecha}T12:00:00`).toISOString()
-    : null
+  const fd = egresoFormData.value
+  const fechaIso = fd.fecha ? new Date(`${fd.fecha}T12:00:00`).toISOString() : null
+  const esInsumo = fd.categoria === 'INSUMOS'
+  // Si llena precio_unitario en INSUMOS, lo usa como `precio` para que el
+  // total y los reportes sigan funcionando con la lógica vieja.
+  const precioFinal = esInsumo && Number(fd.precio_unitario) > 0
+    ? Number(fd.precio_unitario)
+    : Number(fd.precio) || 0
+
+  // Payload base: SIEMPRE incluye los campos legacy (no rompe nada).
   const payload: any = {
-    tipo_egreso: egresoFormData.value.tipo_egreso,
-    nombre: egresoFormData.value.nombre,
-    precio: egresoFormData.value.precio,
-    cantidad: egresoFormData.value.cantidad,
+    tipo_egreso: fd.tipo_egreso || fd.categoria,  // fallback legacy
+    nombre: fd.nombre,
+    precio: precioFinal,
+    cantidad: Number(fd.cantidad) || 1,
     company_id: 'healup'
   }
-  if (fechaIso) payload.created_at = fechaIso
-  if (editingEgreso.value && egresoFormData.value.id) {
-    await (client.from('egresos_healup') as any).update(payload).eq('id', egresoFormData.value.id)
-  } else {
-    await (client.from('egresos_healup') as any).insert(payload)
+  // Campos nuevos (2.4) — solo se incluyen si la migración SQL ya corrió.
+  // Si la columna no existe en BD, el insert los ignora silenciosamente
+  // gracias al SDK de Supabase (PostgREST devuelve error parsing y hacemos retry).
+  const camposNuevos: any = {
+    categoria:       fd.categoria,
+    metodo_pago:     fd.metodo_pago,
+    referencia:      fd.referencia || null,
+    producto:        esInsumo ? (fd.producto || null) : null,
+    unidad:          esInsumo ? (fd.unidad || null)   : null,
+    precio_unitario: esInsumo ? (Number(fd.precio_unitario) || null) : null,
+    descartado:      !!fd.descartado,
   }
+  if (fechaIso) payload.created_at = fechaIso
+
+  const tryWrite = async (extraFields: any) => {
+    const fullPayload = { ...payload, ...extraFields }
+    if (editingEgreso.value && fd.id) {
+      return (client.from('egresos_healup') as any).update(fullPayload).eq('id', fd.id)
+    } else {
+      return (client.from('egresos_healup') as any).insert(fullPayload)
+    }
+  }
+  // Intenta con campos nuevos. Si falla por columnas faltantes, retry sin ellos.
+  let r = await tryWrite(camposNuevos)
+  if (r.error) {
+    console.warn('[egreso] retry sin campos nuevos:', r.error.message)
+    r = await tryWrite({})
+  }
+  if (r.error) {
+    alert(`Error guardando egreso:\n${r.error.message}`)
+  }
+
   savingEgreso.value = false
   closeEgresoDialog()
   fetchEgresos()
 }
 
 const deleteEgreso = async (id: string) => {
-  if (confirm('¿Seguro que deseas eliminar este egreso?')) {
+  if (!confirm('¿Eliminar este egreso?\n\n(Si la migración SQL aplica, será soft-delete con deleted_at; si no, se elimina físicamente.)')) return
+  // Intenta soft-delete. Si la columna no existe, hard-delete.
+  const r1 = await (client.from('egresos_healup') as any)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+  if (r1.error) {
     await (client.from('egresos_healup') as any).delete().eq('id', id)
-    fetchEgresos()
   }
+  fetchEgresos()
 }
 
 // =============================================

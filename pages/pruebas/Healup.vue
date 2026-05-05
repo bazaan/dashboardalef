@@ -701,9 +701,13 @@
                 mes ant: {{ hotLeadsCountPrev }}
               </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" style="cursor: pointer;" @click="openPacientesAgendadosDialog"
+              title="Ver lista detallada de pacientes agendados este mes">
               <div class="stat-value" style="color: #22c55e">{{ hotLeadsConvertedCount }}</div>
-              <div class="stat-title">Pacientes este mes</div>
+              <div class="stat-title">
+                Pacientes este mes
+                <v-icon size="14" icon="mdi-arrow-top-right" style="opacity:0.5; margin-left:2px;" />
+              </div>
               <div class="stat-change up">
                 {{ totalConversionRate.toFixed(1) }}% del total · {{ hotToPatientRate.toFixed(1) }}% de calientes
               </div>
@@ -853,18 +857,51 @@
           </button>
         </header>
 
+        <!-- Viñeta de meses + opción "Todos" -->
+        <div class="content-area" style="padding-top: 0; padding-bottom: 0;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 10px 0;">
+            <v-icon icon="mdi-calendar-month" size="18" style="opacity:0.6;" />
+            <v-chip
+              :color="egresosMesSel === '' ? 'grey-darken-2' : 'default'"
+              :variant="egresosMesSel === '' ? 'flat' : 'outlined'"
+              size="small" style="cursor:pointer;"
+              @click="egresosMesSel = ''"
+            >
+              Todos
+            </v-chip>
+            <v-chip
+              v-for="m in egresosMesesDisponibles" :key="m.value"
+              :color="egresosMesSel === m.value ? 'error' : 'default'"
+              :variant="egresosMesSel === m.value ? 'flat' : 'outlined'"
+              size="small" style="cursor:pointer;"
+              @click="egresosMesSel = m.value"
+            >
+              {{ m.label }}
+            </v-chip>
+          </div>
+        </div>
+
         <div class="content-area">
+          <!-- KPI del mes seleccionado -->
+          <div class="stats-grid mini" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 1rem;">
+            <div class="stat-card" style="background: rgba(239,68,68,0.08);">
+              <div class="stat-title" style="color:#ef4444;">{{ egresosMesSel ? 'Total ' + egresosMesLabel : 'Total Histórico' }}</div>
+              <div class="stat-value" style="color:#ef4444;">S/ {{ egresosFiltradosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-subtitle">{{ egresosFiltrados.length }} movimientos</div>
+            </div>
+          </div>
+
           <div class="table-section">
              <v-card flat class="custom-data-table">
                <v-card-title class="table-search-bar">
-                 <span class="table-title">Lista de Egresos</span>
+                 <span class="table-title">{{ egresosMesSel ? 'Egresos · ' + egresosMesLabel : 'Lista de Egresos (Todos)' }}</span>
                  <v-spacer></v-spacer>
-                 <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(egresosList, egresosHeaders, 'healup-egresos')">
+                 <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(egresosFiltrados, egresosHeaders, `healup-egresos-${egresosMesSel || 'todos'}`)">
                    <v-icon>mdi-file-excel</v-icon>
                    <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                  </v-btn>
                </v-card-title>
-               <v-data-table :headers="egresosHeaders" :items="egresosList" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados">
+               <v-data-table :headers="egresosHeaders" :items="egresosFiltrados" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados en este mes">
                  <template v-slot:item.precio="{ item }">
                    S/ {{ item.precio.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                  </template>
@@ -1364,22 +1401,29 @@
         <header class="top-header">
           <h1>Contador de Procedimientos</h1>
           <div style="display: flex; gap: 10px; align-items: center;">
-            <v-select
-              v-model="contadorMes"
-              :items="mesesDisponibles"
-              item-title="label"
-              item-value="value"
-              density="compact"
-              variant="outlined"
-              style="max-width: 200px;"
-              hide-details
-            />
-            <button class="btn-primary" @click="() => {}">
+            <button class="btn-primary" @click="fetchEvents">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Actualizar</span>
             </button>
           </div>
         </header>
+
+        <!-- Viñeta de meses -->
+        <div class="content-area" style="padding-top: 0; padding-bottom: 0;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 10px 0;">
+            <v-icon icon="mdi-calendar-month" size="18" style="opacity:0.6;" />
+            <v-chip
+              v-for="m in mesesDisponibles" :key="m.value"
+              :color="contadorMes === m.value ? 'primary' : 'default'"
+              :variant="contadorMes === m.value ? 'flat' : 'outlined'"
+              size="small"
+              style="cursor:pointer;"
+              @click="contadorMes = m.value"
+            >
+              {{ m.label }}
+            </v-chip>
+          </div>
+        </div>
 
         <div class="content-area">
           <!-- Resumen total del mes -->
@@ -1903,6 +1947,7 @@
           <v-form ref="egresoForm">
             <v-text-field v-model="egresoFormData.tipo_egreso" label="Tipo de Egreso" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
             <v-text-field v-model="egresoFormData.nombre" label="Nombre/Descripción" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+            <v-text-field v-model="egresoFormData.fecha" label="Fecha del egreso" type="date" variant="outlined" density="compact" prepend-inner-icon="mdi-calendar" hint="Determina en qué mes aparece este egreso" persistent-hint :rules="[v => !!v || 'Requerido']"></v-text-field>
             <v-row>
               <v-col cols="6">
                 <v-text-field v-model.number="egresoFormData.precio" label="Precio" type="number" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
@@ -1952,26 +1997,46 @@
             <v-textarea v-model="eventFormData.description" label="Descripción" variant="outlined" density="compact"
               rows="3"></v-textarea>
 
-            <v-select v-model="eventFormData.procedureId" label="Procedimiento" :items="procedures" item-title="name"
-              item-value="id" variant="outlined" density="compact"
-              :rules="[v => !!v || 'Debe seleccionar un procedimiento']">
+            <v-autocomplete v-model="eventFormData.procedureId" label="Procedimiento (SKU sincronizado con catálogo)"
+              :items="procedures" item-value="id"
+              :item-title="(p: any) => `${p.sku ? '['+p.sku+'] ' : ''}${p.name}${p.grupo ? ' · '+p.grupo : ''}`"
+              variant="outlined" density="compact"
+              :rules="[v => !!v || 'Debe seleccionar un procedimiento']"
+              hint="El SKU del procedimiento queda registrado en la reserva y suma al contador">
               <template v-slot:item="{ props, item }">
-                <v-list-item v-bind="props">
+                <v-list-item v-bind="props" :title="item.raw.name" :subtitle="item.raw.grupo || ''">
                   <template v-slot:prepend>
                     <div class="color-preview mr-2" :style="{ backgroundColor: item.raw.color }"></div>
+                  </template>
+                  <template v-slot:append>
+                    <v-chip v-if="item.raw.sku" size="x-small" color="primary" variant="tonal" label>{{ item.raw.sku }}</v-chip>
                   </template>
                 </v-list-item>
               </template>
               <template v-slot:selection="{ item }">
-                <div class="d-flex align-center">
-                  <div class="color-preview mr-2"
-                    :style="{ backgroundColor: item.raw.color, width: '20px', height: '20px' }"></div>
+                <div class="d-flex align-center" style="gap:6px;">
+                  <div class="color-preview"
+                    :style="{ backgroundColor: item.raw.color, width: '18px', height: '18px' }"></div>
+                  <v-chip v-if="item.raw.sku" size="x-small" color="primary" variant="tonal" label>{{ item.raw.sku }}</v-chip>
                   <span>{{ item.raw.name }}</span>
                 </div>
               </template>
-            </v-select>
+            </v-autocomplete>
 
-            <div v-if="eventFormData.procedureId" class="d-flex align-center gap-2 mb-3">
+            <div v-if="eventFormData.procedureId" class="d-flex align-center gap-2 mb-3" style="flex-wrap:wrap;">
+              <v-chip
+                v-if="getProcedureSku(eventFormData.procedureId)"
+                size="small" color="primary" variant="flat" label
+                prepend-icon="mdi-tag-outline"
+              >
+                SKU {{ getProcedureSku(eventFormData.procedureId) }}
+              </v-chip>
+              <v-chip
+                v-if="getProcedureGrupo(eventFormData.procedureId)"
+                size="small" color="grey-darken-2" variant="tonal"
+              >
+                {{ getProcedureGrupo(eventFormData.procedureId) }}
+              </v-chip>
               <v-icon size="16" :color="eventFormData.cabina === 'cabina1' ? 'indigo' : 'teal'"
                 :icon="eventFormData.cabina === 'cabina1' ? 'mdi-doctor' : 'mdi-spa'" />
               <v-chip
@@ -1981,7 +2046,9 @@
               >
                 {{ eventFormData.cabina === 'cabina1' ? 'Cabina 1 — Doctora Valeria' : 'Cabina 2 — Cosmiatra' }}
               </v-chip>
-              <span style="font-size: 11px; opacity: 0.6;">asignado automáticamente</span>
+              <span style="font-size: 11px; opacity: 0.6; flex-basis:100%;">
+                ✓ SKU sincronizado con el catálogo — sumará al Contador de Procedimientos
+              </span>
             </div>
 
             <v-divider class="my-4"></v-divider>
@@ -2098,6 +2165,22 @@
               <div>
                 <div class="detail-label">Razón</div>
                 <div class="detail-value">{{ selectedEvent.eventReason }}</div>
+              </div>
+            </div>
+
+            <div v-if="selectedEvent.procedureId" class="detail-row">
+              <v-icon icon="mdi-tag-outline" class="detail-icon" />
+              <div>
+                <div class="detail-label">Procedimiento (SKU sincronizado)</div>
+                <div class="detail-value d-flex align-center" style="gap:6px; flex-wrap:wrap;">
+                  <v-chip v-if="getProcedureSku(selectedEvent.procedureId)" size="x-small" color="primary" variant="flat" label>
+                    {{ getProcedureSku(selectedEvent.procedureId) }}
+                  </v-chip>
+                  <span>{{ getProcedureName(selectedEvent.procedureId) || '—' }}</span>
+                  <v-chip v-if="getProcedureGrupo(selectedEvent.procedureId)" size="x-small" variant="tonal">
+                    {{ getProcedureGrupo(selectedEvent.procedureId) }}
+                  </v-chip>
+                </div>
               </div>
             </div>
           </div>
@@ -2500,6 +2583,171 @@
           <v-btn color="primary" variant="text" @click="closeMedicalProfileDialog">
             Cerrar
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ==========  PACIENTES AGENDADOS DEL MES (drill-down)  ========== -->
+    <v-dialog v-model="pacientesAgendadosDialog" max-width="1100px" scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center pa-4" style="gap:12px; flex-wrap:wrap;">
+          <v-icon icon="mdi-account-multiple-check" color="success" />
+          <span class="text-h6">Pacientes agendados — {{ pacientesAgendadosMesLabel }}</span>
+          <v-chip color="success" variant="flat" size="small">{{ pacientesAgendadosMes.length }} pacientes</v-chip>
+          <v-chip color="grey-darken-2" variant="tonal" size="small">
+            Reservas: S/ {{ pacientesAgendadosTotalReserva.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+          </v-chip>
+          <v-chip v-if="pacientesAgendadosVerifResumen.verificado > 0" color="success" variant="tonal" size="small" prepend-icon="mdi-shield-check">
+            Verificadas: {{ pacientesAgendadosVerifResumen.verificado }}
+          </v-chip>
+          <v-chip v-if="pacientesAgendadosVerifResumen.discrepancia > 0" color="error" variant="tonal" size="small" prepend-icon="mdi-alert-circle">
+            Discrepancias: {{ pacientesAgendadosVerifResumen.discrepancia }}
+          </v-chip>
+          <v-chip v-if="pacientesAgendadosVerifResumen.sin_boleta > 0" color="grey" variant="tonal" size="small" prepend-icon="mdi-receipt-text-remove">
+            Sin boleta: {{ pacientesAgendadosVerifResumen.sin_boleta }}
+          </v-chip>
+          <v-spacer />
+          <v-btn icon variant="text" size="small" @click="pacientesAgendadosDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+
+        <v-divider />
+
+        <!-- Viñeta de meses (más reciente primero) -->
+        <div class="pa-3" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; background: var(--surface-2, rgba(255,255,255,0.02));">
+          <v-icon icon="mdi-calendar-month" size="18" style="opacity:0.6;" />
+          <v-chip
+            v-for="m in pacientesAgendadosMesesDisponibles" :key="m.value"
+            :color="pacientesAgendadosMesSel === m.value ? 'success' : 'default'"
+            :variant="pacientesAgendadosMesSel === m.value ? 'flat' : 'outlined'"
+            size="small"
+            style="cursor:pointer;"
+            @click="pacientesAgendadosMesSel = m.value"
+          >
+            {{ m.label }}
+          </v-chip>
+        </div>
+
+        <v-divider />
+
+        <!-- Resumen por plataforma -->
+        <div class="pa-4" style="display:flex; gap:8px; flex-wrap:wrap; background: var(--surface-2, rgba(255,255,255,0.02));">
+          <v-chip v-for="(count, label) in pacientesAgendadosResumen" :key="label"
+            size="small" variant="tonal"
+            :color="label === 'TikTok' ? 'deep-purple' : label === 'WhatsApp' ? 'green' : label === 'Instagram' ? 'pink' : 'blue'">
+            <v-icon start size="14"
+              :icon="label === 'TikTok' ? 'mdi-music-note' : label === 'WhatsApp' ? 'mdi-whatsapp' : label === 'Instagram' ? 'mdi-instagram' : 'mdi-facebook'" />
+            {{ label }}: {{ count }}
+          </v-chip>
+          <v-spacer />
+          <v-text-field v-model="pacientesAgendadosSearch" prepend-inner-icon="mdi-magnify"
+            label="Buscar" hide-details density="compact" variant="outlined" style="max-width:240px;" />
+        </div>
+
+        <v-card-text class="pa-0" style="max-height: 65vh;">
+          <v-data-table
+            :headers="pacientesAgendadosHeaders"
+            :items="pacientesAgendadosMes"
+            :search="pacientesAgendadosSearch"
+            :items-per-page="50"
+            class="elevation-0"
+            no-data-text="Aún no hay pacientes agendados este mes"
+          >
+            <template v-slot:item.fuente_label="{ item }">
+              <v-chip :color="item.fuente_color" size="small" variant="tonal" :prepend-icon="item.fuente_icon">
+                {{ item.fuente_label }}
+              </v-chip>
+            </template>
+            <template v-slot:item.procedure_sku="{ item }">
+              <div v-if="item.procedure_sku" style="display:flex; flex-direction:column; gap:2px;">
+                <v-chip color="primary" size="x-small" variant="flat" label
+                  :title="item.procedure_grupo ? `Grupo: ${item.procedure_grupo}` : ''">
+                  {{ item.procedure_sku }}
+                </v-chip>
+                <span v-if="item.booking_sku" style="font-size:0.65rem; opacity:0.55; font-family: monospace;"
+                  :title="`Reserva única: ${item.booking_sku}`">
+                  {{ item.booking_sku }}
+                </span>
+              </div>
+              <div v-else>
+                <v-chip color="grey" size="x-small" variant="tonal" label>sin SKU</v-chip>
+                <div v-if="item.booking_sku" style="font-size:0.65rem; opacity:0.55; font-family: monospace; margin-top:2px;">
+                  {{ item.booking_sku }}
+                </div>
+              </div>
+            </template>
+            <template v-slot:item.anticipo="{ item }">
+              <span v-if="item.anticipo > 0" style="font-weight:600; color: var(--accent-gold, #daa520);">
+                S/ {{ Number(item.anticipo).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              </span>
+              <span v-else style="opacity:0.4;">—</span>
+            </template>
+            <template v-slot:item.saldo="{ item }">
+              <span v-if="item.saldo > 0" style="color:#ef4444;">
+                S/ {{ Number(item.saldo).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              </span>
+              <span v-else style="opacity:0.4;">—</span>
+            </template>
+            <template v-slot:item.metodo_pago="{ item }">
+              <v-chip
+                :color="getMetodoPagoStyle(item.metodo_pago).color"
+                :prepend-icon="getMetodoPagoStyle(item.metodo_pago).icon"
+                size="x-small" variant="tonal"
+                :title="item.metodo_pago || 'Método no registrado'"
+              >
+                {{ getMetodoPagoStyle(item.metodo_pago).label }}
+              </v-chip>
+            </template>
+            <template v-slot:item.conversation_url="{ item }">
+              <v-btn
+                v-if="item.conversation_url"
+                :href="item.conversation_url"
+                target="_blank" rel="noopener"
+                icon="mdi-message-text-outline"
+                size="small" variant="text" color="primary"
+                :title="`Abrir conversación de ${item.fuente_label} en Chatwoot`"
+              />
+              <span v-else style="opacity:0.4;">—</span>
+            </template>
+            <template v-slot:item.verif_estado="{ item }">
+              <div style="display:flex; flex-direction:column; gap:2px; align-items:flex-start;">
+                <v-chip
+                  :color="getVerifStyle(item.verif_estado).color"
+                  :prepend-icon="getVerifStyle(item.verif_estado).icon"
+                  size="x-small" variant="flat"
+                  :title="item.verif_mensaje"
+                >
+                  {{ getVerifStyle(item.verif_estado).label }}
+                </v-chip>
+                <a
+                  v-if="item.verif_pdf"
+                  :href="item.verif_pdf" target="_blank" rel="noopener"
+                  style="font-size:0.7rem; opacity:0.7; font-family:monospace; text-decoration:none;"
+                  :title="`Boleta · ${item.verif_total ? 'S/ ' + Number(item.verif_total).toFixed(2) : ''}${item.verif_medio_pago ? ' · ' + item.verif_medio_pago : ''}${item.verif_sunat_ok ? ' · SUNAT ✓' : ''}`"
+                >
+                  📄 {{ item.verif_serie }}-{{ item.verif_numero }}
+                </a>
+                <span
+                  v-else-if="item.verif_estado !== 'sin_boleta'"
+                  style="font-size:0.65rem; opacity:0.55;"
+                  :title="item.verif_mensaje"
+                >
+                  {{ item.verif_serie }}-{{ item.verif_numero }}
+                </span>
+              </div>
+            </template>
+          </v-data-table>
+        </v-card-text>
+
+        <v-divider />
+        <v-card-actions class="pa-3">
+          <v-btn variant="text" prepend-icon="mdi-file-excel" color="success"
+            @click="downloadExcel(pacientesAgendadosMes, pacientesAgendadosHeaders, `healup-pacientes-agendados-mes`)">
+            Descargar Excel
+          </v-btn>
+          <v-spacer />
+          <v-btn variant="elevated" color="primary" @click="pacientesAgendadosDialog = false">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -5866,6 +6114,314 @@ const hotLeadsConvertedCount = computed(() => {
   ).length
 })
 
+// ── Detalle de pacientes agendados (drill-down con navegación por mes) ──
+const pacientesAgendadosDialog = ref(false)
+const pacientesAgendadosSearch = ref('')
+const pacientesAgendadosMesSel = ref('') // YYYY-MM seleccionado (vacío = mes actual al abrir)
+
+// Etiquetas de meses (compartido entre dialogs/viñetas; el contador usa el mismo array más abajo)
+const NOMBRES_MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+// Meses disponibles según fecha_agendamiento real de los pacientes (más reciente primero)
+const pacientesAgendadosMesesDisponibles = computed(() => {
+  const set = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
+    const fa = p.fecha_agendamiento
+    if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
+  })
+  // Asegurar mes actual presente aunque esté vacío
+  const now = new Date()
+  set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+  return [...set]
+    .sort((a, b) => b.localeCompare(a))
+    .map(value => {
+      const [y, m] = value.split('-')
+      return { value, label: `${NOMBRES_MESES_LABEL[parseInt(m) - 1]} ${y}` }
+    })
+})
+
+function detectFuentePaciente(p: any, origen: 'wpp' | 'fbig'): { label: string; color: string; icon: string } {
+  if (origen === 'wpp') {
+    // En la tabla WhatsApp: si el número está encriptado o vacío → TikTok; sino → WhatsApp
+    if (!p?.numero || isEncrypted(p.numero)) {
+      return { label: 'TikTok', color: 'deep-purple', icon: 'mdi-music-note' }
+    }
+    return { label: 'WhatsApp', color: 'green', icon: 'mdi-whatsapp' }
+  }
+  // En la tabla FB/IG: distinguir por red_social (default Instagram)
+  const rs = String(p?.red_social || '').toLowerCase()
+  if (rs.includes('facebook') || rs.includes('fb.') || rs.startsWith('fb/') || rs.includes('m.me/')) {
+    return { label: 'Facebook', color: 'blue', icon: 'mdi-facebook' }
+  }
+  return { label: 'Instagram', color: 'pink', icon: 'mdi-instagram' }
+}
+
+// ── Comprobantes PSE de Healup (fuente de verdad: boletas auto-generadas) ──
+const comprobantesPse = ref<any[]>([])
+
+const fetchComprobantesPse = async () => {
+  try {
+    const { data, error } = await (client
+      .from('comprobantes_pse')
+      .select('id, serie, numero, tipo_de_comprobante, fecha_de_emision, cliente_numero_de_documento, cliente_denominacion, total, items, medio_de_pago, enlace, enlace_del_pdf, aceptada_por_sunat') as any)
+      .eq('company_id', 'healup')
+      .order('fecha_de_emision', { ascending: false })
+      .limit(2000)
+    if (error) throw error
+    comprobantesPse.value = data || []
+  } catch (err) {
+    console.error('[Healup] Error cargando comprobantes_pse:', err)
+  }
+}
+
+// Map: dni → array de comprobantes (más reciente primero)
+const comprobantesByDni = computed(() => {
+  const m: Record<string, any[]> = {}
+  comprobantesPse.value.forEach(c => {
+    const dni = String(c.cliente_numero_de_documento || '').trim()
+    if (!dni) return
+    if (!m[dni]) m[dni] = []
+    m[dni].push(c)
+  })
+  return m
+})
+
+// Detecta el SKU del catálogo en los items de un comprobante.
+// Prioridad: 1) items[].codigo coincide con procedures.sku, 2) items[].descripcion ∋ procedures.name
+function detectSkuFromComprobante(comprobante: any): { sku: string; name: string; grupo: string; descripcion: string } | null {
+  const items: any[] = Array.isArray(comprobante?.items) ? comprobante.items : []
+  if (!items.length) return null
+  const procs = procedures.value || []
+  for (const it of items) {
+    const codigo = String(it?.codigo || '').toUpperCase().trim()
+    if (codigo) {
+      const proc = procs.find((p: any) => String(p.sku || '').toUpperCase() === codigo)
+      if (proc) return { sku: proc.sku, name: proc.name, grupo: (proc as any).grupo || '', descripcion: it?.descripcion || '' }
+    }
+  }
+  // Fallback por descripción
+  const desc = items.map((it: any) => String(it?.descripcion || '')).join(' | ').toLowerCase()
+  if (desc) {
+    const sorted = [...procs].sort((a: any, b: any) => (b.name?.length || 0) - (a.name?.length || 0))
+    const proc = sorted.find((p: any) => p.name && desc.includes(String(p.name).toLowerCase()))
+    if (proc) return { sku: (proc as any).sku || '', name: proc.name, grupo: (proc as any).grupo || '', descripcion: items[0]?.descripcion || '' }
+  }
+  // Sin match: igualmente devolver descripcion bruta
+  return { sku: '', name: '', grupo: '', descripcion: items[0]?.descripcion || '' }
+}
+
+// Devuelve la verificación para un paciente:
+// - estado: 'verificado' (boleta presente y SKU coincide), 'discrepancia' (boleta presente pero SKU/monto distinto), 'sin_boleta'
+function buildVerificacionPaciente(p: any, expectedSku: string, expectedAmount: number): any {
+  const dni = String(p?.dni || '').trim()
+  if (!dni) return { estado: 'sin_boleta', mensaje: 'Sin DNI registrado', comprobante: null }
+
+  const comps = comprobantesByDni.value[dni] || []
+  if (!comps.length) return { estado: 'sin_boleta', mensaje: 'Sin boleta emitida', comprobante: null }
+
+  // Intentar elegir el comprobante que mejor matchea el procedimiento
+  let elegido: any = null
+  let elegidoInfo: any = null
+  for (const c of comps) {
+    const info = detectSkuFromComprobante(c)
+    if (!info) continue
+    if (expectedSku && info.sku && info.sku.toUpperCase() === expectedSku.toUpperCase()) {
+      elegido = c; elegidoInfo = info; break
+    }
+    if (!elegido) { elegido = c; elegidoInfo = info } // primer fallback
+  }
+  if (!elegido) elegido = comps[0]
+  if (!elegidoInfo) elegidoInfo = detectSkuFromComprobante(elegido)
+
+  const totalBoleta = Number(elegido?.total || 0)
+  const skuBoleta = elegidoInfo?.sku || ''
+  const skuMatch = expectedSku && skuBoleta && skuBoleta.toUpperCase() === expectedSku.toUpperCase()
+  const amountMatch = expectedAmount > 0 && Math.abs(totalBoleta - expectedAmount) < 0.5
+
+  let estado: 'verificado' | 'discrepancia' | 'parcial' = 'verificado'
+  const issues: string[] = []
+  if (expectedSku && !skuMatch) { issues.push(`SKU BD ${expectedSku} ≠ boleta ${skuBoleta || '?'}`); estado = 'discrepancia' }
+  if (expectedAmount > 0 && !amountMatch) {
+    issues.push(`Importe BD S/${expectedAmount.toFixed(2)} ≠ boleta S/${totalBoleta.toFixed(2)}`)
+    estado = 'discrepancia'
+  }
+  if (!expectedSku || !expectedAmount) { estado = estado === 'verificado' ? 'parcial' : estado }
+
+  return {
+    estado,
+    mensaje: issues.length ? issues.join(' · ') : `Boleta ${elegido.serie}-${elegido.numero} · S/${totalBoleta.toFixed(2)}`,
+    comprobante: {
+      serie: elegido.serie,
+      numero: elegido.numero,
+      total: totalBoleta,
+      fecha: elegido.fecha_de_emision,
+      sku: skuBoleta,
+      descripcion: elegidoInfo?.descripcion || '',
+      medio_de_pago: elegido.medio_de_pago || '',
+      pdf_url: elegido.enlace_del_pdf || elegido.enlace || '',
+      sunat_ok: !!elegido.aceptada_por_sunat,
+    }
+  }
+}
+
+// Resuelve SKU/grupo/nombre del catálogo a partir del procedure_id de un paciente.
+// Si no hay procedure_id (registro viejo), intenta match por nombre del procedimiento.
+function resolveProcedureFromPaciente(p: any): { sku: string; name: string; grupo: string } {
+  if (!procedures.value?.length) return { sku: '', name: p?.procedimiento || '', grupo: '' }
+  // 1. Vía procedure_id (preferido)
+  if (p?.procedure_id) {
+    const proc = procedures.value.find((x: any) => Number(x.id) === Number(p.procedure_id))
+    if (proc) return { sku: proc.sku || '', name: proc.name || '', grupo: (proc as any).grupo || '' }
+  }
+  // 2. Fallback por nombre (procedimiento texto libre vs catálogo)
+  const txt = String(p?.procedimiento || '').toLowerCase().trim()
+  if (txt.length >= 4) {
+    const sorted = [...procedures.value].sort((a: any, b: any) => (b.name?.length || 0) - (a.name?.length || 0))
+    const match = sorted.find((x: any) => x.name && txt.includes(String(x.name).toLowerCase()))
+    if (match) return { sku: match.sku || '', name: match.name || '', grupo: (match as any).grupo || '' }
+  }
+  return { sku: '', name: p?.procedimiento || '', grupo: '' }
+}
+
+const pacientesAgendadosMes = computed(() => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const targetMonth = pacientesAgendadosMesSel.value || thisMonth
+
+  const buildRow = (p: any, origen: 'wpp' | 'fbig') => {
+    const f = detectFuentePaciente(p, origen)
+    const proc = resolveProcedureFromPaciente(p)
+    const anticipo = parseCurrency(p.precio)
+    const saldo = parseCurrency(p.precio_tratamiento)
+    const telCrudo = origen === 'wpp'
+      ? (isEncrypted(p.numero) ? '' : (p.numero ? String(p.numero) : ''))
+      : (p.numero ? String(p.numero) : '')
+    const tel = telCrudo ? normalizePhone(telCrudo) : (origen === 'fbig' ? (p.red_social || '') : '')
+
+    // Deep link a la conversación de Chatwoot (Healup = account 2)
+    const cw = (() => {
+      const base = 'https://chats.alef.company/app/accounts/2'
+      const q = telCrudo || p.red_social || p.instagram_handle || p.nombre || ''
+      if (!q) return ''
+      return `${base}/contacts?search=${encodeURIComponent(String(q).trim())}`
+    })()
+
+    // Verificación contra comprobantes_pse (boletas auto-generadas)
+    const verif = buildVerificacionPaciente(p, proc.sku, anticipo)
+
+    return {
+      id: p.id,
+      dni: p.dni || '',
+      nombre: p.nombre || '—',
+      telefono: tel || '—',
+      procedimiento: proc.name || p.procedimiento || '—',
+      procedure_sku: proc.sku,
+      procedure_grupo: proc.grupo,
+      booking_sku: p.booking_sku || '',
+      anticipo,
+      saldo,
+      total_acordado: anticipo + saldo,
+      metodo_pago: String(p.metodo_de_pago || '').trim(),
+      conversation_url: cw,
+      fecha_agendamiento: p.fecha_agendamiento || '',
+      fuente_label: f.label,
+      fuente_color: f.color,
+      fuente_icon: f.icon,
+      // Verificación con boleta:
+      verif_estado: verif.estado,                       // 'verificado' | 'discrepancia' | 'parcial' | 'sin_boleta'
+      verif_mensaje: verif.mensaje,
+      verif_serie: verif.comprobante?.serie || '',
+      verif_numero: verif.comprobante?.numero || '',
+      verif_total: verif.comprobante?.total || 0,
+      verif_sku: verif.comprobante?.sku || '',
+      verif_pdf: verif.comprobante?.pdf_url || '',
+      verif_medio_pago: verif.comprobante?.medio_de_pago || '',
+      verif_sunat_ok: verif.comprobante?.sunat_ok || false,
+    }
+  }
+
+  const wpp = pacientesWpp.value
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
+    .map((p: any) => buildRow(p, 'wpp'))
+  const fbig = pacientesFbIg.value
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
+    .map((p: any) => buildRow(p, 'fbig'))
+
+  return [...wpp, ...fbig].sort((a, b) =>
+    String(b.fecha_agendamiento).localeCompare(String(a.fecha_agendamiento))
+  )
+})
+
+const pacientesAgendadosResumen = computed(() => {
+  const counts: Record<string, number> = {}
+  pacientesAgendadosMes.value.forEach(p => {
+    counts[p.fuente_label] = (counts[p.fuente_label] || 0) + 1
+  })
+  return counts
+})
+
+const pacientesAgendadosTotalReserva = computed(() =>
+  pacientesAgendadosMes.value.reduce((s, p) => s + (Number(p.anticipo) || 0), 0)
+)
+
+const pacientesAgendadosVerifResumen = computed(() => {
+  const counts = { verificado: 0, discrepancia: 0, parcial: 0, sin_boleta: 0 }
+  pacientesAgendadosMes.value.forEach(p => {
+    counts[p.verif_estado as keyof typeof counts] = (counts[p.verif_estado as keyof typeof counts] || 0) + 1
+  })
+  return counts
+})
+
+const pacientesAgendadosHeaders = [
+  { title: 'Plataforma',       key: 'fuente_label',       sortable: true,  width: '110px' },
+  { title: 'Nombre',           key: 'nombre',             sortable: true                  },
+  { title: 'Teléfono',         key: 'telefono',           sortable: false, width: '110px' },
+  { title: 'Tratamiento',      key: 'procedimiento',      sortable: true                  },
+  { title: 'SKU',              key: 'procedure_sku',      sortable: true,  width: '110px' },
+  { title: 'Pago Reserva',     key: 'anticipo',           sortable: true,  width: '110px', align: 'end' as const },
+  { title: 'Método pago',      key: 'metodo_pago',        sortable: true,  width: '120px' },
+  { title: 'Verificación PSE', key: 'verif_estado',       sortable: true,  width: '210px' },
+  { title: 'Fecha',            key: 'fecha_agendamiento', sortable: true,  width: '110px' },
+  { title: 'Conv.',            key: 'conversation_url',   sortable: false, width: '60px',  align: 'center' as const },
+]
+
+function getVerifStyle(estado: string): { color: string; icon: string; label: string } {
+  if (estado === 'verificado')   return { color: 'success', icon: 'mdi-shield-check',         label: 'Verificada' }
+  if (estado === 'discrepancia') return { color: 'error',   icon: 'mdi-alert-circle',         label: 'Discrepancia' }
+  if (estado === 'parcial')      return { color: 'warning', icon: 'mdi-shield-half-full',     label: 'Parcial' }
+  return                                  { color: 'grey-darken-1', icon: 'mdi-receipt-text-remove', label: 'Sin boleta' }
+}
+
+// Devuelve { color, icon, label } para un método de pago dado.
+function getMetodoPagoStyle(raw: string): { color: string; icon: string; label: string } {
+  const m = String(raw || '').toLowerCase().trim()
+  if (!m) return { color: 'grey', icon: 'mdi-help-circle-outline', label: '—' }
+  if (m.includes('yape'))            return { color: 'purple',     icon: 'mdi-cellphone-wireless', label: 'Yape' }
+  if (m.includes('plin'))            return { color: 'cyan',       icon: 'mdi-cellphone-wireless', label: 'Plin' }
+  if (m.includes('transferencia') || m.includes('transfer'))
+                                     return { color: 'blue',       icon: 'mdi-bank-transfer',      label: raw }
+  if (m.includes('tarjeta') || m.includes('crédito') || m.includes('credito') || m.includes('débito') || m.includes('debito') || m.includes('visa') || m.includes('mastercard'))
+                                     return { color: 'orange',     icon: 'mdi-credit-card-outline', label: raw }
+  if (m.includes('efectivo') || m.includes('cash'))
+                                     return { color: 'green',      icon: 'mdi-cash',                label: raw }
+  if (m.includes('pos') || m.includes('point'))
+                                     return { color: 'deep-orange', icon: 'mdi-point-of-sale',      label: raw }
+  return { color: 'grey-darken-1', icon: 'mdi-cash-multiple', label: raw }
+}
+
+function openPacientesAgendadosDialog() {
+  pacientesAgendadosSearch.value = ''
+  // Default al mes actual cada vez que se abre
+  const now = new Date()
+  pacientesAgendadosMesSel.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  pacientesAgendadosDialog.value = true
+}
+
+const pacientesAgendadosMesLabel = computed(() => {
+  const found = pacientesAgendadosMesesDisponibles.value.find(m => m.value === pacientesAgendadosMesSel.value)
+  return found?.label || pacientesAgendadosMesSel.value
+})
+
 const hotToPatientRate = computed(() => {
   if (hotLeadsCount.value === 0) return 0
   return (hotLeadsConvertedCount.value / hotLeadsCount.value) * 100
@@ -6903,6 +7459,18 @@ function getProcedureColor(procedureId: string): string {
   return procedure ? procedure.color : '#3b82f6' // Default blue if procedure not found
 }
 
+function getProcedureSku(procedureId: string | number | null | undefined): string {
+  if (!procedureId) return ''
+  const procedure = procedures.value.find(p => String(p.id) === String(procedureId))
+  return (procedure as any)?.sku || ''
+}
+
+function getProcedureGrupo(procedureId: string | number | null | undefined): string {
+  if (!procedureId) return ''
+  const procedure = procedures.value.find(p => String(p.id) === String(procedureId))
+  return (procedure as any)?.grupo || ''
+}
+
 /* ---------------- Calendar Supabase ---------------- */
 async function fetchEvents() {
   try {
@@ -7611,7 +8179,7 @@ async function fetchProcedures() {
 // CONTADOR DE PROCEDIMIENTOS
 // ══════════════════════════════════════════════════════════════
 
-const contadorMes = ref('2026-04')
+const contadorMes = ref(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
 const contadorSearch = ref('')
 
 const contadorHeaders = [
@@ -7622,20 +8190,27 @@ const contadorHeaders = [
   { title: 'Ingreso Estimado', key: 'ingreso_estimado', sortable: true },
 ]
 
-const NOMBRES_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-
 const mesesDisponibles = computed(() => {
-  const result = []
+  // 1) Meses con eventos reales en el calendario
+  const set = new Set<string>()
+  events.value.forEach(e => {
+    const d = normalizeDateForCounter(e.date)
+    if (/^\d{4}-\d{2}/.test(d)) set.add(d.slice(0, 7))
+  })
+  // 2) Asegurar al menos desde Ene 2026 hasta el mes actual
   const now = new Date()
   for (let y = 2026; y <= now.getFullYear(); y++) {
     const maxM = (y === now.getFullYear()) ? now.getMonth() + 1 : 12
-    const startM = (y === 2026) ? 1 : 1
-    for (let m = startM; m <= maxM; m++) {
-      const val = `${y}-${String(m).padStart(2, '0')}`
-      result.push({ label: `${NOMBRES_MESES[m-1]} ${y}`, value: val })
+    for (let m = 1; m <= maxM; m++) {
+      set.add(`${y}-${String(m).padStart(2, '0')}`)
     }
   }
-  return result.reverse()
+  return [...set]
+    .sort((a, b) => b.localeCompare(a))
+    .map(value => {
+      const [y, m] = value.split('-')
+      return { value, label: `${NOMBRES_MESES_LABEL[parseInt(m) - 1]} ${y}` }
+    })
 })
 
 const contadorMesLabel = computed(() => {
@@ -8522,12 +9097,23 @@ const loadingEgresos = ref(false)
 const showEgresoDialog = ref(false)
 const editingEgreso = ref(false)
 const savingEgreso = ref(false)
+const todayISODate = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const isoToInputDate = (iso: string | null | undefined) => {
+  if (!iso) return todayISODate()
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return todayISODate()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 const egresoFormData = ref({
   id: '',
   tipo_egreso: '',
   nombre: '',
   precio: 0,
   cantidad: 1,
+  fecha: todayISODate(),
   company_id: 'healup'
 })
 const egresosHeaders = [
@@ -8548,6 +9134,48 @@ const fetchEgresos = async () => {
   }
   loadingEgresos.value = false
 }
+
+// ── Filtro mensual de egresos (viñeta) ───────────────────────────
+const egresosMesSel = ref(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+
+const egresosMesesDisponibles = computed(() => {
+  const set = new Set<string>()
+  egresosList.value.forEach(e => {
+    if (!e.created_at) return
+    const d = new Date(e.created_at)
+    if (isNaN(d.getTime())) return
+    set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  })
+  // Asegurar mes actual presente
+  const now = new Date()
+  set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+  return [...set]
+    .sort((a, b) => b.localeCompare(a))
+    .map(value => {
+      const [y, m] = value.split('-')
+      return { value, label: `${NOMBRES_MESES_LABEL[parseInt(m) - 1]} ${y}` }
+    })
+})
+
+const egresosMesLabel = computed(() => {
+  const found = egresosMesesDisponibles.value.find(m => m.value === egresosMesSel.value)
+  return found?.label || egresosMesSel.value
+})
+
+const egresosFiltrados = computed(() => {
+  if (!egresosMesSel.value) return egresosList.value
+  return egresosList.value.filter(e => {
+    if (!e.created_at) return false
+    const d = new Date(e.created_at)
+    if (isNaN(d.getTime())) return false
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    return key === egresosMesSel.value
+  })
+})
+
+const egresosFiltradosTotal = computed(() =>
+  egresosFiltrados.value.reduce((s, e) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+)
 
 const totalEgresosMesActual = computed(() => {
   const now = new Date()
@@ -8578,10 +9206,10 @@ const gananciaNetaTotal = computed(() => {
 const openEgresoDialog = (item?: any) => {
   if (item && item.id) {
     editingEgreso.value = true
-    egresoFormData.value = { ...item }
+    egresoFormData.value = { ...item, fecha: isoToInputDate(item.created_at) }
   } else {
     editingEgreso.value = false
-    egresoFormData.value = { id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1, company_id: 'healup' }
+    egresoFormData.value = { id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1, fecha: todayISODate(), company_id: 'healup' }
   }
   showEgresoDialog.value = true
 }
@@ -8592,13 +9220,17 @@ const closeEgresoDialog = () => {
 
 const saveEgreso = async () => {
   savingEgreso.value = true
-  const payload = {
+  const fechaIso = egresoFormData.value.fecha
+    ? new Date(`${egresoFormData.value.fecha}T12:00:00`).toISOString()
+    : null
+  const payload: any = {
     tipo_egreso: egresoFormData.value.tipo_egreso,
     nombre: egresoFormData.value.nombre,
     precio: egresoFormData.value.precio,
     cantidad: egresoFormData.value.cantidad,
     company_id: 'healup'
   }
+  if (fechaIso) payload.created_at = fechaIso
   if (editingEgreso.value && egresoFormData.value.id) {
     await (client.from('egresos_healup') as any).update(payload).eq('id', egresoFormData.value.id)
   } else {
@@ -8758,6 +9390,7 @@ onMounted(() => {
   fetchEgresos()
   fetchStockData()
   fetchMetaData()
+  fetchComprobantesPse()
   setupRealtime()
 })
 </script>

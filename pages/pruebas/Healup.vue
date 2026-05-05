@@ -857,37 +857,33 @@
           </button>
         </header>
 
-        <!-- Viñeta de meses + opción "Todos" -->
-        <div class="content-area" style="padding-top: 0; padding-bottom: 0;">
-          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 10px 0;">
-            <v-icon icon="mdi-calendar-month" size="18" style="opacity:0.6;" />
-            <v-chip
-              :color="egresosMesSel === '' ? 'grey-darken-2' : 'default'"
-              :variant="egresosMesSel === '' ? 'flat' : 'outlined'"
-              size="small" style="cursor:pointer;"
-              @click="egresosMesSel = ''"
-            >
-              Todos
-            </v-chip>
-            <v-chip
-              v-for="m in egresosMesesDisponibles" :key="m.value"
-              :color="egresosMesSel === m.value ? 'error' : 'default'"
-              :variant="egresosMesSel === m.value ? 'flat' : 'outlined'"
-              size="small" style="cursor:pointer;"
-              @click="egresosMesSel = m.value"
-            >
-              {{ m.label }}
-            </v-chip>
-          </div>
-        </div>
-
         <div class="content-area">
-          <!-- KPI del mes seleccionado -->
-          <div class="stats-grid mini" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 1rem;">
-            <div class="stat-card" style="background: rgba(239,68,68,0.08);">
-              <div class="stat-title" style="color:#ef4444;">{{ egresosMesSel ? 'Total ' + egresosMesLabel : 'Total Histórico' }}</div>
-              <div class="stat-value" style="color:#ef4444;">S/ {{ egresosFiltradosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
-              <div class="stat-subtitle">{{ egresosFiltrados.length }} movimientos</div>
+          <!-- Viñeta meses + KPI compacto en una sola fila — sin huecos verticales -->
+          <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; padding: 4px 0 12px;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; flex:1; min-width:0;">
+              <v-icon icon="mdi-calendar-month" size="18" style="opacity:0.6;" />
+              <v-chip
+                :color="egresosMesSel === '' ? 'grey-darken-2' : 'default'"
+                :variant="egresosMesSel === '' ? 'flat' : 'outlined'"
+                size="small" style="cursor:pointer;"
+                @click="egresosMesSel = ''"
+              >
+                Todos
+              </v-chip>
+              <v-chip
+                v-for="m in egresosMesesDisponibles" :key="m.value"
+                :color="egresosMesSel === m.value ? 'error' : 'default'"
+                :variant="egresosMesSel === m.value ? 'flat' : 'outlined'"
+                size="small" style="cursor:pointer;"
+                @click="egresosMesSel = m.value"
+              >
+                {{ m.label }}
+              </v-chip>
+            </div>
+            <div class="stat-card" style="background: rgba(239,68,68,0.08); padding: 8px 16px; min-width: 200px; max-width: 260px; flex-shrink:0; margin:0;">
+              <div class="stat-title" style="color:#ef4444; font-size: 0.7rem; margin:0;">{{ egresosMesSel ? 'Total ' + egresosMesLabel : 'Total Histórico' }}</div>
+              <div class="stat-value" style="color:#ef4444; font-size:1.35rem; line-height:1.15; margin:0;">S/ {{ egresosFiltradosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-subtitle" style="font-size: 0.65rem; opacity: 0.75;">{{ egresosFiltrados.length }} movimientos</div>
             </div>
           </div>
 
@@ -2087,6 +2083,46 @@
                   variant="outlined" density="compact" :rules="[v => !!v || 'La razón es requerida']"></v-select>
               </v-col>
             </v-row>
+
+            <v-divider class="my-4"></v-divider>
+
+            <h4 class="mb-3">Reserva</h4>
+
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-select v-model="eventFormData.metodoReserva" label="Método de reserva"
+                  :items="METODOS_RESERVA" variant="outlined" density="compact"
+                  prepend-inner-icon="mdi-cash-multiple"
+                  hint="Cómo pagó la reserva al agendar" persistent-hint></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field v-model.number="eventFormData.montoReserva" label="Monto de reserva (S/)"
+                  type="number" min="0" step="0.10" variant="outlined" density="compact"
+                  prepend-inner-icon="mdi-currency-usd"
+                  :disabled="!eventFormData.metodoReserva || eventFormData.metodoReserva === 'Sin reserva'"
+                  :hint="reservaHint" persistent-hint>
+                  <template v-slot:append-inner>
+                    <v-tooltip location="top" max-width="280">
+                      <template v-slot:activator="{ props }">
+                        <v-icon v-bind="props" icon="mdi-information-outline" size="16" style="opacity:0.6;" />
+                      </template>
+                      <div style="font-size: 0.78rem; line-height:1.4;">
+                        <strong>Reserva según cabina:</strong><br>
+                        • <b>S/ 50</b> — Cabina 1: medicina estética / orofacial (doctora)<br>
+                        • <b>S/ 20</b> — Cabina 2: faciales y corporales no invasivos (HIFU, reductores, carboxi…)
+                      </div>
+                    </v-tooltip>
+                  </template>
+                </v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-textarea v-model="eventFormData.procedimientoSolicitado"
+              label="Procedimiento solicitado inicialmente (observaciones)"
+              variant="outlined" density="compact" rows="2" auto-grow
+              prepend-inner-icon="mdi-clipboard-text-outline"
+              hint="Qué pidió el paciente al agendar — útil cuando todavía no se asignó el SKU final"
+              persistent-hint></v-textarea>
           </v-form>
         </v-card-text>
 
@@ -2180,6 +2216,38 @@
                   <v-chip v-if="getProcedureGrupo(selectedEvent.procedureId)" size="x-small" variant="tonal">
                     {{ getProcedureGrupo(selectedEvent.procedureId) }}
                   </v-chip>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="selectedEvent.procedimientoSolicitado" class="detail-row">
+              <v-icon icon="mdi-clipboard-text-outline" class="detail-icon" />
+              <div>
+                <div class="detail-label">Procedimiento solicitado inicialmente</div>
+                <div class="detail-value" style="white-space: pre-wrap;">{{ selectedEvent.procedimientoSolicitado }}</div>
+              </div>
+            </div>
+
+            <div v-if="selectedEvent.metodoReserva" class="detail-row">
+              <v-icon icon="mdi-cash-multiple" class="detail-icon" />
+              <div>
+                <div class="detail-label">Reserva</div>
+                <div class="detail-value d-flex align-center" style="gap:8px; flex-wrap:wrap;">
+                  <v-chip
+                    size="small" variant="flat" label
+                    :color="selectedEvent.metodoReserva === 'YAPE' ? 'purple'
+                          : selectedEvent.metodoReserva === 'Plin' ? 'blue'
+                          : selectedEvent.metodoReserva === 'Efectivo' ? 'success'
+                          : selectedEvent.metodoReserva === 'Transferencia' ? 'indigo'
+                          : 'grey'"
+                  >
+                    <v-icon icon="mdi-cash" size="14" class="mr-1" />
+                    {{ selectedEvent.metodoReserva }}
+                  </v-chip>
+                  <span v-if="selectedEvent.montoReserva && selectedEvent.metodoReserva !== 'Sin reserva'"
+                    style="font-weight: 600; color: #22c55e;">
+                    S/ {{ Number(selectedEvent.montoReserva).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -2684,8 +2752,31 @@
               <span v-else style="opacity:0.4;">—</span>
             </template>
             <template v-slot:item.saldo="{ item }">
-              <span v-if="item.saldo > 0" style="color:#ef4444;">
+              <span v-if="item.saldo > 0" style="color:#ef4444; font-weight:600;"
+                title="Saldo pendiente al llegar al consultorio">
                 S/ {{ Number(item.saldo).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              </span>
+              <v-chip v-else-if="item.anticipo > 0" size="x-small" color="success" variant="tonal" label
+                title="Sin saldo pendiente registrado">Pagado</v-chip>
+              <span v-else style="opacity:0.4;">—</span>
+            </template>
+            <template v-slot:item.total_acordado="{ item }">
+              <span v-if="item.total_acordado > 0" style="opacity:0.85;">
+                S/ {{ Number(item.total_acordado).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              </span>
+              <span v-else style="opacity:0.4;">—</span>
+            </template>
+            <template v-slot:item.created_at="{ item }">
+              <span v-if="item.created_at" style="font-size:0.78rem;"
+                :title="`Registrado: ${new Date(item.created_at).toLocaleString('es-PE')}`">
+                {{ new Date(item.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) }}
+              </span>
+              <span v-else style="opacity:0.4;">—</span>
+            </template>
+            <template v-slot:item.fecha_agendamiento="{ item }">
+              <span v-if="item.fecha_agendamiento" style="font-size:0.78rem; font-weight:500; color: var(--accent-gold, #daa520);"
+                :title="`Cita programada para ${formatDateAgendamiento(item.fecha_agendamiento)}`">
+                {{ formatDateAgendamiento(item.fecha_agendamiento) }}
               </span>
               <span v-else style="opacity:0.4;">—</span>
             </template>
@@ -6323,6 +6414,7 @@ const pacientesAgendadosMes = computed(() => {
       total_acordado: anticipo + saldo,
       metodo_pago: String(p.metodo_de_pago || '').trim(),
       conversation_url: cw,
+      created_at: p.created_at || '',
       fecha_agendamiento: p.fecha_agendamiento || '',
       fuente_label: f.label,
       fuente_color: f.color,
@@ -6378,10 +6470,13 @@ const pacientesAgendadosHeaders = [
   { title: 'Teléfono',         key: 'telefono',           sortable: false, width: '110px' },
   { title: 'Tratamiento',      key: 'procedimiento',      sortable: true                  },
   { title: 'SKU',              key: 'procedure_sku',      sortable: true,  width: '110px' },
-  { title: 'Pago Reserva',     key: 'anticipo',           sortable: true,  width: '110px', align: 'end' as const },
+  { title: 'Reserva',          key: 'anticipo',           sortable: true,  width: '95px',  align: 'end' as const },
+  { title: 'Saldo',            key: 'saldo',              sortable: true,  width: '95px',  align: 'end' as const },
+  { title: 'Total',            key: 'total_acordado',     sortable: true,  width: '95px',  align: 'end' as const },
   { title: 'Método pago',      key: 'metodo_pago',        sortable: true,  width: '120px' },
   { title: 'Verificación PSE', key: 'verif_estado',       sortable: true,  width: '210px' },
-  { title: 'Fecha',            key: 'fecha_agendamiento', sortable: true,  width: '110px' },
+  { title: 'Agendado',         key: 'created_at',         sortable: true,  width: '105px' },
+  { title: 'Cita para',        key: 'fecha_agendamiento', sortable: true,  width: '105px' },
   { title: 'Conv.',            key: 'conversation_url',   sortable: false, width: '60px',  align: 'center' as const },
 ]
 
@@ -6814,12 +6909,17 @@ interface CalendarEvent {
   clientPhone?: string
   clientEmail?: string
   eventReason: string
+  metodoReserva?: string
+  montoReserva?: number | null
+  procedimientoSolicitado?: string
   color?: string
   stockDescontado?: boolean
   stockDescontadoEn?: string
   stockDescontadoPor?: string
   cabina?: string
 }
+
+const METODOS_RESERVA = ['YAPE', 'Plin', 'Efectivo', 'Transferencia', 'Sin reserva']
 
 interface CalendarDay {
   date: Date
@@ -6951,6 +7051,9 @@ const eventFormData = ref({
   clientPhone: '',
   clientEmail: '',
   eventReason: '',
+  metodoReserva: 'YAPE',
+  montoReserva: null as number | null,
+  procedimientoSolicitado: '',
   cabina: 'cabina1'
 })
 
@@ -7254,15 +7357,63 @@ function openCreateEventDialog(date?: string) {
     clientPhone: '',
     clientEmail: '',
     eventReason: '',
+    metodoReserva: 'YAPE',
+    montoReserva: null,
+    procedimientoSolicitado: '',
     cabina: activeCabin.value
   }
   showEventDialog.value = true
 }
 
+// Regla de reserva por cabina:
+//   Cabina 1 (Medicina Estética / Doctora)        → S/ 50
+//   Cabina 2 (faciales/corporales no invasivos)   → S/ 20
+const sugerirMontoReservaPorCabina = (cabina: string): number =>
+  cabina === 'cabina2' ? 20 : 50
+
 watch(() => eventFormData.value.procedureId, (procId) => {
-  if (procId) {
-    eventFormData.value.cabina = getCabinaForProcedure(procId)
+  if (!procId) return
+  const cabina = getCabinaForProcedure(procId)
+  eventFormData.value.cabina = cabina
+  const metodo = eventFormData.value.metodoReserva
+  if (metodo && metodo !== 'Sin reserva') {
+    const sugerido = sugerirMontoReservaPorCabina(cabina)
+    const actual = eventFormData.value.montoReserva
+    // Auto-sugerir si vacío o si era el otro valor sugerido (cambia de cabina)
+    if (actual == null || actual === 0 || actual === 50 || actual === 20) {
+      eventFormData.value.montoReserva = sugerido
+    }
   }
+})
+
+watch(() => eventFormData.value.metodoReserva, (metodo) => {
+  if (!metodo || metodo === 'Sin reserva') return
+  if (eventFormData.value.montoReserva == null || eventFormData.value.montoReserva === 0) {
+    eventFormData.value.montoReserva = sugerirMontoReservaPorCabina(
+      eventFormData.value.cabina || 'cabina1'
+    )
+  }
+})
+
+// Asignación inversa: el monto de la reserva define la cabina.
+//   S/ 50 → Cabina 1 (doctora)
+//   S/ 20 → Cabina 2 (no invasivos)
+// Otros valores (promos, etc.) no fuerzan la cabina.
+watch(() => eventFormData.value.montoReserva, (monto) => {
+  const metodo = eventFormData.value.metodoReserva
+  if (!metodo || metodo === 'Sin reserva') return
+  if (monto === 50) eventFormData.value.cabina = 'cabina1'
+  else if (monto === 20) eventFormData.value.cabina = 'cabina2'
+})
+
+const reservaHint = computed(() => {
+  const metodo = eventFormData.value.metodoReserva
+  if (!metodo || metodo === 'Sin reserva') return 'Sin pago anticipado'
+  const cabina = eventFormData.value.cabina || 'cabina1'
+  const sug = cabina === 'cabina2'
+    ? 'S/ 20 (Cabina 2 — no invasivos)'
+    : 'S/ 50 (Cabina 1 — doctora)'
+  return `Sugerido: ${sug} · vía ${metodo}`
 })
 
 function closeEventDialog() {
@@ -7289,6 +7440,12 @@ async function saveEvent() {
   }
 
   try {
+    const metodo = eventFormData.value.metodoReserva || null
+    const montoRaw = eventFormData.value.montoReserva
+    const monto = (metodo && metodo !== 'Sin reserva' && montoRaw !== null && montoRaw !== undefined && !isNaN(Number(montoRaw)))
+      ? Number(montoRaw)
+      : null
+
     const payload = {
       date: eventFormData.value.date,
       time: eventFormData.value.time,
@@ -7301,6 +7458,9 @@ async function saveEvent() {
       client_phone: eventFormData.value.clientPhone,
       client_email: eventFormData.value.clientEmail,
       event_reason: eventFormData.value.eventReason,
+      metodo_reserva: metodo,
+      monto_reserva: monto,
+      procedimiento_solicitado: eventFormData.value.procedimientoSolicitado || null,
       cabina: eventFormData.value.cabina || 'cabina1'
     }
 
@@ -7508,6 +7668,9 @@ async function fetchEvents() {
       clientPhone: e.client_phone || '',
       clientEmail: e.client_email || '',
       eventReason: e.event_reason || '',
+      metodoReserva: e.metodo_reserva || '',
+      montoReserva: e.monto_reserva !== null && e.monto_reserva !== undefined ? Number(e.monto_reserva) : null,
+      procedimientoSolicitado: e.procedimiento_solicitado || '',
       stockDescontado: e.stock_descontado ?? false,
       stockDescontadoEn: e.stock_descontado_en || '',
       stockDescontadoPor: e.stock_descontado_por || '',

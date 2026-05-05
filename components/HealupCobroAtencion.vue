@@ -287,9 +287,13 @@
               <div class="resumen-fila resumen-descuento">
                 <span>
                   <v-icon icon="mdi-tag-minus" size="14" class="me-1" />
-                  Descuento consulta
+                  {{ Number(citaSeleccionada?.monto_reserva || 0) > 0 ? 'Descuento reserva' : 'Descuento consulta' }}
+                  <span v-if="citaSeleccionada?.metodo_reserva && citaSeleccionada?.metodo_reserva !== 'Sin reserva'"
+                    style="opacity:0.7; font-size:0.78rem; margin-left:4px;">
+                    ({{ citaSeleccionada.metodo_reserva }})
+                  </span>
                 </span>
-                <span>− S/ 50.00</span>
+                <span>− S/ {{ formatNum(descuentoReservaTotal) }}</span>
               </div>
 
               <v-divider class="my-2" />
@@ -299,10 +303,24 @@
                 <span>S/ {{ formatNum(totalProcConIgv) }}</span>
               </div>
 
+              <v-alert
+                v-if="Number(citaSeleccionada?.monto_reserva || 0) > 0"
+                density="compact" variant="tonal"
+                :color="(citaSeleccionada?.cabina || 'cabina1') === 'cabina2' ? 'teal' : 'indigo'"
+                class="mt-3" style="font-size:0.82rem;"
+              >
+                <template v-slot:prepend>
+                  <v-icon icon="mdi-cash-check" size="20" />
+                </template>
+                Reserva ya pagada: <strong>S/ {{ formatNum(descuentoReservaTotal) }}</strong>
+                <span v-if="citaSeleccionada?.metodo_reserva"> vía <strong>{{ citaSeleccionada.metodo_reserva }}</strong></span>
+                · {{ (citaSeleccionada?.cabina || 'cabina1') === 'cabina2' ? 'Cabina 2 (no invasivos)' : 'Cabina 1 (doctora)' }}
+              </v-alert>
+
               <div v-if="boletaConsulta" class="mt-3 text-caption" style="opacity: 0.6; line-height: 1.5;">
                 Consulta facturada en
                 {{ boletaConsulta.serie }}-{{ String(boletaConsulta.numero).padStart(8,'0') }}
-                (S/ 50.00)
+                (S/ {{ formatNum(descuentoReservaTotal) }})
               </div>
             </v-card-text>
           </v-card>
@@ -572,12 +590,21 @@ const subtotalProcValorUnit = computed(() =>
   itemsProcedimiento.value.reduce((s, it) => s + Number(it.valor_unitario), 0)
 )
 
-// Descuento: 50/1.18 en valor_unitario, equivale a S/50 en total
-const DESCUENTO_PRETAX = +(50 / 1.18).toFixed(2)  // 42.37
+// Descuento dinámico:
+//  1) Si la cita registró monto_reserva > 0 (S/50 cabina 1, S/20 cabina 2…) → usar ese monto.
+//  2) Si no, fallback histórico: S/50 (consulta médica previa).
+const descuentoReservaTotal = computed(() => {
+  const m = Number(citaSeleccionada.value?.monto_reserva || 0)
+  return m > 0 ? +m.toFixed(2) : 50
+})
+// Equivalente pre-IGV: monto / 1.18
+const descuentoPretax = computed(() =>
+  +(descuentoReservaTotal.value / 1.18).toFixed(2)
+)
 
 // Base gravada post-descuento
 const totalGravadaProc = computed(() =>
-  Math.max(0, +(subtotalProcValorUnit.value - DESCUENTO_PRETAX).toFixed(2))
+  Math.max(0, +(subtotalProcValorUnit.value - descuentoPretax.value).toFixed(2))
 )
 
 const totalIgvProc = computed(() =>
@@ -651,7 +678,7 @@ const cargarCitasHoy = async () => {
 
     const { data, error } = await supabase
       .from('healup_calendar_events')
-      .select('id, date, time, subject, client_name, client_surname, client_dni, client_phone, client_email, procedure_id')
+      .select('id, date, time, subject, client_name, client_surname, client_dni, client_phone, client_email, procedure_id, cabina, metodo_reserva, monto_reserva, procedimiento_solicitado')
       .or(`date.eq.${isoDate},date.eq.${ddmmyyyy}`)
       .order('time', { ascending: true })
     if (error) throw error
@@ -905,14 +932,23 @@ const emitirBoletaProcedimiento = async () => {
       }
     })
 
-    // Aplicar descuento global de S/50 (pre-IGV = 42.37)
+    // Aplicar descuento global = monto efectivamente reservado (S/50, S/20 o lo registrado)
     const totalGravada = totalGravadaProc.value
     const totalIgv     = totalIgvProc.value
     const total        = totalProcConIgv.value
+    const descTotal    = descuentoReservaTotal.value
+    const descPretax   = descuentoPretax.value
 
-    const observaciones = boletaConsulta.value
-      ? `Descuento S/ 50.00 por consulta médica previa (${boletaConsulta.value.serie}-${String(boletaConsulta.value.numero).padStart(8,'0')})`
-      : 'Descuento S/ 50.00 por consulta médica previa'
+    const metodoReservaCita = citaSeleccionada.value?.metodo_reserva || ''
+    const observaciones = (() => {
+      if (Number(citaSeleccionada.value?.monto_reserva || 0) > 0) {
+        return `Descuento S/ ${descTotal.toFixed(2)} por reserva pagada${metodoReservaCita ? ' vía ' + metodoReservaCita : ''}`
+      }
+      if (boletaConsulta.value) {
+        return `Descuento S/ ${descTotal.toFixed(2)} por consulta médica previa (${boletaConsulta.value.serie}-${String(boletaConsulta.value.numero).padStart(8,'0')})`
+      }
+      return `Descuento S/ ${descTotal.toFixed(2)} por consulta médica previa`
+    })()
 
     const payload = {
       tipo_de_comprobante:         2,
@@ -927,8 +963,8 @@ const emitirBoletaProcedimiento = async () => {
       cliente_numero_de_documento: paciente.value.doc_numero || '00000000',
       cliente_denominacion:        nombreCompleto.value,
       cliente_email:               paciente.value.email || '',
-      descuento_global:            DESCUENTO_PRETAX,
-      total_descuento:             DESCUENTO_PRETAX,
+      descuento_global:            descPretax,
+      total_descuento:             descPretax,
       total_gravada:               totalGravada,
       total_igv:                   totalIgv,
       total,

@@ -6666,24 +6666,13 @@ const eventoEsPacienteReal = (e: any): boolean => {
   return !!(nombre || dni || tel)
 }
 
-// Pacientes únicos agendados en un mes dado, deduplicados entre WPP, FBIG
-// y healup_calendar_events (clave: DNI → tel norm. → email → nombre).
-function pacientesUnicosAgendados(monthYYYYMM: string): number {
-  const claves = new Set<string>()
-  ;[...pacientesWpp.value, ...pacientesFbIg.value]
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(monthYYYYMM))
-    .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
-  events.value
-    .filter((e: any) => String(e.date || '').startsWith(monthYYYYMM) && eventoEsPacienteReal(e))
-    .forEach((e: any) => claves.add(dedupKeyForAgendado(e)))
-  return claves.size
-}
-
-// Stat card "Pacientes este mes" — usa la misma lógica que la lista del dialog.
+// Stat card "Pacientes este mes" — comparte EXACTAMENTE la misma función
+// que el dialog (buildPacientesAgendadosBase) para garantizar que ambos
+// conteos coincidan a la unidad. Sin filtros UI aplicados.
 const hotLeadsConvertedCount = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  return pacientesUnicosAgendados(thisMonth)
+  return buildPacientesAgendadosBase(thisMonth).length
 })
 
 // ── Detalle de pacientes agendados (drill-down con navegación por mes) ──
@@ -6870,146 +6859,147 @@ function resolveProcedureFromPaciente(p: any): { sku: string; name: string; grup
   return { sku: '', name: p?.procedimiento || '', grupo: '' }
 }
 
+// ─── Builders compartidos (escope module — los usan stat card + dialog) ────
+function buildPacienteRow(p: any, origen: 'wpp' | 'fbig'): any {
+  const f = detectFuentePaciente(p, origen)
+  const proc = resolveProcedureFromPaciente(p)
+  const anticipo = parseCurrency(p.precio)
+  const saldo = parseCurrency(p.precio_tratamiento)
+  const telCrudo = origen === 'wpp'
+    ? (isEncrypted(p.numero) ? '' : (p.numero ? String(p.numero) : ''))
+    : (p.numero ? String(p.numero) : '')
+  const tel = telCrudo ? normalizePhone(telCrudo) : (origen === 'fbig' ? (p.red_social || '') : '')
+
+  const cw = (() => {
+    const base = 'https://chats.alef.company/app/accounts/2'
+    const q = telCrudo || p.red_social || p.instagram_handle || p.nombre || ''
+    return q ? `${base}/contacts?search=${encodeURIComponent(String(q).trim())}` : ''
+  })()
+
+  const verif = buildVerificacionPaciente(p, proc.sku, anticipo)
+
+  return {
+    id: p.id,
+    dni: p.dni || '',
+    nombre: p.nombre || '—',
+    telefono: tel || '—',
+    procedimiento: proc.name || p.procedimiento || '—',
+    procedure_sku: proc.sku,
+    procedure_grupo: proc.grupo,
+    booking_sku: p.booking_sku || '',
+    anticipo,
+    saldo,
+    total_acordado: anticipo + saldo,
+    metodo_pago: String(p.metodo_de_pago || '').trim(),
+    conversation_url: cw,
+    created_at: p.created_at || '',
+    fecha_agendamiento: p.fecha_agendamiento || '',
+    estado: p.estado || (saldo > 0 ? 'RESERVADA' : ''),
+    cabina: p.cabina || '',
+    fuente_label: f.label,
+    fuente_color: f.color,
+    fuente_icon: f.icon,
+    verif_estado: verif.estado,
+    verif_mensaje: verif.mensaje,
+    verif_serie: verif.comprobante?.serie || '',
+    verif_numero: verif.comprobante?.numero || '',
+    verif_total: verif.comprobante?.total || 0,
+    verif_sku: verif.comprobante?.sku || '',
+    verif_pdf: verif.comprobante?.pdf_url || '',
+    verif_medio_pago: verif.comprobante?.medio_de_pago || '',
+    verif_sunat_ok: verif.comprobante?.sunat_ok || false,
+  }
+}
+
+function buildRowFromCalendarEvent(e: any): any {
+  const procName  = getProcedureName(e.procedureId) || e.procedimientoSolicitado || e.subject || '—'
+  const procSku   = getProcedureSku(e.procedureId) || ''
+  const procGrupo = getProcedureGrupo(e.procedureId) || ''
+  const anticipo  = Number(e.montoReserva) || 0
+  const tel       = e.clientPhone ? normalizePhone(String(e.clientPhone).replace(/[^\d]/g, '')) : ''
+  const cw = (() => {
+    const base = 'https://chats.alef.company/app/accounts/2'
+    const q = e.clientPhone || e.clientName || ''
+    return q ? `${base}/contacts?search=${encodeURIComponent(String(q).trim())}` : ''
+  })()
+  return {
+    id: 'cal-' + e.id,
+    dni: e.clientDNI || '',
+    nombre: `${e.clientName || ''} ${e.clientSurname || ''}`.trim() || '—',
+    telefono: tel || '—',
+    procedimiento: procName,
+    procedure_sku: procSku,
+    procedure_grupo: procGrupo,
+    booking_sku: '',
+    anticipo,
+    saldo: 0,
+    total_acordado: anticipo,
+    metodo_pago: String(e.metodoReserva || '').trim(),
+    conversation_url: cw,
+    created_at: e.created_at || '',
+    fecha_agendamiento: e.date || '',
+    estado: e.estado || 'RESERVADA',
+    cabina: e.cabina || '',
+    fuente_label: 'Calendario',
+    fuente_color: 'amber',
+    fuente_icon: 'mdi-calendar-edit',
+    verif_estado: 'sin_boleta',
+    verif_mensaje: 'Cita agendada directamente en el calendario',
+    verif_serie: '',
+    verif_numero: '',
+    verif_total: 0,
+    verif_sku: '',
+    verif_pdf: '',
+    verif_medio_pago: '',
+    verif_sunat_ok: false,
+  }
+}
+
+// ─── Función pura compartida: pacientes únicos del mes (sin filtros UI) ───
+// La usan tanto la stat card como pacientesAgendadosMes — garantiza que
+// los conteos coincidan exactamente.
+function buildPacientesAgendadosBase(monthYYYYMM: string): any[] {
+  if (!monthYYYYMM) return []
+  const wppBuilt = pacientesWpp.value
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(monthYYYYMM))
+    .map((p: any) => buildPacienteRow(p, 'wpp'))
+  const fbigBuilt = pacientesFbIg.value
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(monthYYYYMM))
+    .map((p: any) => buildPacienteRow(p, 'fbig'))
+
+  // Dedup en cascada: WPP primero, FBIG no-dup contra WPP, calendar no-dup contra ambos
+  const claves = new Set<string>()
+  const wpp: any[] = []
+  for (const r of wppBuilt) {
+    const k = dedupKeyForAgendado(r)
+    if (!claves.has(k)) { claves.add(k); wpp.push(r) }
+  }
+  const fbig: any[] = []
+  for (const r of fbigBuilt) {
+    const k = dedupKeyForAgendado(r)
+    if (!claves.has(k)) { claves.add(k); fbig.push(r) }
+  }
+  const calendario: any[] = []
+  for (const e of events.value) {
+    if (!String(e.date || '').startsWith(monthYYYYMM)) continue
+    if (!eventoEsPacienteReal(e)) continue
+    const r = buildRowFromCalendarEvent(e)
+    const k = dedupKeyForAgendado(r)
+    if (claves.has(k)) continue
+    claves.add(k)
+    calendario.push(r)
+  }
+  return [...wpp, ...fbig, ...calendario]
+}
+
 const pacientesAgendadosMes = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const targetMonth = pacientesAgendadosMesSel.value || thisMonth
 
-  const buildRow = (p: any, origen: 'wpp' | 'fbig') => {
-    const f = detectFuentePaciente(p, origen)
-    const proc = resolveProcedureFromPaciente(p)
-    const anticipo = parseCurrency(p.precio)
-    const saldo = parseCurrency(p.precio_tratamiento)
-    const telCrudo = origen === 'wpp'
-      ? (isEncrypted(p.numero) ? '' : (p.numero ? String(p.numero) : ''))
-      : (p.numero ? String(p.numero) : '')
-    const tel = telCrudo ? normalizePhone(telCrudo) : (origen === 'fbig' ? (p.red_social || '') : '')
+  let filas = buildPacientesAgendadosBase(targetMonth)
 
-    // Deep link a la conversación de Chatwoot (Healup = account 2)
-    const cw = (() => {
-      const base = 'https://chats.alef.company/app/accounts/2'
-      const q = telCrudo || p.red_social || p.instagram_handle || p.nombre || ''
-      if (!q) return ''
-      return `${base}/contacts?search=${encodeURIComponent(String(q).trim())}`
-    })()
-
-    // Verificación contra comprobantes_pse (boletas auto-generadas)
-    const verif = buildVerificacionPaciente(p, proc.sku, anticipo)
-
-    return {
-      id: p.id,
-      dni: p.dni || '',
-      nombre: p.nombre || '—',
-      telefono: tel || '—',
-      procedimiento: proc.name || p.procedimiento || '—',
-      procedure_sku: proc.sku,
-      procedure_grupo: proc.grupo,
-      booking_sku: p.booking_sku || '',
-      anticipo,
-      saldo,
-      total_acordado: anticipo + saldo,
-      metodo_pago: String(p.metodo_de_pago || '').trim(),
-      conversation_url: cw,
-      created_at: p.created_at || '',
-      fecha_agendamiento: p.fecha_agendamiento || '',
-      estado: p.estado || (saldo > 0 ? 'RESERVADA' : ''),
-      cabina: p.cabina || '',
-      fuente_label: f.label,
-      fuente_color: f.color,
-      fuente_icon: f.icon,
-      // Verificación con boleta:
-      verif_estado: verif.estado,                       // 'verificado' | 'discrepancia' | 'parcial' | 'sin_boleta'
-      verif_mensaje: verif.mensaje,
-      verif_serie: verif.comprobante?.serie || '',
-      verif_numero: verif.comprobante?.numero || '',
-      verif_total: verif.comprobante?.total || 0,
-      verif_sku: verif.comprobante?.sku || '',
-      verif_pdf: verif.comprobante?.pdf_url || '',
-      verif_medio_pago: verif.comprobante?.medio_de_pago || '',
-      verif_sunat_ok: verif.comprobante?.sunat_ok || false,
-    }
-  }
-
-  // Mapper para citas creadas directo en el calendario (sin paciente en WPP/FBIG)
-  const buildRowFromEvent = (e: any) => {
-    const procName  = getProcedureName(e.procedureId) || e.procedimientoSolicitado || e.subject || '—'
-    const procSku   = getProcedureSku(e.procedureId) || ''
-    const procGrupo = getProcedureGrupo(e.procedureId) || ''
-    const anticipo  = Number(e.montoReserva) || 0
-    const tel       = e.clientPhone ? normalizePhone(String(e.clientPhone).replace(/[^\d]/g, '')) : ''
-    const cw = (() => {
-      const base = 'https://chats.alef.company/app/accounts/2'
-      const q = e.clientPhone || e.clientName || ''
-      return q ? `${base}/contacts?search=${encodeURIComponent(String(q).trim())}` : ''
-    })()
-    return {
-      id: 'cal-' + e.id,
-      dni: e.clientDNI || '',
-      nombre: `${e.clientName || ''} ${e.clientSurname || ''}`.trim() || '—',
-      telefono: tel || '—',
-      procedimiento: procName,
-      procedure_sku: procSku,
-      procedure_grupo: procGrupo,
-      booking_sku: '',
-      anticipo,
-      saldo: 0,
-      total_acordado: anticipo,
-      metodo_pago: String(e.metodoReserva || '').trim(),
-      conversation_url: cw,
-      created_at: e.created_at || '',
-      fecha_agendamiento: e.date || '',
-      estado: e.estado || 'RESERVADA',
-      cabina: e.cabina || '',
-      fuente_label: 'Calendario',
-      fuente_color: 'amber',
-      fuente_icon: 'mdi-calendar-edit',
-      verif_estado: 'sin_boleta',
-      verif_mensaje: 'Cita agendada directamente en el calendario',
-      verif_serie: '',
-      verif_numero: '',
-      verif_total: 0,
-      verif_sku: '',
-      verif_pdf: '',
-      verif_medio_pago: '',
-      verif_sunat_ok: false,
-    }
-  }
-
-  const wppRaw = pacientesWpp.value
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
-    .map((p: any) => buildRow(p, 'wpp'))
-  const fbigRaw = pacientesFbIg.value
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
-    .map((p: any) => buildRow(p, 'fbig'))
-
-  // Dedup entre WPP y FBIG (mismo paciente registrado en ambas tablas)
-  const claves = new Set<string>()
-  const wpp: any[] = []
-  for (const r of wppRaw) {
-    const k = dedupKeyForAgendado(r)
-    if (!claves.has(k)) { claves.add(k); wpp.push(r) }
-  }
-  const fbig: any[] = []
-  for (const r of fbigRaw) {
-    const k = dedupKeyForAgendado(r)
-    if (!claves.has(k)) { claves.add(k); fbig.push(r) }
-  }
-
-  // Citas del calendario en el mes que NO tienen contraparte en WPP/FBIG
-  // (excluye bloqueos / eventos sin datos del paciente)
-  const calendario = events.value
-    .filter((e: any) => String(e.date || '').startsWith(targetMonth) && eventoEsPacienteReal(e))
-    .map(buildRowFromEvent)
-    .filter((r: any) => {
-      const k = dedupKeyForAgendado(r)
-      if (claves.has(k)) return false
-      claves.add(k)
-      return true
-    })
-
-  let filas = [...wpp, ...fbig, ...calendario]
-
-  // Filtros UI: estado y cabina
+  // Filtros UI: estado y cabina (NO afectan al conteo de la stat card)
   if (pacientesAgendadosEstadoFiltro.value) {
     filas = filas.filter(r => (r.estado || '') === pacientesAgendadosEstadoFiltro.value)
   }

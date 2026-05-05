@@ -825,9 +825,9 @@
                       <td style="text-align:center; padding: 8px 12px; color: #22c55e; font-weight: 600">{{ mes.convertidos }}</td>
                       <td style="text-align:center; padding: 8px 12px">
                         <v-chip
-                          :color="mes.caliente > 0 && (mes.convertidos/mes.caliente)*100 >= 10 ? 'success' : 'default'"
+                          :color="(mes.frio + mes.tibio + mes.caliente) > 0 && (mes.convertidos/(mes.frio + mes.tibio + mes.caliente))*100 >= 5 ? 'success' : 'default'"
                           size="x-small" variant="tonal">
-                          {{ mes.caliente > 0 ? ((mes.convertidos / mes.caliente) * 100).toFixed(1) : '0.0' }}%
+                          {{ (mes.frio + mes.tibio + mes.caliente) > 0 ? ((mes.convertidos / (mes.frio + mes.tibio + mes.caliente)) * 100).toFixed(1) : '0.0' }}%
                         </v-chip>
                       </td>
                     </tr>
@@ -5937,17 +5937,17 @@ const totalRevenue = computed(() => revenueCurrentMonth.value)
 
 // Tasa de Conversión Real (Leads que se convierten en Pacientes)
 const convertedLeadsCountReal = computed(() => {
-  // Coincidencia por número
-  const patientPhones = new Set(allPacientes.value.map(p => p.numero))
-  return leads.value.filter(l => patientPhones.has(l.numero)).length
+  // Coincidencia por número normalizado (leads guardan 51XXXXXXXXX, pacientes pueden tener XXXXXXXXX)
+  const patientPhones = new Set(allPacientes.value.map(p => normalizePhone(p.numero)).filter(Boolean))
+  return leads.value.filter(l => {
+    const norm = normalizePhone(l.numero)
+    return norm && patientPhones.has(norm)
+  }).length
 })
 
 const realConversionRate = computed(() => {
   if (leads.value.length === 0) return 0
-  // Si no hay conteo de convertidos por match, usamos ratio simple
-  const count = convertedLeadsCountReal.value > 0 ? convertedLeadsCountReal.value : allPacientes.value.length
-  // Cap at 100% logic or simple ratio
-  return (count / leads.value.length) * 100
+  return (convertedLeadsCountReal.value / leads.value.length) * 100
 })
 
 // A. Ingresos (Tendencia Semanal - Últimas 8 Semanas)
@@ -6211,8 +6211,7 @@ const dedupKeyForAgendado = (row: any): string => {
   return 'name:' + name
 }
 
-// Convertidos = pacientes en WPP/FBIG con fecha_agendamiento en el mes
-//   + citas del calendario en el mes que NO tienen match con esos pacientes.
+// Convertidos = pacientes en WPP/FBIG con fecha_agendamiento en el mes (deduplicados)
 const hotLeadsConvertedCount = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -6220,9 +6219,6 @@ const hotLeadsConvertedCount = computed(() => {
   ;[...pacientesWpp.value, ...pacientesFbIg.value]
     .filter((p: any) => p.fecha_agendamiento?.startsWith(thisMonth))
     .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
-  events.value
-    .filter((e: any) => String(e.date || '').startsWith(thisMonth))
-    .forEach((e: any) => claves.add(dedupKeyForAgendado(e)))
   return claves.size
 })
 
@@ -6606,13 +6602,19 @@ const totalConversionRate = computed(() => {
 const leadsHistoricoByMonth = computed(() => {
   const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
-  // Pacientes agrupados por mes de fecha_agendamiento (sin cruce, todos cuentan)
+  // Pacientes agrupados por mes de fecha_agendamiento (deduplicados entre wpp y fbig)
   const patByMonth = new Map<string, number>()
+  const seenByMonth = new Map<string, Set<string>>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
     const fa = p.fecha_agendamiento
     if (!fa) return
     const key = fa.slice(0, 7)
-    patByMonth.set(key, (patByMonth.get(key) || 0) + 1)
+    const dedupKey = dedupKeyForAgendado(p)
+    if (!seenByMonth.has(key)) seenByMonth.set(key, new Set())
+    if (!seenByMonth.get(key)!.has(dedupKey)) {
+      seenByMonth.get(key)!.add(dedupKey)
+      patByMonth.set(key, (patByMonth.get(key) || 0) + 1)
+    }
   })
 
   const monthMap = new Map<string, { label: string; frio: number; tibio: number; caliente: number; convertidos: number; pacientes: number }>()

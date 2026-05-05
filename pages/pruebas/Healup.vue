@@ -10212,19 +10212,24 @@ const saveWalkIn = async () => {
       agendado_por: 'WALK_IN'
     }
 
-    const { data: citaData, error: citaErr } = await (client.from('healup_calendar_events') as any)
-      .insert(citaPayload).select().single()
-    if (citaErr) {
-      // Reintentar sin agendado_por si la columna no existe aún
-      delete citaPayload.agendado_por
-      delete citaPayload.estado
-      const { data: c2, error: e2 } = await (client.from('healup_calendar_events') as any)
+    let citaCreated: any = null
+    {
+      const { data, error } = await (client.from('healup_calendar_events') as any)
         .insert(citaPayload).select().single()
-      if (e2) throw e2
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(citaData as any) = c2
+      if (error) {
+        // Reintento sin columnas opcionales (estado/agendado_por) si la
+        // migracion correspondiente aun no se aplico en Supabase
+        delete citaPayload.agendado_por
+        delete citaPayload.estado
+        const r2 = await (client.from('healup_calendar_events') as any)
+          .insert(citaPayload).select().single()
+        if (r2.error) throw r2.error
+        citaCreated = r2.data
+      } else {
+        citaCreated = data
+      }
     }
-    const citaId = (citaData as any)?.id
+    const citaId = citaCreated?.id
 
     // 2. Insertar procedimientos en healup_cita_procedimientos (si tabla existe)
     if (citaId) {

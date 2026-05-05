@@ -10,7 +10,8 @@ export const dashboards = [
     { name: 'SKIP', path: '/pruebas/SKIP', icon: 'mdi-water', logo: 'LogoSkyDive.png' },
     { name: 'Estás con Suerte', path: '/pruebas/EstasConSuerte', icon: 'mdi-clover', logo: 'ecsLOGO.png' },
     { name: 'Estetika Medika', path: '/pruebas/EstetikaMedika', icon: 'mdi-spa', logo: 'estetika-medika-logo.png' },
-    { name: 'Miguel Davila', path: '/pruebas/MiguelDavila', icon: 'mdi-doctor', logo: 'miguel-davila-logo.png' }
+    { name: 'Miguel Davila', path: '/pruebas/MiguelDavila', icon: 'mdi-doctor', logo: 'miguel-davila-logo.png' },
+    { name: 'FitMain', path: '/pruebas/FitMain', icon: 'mdi-dumbbell', logo: '' }
 ]
 
 // Tipos para la sesión de usuario

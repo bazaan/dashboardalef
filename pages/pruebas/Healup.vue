@@ -1977,6 +1977,119 @@
         </div>
       </div>
 
+      <!-- ==========  VISTA: CIERRE MENSUAL (2.13)  ========== -->
+      <div v-else-if="activeView === 'cierre_mensual'" class="view-container">
+        <header class="top-header">
+          <h1>Cierre Mensual</h1>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <v-select v-model="cierreMesSel" :items="cierreMesesDisponibles"
+              item-title="label" item-value="value" hide-details density="compact"
+              variant="outlined" style="max-width:200px;" />
+            <button class="btn-primary" @click="exportarCierreMensualPDF">
+              <v-icon icon="mdi-file-pdf-box" size="16" />
+              <span>Exportar PDF</span>
+            </button>
+          </div>
+        </header>
+        <div class="content-area">
+          <div class="stats-grid mini" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-bottom: 1rem;">
+            <div class="stat-card" style="background: rgba(34,197,94,0.08);">
+              <div class="stat-title" style="color:#22c55e;">Ingresos brutos</div>
+              <div class="stat-value" style="color:#22c55e;">S/ {{ cierreIngresos.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">{{ cierrePacientes }} pacientes</div>
+            </div>
+            <div class="stat-card" style="background: rgba(239,68,68,0.08);">
+              <div class="stat-title" style="color:#ef4444;">Egresos</div>
+              <div class="stat-value" style="color:#ef4444;">S/ {{ cierreEgresos.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">{{ cierreEgresosCount }} movimientos</div>
+            </div>
+            <div class="stat-card" style="background: rgba(59,130,246,0.08);">
+              <div class="stat-title" style="color:#3b82f6;">Utilidad neta</div>
+              <div class="stat-value" :style="{ color: cierreUtilidad >= 0 ? '#3b82f6' : '#ef4444' }">
+                S/ {{ cierreUtilidad.toLocaleString('es-PE',{minimumFractionDigits:2}) }}
+              </div>
+              <div class="stat-subtitle">Ingresos − Egresos</div>
+            </div>
+          </div>
+
+          <h3 style="margin: 16px 0 8px; font-size:1rem;">Pacientes por fuente</h3>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 16px;">
+            <v-chip v-for="(count, fuente) in cierrePorFuente" :key="fuente" size="small" variant="tonal"
+              :color="fuente === 'TikTok' ? 'deep-purple' : fuente === 'WhatsApp' ? 'green' : fuente === 'Instagram' ? 'pink' : 'blue'">
+              <v-icon start size="14"
+                :icon="fuente === 'TikTok' ? 'mdi-music-note' : fuente === 'WhatsApp' ? 'mdi-whatsapp' : fuente === 'Instagram' ? 'mdi-instagram' : 'mdi-facebook'" />
+              {{ fuente }}: <strong style="margin-left:4px;">{{ count }}</strong>
+            </v-chip>
+          </div>
+
+          <h3 style="margin: 16px 0 8px; font-size:1rem;">Egresos por categoría</h3>
+          <v-card flat class="custom-data-table">
+            <v-data-table density="compact" :headers="[
+              { title: 'Categoría', key: 'categoria' },
+              { title: 'Movimientos', key: 'count', align: 'end' },
+              { title: 'Total S/', key: 'total', align: 'end' }
+            ]" :items="cierreEgresosPorCategoria" :items-per-page="20" hide-default-footer>
+              <template v-slot:item.categoria="{ item }">
+                <v-chip size="x-small" variant="tonal"
+                  :color="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).color || 'grey'">
+                  {{ item.categoria }}
+                </v-chip>
+              </template>
+              <template v-slot:item.total="{ item }">
+                <strong>S/ {{ Number(item.total).toLocaleString('es-PE',{minimumFractionDigits:2}) }}</strong>
+              </template>
+            </v-data-table>
+          </v-card>
+        </div>
+      </div>
+
+      <!-- ==========  VISTA: RECONCILIACIÓN CAJA (2.3)  ========== -->
+      <div v-else-if="activeView === 'reconciliacion'" class="view-container">
+        <header class="top-header">
+          <h1>Reconciliación de Caja</h1>
+          <button class="btn-primary" @click="cerrarDia" :disabled="cerrandoDia">
+            <v-icon icon="mdi-lock-check" size="16" />
+            <span>{{ cerrandoDia ? 'Cerrando…' : 'Cerrar día' }}</span>
+          </button>
+        </header>
+        <div class="content-area">
+          <div class="stats-grid mini" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-bottom: 1rem;">
+            <div class="stat-card" style="background: rgba(34,197,94,0.06);">
+              <div class="stat-title">Caja chica (efectivo)</div>
+              <div class="stat-value" style="color:#22c55e;">S/ {{ saldoCajaChica.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">Ingresos efectivo − egresos efectivo (mes)</div>
+              <v-text-field v-model.number="saldoRealCajaChica" label="Saldo real (input)"
+                type="number" min="0" step="0.10" variant="outlined" density="compact"
+                prepend-inner-icon="mdi-cash" hide-details class="mt-2" />
+              <div v-if="saldoRealCajaChica > 0" :style="{ marginTop: '6px', fontSize: '0.78rem', color: Math.abs(saldoCajaChica - saldoRealCajaChica) < 1 ? '#22c55e' : '#ef4444' }">
+                {{ Math.abs(saldoCajaChica - saldoRealCajaChica) < 1 ? '✅ Cuadra' : `⚠️ Diferencia: S/ ${(saldoRealCajaChica - saldoCajaChica).toFixed(2)}` }}
+              </div>
+            </div>
+            <div class="stat-card" style="background: rgba(59,130,246,0.06);">
+              <div class="stat-title">Cuenta bancaria</div>
+              <div class="stat-value" style="color:#3b82f6;">S/ {{ saldoCuentaBancaria.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">Ingresos no-efectivo − egresos no-efectivo (mes)</div>
+              <v-text-field v-model.number="saldoRealCuentaBancaria" label="Saldo real (input)"
+                type="number" min="0" step="0.10" variant="outlined" density="compact"
+                prepend-inner-icon="mdi-bank" hide-details class="mt-2" />
+              <div v-if="saldoRealCuentaBancaria > 0" :style="{ marginTop: '6px', fontSize: '0.78rem', color: Math.abs(saldoCuentaBancaria - saldoRealCuentaBancaria) < 1 ? '#22c55e' : '#ef4444' }">
+                {{ Math.abs(saldoCuentaBancaria - saldoRealCuentaBancaria) < 1 ? '✅ Cuadra' : `⚠️ Diferencia: S/ ${(saldoRealCuentaBancaria - saldoCuentaBancaria).toFixed(2)}` }}
+              </div>
+            </div>
+          </div>
+
+          <div style="font-size:0.85rem; opacity:0.7; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius:8px;">
+            <v-icon icon="mdi-information-outline" size="14" />
+            Saldos calculados desde pacientes WPP/FBIG con metodo_de_pago + egresos con metodo_pago. "Cerrar día" loguea snapshot al audit_log.
+          </div>
+
+          <div v-if="cierreDiaResultado" style="margin-top: 16px; padding: 12px; background: rgba(34,197,94,0.06); border-radius:8px;">
+            <h4 style="margin:0 0 6px; color:#22c55e;">Cierre del día — {{ cierreDiaResultado.fecha }}</h4>
+            <pre style="font-size:0.78rem; color: var(--text-secondary); white-space: pre-wrap;">{{ cierreDiaResultado.detalle }}</pre>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
@@ -5853,7 +5966,9 @@ const financiasItems = [
   { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos' },
   { icon: 'mdi-currency-usd', label: 'Contabilidad', id: 'facturacion' },
   { icon: 'mdi-chart-line', label: 'Facturación', id: 'contabilidad' },
-  { icon: 'mdi-calculator-variant', label: 'Estructura de Precios', id: 'precios' }
+  { icon: 'mdi-calculator-variant', label: 'Estructura de Precios', id: 'precios' },
+  { icon: 'mdi-finance', label: 'Cierre mensual', id: 'cierre_mensual' },
+  { icon: 'mdi-bank-check', label: 'Reconciliación caja', id: 'reconciliacion' }
 ]
 
 // ── ESTRUCTURA DE PRECIOS Y PUNTO DE EQUILIBRIO ──────────────────────────────
@@ -9670,6 +9785,200 @@ const deleteEgreso = async (id: string) => {
     await (client.from('egresos_healup') as any).delete().eq('id', id)
   }
   fetchEgresos()
+}
+
+/* =============================================
+   2.13 Cierre mensual + 2.3 Reconciliación caja
+   ============================================= */
+const cierreMesSel = ref(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+
+const cierreMesesDisponibles = computed(() => {
+  const set = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
+    if (p.fecha_agendamiento && /^\d{4}-\d{2}/.test(p.fecha_agendamiento)) {
+      set.add(p.fecha_agendamiento.slice(0, 7))
+    }
+  })
+  egresosList.value.forEach((e: any) => {
+    if (e.created_at) {
+      const d = new Date(e.created_at)
+      if (!isNaN(d.getTime())) set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+  })
+  const now = new Date()
+  set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+  return [...set].sort((a, b) => b.localeCompare(a)).map(value => {
+    const [y, m] = value.split('-')
+    return { value, label: `${NOMBRES_MESES_LABEL[parseInt(m) - 1]} ${y}` }
+  })
+})
+
+const cierrePacientesDelMes = computed(() => {
+  const m = cierreMesSel.value
+  const wpp = pacientesWpp.value.filter((p: any) => p.fecha_agendamiento?.startsWith(m))
+  const fbig = pacientesFbIg.value.filter((p: any) => p.fecha_agendamiento?.startsWith(m))
+  return { wpp, fbig }
+})
+
+const cierreIngresos = computed(() => {
+  const { wpp, fbig } = cierrePacientesDelMes.value
+  const sumPac = (arr: any[]) => arr.reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+  return sumPac(wpp) + sumPac(fbig)
+})
+
+const cierreEgresosFiltrados = computed(() =>
+  egresosList.value.filter((e: any) => {
+    if (e.descartado || e.deleted_at) return false
+    if (!e.created_at) return false
+    const d = new Date(e.created_at)
+    if (isNaN(d.getTime())) return false
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === cierreMesSel.value
+  })
+)
+const cierreEgresos = computed(() =>
+  cierreEgresosFiltrados.value.reduce((s, e) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+)
+const cierreEgresosCount = computed(() => cierreEgresosFiltrados.value.length)
+const cierreUtilidad = computed(() => cierreIngresos.value - cierreEgresos.value)
+const cierrePacientes = computed(() => {
+  const { wpp, fbig } = cierrePacientesDelMes.value
+  return wpp.length + fbig.length
+})
+
+const cierrePorFuente = computed(() => {
+  const r: Record<string, number> = {}
+  const { wpp, fbig } = cierrePacientesDelMes.value
+  wpp.forEach((p: any) => {
+    const f = !p.numero || isEncrypted(p.numero) ? 'TikTok' : 'WhatsApp'
+    r[f] = (r[f] || 0) + 1
+  })
+  fbig.forEach((p: any) => {
+    const rs = String(p.red_social || '').toLowerCase()
+    const f = rs.includes('facebook') ? 'Facebook' : 'Instagram'
+    r[f] = (r[f] || 0) + 1
+  })
+  return r
+})
+
+const cierreEgresosPorCategoria = computed(() => {
+  const map: Record<string, { count: number; total: number }> = {}
+  cierreEgresosFiltrados.value.forEach((e: any) => {
+    const cat = e.categoria || 'OTROS'
+    if (!map[cat]) map[cat] = { count: 0, total: 0 }
+    map[cat].count++
+    map[cat].total += (Number(e.precio) || 0) * (Number(e.cantidad) || 0)
+  })
+  return Object.entries(map).map(([categoria, v]) => ({ categoria, ...v })).sort((a, b) => b.total - a.total)
+})
+
+const exportarCierreMensualPDF = () => {
+  if (!import.meta.client) return
+  const win = window.open('', '_blank')
+  if (!win) return
+  const fmt = (n: number) => 'S/ ' + n.toLocaleString('es-PE', { minimumFractionDigits: 2 })
+  const mesLabel = cierreMesesDisponibles.value.find(x => x.value === cierreMesSel.value)?.label || cierreMesSel.value
+  const fuenteRows = Object.entries(cierrePorFuente.value).map(([f, c]) => `<tr><td>${f}</td><td>${c}</td></tr>`).join('')
+  const egRows = cierreEgresosPorCategoria.value.map(e => `<tr><td>${e.categoria}</td><td>${e.count}</td><td>${fmt(e.total)}</td></tr>`).join('')
+  win.document.write(`<!DOCTYPE html><html><head><title>Cierre ${mesLabel}</title>
+    <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:24px auto;padding:0 16px;color:#222;}h1{font-size:1.6rem;margin-bottom:0;}h2{font-size:1.1rem;margin-top:24px;border-bottom:1px solid #ccc;padding-bottom:4px;}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:0.92rem;}th,td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;}th{background:#f5f5f5;}.kpi{display:flex;gap:16px;margin:12px 0;}.kpi>div{flex:1;padding:12px;background:#f9f9f9;border-radius:6px;}.kpi h3{margin:0;font-size:0.78rem;color:#666;text-transform:uppercase;}.kpi b{font-size:1.4rem;}@media print{body{margin:0;}}</style>
+    </head><body>
+    <h1>Cierre Mensual — Healup</h1>
+    <div style="opacity:0.7;font-size:0.92rem;">${mesLabel}</div>
+    <div class="kpi">
+      <div><h3>Ingresos</h3><b style="color:#22c55e;">${fmt(cierreIngresos.value)}</b><br><small>${cierrePacientes.value} pacientes</small></div>
+      <div><h3>Egresos</h3><b style="color:#ef4444;">${fmt(cierreEgresos.value)}</b><br><small>${cierreEgresosCount.value} movimientos</small></div>
+      <div><h3>Utilidad</h3><b style="color:#3b82f6;">${fmt(cierreUtilidad.value)}</b></div>
+    </div>
+    <h2>Pacientes por fuente</h2>
+    <table><tr><th>Fuente</th><th>Cantidad</th></tr>${fuenteRows}</table>
+    <h2>Egresos por categoría</h2>
+    <table><tr><th>Categoría</th><th>Movimientos</th><th>Total</th></tr>${egRows}</table>
+    <p style="margin-top:32px;opacity:0.5;font-size:0.78rem;">Generado el ${new Date().toLocaleString('es-PE')} — Cmd+P → Guardar como PDF.</p>
+  </body></html>`)
+  win.document.close()
+  setTimeout(() => win.print(), 400)
+}
+
+// 2.3 Reconciliación caja: ingresos por método (mes actual)
+const ingresosEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return [...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(m) && (p.metodo_de_pago || '').toUpperCase() === 'EFECTIVO')
+    .reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+})
+const ingresosNoEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return [...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => {
+      if (!p.fecha_agendamiento?.startsWith(m)) return false
+      const mp = (p.metodo_de_pago || '').toUpperCase()
+      return mp && mp !== 'EFECTIVO'
+    })
+    .reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+})
+
+const egresosEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = now.getMonth(); const y = now.getFullYear()
+  return egresosList.value.filter((e: any) => {
+    if (e.descartado || e.deleted_at) return false
+    const d = new Date(e.created_at)
+    return d.getMonth() === m && d.getFullYear() === y && (e.metodo_pago || '').toUpperCase() === 'EFECTIVO'
+  }).reduce((s, e) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+})
+const egresosNoEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = now.getMonth(); const y = now.getFullYear()
+  return egresosList.value.filter((e: any) => {
+    if (e.descartado || e.deleted_at) return false
+    const d = new Date(e.created_at)
+    if (!(d.getMonth() === m && d.getFullYear() === y)) return false
+    const mp = (e.metodo_pago || '').toUpperCase()
+    return mp && mp !== 'EFECTIVO'
+  }).reduce((s, e) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+})
+
+const saldoCajaChica       = computed(() => ingresosEfectivoMesActual.value - egresosEfectivoMesActual.value)
+const saldoCuentaBancaria  = computed(() => ingresosNoEfectivoMesActual.value - egresosNoEfectivoMesActual.value)
+
+const saldoRealCajaChica       = ref(0)
+const saldoRealCuentaBancaria  = ref(0)
+const cerrandoDia              = ref(false)
+const cierreDiaResultado       = ref<{ fecha: string; detalle: string } | null>(null)
+
+const cerrarDia = async () => {
+  cerrandoDia.value = true
+  try {
+    const audit = useHealupAudit()
+    const fecha = new Date().toISOString().slice(0, 10)
+    const detalle = [
+      `📊 Cierre del día ${fecha}`,
+      ``,
+      `Caja chica (calc.): S/ ${saldoCajaChica.value.toFixed(2)}`,
+      `Caja chica (real) : S/ ${saldoRealCajaChica.value.toFixed(2)}`,
+      `Diferencia caja   : S/ ${(saldoRealCajaChica.value - saldoCajaChica.value).toFixed(2)}`,
+      ``,
+      `Cuenta (calc.): S/ ${saldoCuentaBancaria.value.toFixed(2)}`,
+      `Cuenta (real) : S/ ${saldoRealCuentaBancaria.value.toFixed(2)}`,
+      `Diferencia cuenta : S/ ${(saldoRealCuentaBancaria.value - saldoCuentaBancaria.value).toFixed(2)}`,
+    ].join('\n')
+    await audit.log({
+      entidad: 'cita', accion: 'state_change', campo: 'cierre_dia',
+      valor_despues: {
+        fecha,
+        caja_calc: saldoCajaChica.value, caja_real: saldoRealCajaChica.value,
+        cuenta_calc: saldoCuentaBancaria.value, cuenta_real: saldoRealCuentaBancaria.value
+      },
+      notas: 'Cierre de día con cuadre manual'
+    })
+    cierreDiaResultado.value = { fecha, detalle }
+  } catch (e: any) {
+    alert(`Error al cerrar día: ${e?.message || e}`)
+  } finally {
+    cerrandoDia.value = false
+  }
 }
 
 // =============================================

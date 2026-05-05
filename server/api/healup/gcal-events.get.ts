@@ -79,6 +79,12 @@ export default defineEventHandler(async (event) => {
     _time: (e.time || '').substring(0, 5) // HH:MM
   }))
 
+  // 2b. Catálogo de procedimientos para auto-detectar SKU desde el subject de GCal
+  const { data: procs } = await client
+    .from('healup_procedures')
+    .select('id, name, sku, grupo, cabina')
+  const catalogo = procs || []
+
   // 3. Parsear y cruzar eventos GCal con Supabase
   const matched = new Set<number>() // IDs de eventos de Supabase ya matcheados
   const merged = gcalEvents.map(gcal => {
@@ -107,6 +113,14 @@ export default defineEventHandler(async (event) => {
 
     if (match) matched.add(match.id)
 
+    // Resolver SKU: 1) si ya hay match en dashboard con procedure_id, usar ese; 2) sino auto-detectar desde texto
+    const matchedProcId = match?.procedure_id ? Number(match.procedure_id) : null
+    const procFromDashboard = matchedProcId
+      ? catalogo.find((p: any) => Number(p.id) === matchedProcId)
+      : null
+    const subjectForMatch = `${fullName}\n${procedure || ''}\n${gcal.description || ''}`
+    const procFromText = procFromDashboard || detectProcedureFromText(subjectForMatch, catalogo)
+
     return {
       gcal_id: gcal.id || null,
       gcal_summary: fullName,
@@ -119,33 +133,48 @@ export default defineEventHandler(async (event) => {
       client_phone: clientPhone,
       client_dni: clientDni,
       procedure,
+      procedure_id: procFromText?.id || null,
+      procedure_sku: procFromText?.sku || null,
+      procedure_name: procFromText?.name || null,
+      procedure_grupo: procFromText?.grupo || null,
+      sku_auto_detected: !!procFromText && !procFromDashboard,
       en_dashboard: !!match,
       dashboard_event_id: match?.id || null,
       cobro_completado: (match as any)?.cobro_completado || false,
-      cabina: match?.cabina || 'cabina1'
+      cabina: match?.cabina || procFromText?.cabina || 'cabina1'
     }
   })
 
   // 4. Eventos en dashboard pero NO en GCal (agendados via WhatsApp API directo)
   const soloEnDashboard = dbEvents
     .filter(s => !matched.has(s.id))
-    .map(s => ({
-      gcal_id: null,
-      gcal_summary: `${s.client_name} ${s.client_surname}`.trim(),
-      gcal_description: '',
-      gcal_start: '',
-      gcal_end: '',
-      time: s._time,
-      client_name: s.client_name,
-      client_surname: s.client_surname,
-      client_phone: s.client_phone || '',
-      client_dni: s.client_dni || '',
-      en_dashboard: true,
-      dashboard_event_id: s.id,
-      cobro_completado: (s as any).cobro_completado || false,
-      cabina: s.cabina || 'cabina1',
-      solo_dashboard: true
-    }))
+    .map(s => {
+      const procId = s.procedure_id ? Number(s.procedure_id) : null
+      const proc = procId ? catalogo.find((p: any) => Number(p.id) === procId) : null
+      return {
+        gcal_id: null,
+        gcal_summary: `${s.client_name} ${s.client_surname}`.trim(),
+        gcal_description: '',
+        gcal_start: '',
+        gcal_end: '',
+        time: s._time,
+        client_name: s.client_name,
+        client_surname: s.client_surname,
+        client_phone: s.client_phone || '',
+        client_dni: s.client_dni || '',
+        procedure: proc?.name || '',
+        procedure_id: procId,
+        procedure_sku: proc?.sku || null,
+        procedure_name: proc?.name || null,
+        procedure_grupo: proc?.grupo || null,
+        sku_auto_detected: false,
+        en_dashboard: true,
+        dashboard_event_id: s.id,
+        cobro_completado: (s as any).cobro_completado || false,
+        cabina: s.cabina || 'cabina1',
+        solo_dashboard: true
+      }
+    })
 
   const allEvents = [...merged, ...soloEnDashboard].sort((a, b) => (a.time || '').localeCompare(b.time || ''))
 
@@ -265,4 +294,32 @@ function normalizePhone(phone: string): string {
 function formatDateDDMMYYYY(isoDate: string): string {
   const [y, m, d] = isoDate.split('-')
   return `${d}-${m}-${y}`
+}
+
+/**
+ * Detecta el procedimiento contra el catálogo:
+ *   1) busca un SKU explícito en el texto (ej: "FB-001"),
+ *   2) sino busca el nombre completo del procedimiento (longest first).
+ */
+function detectProcedureFromText(text: string, procs: any[]): any | null {
+  if (!text || !procs?.length) return null
+
+  const upper = text.toUpperCase()
+  for (const p of procs) {
+    if (p.sku && upper.includes(String(p.sku).toUpperCase())) return p
+  }
+
+  const norm = (s: string) => (s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+
+  const t = norm(text)
+  const sorted = [...procs].sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0))
+  for (const p of sorted) {
+    const n = norm(p.name || '')
+    if (n && n.length >= 4 && t.includes(n)) return p
+  }
+  return null
 }

@@ -117,7 +117,59 @@
                 {{ item.client_phone }}
                 <span v-if="item.client_dni"> | DNI: {{ item.client_dni }}</span>
               </div>
+              <div v-if="item.procedure" style="font-size: 0.7rem; opacity: 0.5; font-style: italic; margin-top:2px;">
+                "{{ item.procedure }}"
+              </div>
             </div>
+          </template>
+
+          <!-- SKU sincronizado -->
+          <template v-slot:item.sku="{ item }">
+            <div v-if="item.en_dashboard">
+              <v-chip
+                v-if="item.procedure_sku"
+                color="primary" size="x-small" variant="flat" label
+                :title="`${item.procedure_name} · ${item.procedure_grupo || ''}`"
+              >
+                {{ item.procedure_sku }}
+              </v-chip>
+              <v-chip v-else color="grey" size="x-small" variant="tonal" label>sin SKU</v-chip>
+            </div>
+            <v-autocomplete
+              v-else
+              v-model="item.procedure_id"
+              :items="procedures"
+              item-value="id"
+              :item-title="procedureLabel"
+              variant="outlined"
+              density="compact"
+              hide-details
+              clearable
+              :placeholder="item.procedure_sku ? `Detectado: [${item.procedure_sku}]` : 'Asignar SKU…'"
+              :menu-props="{ maxHeight: 320 }"
+              style="min-width: 240px;"
+            >
+              <template v-slot:prepend-inner>
+                <v-tooltip v-if="item.sku_auto_detected" location="top" text="SKU detectado automáticamente desde la reserva — confirmá antes de importar">
+                  <template v-slot:activator="{ props }">
+                    <v-icon v-bind="props" icon="mdi-auto-fix" size="14" color="success" />
+                  </template>
+                </v-tooltip>
+              </template>
+              <template v-slot:item="{ props, item: it }">
+                <v-list-item v-bind="props" :title="it.raw.name" :subtitle="it.raw.grupo || ''">
+                  <template v-slot:append>
+                    <v-chip v-if="it.raw.sku" size="x-small" color="primary" variant="tonal" label>{{ it.raw.sku }}</v-chip>
+                  </template>
+                </v-list-item>
+              </template>
+              <template v-slot:selection="{ item: it }">
+                <v-chip v-if="it.raw.sku" size="x-small" color="primary" variant="flat" label>{{ it.raw.sku }}</v-chip>
+                <span style="font-size:0.78rem; margin-left:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                  {{ it.raw.name }}
+                </span>
+              </template>
+            </v-autocomplete>
           </template>
 
           <!-- Estado -->
@@ -221,10 +273,35 @@ const faltantes = computed(() => events.value.filter(e => !e.en_dashboard && !e.
 const headers = [
   { title: 'Hora',     key: 'time',         sortable: true,  width: '80px'  },
   { title: 'Paciente', key: 'gcal_summary',  sortable: true                  },
+  { title: 'SKU',      key: 'sku',           sortable: false, width: '260px' },
   { title: 'Estado',   key: 'estado',        sortable: false, width: '160px' },
   { title: 'Fuente',   key: 'fuente',        sortable: false, width: '140px' },
   { title: '',         key: 'acciones',      sortable: false, width: '130px' }
 ]
+
+/* ─── Catálogo de procedimientos para mapear SKU ── */
+const procedures = ref<any[]>([])
+
+const procedureLabel = (p: any) =>
+  `${p.sku ? '[' + p.sku + '] ' : ''}${p.name}${p.grupo ? ' · ' + p.grupo : ''}`
+
+const cargarProcedures = async () => {
+  try {
+    const supabase = (window as any).$nuxt?.$supabase
+    // Usar import desde el plugin global de Supabase del proyecto
+    const { useSupabaseClient } = await import('#imports')
+    const sb: any = useSupabaseClient()
+    const { data } = await sb
+      .from('healup_procedures')
+      .select('id, name, sku, grupo, cabina')
+      .order('grupo', { ascending: true })
+      .order('name', { ascending: true })
+    procedures.value = data || []
+  } catch (err) {
+    console.error('[GCalSync] Error cargando procedimientos:', err)
+  }
+}
+cargarProcedures()
 
 /* ─── Sincronizar ────────────────────────────────── */
 const sincronizar = async () => {
@@ -269,15 +346,20 @@ const importarEvento = async (item: any) => {
         client_dni: item.client_dni,
         subject: item.gcal_summary,
         cabina: item.cabina || 'cabina1',
-        gcal_id: item.gcal_id
+        gcal_id: item.gcal_id,
+        procedure_id: item.procedure_id || undefined
       }
     })
 
     if (res.success) {
       item.en_dashboard = true
       item.dashboard_event_id = res.event_id
+      item.procedure_id = res.procedure_id || item.procedure_id
+      item.procedure_sku = res.procedure_sku || item.procedure_sku
+      item.procedure_name = res.procedure_name || item.procedure_name
+      item.procedure_grupo = res.procedure_grupo || item.procedure_grupo
       if (resultado.value) resultado.value.faltantes--
-      showSnack(res.message, 'success')
+      showSnack(res.message, res.procedure_sku ? 'success' : 'warning')
     } else {
       showSnack(res.message || 'No se pudo importar', 'warning')
       if (res.duplicado) item.en_dashboard = true
@@ -308,12 +390,17 @@ const importarTodos = async () => {
           client_dni: item.client_dni,
           subject: item.gcal_summary,
           cabina: item.cabina || 'cabina1',
-          gcal_id: item.gcal_id
+          gcal_id: item.gcal_id,
+          procedure_id: item.procedure_id || undefined
         }
       })
       if (res.success || res.duplicado) {
         item.en_dashboard = true
         item.dashboard_event_id = res.event_id
+        item.procedure_id = res.procedure_id || item.procedure_id
+        item.procedure_sku = res.procedure_sku || item.procedure_sku
+        item.procedure_name = res.procedure_name || item.procedure_name
+        item.procedure_grupo = res.procedure_grupo || item.procedure_grupo
         ok++
       } else {
         fail++

@@ -524,10 +524,13 @@
                   </v-tooltip>
                 </template>
                 <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="openPatientForm(item, 'wpp')">
+                  <button class="icon-btn" @click="openPatientForm(item, 'wpp')" title="Editar paciente">
                     <v-icon icon="mdi-pencil" size="16" />
                   </button>
-                  <button class="icon-btn" @click="deletePatient(item, 'wpp')">
+                  <button class="icon-btn" @click="openHistoriaClinicaDePaciente(item, 'wpp')" title="Ver / agregar historia clínica" style="color:#daa520;">
+                    <v-icon icon="mdi-folder-heart" size="16" />
+                  </button>
+                  <button class="icon-btn" @click="deletePatient(item, 'wpp')" title="Eliminar">
                     <v-icon icon="mdi-delete" size="16" />
                   </button>
                 </template>
@@ -597,10 +600,13 @@
                   </v-tooltip>
                 </template>
                 <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="openPatientForm(item, 'fbig')">
+                  <button class="icon-btn" @click="openPatientForm(item, 'fbig')" title="Editar paciente">
                     <v-icon icon="mdi-pencil" size="16" />
                   </button>
-                  <button class="icon-btn" @click="deletePatient(item, 'fbig')">
+                  <button class="icon-btn" @click="openHistoriaClinicaDePaciente(item, 'fbig')" title="Ver / agregar historia clínica" style="color:#daa520;">
+                    <v-icon icon="mdi-folder-heart" size="16" />
+                  </button>
+                  <button class="icon-btn" @click="deletePatient(item, 'fbig')" title="Eliminar">
                     <v-icon icon="mdi-delete" size="16" />
                   </button>
                 </template>
@@ -3250,29 +3256,158 @@
       </v-card>
     </v-dialog>
 
+    <!-- ==========  HISTORIA CLÍNICA POR PACIENTE (multi-procedimiento) ========== -->
+    <v-dialog v-model="showHistoriaPacienteDialog" max-width="900px" scrollable>
+      <v-card>
+        <v-card-title style="display:flex; align-items:center; gap:10px; padding:14px 20px; background: rgba(218,165,32,0.06);">
+          <v-icon icon="mdi-folder-heart" color="amber" />
+          <div>
+            <div style="font-weight:600;">Historia clínica</div>
+            <div style="font-size:0.78rem; opacity:0.7;">
+              {{ historiaPacienteSel?.nombre || '—' }}
+              <span v-if="historiaPacienteSel?.dni"> · DNI {{ historiaPacienteSel.dni }}</span>
+              <span v-if="historiaPacienteSel?.numero"> · Tel {{ historiaPacienteSel.numero }}</span>
+            </div>
+          </div>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="closeHistoriaPacienteDialog" />
+        </v-card-title>
+
+        <v-card-text class="pa-4" style="max-height: 75vh;">
+          <!-- Visitas anteriores -->
+          <h4 style="font-size:0.9rem; margin-bottom:8px;">
+            <v-icon icon="mdi-history" size="14" /> Visitas anteriores ({{ historiaPacienteVisitas.length }})
+          </h4>
+          <div v-if="loadingHistoriaPaciente" style="opacity:0.6; padding: 12px; text-align:center;">
+            Cargando…
+          </div>
+          <div v-else-if="!historiaPacienteVisitas.length" style="opacity:0.5; padding: 12px; text-align:center; font-size:0.85rem;">
+            Sin visitas registradas para este paciente.
+          </div>
+          <div v-else style="max-height: 240px; overflow-y: auto; border: 1px solid var(--border, rgba(255,255,255,0.1)); border-radius: 6px; padding: 8px;">
+            <div v-for="v in historiaPacienteVisitas" :key="v.id"
+              style="padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size:0.82rem;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <strong>{{ formatDateAgendamiento(v.dateAdded) || '—' }}</strong>
+                <v-chip v-if="v.status" size="x-small" variant="tonal"
+                  :color="v.status === 'Activo' ? 'success' : 'default'">{{ v.status }}</v-chip>
+              </div>
+              <div v-if="v.procedimientos_visita" style="margin-top:4px; color: var(--accent-gold, #daa520); font-weight:500;">
+                {{ v.procedimientos_visita }}
+              </div>
+              <div v-if="v.returnNote" style="margin-top:4px; opacity:0.75; font-size:0.78rem;">
+                {{ v.returnNote }}
+              </div>
+              <div v-if="v.total_visita" style="margin-top:4px; font-size:0.78rem;">
+                Total: <strong style="color:#22c55e;">S/ {{ Number(v.total_visita).toLocaleString('es-PE',{minimumFractionDigits:2}) }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <v-divider class="my-4" />
+
+          <!-- Nueva visita con multi-procedimiento -->
+          <h4 style="font-size:0.9rem; margin-bottom:8px;">
+            <v-icon icon="mdi-plus-circle" size="14" color="success" /> Registrar nueva visita
+          </h4>
+          <v-row>
+            <v-col cols="12" sm="5">
+              <v-text-field v-model="nuevaVisita.fecha" type="date" label="Fecha de la visita"
+                variant="outlined" density="compact" prepend-inner-icon="mdi-calendar" hide-details />
+            </v-col>
+            <v-col cols="12" sm="7">
+              <v-select v-model="nuevaVisita.cabina"
+                :items="[{value:'cabina1',label:'Cabina 1 — Doctora (medicina estética)'},{value:'cabina2',label:'Cabina 2 — Cosmiatra (no invasivos)'}]"
+                item-title="label" item-value="value" label="Cabina"
+                variant="outlined" density="compact" prepend-inner-icon="mdi-door" hide-details />
+            </v-col>
+          </v-row>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; margin-bottom:6px;">
+            <strong style="font-size:0.85rem;">Procedimientos de esta visita</strong>
+            <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-plus"
+              @click="agregarProcedimientoVisita">Agregar procedimiento</v-btn>
+          </div>
+
+          <div v-for="(p, i) in nuevaVisita.procedimientos" :key="i"
+            style="display:flex; gap:8px; align-items:flex-start; margin-bottom:6px;">
+            <v-autocomplete v-model="p.procedure_id" :items="procedures"
+              item-value="id" :item-title="(x: any) => `${x.sku ? '['+x.sku+'] ' : ''}${x.name}`"
+              label="Catálogo (opcional)" variant="outlined" density="compact"
+              clearable hide-details style="flex:2;"
+              @update:model-value="(v: any) => { const proc = procedures.find((x:any) => Number(x.id) === Number(v)); if (proc) { p.nombre_libre = proc.name; p.precio = Number(proc.price) || 0; } }" />
+            <v-text-field v-model="p.nombre_libre" label="Nombre libre" variant="outlined"
+              density="compact" hide-details style="flex:2;" />
+            <v-text-field v-model.number="p.precio" label="Precio S/" type="number" min="0" step="0.10"
+              variant="outlined" density="compact" hide-details style="flex:0 0 110px;" />
+            <v-btn icon="mdi-close" size="small" variant="text" color="error"
+              :disabled="nuevaVisita.procedimientos.length === 1"
+              @click="eliminarProcedimientoVisita(i)" />
+          </div>
+
+          <v-textarea v-model="nuevaVisita.notas_visita" label="Notas de la visita (opcional)"
+            variant="outlined" density="compact" rows="2" auto-grow class="mt-2"
+            hint="Observaciones, indicaciones, próxima cita…" persistent-hint />
+
+          <div style="margin-top:10px; padding: 10px 14px; background: rgba(34,197,94,0.06); border-radius: 8px; font-size:0.85rem;">
+            <div style="display:flex; justify-content:space-between;">
+              <span>Total de la visita:</span>
+              <strong style="color:#22c55e;">S/ {{ totalVisita.toFixed(2) }}</strong>
+            </div>
+          </div>
+        </v-card-text>
+
+        <v-card-actions class="pa-3">
+          <v-spacer />
+          <v-btn variant="text" @click="closeHistoriaPacienteDialog">Cerrar</v-btn>
+          <v-btn color="amber" variant="elevated" :loading="guardandoVisita" @click="guardarVisita"
+            prepend-icon="mdi-content-save">
+            Guardar visita
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ==========  PATIENT TYPE SELECTION DIALOG  ========== -->
-    <v-dialog v-model="showPatientTypeDialog" max-width="500px">
+    <v-dialog v-model="showPatientTypeDialog" max-width="640px">
       <v-card>
         <v-card-title class="text-h5 text-center pa-4">
           Seleccionar Origen del Paciente
         </v-card-title>
         <v-card-text class="pa-4">
           <v-row>
-            <v-col cols="6">
-              <v-card hover @click="selectPatientType('wpp')" class="text-center pa-4 cursor-pointer" height="100%"
-                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
-                <v-icon icon="mdi-whatsapp" size="48" color="success"></v-icon>
-                <span class="text-h6">WhatsApp</span>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('whatsapp')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-whatsapp" size="40" color="success" />
+                <span class="text-subtitle-1">WhatsApp</span>
               </v-card>
             </v-col>
-            <v-col cols="6">
-              <v-card hover @click="selectPatientType('fbig')" class="text-center pa-4 cursor-pointer" height="100%"
-                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
-                <v-icon icon="mdi-facebook" size="48" color="primary"></v-icon>
-                <span class="text-h6">FB / IG</span>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('tiktok')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-music-note" size="40" color="deep-purple" />
+                <span class="text-subtitle-1">TikTok</span>
+              </v-card>
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('instagram')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-instagram" size="40" color="pink" />
+                <span class="text-subtitle-1">Instagram</span>
+              </v-card>
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('facebook')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-facebook" size="40" color="primary" />
+                <span class="text-subtitle-1">Facebook</span>
               </v-card>
             </v-col>
           </v-row>
+          <div style="font-size:0.78rem; opacity:0.6; text-align:center; margin-top:12px;">
+            WhatsApp y TikTok → tabla WPP · Instagram y Facebook → tabla FB/IG
+          </div>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -5778,6 +5913,150 @@ const selectPatientType = (type: 'wpp' | 'fbig') => {
   selectedPatientType.value = type
   showPatientTypeDialog.value = false
   openPatientForm(null, type)
+}
+
+// Selector unificado por red social — mapea a la tabla correcta y prefilla
+// el campo red_social del form para que detectFuentePaciente lo clasifique bien.
+const selectPatientSource = (source: 'whatsapp' | 'tiktok' | 'instagram' | 'facebook') => {
+  showPatientTypeDialog.value = false
+  // WhatsApp y TikTok viven en PacientesBDwppHEALUP; Instagram y Facebook en PacientesBDfbigHEALUP
+  const tipo: 'wpp' | 'fbig' = (source === 'whatsapp' || source === 'tiktok') ? 'wpp' : 'fbig'
+  selectedPatientType.value = tipo
+  openPatientForm(null, tipo)
+  // Prefill: para TikTok el `numero` se deja vacío (eso es lo que hace que
+  // detectFuentePaciente lo clasifique como TikTok). Para FB/IG cargamos
+  // la red en `red_social` para que se distinga correctamente.
+  if (source === 'tiktok') {
+    patientFormData.value.numero = ''
+    ;(patientFormData.value as any).red_social = 'tiktok'
+  } else if (source === 'instagram') {
+    ;(patientFormData.value as any).red_social = 'instagram'
+  } else if (source === 'facebook') {
+    ;(patientFormData.value as any).red_social = 'facebook'
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Historia clínica + visitas (multi-procedimiento) por paciente
+// ──────────────────────────────────────────────────────────────────
+const showHistoriaPacienteDialog = ref(false)
+const historiaPacienteSel = ref<any>(null)
+const historiaPacienteVisitas = ref<any[]>([])
+const loadingHistoriaPaciente = ref(false)
+const nuevaVisita = ref<{
+  fecha: string
+  cabina: string
+  procedimientos: Array<{ procedure_id: any; nombre_libre: string; precio: number; notas: string }>
+  notas_visita: string
+}>({
+  fecha: '', cabina: 'cabina1',
+  procedimientos: [{ procedure_id: null, nombre_libre: '', precio: 0, notas: '' }],
+  notas_visita: ''
+})
+const guardandoVisita = ref(false)
+
+const openHistoriaClinicaDePaciente = async (paciente: any, _origen: 'wpp' | 'fbig') => {
+  historiaPacienteSel.value = paciente
+  showHistoriaPacienteDialog.value = true
+  loadingHistoriaPaciente.value = true
+  // Buscar todas las visitas / entries de historia clínica de este paciente
+  // Match por DNI (preferido) o nombre completo
+  try {
+    const filterDni = paciente.dni ? `dni.eq.${paciente.dni}` : null
+    const filterName = paciente.nombre ? `name.ilike.%${paciente.nombre.split(' ')[0]}%` : null
+    const filters = [filterDni, filterName].filter(Boolean).join(',')
+    const { data } = await (client.from('healup_medical_history') as any)
+      .select('*')
+      .or(filters || 'id.gte.0')
+      .order('dateAdded', { ascending: false })
+    historiaPacienteVisitas.value = data || []
+  } catch (err) {
+    console.warn('[historia] error:', err)
+    historiaPacienteVisitas.value = []
+  } finally {
+    loadingHistoriaPaciente.value = false
+  }
+  // Reset form
+  const today = new Date()
+  nuevaVisita.value = {
+    fecha: `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`,
+    cabina: 'cabina1',
+    procedimientos: [{ procedure_id: null, nombre_libre: '', precio: 0, notas: '' }],
+    notas_visita: ''
+  }
+}
+
+const closeHistoriaPacienteDialog = () => {
+  showHistoriaPacienteDialog.value = false
+  historiaPacienteSel.value = null
+  historiaPacienteVisitas.value = []
+}
+
+const agregarProcedimientoVisita = () => {
+  nuevaVisita.value.procedimientos.push({ procedure_id: null, nombre_libre: '', precio: 0, notas: '' })
+}
+const eliminarProcedimientoVisita = (i: number) => {
+  if (nuevaVisita.value.procedimientos.length > 1) nuevaVisita.value.procedimientos.splice(i, 1)
+}
+
+const totalVisita = computed(() =>
+  nuevaVisita.value.procedimientos.reduce((s, p) => s + (Number(p.precio) || 0), 0)
+)
+
+const guardarVisita = async () => {
+  if (!historiaPacienteSel.value) return
+  if (!nuevaVisita.value.procedimientos.some(p => p.nombre_libre || p.procedure_id)) {
+    alert('Agregá al menos un procedimiento con nombre.')
+    return
+  }
+  guardandoVisita.value = true
+  try {
+    const p = historiaPacienteSel.value
+    // Construir el campo "procedimiento" agrupando todos los items separados por '+'
+    const procsText = nuevaVisita.value.procedimientos
+      .map(it => {
+        const cat = it.procedure_id ? procedures.value.find((x:any)=>String(x.id)===String(it.procedure_id))?.name : null
+        const name = cat || it.nombre_libre || ''
+        const precio = Number(it.precio) || 0
+        return precio > 0 ? `${name} (S/${precio})` : name
+      })
+      .filter(Boolean)
+      .join(' + ')
+    const totalProcs = totalVisita.value
+    const notasFull = [
+      `Visita ${nuevaVisita.value.fecha}`,
+      `Cabina: ${nuevaVisita.value.cabina}`,
+      `Total: S/ ${totalProcs.toFixed(2)}`,
+      nuevaVisita.value.notas_visita ? `Notas: ${nuevaVisita.value.notas_visita}` : null,
+    ].filter(Boolean).join(' · ')
+    const payload: any = {
+      name: p.nombre || '',
+      surname: '',
+      dni: p.dni || null,
+      phone: p.numero || null,
+      email: '',
+      dateAdded: nuevaVisita.value.fecha,
+      returnNote: notasFull,
+      status: 'Activo',
+      procedimientos_visita: procsText,
+      total_visita: totalProcs,
+    }
+    // Try-then-retry: si las columnas extendidas no existen, retry con base
+    let r = await (client.from('healup_medical_history') as any).insert(payload)
+    if (r.error) {
+      delete payload.procedimientos_visita
+      delete payload.total_visita
+      r = await (client.from('healup_medical_history') as any).insert(payload)
+    }
+    if (r.error) {
+      alert(`Error: ${r.error.message}`)
+    } else {
+      // Refrescar
+      await openHistoriaClinicaDePaciente(p, 'wpp')
+    }
+  } finally {
+    guardandoVisita.value = false
+  }
 }
 
 const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {

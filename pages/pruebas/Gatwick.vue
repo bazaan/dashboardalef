@@ -282,8 +282,7 @@
               <v-icon icon="mdi-chevron-left" size="18" />
             </button>
             <h2 style="margin: 0; font-size: 1.1rem;">
-              {{ ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][currentMonth] }}
-              {{ currentYear }}
+              {{ monthNamesEs[currentMonth] }} {{ currentYear }}
             </h2>
             <button class="btn-secondary" @click="nextMonth">
               <v-icon icon="mdi-chevron-right" size="18" />
@@ -291,19 +290,51 @@
           </div>
 
           <div class="calendar-grid">
-            <div v-for="day in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="day" class="calendar-header-cell">
-              {{ day }}
+            <div class="calendar-weekdays">
+              <div v-for="day in weekDays" :key="day" class="weekday-label">{{ day }}</div>
             </div>
-            <div v-for="(day, idx) in calendarDays" :key="idx"
-              :class="['calendar-cell', { 'other-month': !day.currentMonth, 'today': day.isToday, 'has-events': day.events?.length > 0 }]"
-              @click="day.currentMonth && openCreateEventDialog(day.date)">
-              <span class="day-number">{{ day.day }}</span>
-              <div v-for="ev in (day.events || []).slice(0,3)" :key="ev.id" class="event-pill"
-                style="background: rgba(244,98,58,0.25); color: #F4623A; font-size: 0.68rem; padding: 1px 5px; border-radius: 4px; margin-top: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">
-                {{ ev.hora }} {{ ev.client_name }}
+            <div class="calendar-days">
+              <div v-for="(day, idx) in calendarDays" :key="idx"
+                :class="['calendar-day', { 'other-month': !day.isCurrentMonth, 'today': day.isToday, 'has-events': day.events.length > 0 }]"
+                @click="day.isCurrentMonth && openCreateEventDialog(day.dateStr)">
+                <div class="day-header-row">
+                  <span class="day-number">{{ day.day }}</span>
+                </div>
+                <div v-if="day.events.length > 0" class="event-list-in-day">
+                  <div v-for="ev in day.events.slice(0, 2)" :key="ev.id" class="event-line"
+                    style="background: rgba(244,98,58,0.75);">
+                    <span class="event-line-text">{{ ev.time }} {{ ev.clientName }}</span>
+                  </div>
+                  <span v-if="day.events.length > 2" class="more-events">+{{ day.events.length - 2 }} más</span>
+                </div>
               </div>
-              <div v-if="(day.events || []).length > 3" style="font-size: 0.65rem; color: var(--text-secondary); margin-top: 2px;">
-                +{{ day.events.length - 3 }} más
+            </div>
+          </div>
+
+          <!-- Próximas citas -->
+          <div class="upcoming-events" style="margin-top: 0;">
+            <h3>Próximas Citas</h3>
+            <div v-if="upcomingEvents.length === 0" style="text-align:center; padding: 24px; color: var(--text-secondary);">
+              <v-icon icon="mdi-calendar-blank" size="36" />
+              <p style="margin-top: 8px;">Sin citas próximas</p>
+            </div>
+            <div v-else class="event-list">
+              <div v-for="ev in upcomingEvents" :key="ev.id" class="event-item"
+                @click="editarEvento(ev)" style="cursor: pointer;">
+                <div class="event-color-bar" style="background: #F4623A;"></div>
+                <div class="event-info">
+                  <div class="event-title">{{ ev.clientName }} {{ ev.clientSurname }}</div>
+                  <div class="event-meta">
+                    <v-icon icon="mdi-clock-outline" size="14" />
+                    {{ ev.date }} — {{ ev.time }}
+                    <v-chip size="x-small" color="primary" variant="tonal" class="ml-1">
+                      {{ ev.empresa || 'Sin empresa' }}
+                    </v-chip>
+                  </div>
+                  <div v-if="ev.descripcion" style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                    {{ ev.descripcion }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1074,6 +1105,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { isSuperAdmin, dashboards } from '~/utils/permissions'
 
+definePageMeta({ middleware: 'auth-dashboard' })
+
 const client = useSupabaseClient()
 const router = useRouter()
 
@@ -1207,45 +1240,78 @@ const zoomButtons = [
 function handleZoom(id) { activeZoom.value = id }
 
 // ── Calendario ─────────────────────────────────────────────────────────────
-const now = new Date()
-const currentMonth = ref(now.getMonth())
-const currentYear = ref(now.getFullYear())
+const _now = new Date()
+const currentMonth = ref(_now.getMonth())
+const currentYear = ref(_now.getFullYear())
 const events = ref([])
 const showEventDialog = ref(false)
 const editingEvent = ref(null)
 const savingEvent = ref(false)
 const eventForm = ref({ fecha: '', hora: '', client_name: '', client_surname: '', client_phone: '', client_email: '', empresa: '', ruc: '', direccion: '', tipo_equipo: '', descripcion: '', estado: 'pendiente' })
 
+const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const monthNamesEs = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+function formatDateISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function normalizeEventDate(raw) {
+  if (!raw) return ''
+  const s = raw.split('T')[0]
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('-')
+    return `${y}-${m}-${d}`
+  }
+  return s
+}
+
+function getEventsForDate(dateStr) {
+  return events.value.filter(e => e.date === dateStr)
+}
+
 const calendarDays = computed(() => {
   const year = currentYear.value
   const month = currentMonth.value
-  const firstDay = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const firstDayOfMonth = new Date(year, month, 1).getDay()
+  const lastDateOfMonth = new Date(year, month + 1, 0).getDate()
+  const prevLastDate = new Date(year, month, 0).getDate()
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
   const cells = []
-  for (let i = 0; i < firstDay; i++) {
-    const d = new Date(year, month, -firstDay + 1 + i)
-    cells.push({ day: d.getDate(), date: formatDate(d), currentMonth: false, isToday: false, events: [] })
+
+  for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+    const date = new Date(year, month - 1, prevLastDate - i)
+    cells.push({ day: date.getDate(), dateStr: formatDateISO(date), isCurrentMonth: false, isToday: false, events: [] })
   }
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d
-    cells.push({
-      day: d, date: dateStr, currentMonth: true, isToday,
-      events: events.value.filter(e => e.fecha === dateStr)
-    })
+  for (let d = 1; d <= lastDateOfMonth; d++) {
+    const date = new Date(year, month, d)
+    date.setHours(0, 0, 0, 0)
+    const dateStr = formatDateISO(date)
+    cells.push({ day: d, dateStr, isCurrentMonth: true, isToday: date.getTime() === today.getTime(), events: getEventsForDate(dateStr) })
   }
   const remaining = 42 - cells.length
   for (let i = 1; i <= remaining; i++) {
-    const d = new Date(year, month + 1, i)
-    cells.push({ day: d.getDate(), date: formatDate(d), currentMonth: false, isToday: false, events: [] })
+    const date = new Date(year, month + 1, i)
+    cells.push({ day: i, dateStr: formatDateISO(date), isCurrentMonth: false, isToday: false, events: [] })
   }
   return cells
 })
 
-function formatDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-}
+const upcomingEvents = computed(() => {
+  const nowTs = Date.now()
+  return events.value
+    .filter(e => {
+      const ts = new Date(e.date + 'T' + (e.time || '00:00')).getTime()
+      return ts >= nowTs
+    })
+    .sort((a, b) => {
+      const ta = new Date(a.date + 'T' + (a.time || '00:00')).getTime()
+      const tb = new Date(b.date + 'T' + (b.time || '00:00')).getTime()
+      return ta - tb
+    })
+    .slice(0, 6)
+})
 
 function prevMonth() {
   if (currentMonth.value === 0) { currentMonth.value = 11; currentYear.value-- }
@@ -1256,22 +1322,65 @@ function nextMonth() {
   else currentMonth.value++
 }
 
-function openCreateEventDialog(date = null) {
+function openCreateEventDialog(dateStr = null) {
   editingEvent.value = null
-  const today = formatDate(new Date())
-  eventForm.value = { fecha: date || today, hora: '09:00', client_name: '', client_surname: '', client_phone: '', client_email: '', empresa: '', ruc: '', direccion: '', tipo_equipo: '', descripcion: '', estado: 'pendiente' }
+  eventForm.value = {
+    fecha: dateStr || formatDateISO(new Date()),
+    hora: '09:00', client_name: '', client_surname: '', client_phone: '',
+    client_email: '', empresa: '', ruc: '', direccion: '',
+    tipo_equipo: '', descripcion: '', estado: 'pendiente'
+  }
+  showEventDialog.value = true
+}
+
+function editarEvento(ev) {
+  editingEvent.value = ev
+  eventForm.value = {
+    fecha: ev.date, hora: ev.time, client_name: ev.clientName, client_surname: ev.clientSurname,
+    client_phone: ev.clientPhone, client_email: ev.clientEmail || '', empresa: ev.empresa,
+    ruc: ev.ruc || '', direccion: ev.direccion, tipo_equipo: ev.tipo_equipo,
+    descripcion: ev.descripcion, estado: ev.estado
+  }
   showEventDialog.value = true
 }
 
 async function fetchEvents() {
-  const { data } = await client.from('gatwick_calendar_events').select('*').order('fecha')
-  events.value = data || []
+  const { data } = await client.from('gatwick_calendar_events').select('*')
+  events.value = (data || []).map(e => ({
+    id: e.id,
+    date: normalizeEventDate(e.fecha),
+    time: e.hora ? e.hora.substring(0, 5) : '',
+    clientName: e.client_name || '',
+    clientSurname: e.client_surname || '',
+    clientPhone: e.client_phone || '',
+    clientEmail: e.client_email || '',
+    empresa: e.empresa || '',
+    ruc: e.ruc || '',
+    direccion: e.direccion || '',
+    tipo_equipo: e.tipo_equipo || '',
+    descripcion: e.descripcion || '',
+    estado: e.estado || 'pendiente',
+  }))
 }
 
 async function saveEvent() {
   savingEvent.value = true
   try {
-    const payload = { ...eventForm.value }
+    const payload = {
+      fecha: eventForm.value.fecha,
+      hora: eventForm.value.hora,
+      client_name: eventForm.value.client_name,
+      client_surname: eventForm.value.client_surname,
+      client_phone: eventForm.value.client_phone,
+      client_email: eventForm.value.client_email,
+      empresa: eventForm.value.empresa,
+      ruc: eventForm.value.ruc,
+      direccion: eventForm.value.direccion,
+      tipo_equipo: eventForm.value.tipo_equipo,
+      descripcion: eventForm.value.descripcion,
+      estado: eventForm.value.estado,
+      updated_at: new Date().toISOString(),
+    }
     if (editingEvent.value) {
       await client.from('gatwick_calendar_events').update(payload).eq('id', editingEvent.value.id)
     } else {
@@ -1279,8 +1388,9 @@ async function saveEvent() {
     }
     await fetchEvents()
     showEventDialog.value = false
+    editingEvent.value = null
     notify('Cita guardada')
-  } catch (e) {
+  } catch {
     notify('Error al guardar', 'error')
   } finally {
     savingEvent.value = false
@@ -1292,6 +1402,7 @@ async function deleteEvent() {
   await client.from('gatwick_calendar_events').delete().eq('id', editingEvent.value.id)
   await fetchEvents()
   showEventDialog.value = false
+  editingEvent.value = null
   notify('Cita eliminada')
 }
 
@@ -1525,7 +1636,7 @@ const searchInterv = ref('')
 const intervForm = ref({})
 
 const intervencionesMes = computed(() => {
-  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
+  const ym = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`
   return intervenciones.value.filter(i => i.created_at?.startsWith(ym))
 })
 
@@ -1590,7 +1701,7 @@ const searchCobranza = ref('')
 const cobranzaForm = ref({})
 
 const cobranzasMes = computed(() => {
-  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
+  const ym = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`
   return cobranzas.value.filter(c => c.created_at?.startsWith(ym))
 })
 

@@ -2540,3 +2540,187 @@ html.dark body {
 @media (max-width: 480px) {
   .meta-kpi-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   GATWICK ASCENSORES — Estilos específicos
+   ============================================================ */
+
+/* Indicador realtime */
+.realtime-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: #4caf50;
+  font-weight: 600;
+}
+.realtime-dot {
+  width: 9px;
+  height: 9px;
+  background: #4caf50;
+  border-radius: 50%;
+  animation: pulse-dot 1.6s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* Grid de emergencias */
+.emergencias-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  padding: 4px 0;
+}
+.emergencia-card {
+  background: var(--card-bg, #1e1e2e);
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+.emergencia-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+
+.emerg-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.emerg-body {
+  padding: 10px 14px;
+}
+.emerg-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.83rem;
+  margin-bottom: 5px;
+  color: rgba(255,255,255,0.8);
+}
+.emerg-desc {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.6);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.emerg-time {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.4);
+  margin-top: 4px;
+}
+.emerg-footer {
+  padding: 8px 14px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.emerg-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Colores de prioridad */
+.prioridad-critica .emerg-header { background: rgba(244,67,54,0.25); color: #ff5252; }
+.prioridad-alta    .emerg-header { background: rgba(255,152,0,0.2);  color: #ffab40; }
+.prioridad-media   .emerg-header { background: rgba(33,150,243,0.18); color: #64b5f6; }
+.prioridad-baja    .emerg-header { background: rgba(76,175,80,0.18);  color: #81c784; }
+
+.prioridad-critica { border-left: 3px solid #ff5252; }
+.prioridad-alta    { border-left: 3px solid #ffab40; }
+.prioridad-media   { border-left: 3px solid #64b5f6; }
+.prioridad-baja    { border-left: 3px solid #81c784; }
+
+/* Chips de estado emergencia */
+.estado-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.estado-pendiente  { background: rgba(255,152,0,0.18); color: #ffab40; }
+.estado-asignada   { background: rgba(33,150,243,0.18); color: #64b5f6; }
+.estado-en_curso   { background: rgba(156,39,176,0.18); color: #ce93d8; }
+.estado-resuelta   { background: rgba(76,175,80,0.18);  color: #81c784; }
+
+/* Tarjetas de técnicos */
+.tecnicos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.tecnico-card {
+  background: var(--card-bg, #1e1e2e);
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tecnico-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(244,98,58,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  color: #F4623A;
+}
+.tecnico-estado-disponible  { color: #81c784; }
+.tecnico-estado-en_servicio { color: #64b5f6; }
+.tecnico-estado-fuera_servicio { color: rgba(255,255,255,0.3); }
+
+/* Badge en sidebar */
+.nav-badge-red {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #f44336;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+/* Tabla de intervenciones */
+.intervencion-row-completada { opacity: 0.7; }
+.intervencion-tipo-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(244,98,58,0.15);
+  color: #F4623A;
+}
+
+/* Cobranzas */
+.cobro-pendiente  { color: #ffab40; }
+.cobro-pagado     { color: #81c784; }
+.cobro-vencido    { color: #ff5252; }
+.cobro-anulado    { color: rgba(255,255,255,0.3); }
+
+@media (max-width: 768px) {
+  .emergencias-grid { grid-template-columns: 1fr; }
+  .tecnicos-grid    { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .tecnicos-grid { grid-template-columns: 1fr; }
+}

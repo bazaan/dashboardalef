@@ -11,7 +11,8 @@ export const dashboards = [
     { name: 'Estás con Suerte', path: '/pruebas/EstasConSuerte', icon: 'mdi-clover', logo: 'ecsLOGO.png' },
     { name: 'Estetika Medika', path: '/pruebas/EstetikaMedika', icon: 'mdi-spa', logo: 'estetika-medika-logo.png' },
     { name: 'Miguel Davila', path: '/pruebas/MiguelDavila', icon: 'mdi-doctor', logo: 'miguel-davila-logo.png' },
-    { name: 'FitMain', path: '/pruebas/FitMain', icon: 'mdi-dumbbell', logo: '' }
+    { name: 'FitMain', path: '/pruebas/FitMain', icon: 'mdi-dumbbell', logo: '' },
+    { name: 'Gatwick', path: '/pruebas/Gatwick', icon: 'mdi-elevator', logo: 'gatwickLOGO.png' }
 ]
 
 // Tipos para la sesión de usuario
@@ -154,6 +155,14 @@ export function canAccessDavila(session: UserSession | null): boolean {
     return cid === 'davila' || cid === 'miguel davila' || cid.includes('davila')
 }
 
+export function canAccessGatwick(session: UserSession | null): boolean {
+    if (!session) return false
+    if (isSuperAdmin(session)) return true
+
+    const cid = normalize(session.company_id)
+    return cid === 'gatwick' || cid === 'gatwick ascensores' || cid.includes('gatwick')
+}
+
 export function getDashboardPathByCompanyId(companyId: string | undefined | null): string {
     if (!companyId) return '/'
 
@@ -171,6 +180,7 @@ export function getDashboardPathByCompanyId(companyId: string | undefined | null
     if (normalizedId === 'estasconsuerte' || normalizedId === 'estás con suerte' || normalizedId.includes('suerte')) return '/pruebas/EstasConSuerte'
     if (normalizedId === 'estetikamedika' || normalizedId === 'estetika medika' || normalizedId.includes('estetika')) return '/pruebas/EstetikaMedika'
     if (normalizedId === 'davila' || normalizedId === 'miguel davila' || normalizedId.includes('davila')) return '/pruebas/MiguelDavila'
+    if (normalizedId === 'gatwick' || normalizedId === 'gatwick ascensores' || normalizedId.includes('gatwick')) return '/pruebas/Gatwick'
 
     return '/'
 }

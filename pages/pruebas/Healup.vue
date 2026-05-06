@@ -1273,6 +1273,66 @@
           <h1>Gastos Variables</h1>
         </header>
         <div class="content-area">
+
+          <!-- ALEF · Comisión IA del mes (automático, no editable) -->
+          <div style="background: linear-gradient(135deg, rgba(218,165,32,0.08), rgba(218,165,32,0.04)); border: 1px solid rgba(218,165,32,0.25); border-radius: 10px; padding: 16px 18px; margin-bottom: 1.25rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <v-icon icon="mdi-robot" size="22" color="amber" />
+                <div>
+                  <div style="font-weight:700; font-size:0.95rem; color:#daa520;">ALEF · Comisión IA</div>
+                  <div style="font-size:0.78rem; opacity:0.75;">
+                    Mes en curso ·
+                    <strong style="color:#daa520;">{{ alefBreakdown.facialesCount }}</strong> faciales × S/{{ ALEF_TARIFA_FACIAL }}
+                    +
+                    <strong style="color:#daa520;">{{ alefBreakdown.otrosCount }}</strong> estética × S/{{ ALEF_TARIFA_OTROS }}
+                  </div>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:1.6rem; font-weight:700; color:#daa520; line-height:1;">
+                  S/ {{ alefBreakdown.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                </div>
+                <div style="font-size:0.7rem; opacity:0.6; margin-top:2px;">
+                  Automático · solo agendamiento = IA
+                </div>
+              </div>
+            </div>
+
+            <!-- Detalle expandible -->
+            <details v-if="alefBreakdown.facialesCount + alefBreakdown.otrosCount > 0"
+              style="margin-top:10px; border-top:1px solid rgba(218,165,32,0.2); padding-top:10px;">
+              <summary style="cursor:pointer; font-size:0.78rem; opacity:0.8;">
+                Ver detalle de pacientes IA del mes
+              </summary>
+              <div style="margin-top:8px; font-size:0.78rem;">
+                <div v-if="alefBreakdown.facialesCount > 0">
+                  <div style="font-weight:600; opacity:0.85; margin-bottom:4px;">
+                    Faciales (skin care) — S/ {{ ALEF_TARIFA_FACIAL }} c/u:
+                  </div>
+                  <ul style="margin:0; padding-left:18px;">
+                    <li v-for="p in alefBreakdown.faciales" :key="p.id" style="opacity:0.85;">
+                      {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="alefBreakdown.otrosCount > 0" style="margin-top:8px;">
+                  <div style="font-weight:600; opacity:0.85; margin-bottom:4px;">
+                    Estética (no-facial) — S/ {{ ALEF_TARIFA_OTROS }} c/u:
+                  </div>
+                  <ul style="margin:0; padding-left:18px;">
+                    <li v-for="p in alefBreakdown.otros" :key="p.id" style="opacity:0.85;">
+                      {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </details>
+            <div v-else style="margin-top:8px; font-size:0.78rem; opacity:0.6;">
+              Aún no hay pacientes convertidos por la IA este mes.
+            </div>
+          </div>
+
           <div class="costos-panel precios-section" style="margin-bottom:1.25rem;">
             <div class="costos-seccion" style="border-bottom:none; padding-bottom:0;">
               <div class="costos-seccion-label">
@@ -6107,6 +6167,55 @@ function eliminarGastoVar(i: number) {
   gastosVarExtra.splice(i, 1)
 }
 
+// ──────────────────────────────────────────────────────────────────
+// ALEF — Comisión IA del mes (gasto variable automático)
+// Regla: S/10 por cada paciente convertido por la IA cuyo procedimiento
+// sea facial (FACIAL BASICO / FACIAL PREMIUM = skin care).
+// S/20 por cada paciente convertido por la IA cuyo procedimiento sea
+// estético no-facial (medicina estética, HIFU, corporal, etc.).
+// Solo cuenta pacientes con agendamiento === 'IA'.
+// ──────────────────────────────────────────────────────────────────
+const ALEF_TARIFA_FACIAL = 10
+const ALEF_TARIFA_OTROS  = 20
+
+const alefEsFacialSkin = (paciente: any): boolean => {
+  // Vía procedure_id (preferido)
+  const pid = paciente?.procedure_id ? String(paciente.procedure_id) : ''
+  if (pid && procedures.value?.length) {
+    const proc = procedures.value.find((x: any) => String(x.id) === pid)
+    if (proc) {
+      const grupo = String((proc as any).grupo || '').toUpperCase()
+      // FACIAL BASICO o FACIAL PREMIUM = skin cares
+      return grupo === 'FACIAL BASICO' || grupo === 'FACIAL PREMIUM'
+    }
+  }
+  // Fallback por nombre (texto libre del paciente)
+  const txt = String(paciente?.procedimiento || '').toLowerCase()
+  const skinKeys = [
+    'glass skin', 'prime skin', 'calm babe', 'eternal glow',
+    'pure babe', 'prestige glow', 'skin care', 'limpieza facial', 'exfoli'
+  ]
+  return skinKeys.some(k => txt.includes(k))
+}
+
+const alefBreakdown = computed(() => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const ia = [...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.created_at?.startsWith(thisMonth) && p.agendamiento === 'IA')
+  const faciales = ia.filter(alefEsFacialSkin)
+  const otros = ia.filter((p: any) => !alefEsFacialSkin(p))
+  const monto = faciales.length * ALEF_TARIFA_FACIAL + otros.length * ALEF_TARIFA_OTROS
+  return {
+    faciales,
+    otros,
+    facialesCount: faciales.length,
+    otrosCount: otros.length,
+    monto,
+    mes: thisMonth
+  }
+})
+
 // Fórmulas calculadas (solo lectura)
 const preciosCalc = computed(() => {
   const totalSalarios   = operadoras.reduce((s, op) => s + (op.salario || 0), 0)
@@ -6115,7 +6224,10 @@ const preciosCalc = computed(() => {
   const totalCostosFijos = preciosParams.otrosCostosFijosMes + totalSalarios
   const costosFijosDia  = totalCostosFijos / (preciosParams.diasLaborables || 1)
 
-  const totalGastosVarExtra = gastosVarExtra.reduce((s, g) => s + (g.monto || 0), 0)
+  // Suma manuales + comisión ALEF (calculada automáticamente desde IA)
+  const manualesTotal = gastosVarExtra.reduce((s, g) => s + (g.monto || 0), 0)
+  const alefTotal = alefBreakdown.value.monto
+  const totalGastosVarExtra = manualesTotal + alefTotal
 
   let totalIngresos  = 0
   let totalCostosInsumos = 0

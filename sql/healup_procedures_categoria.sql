@@ -6,7 +6,8 @@
 
 ALTER TABLE healup_procedures
   ADD COLUMN IF NOT EXISTS categoria TEXT,
-  ADD COLUMN IF NOT EXISTS activo    BOOLEAN DEFAULT TRUE;
+  ADD COLUMN IF NOT EXISTS activo    BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS cabina    TEXT;
 
 ALTER TABLE healup_procedures
   DROP CONSTRAINT IF EXISTS healup_procedures_categoria_check;

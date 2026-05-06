@@ -17,11 +17,11 @@ ALTER TABLE healup_calendar_events
   ADD CONSTRAINT healup_calendar_events_estado_check
   CHECK (estado IS NULL OR estado IN ('RESERVADA','EN_CURSO','FINALIZADA','NO_SHOW','REAGENDADA','CANCELADA'));
 
--- Inicialización: cobro_completado=true → FINALIZADA, monto_reserva>0 → RESERVADA
+-- Inicialización: cobro_completado=true → FINALIZADA
+-- (Si la columna monto_reserva existe en el futuro, agregar:
+--  UPDATE healup_calendar_events SET estado='RESERVADA' WHERE estado IS NULL AND COALESCE(monto_reserva,0)>0)
 UPDATE healup_calendar_events SET estado = 'FINALIZADA'
   WHERE estado IS NULL AND cobro_completado = true;
-UPDATE healup_calendar_events SET estado = 'RESERVADA'
-  WHERE estado IS NULL AND COALESCE(monto_reserva, 0) > 0;
 
 CREATE INDEX IF NOT EXISTS idx_healup_calendar_events_estado
   ON healup_calendar_events (estado) WHERE estado IS NOT NULL;

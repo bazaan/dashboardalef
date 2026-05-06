@@ -97,6 +97,7 @@ dashboard alef allin/
 │   ├── HealupCatalogoProcedimientos.vue # CRUD del catálogo de procedimientos Healup
 │   ├── HealupGCalSync.vue              # Sincronización Google Calendar ↔ dashboard Healup
 │   ├── N8nPanicButton.vue              # Activar/desactivar workflows n8n
+│   ├── RemarketingPanel.vue            # Sistema de remarketing multi-tenant (11 empresas)
 │   └── Settings/
 │       ├── SettingsView.vue            # Gestión de usuarios + logs de actividad
 │       ├── CreateUserDialog.vue
@@ -243,6 +244,7 @@ Doble sistema para auditar acciones:
 | `HealupAgent.vue` | — | Agente conversacional AI completo — chat + grabacion de voz Whisper + sintesis. 14 tools: egresos, citas, pacientes, stock, procedimientos, leads. Selector de microfono, modo manos libres, atajo teclado configurable |
 | `HealupCatalogoProcedimientos.vue` | — | CRUD completo del catálogo `healup_procedures`. Agrupado por `grupo`, muestra precio sin/con IGV. Protege el ítem de consulta de ser eliminado |
 | `HealupGCalSync.vue` | — | Sincronización Google Calendar ↔ dashboard. Muestra eventos GCal del día, estado de sync, botón importar individual/masivo. Usa endpoint `/api/healup/gcal-events` |
+| `RemarketingPanel.vue` | `companyId`, `leadTablas: { wpp, fbig }` | Sistema de remarketing multi-tenant. 4 tabs: Pipeline (funnel), Leads (filtrable + envio individual/bulk), Campanas (CRUD + ejecucion), Templates (CRUD). Anti-spam por temperatura. Envio via Chatwoot WhatsApp. Integrado en los 11 dashboards |
 | `Settings/SettingsView.vue` | `companyId`, `currentUser` | CRUD de usuarios + logs de auditoría. Todos los dashboards |
 
 ---
@@ -267,6 +269,7 @@ Doble sistema para auditar acciones:
 | POST | `/api/healup/boleta-auto` | n8n (api_key auth). Auto-genera boleta consulta S/50 al confirmar cita. Retorna PDF + mensaje WhatsApp listo |
 | POST | `/api/healup/agent-chat` | Autenticados Healup. Proxy a Claude API (claude-sonnet-4-6) con 14 tools. Body: `{ messages }` |
 | POST | `/api/healup/transcribe` | Autenticados Healup. Transcripcion de audio via Whisper (OpenAI). FormData con campo `audio` |
+| POST | `/api/remarketing/send` | Autenticados. Envio individual de mensaje WhatsApp via Chatwoot. Body: `{ company_id, lead_id, lead_tabla, lead_telefono, lead_nombre, template_id?, mensaje, canal? }` |
 
 ---
 
@@ -279,6 +282,10 @@ Doble sistema para auditar acciones:
 | `dashboardlogin` | Usuarios: `id`, `email`, `password` (bcrypt), `role`, `company_id`, `full_name`, `created_at` |
 | `activity_logs` | Auditoría: `user_email`, `activity`, `company_id`, `created_at` |
 | `comprobantes_pse` | Facturas emitidas vía PSE.PE (payload + response) |
+| `remarketing_config` | Config por empresa: Chatwoot account/inbox IDs, cadencias anti-spam |
+| `remarketing_templates` | Templates de mensaje por categoria_proc (A/B/C/D) x temperatura (frio/tibio/caliente/recall) |
+| `remarketing_contactos` | Historial de mensajes enviados (tracking anti-spam) |
+| `remarketing_campaigns` | Campanas masivas: segmento, template, estado, metricas |
 
 ### Tablas por empresa
 
@@ -350,6 +357,8 @@ HEALUP_BOLETA_AUTO_KEY=healup-auto-2026
 # Agente AI Healup
 ANTHROPIC_API_KEY=              # Claude API para agent-chat
 OPENAI_API_KEY=                 # Whisper transcripcion de voz
+# Remarketing (Chatwoot WhatsApp)
+CHATWOOT_API_TOKEN=             # Token API Chatwoot para envio de mensajes remarketing
 ```
 
 ---

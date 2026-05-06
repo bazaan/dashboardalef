@@ -83,6 +83,14 @@
 
         </div>
 
+        <div class="nav-section">
+          <div class="nav-label">MARKETING</div>
+          <button :class="['nav-item', { active: activeView === 'remarketing' }]"
+            @click="activeView = 'remarketing'">
+            <v-icon icon="mdi-bullhorn" size="18" />
+            <span>Remarketing</span>
+          </button>
+        </div>
 
       </nav>
 
@@ -1781,6 +1789,12 @@
 
     <!-- ==========  CREATE USER DIALOG  ========== -->
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
+
+      <RemarketingPanel
+        v-if="activeView === 'remarketing'"
+        company-id="skip"
+        :lead-tablas="{ wpp: 'GeneralBDwppSKIP', fbig: 'GeneralBDfbigSKIP' }"
+      />
   </div>
 </template>
 

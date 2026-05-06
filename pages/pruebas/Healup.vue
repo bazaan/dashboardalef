@@ -64,6 +64,15 @@
             <span>{{ item.label }}</span>
           </button>
         </div>
+
+        <div class="nav-section">
+          <div class="nav-label">MARKETING</div>
+          <button :class="['nav-item', { active: activeView === 'remarketing' }]"
+            @click="activeView = 'remarketing'">
+            <v-icon icon="mdi-bullhorn" size="18" />
+            <span>Remarketing</span>
+          </button>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -4280,6 +4289,13 @@
     </v-dialog>
 
     <!-- PROC SUPPLY DIALOG removed — replaced by per-procedure Receta dialog -->
+
+    <!-- ==========  REMARKETING  ========== -->
+      <RemarketingPanel
+        v-if="activeView === 'remarketing'"
+        company-id="healup"
+        :lead-tablas="{ wpp: 'GeneralBDwppHEALUP', fbig: 'GeneralBDfbigHEALUP' }"
+      />
 
     <!-- ==========  AGENTE CONVERSACIONAL DE VOZ  ========== -->
     <HealupAgent />

@@ -64,6 +64,15 @@
             <span>{{ item.label }}</span>
           </button>
         </div>
+
+        <div class="nav-section">
+          <div class="nav-label">MARKETING</div>
+          <button :class="['nav-item', { active: activeView === 'remarketing' }]"
+            @click="activeView = 'remarketing'">
+            <v-icon icon="mdi-bullhorn" size="18" />
+            <span>Remarketing</span>
+          </button>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -1957,6 +1966,12 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+      <RemarketingPanel
+        v-if="activeView === 'remarketing'"
+        company-id="davila"
+        :lead-tablas="{ wpp: 'GeneralBDwppDAVILA', fbig: 'GeneralBDfbigDAVILA' }"
+      />
   </div>
 </template>
 

@@ -83,6 +83,14 @@
 
         </div>
 
+        <div class="nav-section">
+          <div class="nav-label">MARKETING</div>
+          <button :class="['nav-item', { active: activeView === 'remarketing' }]"
+            @click="activeView = 'remarketing'">
+            <v-icon icon="mdi-bullhorn" size="18" />
+            <span>Remarketing</span>
+          </button>
+        </div>
 
       </nav>
 
@@ -1121,6 +1129,13 @@
           </v-card>
         </div>
       </div>
+
+      <!-- ==========  VISTA: REMARKETING  ========== -->
+      <RemarketingPanel
+        v-if="activeView === 'remarketing'"
+        company-id="alegrated"
+        :lead-tablas="{ wpp: 'GeneralBDwppALEGRATED', fbig: 'GeneralBDfbigALEGRATED' }"
+      />
 
     </div>
 

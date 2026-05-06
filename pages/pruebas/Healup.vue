@@ -440,20 +440,38 @@
             </div>
           </div>
 
+          <!-- 2.5 Filtros: chips de mes (default mes actual) + chip "Todos" -->
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 6px 0 12px;">
+            <v-icon icon="mdi-calendar-month" size="14" style="opacity:0.5;" />
+            <v-chip
+              :color="pacienteMesFiltro === '' ? 'primary' : 'default'"
+              :variant="pacienteMesFiltro === '' ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="pacienteMesFiltro = ''"
+            >Todos</v-chip>
+            <v-chip
+              v-for="m in pacienteMesesDisponibles" :key="m.value"
+              :color="pacienteMesFiltro === m.value ? 'primary' : 'default'"
+              :variant="pacienteMesFiltro === m.value ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="pacienteMesFiltro = pacienteMesFiltro === m.value ? '' : m.value"
+            >{{ m.label }}</v-chip>
+          </div>
+
           <div class="table-section">
             <!-- Table 1: WhatsApp -->
             <v-card flat class="custom-data-table" style="margin-bottom: 2rem;">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de pacientes whatsapp</span>
+                <span class="table-title">Lista de pacientes whatsapp ({{ pacientesWppFiltrados.length }})</span>
                 <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesWpp, headersPacientesWpp, 'healup-pacientes-wpp')">
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesWppFiltrados, headersPacientesWpp, 'healup-pacientes-wpp')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
                 <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
                   density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersPacientesWpp" :items="pacientesWpp" :search="search" :loading="loading"
+              <v-data-table :headers="headersPacientesWpp" :items="pacientesWppFiltrados" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de WhatsApp">
                 <template v-slot:item.booking_sku="{ item }">
                   <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
@@ -506,10 +524,13 @@
                   </v-tooltip>
                 </template>
                 <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="openPatientForm(item, 'wpp')">
+                  <button class="icon-btn" @click="openPatientForm(item, 'wpp')" title="Editar paciente">
                     <v-icon icon="mdi-pencil" size="16" />
                   </button>
-                  <button class="icon-btn" @click="deletePatient(item, 'wpp')">
+                  <button class="icon-btn" @click="openHistoriaClinicaDePaciente(item, 'wpp')" title="Ver / agregar historia clínica" style="color:#daa520;">
+                    <v-icon icon="mdi-folder-heart" size="16" />
+                  </button>
+                  <button class="icon-btn" @click="deletePatient(item, 'wpp')" title="Eliminar">
                     <v-icon icon="mdi-delete" size="16" />
                   </button>
                 </template>
@@ -519,14 +540,14 @@
             <!-- Table 2: Facebook e Instagram -->
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de pacientes Facebook e Instagram</span>
+                <span class="table-title">Lista de pacientes Facebook e Instagram ({{ pacientesFbIgFiltrados.length }})</span>
                 <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(pacientesFbIg, headersPacientesFbIg, 'healup-pacientes-fbig')">
+                <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(pacientesFbIgFiltrados, headersPacientesFbIg, 'healup-pacientes-fbig')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
               </v-card-title>
-              <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIg" :search="search" :loading="loading"
+              <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIgFiltrados" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de FB/IG">
                 <template v-slot:item.booking_sku="{ item }">
                   <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
@@ -579,10 +600,13 @@
                   </v-tooltip>
                 </template>
                 <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="openPatientForm(item, 'fbig')">
+                  <button class="icon-btn" @click="openPatientForm(item, 'fbig')" title="Editar paciente">
                     <v-icon icon="mdi-pencil" size="16" />
                   </button>
-                  <button class="icon-btn" @click="deletePatient(item, 'fbig')">
+                  <button class="icon-btn" @click="openHistoriaClinicaDePaciente(item, 'fbig')" title="Ver / agregar historia clínica" style="color:#daa520;">
+                    <v-icon icon="mdi-folder-heart" size="16" />
+                  </button>
+                  <button class="icon-btn" @click="deletePatient(item, 'fbig')" title="Eliminar">
                     <v-icon icon="mdi-delete" size="16" />
                   </button>
                 </template>
@@ -701,15 +725,26 @@
                 mes ant: {{ hotLeadsCountPrev }}
               </div>
             </div>
-            <div class="stat-card" style="cursor: pointer;" @click="openPacientesAgendadosDialog"
-              title="Ver lista detallada de pacientes agendados este mes">
+            <div class="stat-card" style="cursor: pointer;" @click="openPacientesAgendadosDialog('conversion')"
+              title="Pacientes nuevos convertidos este mes (created_at)">
               <div class="stat-value" style="color: #22c55e">{{ hotLeadsConvertedCount }}</div>
               <div class="stat-title">
-                Pacientes este mes
+                Convertidos este mes
                 <v-icon size="14" icon="mdi-arrow-top-right" style="opacity:0.5; margin-left:2px;" />
               </div>
               <div class="stat-change up">
                 {{ totalConversionRate.toFixed(1) }}% del total · {{ hotToPatientRate.toFixed(1) }}% de calientes
+              </div>
+            </div>
+            <div class="stat-card" style="cursor: pointer;" @click="openPacientesAgendadosDialog('cita')"
+              title="Pacientes con cita programada para este mes (fecha_agendamiento)">
+              <div class="stat-value" style="color: #daa520">{{ pacientesConCitaEsteMes }}</div>
+              <div class="stat-title">
+                Citas este mes
+                <v-icon size="14" icon="mdi-arrow-top-right" style="opacity:0.5; margin-left:2px;" />
+              </div>
+              <div class="stat-change up">
+                Pacientes que tienen cita en {{ NOMBRES_MESES_LABEL[new Date().getMonth()] }}
               </div>
             </div>
           </div>
@@ -887,6 +922,39 @@
             </div>
           </div>
 
+          <!-- Filtros: chips de categoría + chips de método de pago -->
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 6px 0 8px;">
+            <v-icon icon="mdi-tag" size="14" style="opacity:0.5;" />
+            <v-chip
+              :color="egresoCatFiltro === '' ? 'grey-darken-2' : 'default'"
+              :variant="egresoCatFiltro === '' ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="egresoCatFiltro = ''"
+            >Todas categorías</v-chip>
+            <v-chip
+              v-for="c in EGRESO_CATEGORIAS" :key="c.value"
+              :color="egresoCatFiltro === c.value ? c.color : 'default'"
+              :variant="egresoCatFiltro === c.value ? 'flat' : 'outlined'"
+              size="x-small" :prepend-icon="c.icon" style="cursor:pointer;"
+              @click="egresoCatFiltro = egresoCatFiltro === c.value ? '' : c.value"
+            >{{ c.value }}</v-chip>
+            <span style="opacity:0.3; padding: 0 4px;">·</span>
+            <v-icon icon="mdi-cash-multiple" size="14" style="opacity:0.5;" />
+            <v-chip
+              :color="egresoMetodoFiltro === '' ? 'grey-darken-2' : 'default'"
+              :variant="egresoMetodoFiltro === '' ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="egresoMetodoFiltro = ''"
+            >Todos métodos</v-chip>
+            <v-chip
+              v-for="m in EGRESO_METODOS" :key="m"
+              :color="egresoMetodoFiltro === m ? 'primary' : 'default'"
+              :variant="egresoMetodoFiltro === m ? 'flat' : 'outlined'"
+              size="x-small" style="cursor:pointer;"
+              @click="egresoMetodoFiltro = egresoMetodoFiltro === m ? '' : m"
+            >{{ m }}</v-chip>
+          </div>
+
           <div class="table-section">
              <v-card flat class="custom-data-table">
                <v-card-title class="table-search-bar">
@@ -898,14 +966,30 @@
                  </v-btn>
                </v-card-title>
                <v-data-table :headers="egresosHeaders" :items="egresosFiltrados" :loading="loadingEgresos" class="elevation-0" no-data-text="No hay egresos registrados en este mes">
+                 <template v-slot:item.categoria="{ item }">
+                   <v-chip
+                     v-if="item.categoria"
+                     :color="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).color || 'grey'"
+                     :prepend-icon="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).icon || 'mdi-tag'"
+                     size="x-small" variant="tonal" label
+                   >{{ item.categoria }}</v-chip>
+                   <span v-else style="opacity:0.5; font-size:0.75rem;">{{ item.tipo_egreso || '—' }}</span>
+                 </template>
+                 <template v-slot:item.metodo_pago="{ item }">
+                   <v-chip v-if="item.metodo_pago" size="x-small" variant="outlined"
+                     :color="item.metodo_pago === 'EFECTIVO' ? 'success' : 'primary'"
+                     :prepend-icon="item.metodo_pago === 'EFECTIVO' ? 'mdi-cash' : 'mdi-bank-transfer'"
+                   >{{ item.metodo_pago }}</v-chip>
+                   <span v-else style="opacity:0.4;">—</span>
+                 </template>
                  <template v-slot:item.precio="{ item }">
-                   S/ {{ item.precio.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                   S/ {{ Number(item.precio || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                  </template>
                  <template v-slot:item.total="{ item }">
-                   S/ {{ (item.precio * item.cantidad).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                   <strong>S/ {{ ((Number(item.precio) || 0) * (Number(item.cantidad) || 0)).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</strong>
                  </template>
                  <template v-slot:item.created_at="{ item }">
-                   {{ new Date(item.created_at).toLocaleDateString() }}
+                   <span style="font-size:0.78rem;">{{ new Date(item.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) }}</span>
                  </template>
                  <template v-slot:item.actions="{ item }">
                    <button class="icon-btn" @click="openEgresoDialog(item)">
@@ -1186,6 +1270,123 @@
         </div>
 
         </div><!-- fin tab resumen -->
+
+      </div>
+
+      <!-- ==========  VISTA: GASTOS VARIABLES  ========== -->
+      <div v-else-if="activeView === 'gastos_variables'" class="view-container">
+        <header class="top-header">
+          <h1>Gastos Variables</h1>
+        </header>
+        <div class="content-area">
+
+          <!-- ALEF · Comisión por conversiones del mes (automático, no editable) -->
+          <div style="background: linear-gradient(135deg, rgba(218,165,32,0.08), rgba(218,165,32,0.04)); border: 1px solid rgba(218,165,32,0.25); border-radius: 10px; padding: 16px 18px; margin-bottom: 1.25rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <v-icon icon="mdi-handshake" size="22" color="amber" />
+                <div>
+                  <div style="font-weight:700; font-size:0.95rem; color:#daa520;">ALEF · Comisión por conversiones</div>
+                  <div style="font-size:0.78rem; opacity:0.75;">
+                    Mes en curso ·
+                    <strong style="color:#daa520;">{{ alefBreakdown.cabina1Count }}</strong> reserva S/50 × S/{{ ALEF_COMISION_ALTA }}
+                    +
+                    <strong style="color:#daa520;">{{ alefBreakdown.cabina2Count }}</strong> reserva S/20 × S/{{ ALEF_COMISION_BAJA }}
+                  </div>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:1.6rem; font-weight:700; color:#daa520; line-height:1;">
+                  S/ {{ alefBreakdown.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                </div>
+                <div style="font-size:0.7rem; opacity:0.6; margin-top:2px;">
+                  {{ alefBreakdown.totalConversiones }} conversiones
+                  <span v-if="alefBreakdown.excluidosCount"> · {{ alefBreakdown.excluidosCount }} excluido(s)</span>
+                </div>
+              </div>
+            </div>
+
+            <details v-if="alefBreakdown.totalConversiones > 0"
+              style="margin-top:10px; border-top:1px solid rgba(218,165,32,0.2); padding-top:10px;">
+              <summary style="cursor:pointer; font-size:0.78rem; opacity:0.8;">
+                Ver detalle de pacientes del mes
+              </summary>
+              <div style="margin-top:8px; font-size:0.78rem;">
+                <div v-if="alefBreakdown.cabina1Count > 0">
+                  <div style="font-weight:600; opacity:0.85; margin-bottom:4px;">
+                    Cabina 1 — Medicina estética (reserva S/50, ALEF S/{{ ALEF_COMISION_ALTA }}):
+                  </div>
+                  <ul style="margin:0; padding-left:18px;">
+                    <li v-for="p in alefBreakdown.cabina1" :key="p.id" style="opacity:0.85;">
+                      {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="alefBreakdown.cabina2Count > 0" style="margin-top:8px;">
+                  <div style="font-weight:600; opacity:0.85; margin-bottom:4px;">
+                    Cabina 2 — No invasivos (reserva S/20, ALEF S/{{ ALEF_COMISION_BAJA }}):
+                  </div>
+                  <ul style="margin:0; padding-left:18px;">
+                    <li v-for="p in alefBreakdown.cabina2" :key="p.id" style="opacity:0.85;">
+                      {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="alefBreakdown.excluidosCount > 0" style="margin-top:8px;">
+                  <div style="font-weight:600; opacity:0.6; margin-bottom:4px;">
+                    Excluidos (post-procedimientos, no son conversiones nuevas):
+                  </div>
+                  <ul style="margin:0; padding-left:18px;">
+                    <li v-for="p in alefBreakdown.excluidos" :key="p.id" style="opacity:0.6;">
+                      {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </details>
+            <div v-else style="margin-top:8px; font-size:0.78rem; opacity:0.6;">
+              Aún no hay conversiones este mes.
+            </div>
+          </div>
+
+          <div class="costos-panel precios-section" style="margin-bottom:1.25rem;">
+            <div class="costos-seccion" style="border-bottom:none; padding-bottom:0;">
+              <div class="costos-seccion-label">
+                <span class="costos-bullet-dot"></span>
+                <v-icon icon="mdi-bullhorn-outline" size="14" style="margin-right:5px;" />
+                GASTOS VARIABLES ADICIONALES
+                <button class="btn-add-row" style="margin-left:auto;" @click="agregarGastoVar">
+                  <v-icon icon="mdi-plus" size="13" /> Agregar
+                </button>
+              </div>
+              <div class="costos-items-list">
+                <div v-for="(g, i) in gastosVarExtra" :key="i" class="costos-item-row">
+                  <span class="item-viñeta">•</span>
+                  <input v-model="g.nombre" type="text" class="ci-name" placeholder="Concepto (ej: Publicidad)" />
+                  <div class="ci-fields">
+                    <div class="ci-field editable">
+                      <label>Monto/mes</label>
+                      <div class="ci-field-input"><span class="ci-prefix">S/</span><input v-model.number="g.monto" type="number" min="0" class="ci-input" /></div>
+                    </div>
+                  </div>
+                  <button class="btn-del-row" @click="eliminarGastoVar(i)" title="Eliminar">
+                    <v-icon icon="mdi-close" size="13" />
+                  </button>
+                </div>
+                <div v-if="!gastosVarExtra.length" style="opacity:0.5; padding: 12px; text-align: center; font-size: 0.85rem;">
+                  Sin gastos variables aún. Click "Agregar" para empezar.
+                </div>
+              </div>
+              <div class="costos-seccion-total">
+                Total variables / mes: <strong>{{ fmtS(preciosCalc.totalGastosVarExtra) }}</strong>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:0.78rem; opacity:0.6; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius:8px;">
+            <v-icon icon="mdi-information-outline" size="14" />
+            Estos gastos también se incluyen en el cálculo del punto de equilibrio en "Estructura de Precios".
+          </div>
+        </div>
       </div>
 
       <!-- ==========  VISTA: PROCEDIMIENTOS  ========== -->
@@ -1928,12 +2129,158 @@
         </div>
       </div>
 
+      <!-- ==========  VISTA: CIERRE MENSUAL (2.13)  ========== -->
+      <div v-else-if="activeView === 'cierre_mensual'" class="view-container">
+        <header class="top-header">
+          <h1>Cierre Mensual</h1>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <v-select v-model="cierreMesSel" :items="cierreMesesDisponibles"
+              item-title="label" item-value="value" hide-details density="compact"
+              variant="outlined" style="max-width:200px;" />
+            <button class="btn-primary" @click="exportarCierreMensualPDF">
+              <v-icon icon="mdi-file-pdf-box" size="16" />
+              <span>Exportar PDF</span>
+            </button>
+          </div>
+        </header>
+        <div class="content-area">
+          <div class="stats-grid mini" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-bottom: 1rem;">
+            <div class="stat-card" style="background: rgba(34,197,94,0.08);">
+              <div class="stat-title" style="color:#22c55e;">Ingresos brutos</div>
+              <div class="stat-value" style="color:#22c55e;">S/ {{ cierreIngresos.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">{{ cierrePacientes }} pacientes</div>
+            </div>
+            <div class="stat-card" style="background: rgba(239,68,68,0.08);">
+              <div class="stat-title" style="color:#ef4444;">Egresos</div>
+              <div class="stat-value" style="color:#ef4444;">S/ {{ cierreEgresos.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">{{ cierreEgresosCount }} movimientos</div>
+            </div>
+            <div class="stat-card" style="background: rgba(59,130,246,0.08);">
+              <div class="stat-title" style="color:#3b82f6;">Utilidad neta</div>
+              <div class="stat-value" :style="{ color: cierreUtilidad >= 0 ? '#3b82f6' : '#ef4444' }">
+                S/ {{ cierreUtilidad.toLocaleString('es-PE',{minimumFractionDigits:2}) }}
+              </div>
+              <div class="stat-subtitle">Ingresos − Egresos</div>
+            </div>
+          </div>
+
+          <h3 style="margin: 16px 0 8px; font-size:1rem;">Pacientes por fuente</h3>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 16px;">
+            <v-chip v-for="(count, fuente) in cierrePorFuente" :key="fuente" size="small" variant="tonal"
+              :color="fuente === 'TikTok' ? 'deep-purple' : fuente === 'WhatsApp' ? 'green' : fuente === 'Instagram' ? 'pink' : 'blue'">
+              <v-icon start size="14"
+                :icon="fuente === 'TikTok' ? 'mdi-music-note' : fuente === 'WhatsApp' ? 'mdi-whatsapp' : fuente === 'Instagram' ? 'mdi-instagram' : 'mdi-facebook'" />
+              {{ fuente }}: <strong style="margin-left:4px;">{{ count }}</strong>
+            </v-chip>
+          </div>
+
+          <h3 style="margin: 16px 0 8px; font-size:1rem;">Egresos por categoría</h3>
+          <v-card flat class="custom-data-table">
+            <v-data-table density="compact" :headers="[
+              { title: 'Categoría', key: 'categoria' },
+              { title: 'Movimientos', key: 'count', align: 'end' },
+              { title: 'Total S/', key: 'total', align: 'end' }
+            ]" :items="cierreEgresosPorCategoria" :items-per-page="20" hide-default-footer>
+              <template v-slot:item.categoria="{ item }">
+                <v-chip size="x-small" variant="tonal"
+                  :color="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).color || 'grey'">
+                  {{ item.categoria }}
+                </v-chip>
+              </template>
+              <template v-slot:item.total="{ item }">
+                <strong>S/ {{ Number(item.total).toLocaleString('es-PE',{minimumFractionDigits:2}) }}</strong>
+              </template>
+            </v-data-table>
+          </v-card>
+
+          <h3 style="margin: 16px 0 8px; font-size:1rem;">Detalle de egresos del mes ({{ cierreEgresosFiltrados.length }})</h3>
+          <v-card flat class="custom-data-table">
+            <v-data-table density="compact" :headers="[
+              { title: 'Fecha',     key: 'created_at',  width:'95px' },
+              { title: 'Categoría', key: 'categoria',   width:'130px' },
+              { title: 'Nombre',    key: 'nombre' },
+              { title: 'Método',    key: 'metodo_pago', width:'120px' },
+              { title: 'Total',     key: 'total',       width:'110px', align: 'end' }
+            ]" :items="cierreEgresosFiltrados" :items-per-page="50" hide-default-footer
+              no-data-text="No hay egresos registrados este mes">
+              <template v-slot:item.created_at="{ item }">
+                <span style="font-size:0.78rem;">{{ new Date(item.created_at).toLocaleDateString('es-PE',{ day:'2-digit', month:'2-digit', year:'2-digit' }) }}</span>
+              </template>
+              <template v-slot:item.categoria="{ item }">
+                <v-chip v-if="item.categoria" size="x-small" variant="tonal"
+                  :color="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).color || 'grey'">
+                  {{ item.categoria }}
+                </v-chip>
+                <span v-else style="opacity:0.5; font-size:0.75rem;">{{ item.tipo_egreso || '—' }}</span>
+              </template>
+              <template v-slot:item.metodo_pago="{ item }">
+                <v-chip v-if="item.metodo_pago" size="x-small" variant="outlined"
+                  :color="item.metodo_pago === 'EFECTIVO' ? 'success' : 'primary'">
+                  {{ item.metodo_pago }}
+                </v-chip>
+                <span v-else style="opacity:0.4;">—</span>
+              </template>
+              <template v-slot:item.total="{ item }">
+                <strong>S/ {{ ((Number(item.precio) || 0) * (Number(item.cantidad) || 0)).toLocaleString('es-PE',{minimumFractionDigits:2}) }}</strong>
+              </template>
+            </v-data-table>
+          </v-card>
+        </div>
+      </div>
+
+      <!-- ==========  VISTA: RECONCILIACIÓN CAJA (2.3)  ========== -->
+      <div v-else-if="activeView === 'reconciliacion'" class="view-container">
+        <header class="top-header">
+          <h1>Reconciliación de Caja</h1>
+          <button class="btn-primary" @click="cerrarDia" :disabled="cerrandoDia">
+            <v-icon icon="mdi-lock-check" size="16" />
+            <span>{{ cerrandoDia ? 'Cerrando…' : 'Cerrar día' }}</span>
+          </button>
+        </header>
+        <div class="content-area">
+          <div class="stats-grid mini" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-bottom: 1rem;">
+            <div class="stat-card" style="background: rgba(34,197,94,0.06);">
+              <div class="stat-title">Caja chica (efectivo)</div>
+              <div class="stat-value" style="color:#22c55e;">S/ {{ saldoCajaChica.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">Ingresos efectivo − egresos efectivo (mes)</div>
+              <v-text-field v-model.number="saldoRealCajaChica" label="Saldo real (input)"
+                type="number" min="0" step="0.10" variant="outlined" density="compact"
+                prepend-inner-icon="mdi-cash" hide-details class="mt-2" />
+              <div v-if="saldoRealCajaChica > 0" :style="{ marginTop: '6px', fontSize: '0.78rem', color: Math.abs(saldoCajaChica - saldoRealCajaChica) < 1 ? '#22c55e' : '#ef4444' }">
+                {{ Math.abs(saldoCajaChica - saldoRealCajaChica) < 1 ? '✅ Cuadra' : `⚠️ Diferencia: S/ ${(saldoRealCajaChica - saldoCajaChica).toFixed(2)}` }}
+              </div>
+            </div>
+            <div class="stat-card" style="background: rgba(59,130,246,0.06);">
+              <div class="stat-title">Cuenta bancaria</div>
+              <div class="stat-value" style="color:#3b82f6;">S/ {{ saldoCuentaBancaria.toLocaleString('es-PE',{minimumFractionDigits:2}) }}</div>
+              <div class="stat-subtitle">Ingresos no-efectivo − egresos no-efectivo (mes)</div>
+              <v-text-field v-model.number="saldoRealCuentaBancaria" label="Saldo real (input)"
+                type="number" min="0" step="0.10" variant="outlined" density="compact"
+                prepend-inner-icon="mdi-bank" hide-details class="mt-2" />
+              <div v-if="saldoRealCuentaBancaria > 0" :style="{ marginTop: '6px', fontSize: '0.78rem', color: Math.abs(saldoCuentaBancaria - saldoRealCuentaBancaria) < 1 ? '#22c55e' : '#ef4444' }">
+                {{ Math.abs(saldoCuentaBancaria - saldoRealCuentaBancaria) < 1 ? '✅ Cuadra' : `⚠️ Diferencia: S/ ${(saldoRealCuentaBancaria - saldoCuentaBancaria).toFixed(2)}` }}
+              </div>
+            </div>
+          </div>
+
+          <div style="font-size:0.85rem; opacity:0.7; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius:8px;">
+            <v-icon icon="mdi-information-outline" size="14" />
+            Saldos calculados desde pacientes WPP/FBIG con metodo_de_pago + egresos con metodo_pago. "Cerrar día" loguea snapshot al audit_log.
+          </div>
+
+          <div v-if="cierreDiaResultado" style="margin-top: 16px; padding: 12px; background: rgba(34,197,94,0.06); border-radius:8px;">
+            <h4 style="margin:0 0 6px; color:#22c55e;">Cierre del día — {{ cierreDiaResultado.fecha }}</h4>
+            <pre style="font-size:0.78rem; color: var(--text-secondary); white-space: pre-wrap;">{{ cierreDiaResultado.detalle }}</pre>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
 
     <!-- ==========  EGRESOS DIALOG  ========== -->
-    <v-dialog v-model="showEgresoDialog" max-width="500px" persistent>
+    <v-dialog v-model="showEgresoDialog" max-width="640px" persistent>
       <v-card>
         <v-card-title>
           <span>{{ editingEgreso ? 'Editar Egreso' : 'Nuevo Egreso' }}</span>
@@ -1941,17 +2288,83 @@
         </v-card-title>
         <v-card-text>
           <v-form ref="egresoForm">
-            <v-text-field v-model="egresoFormData.tipo_egreso" label="Tipo de Egreso" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
-            <v-text-field v-model="egresoFormData.nombre" label="Nombre/Descripción" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
-            <v-text-field v-model="egresoFormData.fecha" label="Fecha del egreso" type="date" variant="outlined" density="compact" prepend-inner-icon="mdi-calendar" hint="Determina en qué mes aparece este egreso" persistent-hint :rules="[v => !!v || 'Requerido']"></v-text-field>
             <v-row>
-              <v-col cols="6">
-                <v-text-field v-model.number="egresoFormData.precio" label="Precio" type="number" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              <v-col cols="12" sm="6">
+                <v-select v-model="egresoFormData.categoria" :items="EGRESO_CATEGORIAS"
+                  item-title="label" item-value="value" label="Categoría"
+                  variant="outlined" density="compact" prepend-inner-icon="mdi-tag">
+                  <template v-slot:item="{ props, item }">
+                    <v-list-item v-bind="props" :title="item.raw.label">
+                      <template v-slot:prepend>
+                        <v-icon :icon="item.raw.icon" :color="item.raw.color" size="18" class="mr-2" />
+                      </template>
+                    </v-list-item>
+                  </template>
+                </v-select>
               </v-col>
-              <v-col cols="6">
-                <v-text-field v-model.number="egresoFormData.cantidad" label="Cantidad" type="number" variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']"></v-text-field>
+              <v-col cols="12" sm="6">
+                <v-select v-model="egresoFormData.metodo_pago" :items="EGRESO_METODOS"
+                  label="Método de pago" variant="outlined" density="compact"
+                  prepend-inner-icon="mdi-cash-multiple" />
               </v-col>
             </v-row>
+            <v-text-field v-model="egresoFormData.tipo_egreso" label="Tipo de Egreso (texto libre)"
+              variant="outlined" density="compact" hint="Campo legacy — opcional"
+              persistent-hint />
+            <v-text-field v-model="egresoFormData.nombre" label="Nombre/Descripción"
+              variant="outlined" density="compact" :rules="[v => !!v || 'Requerido']" />
+            <v-row>
+              <v-col cols="12" sm="7">
+                <v-text-field v-model="egresoFormData.fecha" label="Fecha del egreso" type="date"
+                  variant="outlined" density="compact" prepend-inner-icon="mdi-calendar"
+                  hint="Determina en qué mes aparece este egreso" persistent-hint
+                  :rules="[v => !!v || 'Requerido']" />
+              </v-col>
+              <v-col cols="12" sm="5">
+                <v-text-field v-model="egresoFormData.referencia" label="Referencia / Voucher"
+                  variant="outlined" density="compact" prepend-inner-icon="mdi-receipt-text"
+                  hint="# transferencia, voucher, nota libre" persistent-hint />
+              </v-col>
+            </v-row>
+
+            <!-- Bloque INSUMOS condicional -->
+            <div v-if="egresoFormData.categoria === 'INSUMOS'"
+              style="background: rgba(236,72,153,0.06); border-radius: 8px; padding: 12px; margin: 8px 0;">
+              <div style="font-size: 0.78rem; color: #ec4899; margin-bottom: 8px; font-weight: 600;">
+                <v-icon icon="mdi-medical-bag" size="14" class="me-1" /> Detalle de insumo
+              </div>
+              <v-text-field v-model="egresoFormData.producto"
+                label="Producto" placeholder="Ej. Toxina Botox 200 UI"
+                variant="outlined" density="compact" />
+              <v-row>
+                <v-col cols="6">
+                  <v-select v-model="egresoFormData.unidad" :items="EGRESO_UNIDADES"
+                    label="Unidad" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field v-model.number="egresoFormData.precio_unitario"
+                    label="Precio unitario" type="number" min="0" step="0.10"
+                    variant="outlined" density="compact"
+                    hint="Si lo llenás, sobreescribe Precio" persistent-hint />
+                </v-col>
+              </v-row>
+            </div>
+
+            <v-row>
+              <v-col cols="6">
+                <v-text-field v-model.number="egresoFormData.precio" label="Precio (S/)"
+                  type="number" min="0" step="0.10" variant="outlined" density="compact"
+                  :rules="[v => v >= 0 || 'Requerido']" />
+              </v-col>
+              <v-col cols="6">
+                <v-text-field v-model.number="egresoFormData.cantidad" label="Cantidad"
+                  type="number" min="1" variant="outlined" density="compact"
+                  :rules="[v => v > 0 || 'Requerido']" />
+              </v-col>
+            </v-row>
+
+            <v-checkbox v-model="egresoFormData.descartado" density="compact" hide-details
+              label="Descartar (no se incluye en reportes — usá esto para movimientos cargados por error)" />
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -2660,7 +3073,7 @@
       <v-card>
         <v-card-title class="d-flex align-center pa-4" style="gap:12px; flex-wrap:wrap;">
           <v-icon icon="mdi-account-multiple-check" color="success" />
-          <span class="text-h6">Pacientes agendados — {{ pacientesAgendadosMesLabel }}</span>
+          <span class="text-h6">{{ pacientesAgendadosModo === 'cita' ? 'Citas en' : 'Convertidos en' }} {{ pacientesAgendadosMesLabel }}</span>
           <v-chip color="success" variant="flat" size="small">{{ pacientesAgendadosMes.length }} pacientes</v-chip>
           <v-chip color="grey-darken-2" variant="tonal" size="small">
             Reservas: S/ {{ pacientesAgendadosTotalReserva.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
@@ -2843,29 +3256,158 @@
       </v-card>
     </v-dialog>
 
+    <!-- ==========  HISTORIA CLÍNICA POR PACIENTE (multi-procedimiento) ========== -->
+    <v-dialog v-model="showHistoriaPacienteDialog" max-width="900px" scrollable>
+      <v-card>
+        <v-card-title style="display:flex; align-items:center; gap:10px; padding:14px 20px; background: rgba(218,165,32,0.06);">
+          <v-icon icon="mdi-folder-heart" color="amber" />
+          <div>
+            <div style="font-weight:600;">Historia clínica</div>
+            <div style="font-size:0.78rem; opacity:0.7;">
+              {{ historiaPacienteSel?.nombre || '—' }}
+              <span v-if="historiaPacienteSel?.dni"> · DNI {{ historiaPacienteSel.dni }}</span>
+              <span v-if="historiaPacienteSel?.numero"> · Tel {{ historiaPacienteSel.numero }}</span>
+            </div>
+          </div>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="closeHistoriaPacienteDialog" />
+        </v-card-title>
+
+        <v-card-text class="pa-4" style="max-height: 75vh;">
+          <!-- Visitas anteriores -->
+          <h4 style="font-size:0.9rem; margin-bottom:8px;">
+            <v-icon icon="mdi-history" size="14" /> Visitas anteriores ({{ historiaPacienteVisitas.length }})
+          </h4>
+          <div v-if="loadingHistoriaPaciente" style="opacity:0.6; padding: 12px; text-align:center;">
+            Cargando…
+          </div>
+          <div v-else-if="!historiaPacienteVisitas.length" style="opacity:0.5; padding: 12px; text-align:center; font-size:0.85rem;">
+            Sin visitas registradas para este paciente.
+          </div>
+          <div v-else style="max-height: 240px; overflow-y: auto; border: 1px solid var(--border, rgba(255,255,255,0.1)); border-radius: 6px; padding: 8px;">
+            <div v-for="v in historiaPacienteVisitas" :key="v.id"
+              style="padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size:0.82rem;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <strong>{{ formatDateAgendamiento(v.dateAdded) || '—' }}</strong>
+                <v-chip v-if="v.status" size="x-small" variant="tonal"
+                  :color="v.status === 'Activo' ? 'success' : 'default'">{{ v.status }}</v-chip>
+              </div>
+              <div v-if="v.procedimientos_visita" style="margin-top:4px; color: var(--accent-gold, #daa520); font-weight:500;">
+                {{ v.procedimientos_visita }}
+              </div>
+              <div v-if="v.returnNote" style="margin-top:4px; opacity:0.75; font-size:0.78rem;">
+                {{ v.returnNote }}
+              </div>
+              <div v-if="v.total_visita" style="margin-top:4px; font-size:0.78rem;">
+                Total: <strong style="color:#22c55e;">S/ {{ Number(v.total_visita).toLocaleString('es-PE',{minimumFractionDigits:2}) }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <v-divider class="my-4" />
+
+          <!-- Nueva visita con multi-procedimiento -->
+          <h4 style="font-size:0.9rem; margin-bottom:8px;">
+            <v-icon icon="mdi-plus-circle" size="14" color="success" /> Registrar nueva visita
+          </h4>
+          <v-row>
+            <v-col cols="12" sm="5">
+              <v-text-field v-model="nuevaVisita.fecha" type="date" label="Fecha de la visita"
+                variant="outlined" density="compact" prepend-inner-icon="mdi-calendar" hide-details />
+            </v-col>
+            <v-col cols="12" sm="7">
+              <v-select v-model="nuevaVisita.cabina"
+                :items="[{value:'cabina1',label:'Cabina 1 — Doctora (medicina estética)'},{value:'cabina2',label:'Cabina 2 — Cosmiatra (no invasivos)'}]"
+                item-title="label" item-value="value" label="Cabina"
+                variant="outlined" density="compact" prepend-inner-icon="mdi-door" hide-details />
+            </v-col>
+          </v-row>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; margin-bottom:6px;">
+            <strong style="font-size:0.85rem;">Procedimientos de esta visita</strong>
+            <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-plus"
+              @click="agregarProcedimientoVisita">Agregar procedimiento</v-btn>
+          </div>
+
+          <div v-for="(p, i) in nuevaVisita.procedimientos" :key="i"
+            style="display:flex; gap:8px; align-items:flex-start; margin-bottom:6px;">
+            <v-autocomplete v-model="p.procedure_id" :items="procedures"
+              item-value="id" :item-title="(x: any) => `${x.sku ? '['+x.sku+'] ' : ''}${x.name}`"
+              label="Catálogo (opcional)" variant="outlined" density="compact"
+              clearable hide-details style="flex:2;"
+              @update:model-value="(v: any) => { const proc = procedures.find((x:any) => Number(x.id) === Number(v)); if (proc) { p.nombre_libre = proc.name; p.precio = Number(proc.price) || 0; } }" />
+            <v-text-field v-model="p.nombre_libre" label="Nombre libre" variant="outlined"
+              density="compact" hide-details style="flex:2;" />
+            <v-text-field v-model.number="p.precio" label="Precio S/" type="number" min="0" step="0.10"
+              variant="outlined" density="compact" hide-details style="flex:0 0 110px;" />
+            <v-btn icon="mdi-close" size="small" variant="text" color="error"
+              :disabled="nuevaVisita.procedimientos.length === 1"
+              @click="eliminarProcedimientoVisita(i)" />
+          </div>
+
+          <v-textarea v-model="nuevaVisita.notas_visita" label="Notas de la visita (opcional)"
+            variant="outlined" density="compact" rows="2" auto-grow class="mt-2"
+            hint="Observaciones, indicaciones, próxima cita…" persistent-hint />
+
+          <div style="margin-top:10px; padding: 10px 14px; background: rgba(34,197,94,0.06); border-radius: 8px; font-size:0.85rem;">
+            <div style="display:flex; justify-content:space-between;">
+              <span>Total de la visita:</span>
+              <strong style="color:#22c55e;">S/ {{ totalVisita.toFixed(2) }}</strong>
+            </div>
+          </div>
+        </v-card-text>
+
+        <v-card-actions class="pa-3">
+          <v-spacer />
+          <v-btn variant="text" @click="closeHistoriaPacienteDialog">Cerrar</v-btn>
+          <v-btn color="amber" variant="elevated" :loading="guardandoVisita" @click="guardarVisita"
+            prepend-icon="mdi-content-save">
+            Guardar visita
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ==========  PATIENT TYPE SELECTION DIALOG  ========== -->
-    <v-dialog v-model="showPatientTypeDialog" max-width="500px">
+    <v-dialog v-model="showPatientTypeDialog" max-width="640px">
       <v-card>
         <v-card-title class="text-h5 text-center pa-4">
           Seleccionar Origen del Paciente
         </v-card-title>
         <v-card-text class="pa-4">
           <v-row>
-            <v-col cols="6">
-              <v-card hover @click="selectPatientType('wpp')" class="text-center pa-4 cursor-pointer" height="100%"
-                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
-                <v-icon icon="mdi-whatsapp" size="48" color="success"></v-icon>
-                <span class="text-h6">WhatsApp</span>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('whatsapp')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-whatsapp" size="40" color="success" />
+                <span class="text-subtitle-1">WhatsApp</span>
               </v-card>
             </v-col>
-            <v-col cols="6">
-              <v-card hover @click="selectPatientType('fbig')" class="text-center pa-4 cursor-pointer" height="100%"
-                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
-                <v-icon icon="mdi-facebook" size="48" color="primary"></v-icon>
-                <span class="text-h6">FB / IG</span>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('tiktok')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-music-note" size="40" color="deep-purple" />
+                <span class="text-subtitle-1">TikTok</span>
+              </v-card>
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('instagram')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-instagram" size="40" color="pink" />
+                <span class="text-subtitle-1">Instagram</span>
+              </v-card>
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-card hover @click="selectPatientSource('facebook')" class="text-center pa-4 cursor-pointer" height="100%"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                <v-icon icon="mdi-facebook" size="40" color="primary" />
+                <span class="text-subtitle-1">Facebook</span>
               </v-card>
             </v-col>
           </v-row>
+          <div style="font-size:0.78rem; opacity:0.6; text-align:center; margin-top:12px;">
+            WhatsApp y TikTok → tabla WPP · Instagram y Facebook → tabla FB/IG
+          </div>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -3149,33 +3691,21 @@
           </div>
         </div>
 
-        <!-- ● GASTOS VARIABLES ADICIONALES -->
+        <!-- ● GASTOS VARIABLES (movido a Contabilidad → tab "Gastos Variables") -->
         <div class="costos-seccion" style="border-bottom:none;padding-bottom:0;">
           <div class="costos-seccion-label">
             <span class="costos-bullet-dot"></span>
             <v-icon icon="mdi-bullhorn-outline" size="14" style="margin-right:5px;" />
-            GASTOS VARIABLES ADICIONALES
-            <button class="btn-add-row" style="margin-left:auto;" @click="agregarGastoVar">
-              <v-icon icon="mdi-plus" size="13" /> Agregar
+            GASTOS VARIABLES (resumen)
+            <button class="btn-add-row" style="margin-left:auto;" @click="activeView = 'facturacion'; facturacionTab = 'gastos_variables'">
+              <v-icon icon="mdi-arrow-right" size="13" /> Editar en Contabilidad
             </button>
           </div>
-          <div class="costos-items-list">
-            <div v-for="(g, i) in gastosVarExtra" :key="i" class="costos-item-row">
-              <span class="item-viñeta">•</span>
-              <input v-model="g.nombre" type="text" class="ci-name" placeholder="Concepto (ej: Publicidad)" />
-              <div class="ci-fields">
-                <div class="ci-field editable">
-                  <label>Monto/mes</label>
-                  <div class="ci-field-input"><span class="ci-prefix">S/</span><input v-model.number="g.monto" type="number" min="0" class="ci-input" /></div>
-                </div>
-              </div>
-              <button class="btn-del-row" @click="eliminarGastoVar(i)" title="Eliminar">
-                <v-icon icon="mdi-close" size="13" />
-              </button>
-            </div>
-          </div>
-          <div class="costos-seccion-total">
+          <div style="font-size:0.85rem; opacity:0.7; padding: 8px 0;">
             Total variables: <strong>{{ fmtS(preciosCalc.totalGastosVarExtra) }}</strong>
+            <span v-if="gastosVarExtra.length > 0" style="opacity:0.6; font-size:0.75rem;">
+              · {{ gastosVarExtra.length }} concepto(s): {{ gastosVarExtra.map(g => g.nombre).filter(Boolean).join(', ') }}
+            </span>
           </div>
         </div>
 
@@ -5385,6 +5915,150 @@ const selectPatientType = (type: 'wpp' | 'fbig') => {
   openPatientForm(null, type)
 }
 
+// Selector unificado por red social — mapea a la tabla correcta y prefilla
+// el campo red_social del form para que detectFuentePaciente lo clasifique bien.
+const selectPatientSource = (source: 'whatsapp' | 'tiktok' | 'instagram' | 'facebook') => {
+  showPatientTypeDialog.value = false
+  // WhatsApp y TikTok viven en PacientesBDwppHEALUP; Instagram y Facebook en PacientesBDfbigHEALUP
+  const tipo: 'wpp' | 'fbig' = (source === 'whatsapp' || source === 'tiktok') ? 'wpp' : 'fbig'
+  selectedPatientType.value = tipo
+  openPatientForm(null, tipo)
+  // Prefill: para TikTok el `numero` se deja vacío (eso es lo que hace que
+  // detectFuentePaciente lo clasifique como TikTok). Para FB/IG cargamos
+  // la red en `red_social` para que se distinga correctamente.
+  if (source === 'tiktok') {
+    patientFormData.value.numero = ''
+    ;(patientFormData.value as any).red_social = 'tiktok'
+  } else if (source === 'instagram') {
+    ;(patientFormData.value as any).red_social = 'instagram'
+  } else if (source === 'facebook') {
+    ;(patientFormData.value as any).red_social = 'facebook'
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Historia clínica + visitas (multi-procedimiento) por paciente
+// ──────────────────────────────────────────────────────────────────
+const showHistoriaPacienteDialog = ref(false)
+const historiaPacienteSel = ref<any>(null)
+const historiaPacienteVisitas = ref<any[]>([])
+const loadingHistoriaPaciente = ref(false)
+const nuevaVisita = ref<{
+  fecha: string
+  cabina: string
+  procedimientos: Array<{ procedure_id: any; nombre_libre: string; precio: number; notas: string }>
+  notas_visita: string
+}>({
+  fecha: '', cabina: 'cabina1',
+  procedimientos: [{ procedure_id: null, nombre_libre: '', precio: 0, notas: '' }],
+  notas_visita: ''
+})
+const guardandoVisita = ref(false)
+
+const openHistoriaClinicaDePaciente = async (paciente: any, _origen: 'wpp' | 'fbig') => {
+  historiaPacienteSel.value = paciente
+  showHistoriaPacienteDialog.value = true
+  loadingHistoriaPaciente.value = true
+  // Buscar todas las visitas / entries de historia clínica de este paciente
+  // Match por DNI (preferido) o nombre completo
+  try {
+    const filterDni = paciente.dni ? `dni.eq.${paciente.dni}` : null
+    const filterName = paciente.nombre ? `name.ilike.%${paciente.nombre.split(' ')[0]}%` : null
+    const filters = [filterDni, filterName].filter(Boolean).join(',')
+    const { data } = await (client.from('healup_medical_history') as any)
+      .select('*')
+      .or(filters || 'id.gte.0')
+      .order('dateAdded', { ascending: false })
+    historiaPacienteVisitas.value = data || []
+  } catch (err) {
+    console.warn('[historia] error:', err)
+    historiaPacienteVisitas.value = []
+  } finally {
+    loadingHistoriaPaciente.value = false
+  }
+  // Reset form
+  const today = new Date()
+  nuevaVisita.value = {
+    fecha: `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`,
+    cabina: 'cabina1',
+    procedimientos: [{ procedure_id: null, nombre_libre: '', precio: 0, notas: '' }],
+    notas_visita: ''
+  }
+}
+
+const closeHistoriaPacienteDialog = () => {
+  showHistoriaPacienteDialog.value = false
+  historiaPacienteSel.value = null
+  historiaPacienteVisitas.value = []
+}
+
+const agregarProcedimientoVisita = () => {
+  nuevaVisita.value.procedimientos.push({ procedure_id: null, nombre_libre: '', precio: 0, notas: '' })
+}
+const eliminarProcedimientoVisita = (i: number) => {
+  if (nuevaVisita.value.procedimientos.length > 1) nuevaVisita.value.procedimientos.splice(i, 1)
+}
+
+const totalVisita = computed(() =>
+  nuevaVisita.value.procedimientos.reduce((s, p) => s + (Number(p.precio) || 0), 0)
+)
+
+const guardarVisita = async () => {
+  if (!historiaPacienteSel.value) return
+  if (!nuevaVisita.value.procedimientos.some(p => p.nombre_libre || p.procedure_id)) {
+    alert('Agregá al menos un procedimiento con nombre.')
+    return
+  }
+  guardandoVisita.value = true
+  try {
+    const p = historiaPacienteSel.value
+    // Construir el campo "procedimiento" agrupando todos los items separados por '+'
+    const procsText = nuevaVisita.value.procedimientos
+      .map(it => {
+        const cat = it.procedure_id ? procedures.value.find((x:any)=>String(x.id)===String(it.procedure_id))?.name : null
+        const name = cat || it.nombre_libre || ''
+        const precio = Number(it.precio) || 0
+        return precio > 0 ? `${name} (S/${precio})` : name
+      })
+      .filter(Boolean)
+      .join(' + ')
+    const totalProcs = totalVisita.value
+    const notasFull = [
+      `Visita ${nuevaVisita.value.fecha}`,
+      `Cabina: ${nuevaVisita.value.cabina}`,
+      `Total: S/ ${totalProcs.toFixed(2)}`,
+      nuevaVisita.value.notas_visita ? `Notas: ${nuevaVisita.value.notas_visita}` : null,
+    ].filter(Boolean).join(' · ')
+    const payload: any = {
+      name: p.nombre || '',
+      surname: '',
+      dni: p.dni || null,
+      phone: p.numero || null,
+      email: '',
+      dateAdded: nuevaVisita.value.fecha,
+      returnNote: notasFull,
+      status: 'Activo',
+      procedimientos_visita: procsText,
+      total_visita: totalProcs,
+    }
+    // Try-then-retry: si las columnas extendidas no existen, retry con base
+    let r = await (client.from('healup_medical_history') as any).insert(payload)
+    if (r.error) {
+      delete payload.procedimientos_visita
+      delete payload.total_visita
+      r = await (client.from('healup_medical_history') as any).insert(payload)
+    }
+    if (r.error) {
+      alert(`Error: ${r.error.message}`)
+    } else {
+      // Refrescar
+      await openHistoriaClinicaDePaciente(p, 'wpp')
+    }
+  } finally {
+    guardandoVisita.value = false
+  }
+}
+
 const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
   selectedPatientType.value = type
   editingPatient.value = item
@@ -5735,10 +6409,17 @@ function handleNavigation(item: any) {
 }
 
 const financiasItems = [
-  { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos' },
-  { icon: 'mdi-currency-usd', label: 'Contabilidad', id: 'facturacion' },
-  { icon: 'mdi-chart-line', label: 'Facturación', id: 'contabilidad' },
-  { icon: 'mdi-calculator-variant', label: 'Estructura de Precios', id: 'precios' }
+  // Vista de KPIs/gráficos financieros (header "Contabilidad" en la vista)
+  { icon: 'mdi-currency-usd',          label: 'Contabilidad',         id: 'facturacion' },
+  // Vista con tabs Cobro Atención / GCal / Factura Electrónica / Catálogo
+  { icon: 'mdi-receipt-text',          label: 'Facturación',          id: 'contabilidad' },
+  // Egresos: vista dedicada (viejo sidebar item, restaurado)
+  { icon: 'mdi-cash-minus',            label: 'Egresos',              id: 'egresos' },
+  // Gastos variables adicionales: vista nueva dedicada
+  { icon: 'mdi-bullhorn-outline',      label: 'Gastos Variables',     id: 'gastos_variables' },
+  { icon: 'mdi-calculator-variant',    label: 'Estructura de Precios', id: 'precios' },
+  { icon: 'mdi-finance',               label: 'Cierre mensual',       id: 'cierre_mensual' },
+  { icon: 'mdi-bank-check',            label: 'Reconciliación caja',  id: 'reconciliacion' }
 ]
 
 // ── ESTRUCTURA DE PRECIOS Y PUNTO DE EQUILIBRIO ──────────────────────────────
@@ -5775,6 +6456,94 @@ function eliminarGastoVar(i: number) {
   gastosVarExtra.splice(i, 1)
 }
 
+// ──────────────────────────────────────────────────────────────────
+// ALEF — Comisión por conversión del mes (gasto variable automático)
+// Regla operativa de la clínica:
+//   Si la paciente reservó con S/ 50 (cabina 1, medicina estética
+//   con doctora) → comisión ALEF = S/ 20.
+//   Si la paciente reservó con S/ 20 (cabina 2, no invasivos /
+//   skin cares / HIFU / corporal) → comisión ALEF = S/ 10.
+// Cuenta TODAS las conversiones del mes (created_at), no solo IA.
+// EXCLUYE post-procedimientos (retiros, controles, follow-ups) que
+// no son conversiones nuevas.
+// ──────────────────────────────────────────────────────────────────
+const ALEF_COMISION_BAJA = 10  // si reserva fue S/20
+const ALEF_COMISION_ALTA = 20  // si reserva fue S/50
+
+// Grupos del catálogo que pertenecen a Cabina 2 (S/20 reserva → ALEF S/10)
+const ALEF_GRUPOS_CABINA_2 = new Set([
+  'FACIAL BASICO', 'FACIAL PREMIUM', 'HIFU 22D',
+  'CORPORAL REDUCCION', 'CORPORAL GLUTEOS', 'CORPORAL REAFIRMACION',
+  'CARBOXITERAPIA', 'LIPO PAPADA ENZIMÁTICO'
+])
+
+// Keywords en texto libre que indican Cabina 2
+const ALEF_KEYS_CABINA_2 = [
+  'glass skin','prime skin','calm babe','eternal glow','pure babe','prestige glow',
+  'skin care','limpieza facial','exfoli','hifu','lipopapada','carboxi',
+  'corporal','reduccion','reducción','glúteo','gluteo','reafirma'
+]
+
+// Keywords que indican post-procedimiento (NO cuenta como conversión)
+const ALEF_KEYS_EXCLUIR = ['retiro','control','follow','seguimiento','revisión','revision']
+
+const alefClasificarPaciente = (p: any): 'CABINA_1' | 'CABINA_2' | 'EXCLUIDO' => {
+  const txt = String(p?.procedimiento || '').toLowerCase().trim()
+
+  // 1) Excluir post-procedimientos
+  if (ALEF_KEYS_EXCLUIR.some(k => txt.includes(k))) return 'EXCLUIDO'
+
+  // 2) Detectar cabina vía procedure_id (preferido)
+  const pid = p?.procedure_id ? String(p.procedure_id) : ''
+  if (pid && procedures.value?.length) {
+    const proc = procedures.value.find((x: any) => String(x.id) === pid) as any
+    if (proc) {
+      const grupo = String(proc.grupo || '').toUpperCase()
+      if (ALEF_GRUPOS_CABINA_2.has(grupo)) return 'CABINA_2'
+      if (proc.cabina === 'cabina2') return 'CABINA_2'
+      // Catálogo apunta a cabina1 explícito o por defecto
+      return 'CABINA_1'
+    }
+  }
+
+  // 3) Fallback por keywords del texto libre
+  if (ALEF_KEYS_CABINA_2.some(k => txt.includes(k))) return 'CABINA_2'
+
+  // Default: medicina estética (cabina 1)
+  return 'CABINA_1'
+}
+
+const alefBreakdown = computed(() => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const todos = [...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.created_at?.startsWith(thisMonth))
+
+  const cabina1: any[] = []  // S/50 reserva → ALEF S/20
+  const cabina2: any[] = []  // S/20 reserva → ALEF S/10
+  const excluidos: any[] = [] // retiros / post-procedimientos
+
+  todos.forEach((p: any) => {
+    const cls = alefClasificarPaciente(p)
+    if (cls === 'CABINA_1') cabina1.push(p)
+    else if (cls === 'CABINA_2') cabina2.push(p)
+    else excluidos.push(p)
+  })
+
+  const monto = cabina1.length * ALEF_COMISION_ALTA + cabina2.length * ALEF_COMISION_BAJA
+  return {
+    cabina1,                   // pacientes con reserva S/50 (medicina estética)
+    cabina2,                   // pacientes con reserva S/20 (no invasivos)
+    excluidos,                 // post-procedimientos (retiros, etc.)
+    cabina1Count: cabina1.length,
+    cabina2Count: cabina2.length,
+    excluidosCount: excluidos.length,
+    totalConversiones: cabina1.length + cabina2.length,
+    monto,
+    mes: thisMonth,
+  }
+})
+
 // Fórmulas calculadas (solo lectura)
 const preciosCalc = computed(() => {
   const totalSalarios   = operadoras.reduce((s, op) => s + (op.salario || 0), 0)
@@ -5783,7 +6552,10 @@ const preciosCalc = computed(() => {
   const totalCostosFijos = preciosParams.otrosCostosFijosMes + totalSalarios
   const costosFijosDia  = totalCostosFijos / (preciosParams.diasLaborables || 1)
 
-  const totalGastosVarExtra = gastosVarExtra.reduce((s, g) => s + (g.monto || 0), 0)
+  // Suma manuales + comisión ALEF (calculada automáticamente desde IA)
+  const manualesTotal = gastosVarExtra.reduce((s, g) => s + (g.monto || 0), 0)
+  const alefTotal = alefBreakdown.value.monto
+  const totalGastosVarExtra = manualesTotal + alefTotal
 
   let totalIngresos  = 0
   let totalCostosInsumos = 0
@@ -5838,6 +6610,32 @@ const parseCurrency = (val: string | number) => {
 
 // Computeds para Facturación (Basado en Pacientes)
 const allPacientes = computed(() => [...pacientesWpp.value, ...pacientesFbIg.value])
+
+// 2.5 Filtros de la vista Pacientes (mes seleccionado, default actual)
+const pacienteMesFiltro = ref<string>(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+
+const pacienteMesesDisponibles = computed(() => {
+  const set = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
+    const fa = p.fecha_agendamiento
+    if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
+  })
+  const now = new Date()
+  set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+  return [...set].sort((a, b) => b.localeCompare(a)).map(value => {
+    const [y, m] = value.split('-')
+    return { value, label: `${NOMBRES_MESES_LABEL[parseInt(m) - 1]} ${y}` }
+  })
+})
+
+const pacientesWppFiltrados = computed(() => {
+  if (!pacienteMesFiltro.value) return pacientesWpp.value
+  return pacientesWpp.value.filter((p: any) => p.fecha_agendamiento?.startsWith(pacienteMesFiltro.value))
+})
+const pacientesFbIgFiltrados = computed(() => {
+  if (!pacienteMesFiltro.value) return pacientesFbIg.value
+  return pacientesFbIg.value.filter((p: any) => p.fecha_agendamiento?.startsWith(pacienteMesFiltro.value))
+})
 
 const pacientesMesActual = computed(() => {
   const now = new Date()
@@ -6211,8 +7009,21 @@ const dedupKeyForAgendado = (row: any): string => {
   return 'name:' + name
 }
 
-// Convertidos = pacientes en WPP/FBIG con fecha_agendamiento en el mes (deduplicados)
+// Convertidos = pacientes WPP/FBIG cuya CONVERSIÓN ocurrió este mes
+// (created_at del registro), deduplicados. Card "Convertidos este mes".
 const hotLeadsConvertedCount = computed(() => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const claves = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.created_at?.startsWith(thisMonth))
+    .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
+  return claves.size
+})
+
+// Citas = pacientes WPP/FBIG con CITA programada este mes
+// (fecha_agendamiento), deduplicados. Card "Citas este mes".
+const pacientesConCitaEsteMes = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const claves = new Set<string>()
@@ -6230,13 +7041,14 @@ const pacientesAgendadosMesSel = ref('') // YYYY-MM seleccionado (vacío = mes a
 // Etiquetas de meses (compartido entre dialogs/viñetas; el contador usa el mismo array más abajo)
 const NOMBRES_MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-// Meses disponibles: SOLO desde fecha_agendamiento de pacientes en redes
-// (WPP + FBIG). El calendario es referencia operativa, no fuente de pacientes.
+// Meses disponibles: dependen del modo del dialog (conversion → created_at,
+// cita → fecha_agendamiento).
 const pacientesAgendadosMesesDisponibles = computed(() => {
+  const campo = pacientesAgendadosModo.value === 'cita' ? 'fecha_agendamiento' : 'created_at'
   const set = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
-    const fa = p.fecha_agendamiento
-    if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
+    const v = p[campo]
+    if (v && /^\d{4}-\d{2}/.test(v)) set.add(v.slice(0, 7))
   })
   // Asegurar mes actual presente aunque esté vacío
   const now = new Date()
@@ -6450,19 +7262,16 @@ const pacientesAgendadosMes = computed(() => {
     }
   }
 
-  // SOLO pacientes en redes (WPP + FBIG). El calendario es referencia
-  // operativa y NO es fuente de pacientes — la clínica vende por
-  // WhatsApp / TikTok / Instagram / Facebook. Eventos del calendario
-  // sin contraparte en redes son bloqueos, reuniones o data legacy.
+  // Filtra por created_at (modo conversion) o fecha_agendamiento (modo cita)
+  const campoFiltro = pacientesAgendadosModo.value === 'cita' ? 'fecha_agendamiento' : 'created_at'
   const wppRaw = pacientesWpp.value
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
+    .filter((p: any) => p[campoFiltro]?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'wpp'))
   const fbigRaw = pacientesFbIg.value
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
+    .filter((p: any) => p[campoFiltro]?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'fbig'))
 
   // Dedup en cascada — mismo paciente en WPP y FBIG cuenta una vez.
-  // Misma clave usada por hotLeadsConvertedCount, así ambos números coinciden.
   const claves = new Set<string>()
   const wpp: any[] = []
   for (const r of wppRaw) {
@@ -6475,8 +7284,9 @@ const pacientesAgendadosMes = computed(() => {
     if (!claves.has(k)) { claves.add(k); fbig.push(r) }
   }
 
+  // Orden DESC por el campo del filtro (más reciente primero).
   return [...wpp, ...fbig].sort((a, b) =>
-    String(b.fecha_agendamiento).localeCompare(String(a.fecha_agendamiento))
+    String(b[campoFiltro] || '').localeCompare(String(a[campoFiltro] || ''))
   )
 })
 
@@ -6540,8 +7350,12 @@ function getMetodoPagoStyle(raw: string): { color: string; icon: string; label: 
   return { color: 'grey-darken-1', icon: 'mdi-cash-multiple', label: raw }
 }
 
-function openPacientesAgendadosDialog() {
+// Modo del dialog: 'conversion' (filtra por created_at) | 'cita' (filtra por fecha_agendamiento)
+const pacientesAgendadosModo = ref<'conversion' | 'cita'>('conversion')
+
+function openPacientesAgendadosDialog(modo: 'conversion' | 'cita' = 'conversion') {
   pacientesAgendadosSearch.value = ''
+  pacientesAgendadosModo.value = modo
   // Default al mes actual cada vez que se abre
   const now = new Date()
   pacientesAgendadosMesSel.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -9312,6 +10126,20 @@ const isoToInputDate = (iso: string | null | undefined) => {
   if (isNaN(d.getTime())) return todayISODate()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+// ── 2.4 Catálogos de categorías y métodos de pago de egresos ──
+// Las columnas nuevas en egresos_healup son opcionales — los campos
+// legacy (tipo_egreso, precio, cantidad) siguen siendo la fuente principal.
+const EGRESO_CATEGORIAS = [
+  { value: 'INSUMOS',       label: 'Insumos / Productos médicos', icon: 'mdi-medical-bag',     color: 'pink' },
+  { value: 'DELIVERY',      label: 'Delivery / Envíos',           icon: 'mdi-truck',           color: 'blue' },
+  { value: 'MARKETING',     label: 'Marketing (Meta / TikTok)',   icon: 'mdi-bullhorn',        color: 'purple' },
+  { value: 'MANTENIMIENTO', label: 'Mantenimiento / Limpieza',    icon: 'mdi-broom',           color: 'orange' },
+  { value: 'SUELDOS',       label: 'Sueldos / Honorarios',        icon: 'mdi-account-cash',    color: 'teal' },
+  { value: 'OTROS',         label: 'Otros',                       icon: 'mdi-dots-horizontal', color: 'grey' },
+]
+const EGRESO_METODOS = ['EFECTIVO', 'YAPE', 'PLIN', 'TRANSFERENCIA', 'TARJETA_CREDITO', 'QR']
+const EGRESO_UNIDADES = ['UI', 'ML', 'frascos', 'unidad', 'cajas', 'kg']
+
 const egresoFormData = ref({
   id: '',
   tipo_egreso: '',
@@ -9319,21 +10147,46 @@ const egresoFormData = ref({
   precio: 0,
   cantidad: 1,
   fecha: todayISODate(),
+  // Campos nuevos (2.4) — opcionales hasta que se aplique la migración SQL
+  categoria: 'OTROS',
+  metodo_pago: 'EFECTIVO',
+  referencia: '',
+  producto: '',
+  unidad: 'unidad',
+  precio_unitario: 0,
+  descartado: false,
   company_id: 'healup'
 })
+// Filtros UI (chips)
+const egresoCatFiltro = ref<string>('')
+const egresoMetodoFiltro = ref<string>('')
+
 const egresosHeaders = [
-  { title: 'Fecha', key: 'created_at' },
-  { title: 'Tipo', key: 'tipo_egreso' },
-  { title: 'Nombre', key: 'nombre' },
-  { title: 'Precio', key: 'precio' },
-  { title: 'Cantidad', key: 'cantidad' },
-  { title: 'Total', key: 'total' },
-  { title: 'Acciones', key: 'actions', sortable: false }
+  { title: 'Fecha',      key: 'created_at',  width: '105px' },
+  { title: 'Categoría',  key: 'categoria',   width: '160px' },
+  { title: 'Nombre',     key: 'nombre' },
+  { title: 'Método',     key: 'metodo_pago', width: '130px' },
+  { title: 'Precio',     key: 'precio',      width: '90px',  align: 'end' as const },
+  { title: 'Cantidad',   key: 'cantidad',    width: '70px',  align: 'end' as const },
+  { title: 'Total',      key: 'total',       width: '110px', align: 'end' as const },
+  { title: 'Acciones',   key: 'actions',     width: '90px',  sortable: false },
 ]
 
 const fetchEgresos = async () => {
   loadingEgresos.value = true
-  const { data, error } = await (client.from('egresos_healup') as any).select('*').order('created_at', { ascending: false })
+  // Filtra deleted_at NULL si la columna existe; si no, la cláusula es no-op
+  // gracias al fallback automático del SDK.
+  const q = (client.from('egresos_healup') as any).select('*')
+  // Intentamos filtrar deleted_at — si la columna no existe el query devuelve error,
+  // entonces hacemos retry sin filtro.
+  let data: any = null, error: any = null
+  const r1 = await q.is('deleted_at', null).order('created_at', { ascending: false })
+  if (r1.error) {
+    const r2 = await (client.from('egresos_healup') as any).select('*').order('created_at', { ascending: false })
+    data = r2.data; error = r2.error
+  } else {
+    data = r1.data; error = r1.error
+  }
   if (!error && data) {
     egresosList.value = data
   }
@@ -9368,13 +10221,18 @@ const egresosMesLabel = computed(() => {
 })
 
 const egresosFiltrados = computed(() => {
-  if (!egresosMesSel.value) return egresosList.value
   return egresosList.value.filter(e => {
-    if (!e.created_at) return false
-    const d = new Date(e.created_at)
-    if (isNaN(d.getTime())) return false
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    return key === egresosMesSel.value
+    if (e.descartado) return false
+    if (egresosMesSel.value) {
+      if (!e.created_at) return false
+      const d = new Date(e.created_at)
+      if (isNaN(d.getTime())) return false
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (key !== egresosMesSel.value) return false
+    }
+    if (egresoCatFiltro.value && (e.categoria || 'OTROS') !== egresoCatFiltro.value) return false
+    if (egresoMetodoFiltro.value && (e.metodo_pago || '') !== egresoMetodoFiltro.value) return false
+    return true
   })
 })
 
@@ -9387,9 +10245,10 @@ const totalEgresosMesActual = computed(() => {
   const m = now.getMonth()
   const y = now.getFullYear()
   return egresosList.value.filter(e => {
+    if (e.descartado) return false
     const d = new Date(e.created_at)
     return d.getMonth() === m && d.getFullYear() === y
-  }).reduce((sum, e) => sum + (e.precio * e.cantidad), 0)
+  }).reduce((sum, e) => sum + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
 })
 
 const totalEgresosMesPasado = computed(() => {
@@ -9411,10 +10270,31 @@ const gananciaNetaTotal = computed(() => {
 const openEgresoDialog = (item?: any) => {
   if (item && item.id) {
     editingEgreso.value = true
-    egresoFormData.value = { ...item, fecha: isoToInputDate(item.created_at) }
+    egresoFormData.value = {
+      id: item.id,
+      tipo_egreso: item.tipo_egreso || '',
+      nombre: item.nombre || '',
+      precio: Number(item.precio) || 0,
+      cantidad: Number(item.cantidad) || 1,
+      fecha: isoToInputDate(item.created_at),
+      categoria: item.categoria || 'OTROS',
+      metodo_pago: item.metodo_pago || 'EFECTIVO',
+      referencia: item.referencia || '',
+      producto: item.producto || '',
+      unidad: item.unidad || 'unidad',
+      precio_unitario: Number(item.precio_unitario) || 0,
+      descartado: !!item.descartado,
+      company_id: 'healup'
+    }
   } else {
     editingEgreso.value = false
-    egresoFormData.value = { id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1, fecha: todayISODate(), company_id: 'healup' }
+    egresoFormData.value = {
+      id: '', tipo_egreso: '', nombre: '', precio: 0, cantidad: 1,
+      fecha: todayISODate(),
+      categoria: 'OTROS', metodo_pago: 'EFECTIVO', referencia: '',
+      producto: '', unidad: 'unidad', precio_unitario: 0, descartado: false,
+      company_id: 'healup'
+    }
   }
   showEgresoDialog.value = true
 }
@@ -9425,31 +10305,268 @@ const closeEgresoDialog = () => {
 
 const saveEgreso = async () => {
   savingEgreso.value = true
-  const fechaIso = egresoFormData.value.fecha
-    ? new Date(`${egresoFormData.value.fecha}T12:00:00`).toISOString()
-    : null
+  const fd = egresoFormData.value
+  const fechaIso = fd.fecha ? new Date(`${fd.fecha}T12:00:00`).toISOString() : null
+  const esInsumo = fd.categoria === 'INSUMOS'
+  // Si llena precio_unitario en INSUMOS, lo usa como `precio` para que el
+  // total y los reportes sigan funcionando con la lógica vieja.
+  const precioFinal = esInsumo && Number(fd.precio_unitario) > 0
+    ? Number(fd.precio_unitario)
+    : Number(fd.precio) || 0
+
+  // Payload base: SIEMPRE incluye los campos legacy (no rompe nada).
   const payload: any = {
-    tipo_egreso: egresoFormData.value.tipo_egreso,
-    nombre: egresoFormData.value.nombre,
-    precio: egresoFormData.value.precio,
-    cantidad: egresoFormData.value.cantidad,
+    tipo_egreso: fd.tipo_egreso || fd.categoria,  // fallback legacy
+    nombre: fd.nombre,
+    precio: precioFinal,
+    cantidad: Number(fd.cantidad) || 1,
     company_id: 'healup'
   }
-  if (fechaIso) payload.created_at = fechaIso
-  if (editingEgreso.value && egresoFormData.value.id) {
-    await (client.from('egresos_healup') as any).update(payload).eq('id', egresoFormData.value.id)
-  } else {
-    await (client.from('egresos_healup') as any).insert(payload)
+  // Campos nuevos (2.4) — solo se incluyen si la migración SQL ya corrió.
+  // Si la columna no existe en BD, el insert los ignora silenciosamente
+  // gracias al SDK de Supabase (PostgREST devuelve error parsing y hacemos retry).
+  const camposNuevos: any = {
+    categoria:       fd.categoria,
+    metodo_pago:     fd.metodo_pago,
+    referencia:      fd.referencia || null,
+    producto:        esInsumo ? (fd.producto || null) : null,
+    unidad:          esInsumo ? (fd.unidad || null)   : null,
+    precio_unitario: esInsumo ? (Number(fd.precio_unitario) || null) : null,
+    descartado:      !!fd.descartado,
   }
+  if (fechaIso) payload.created_at = fechaIso
+
+  const tryWrite = async (extraFields: any) => {
+    const fullPayload = { ...payload, ...extraFields }
+    if (editingEgreso.value && fd.id) {
+      return (client.from('egresos_healup') as any).update(fullPayload).eq('id', fd.id)
+    } else {
+      return (client.from('egresos_healup') as any).insert(fullPayload)
+    }
+  }
+  // Intenta con campos nuevos. Si falla por columnas faltantes, retry sin ellos.
+  let r = await tryWrite(camposNuevos)
+  if (r.error) {
+    console.warn('[egreso] retry sin campos nuevos:', r.error.message)
+    r = await tryWrite({})
+  }
+  if (r.error) {
+    alert(`Error guardando egreso:\n${r.error.message}`)
+  }
+
   savingEgreso.value = false
   closeEgresoDialog()
   fetchEgresos()
 }
 
 const deleteEgreso = async (id: string) => {
-  if (confirm('¿Seguro que deseas eliminar este egreso?')) {
+  if (!confirm('¿Eliminar este egreso?\n\n(Si la migración SQL aplica, será soft-delete con deleted_at; si no, se elimina físicamente.)')) return
+  // Intenta soft-delete. Si la columna no existe, hard-delete.
+  const r1 = await (client.from('egresos_healup') as any)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+  if (r1.error) {
     await (client.from('egresos_healup') as any).delete().eq('id', id)
-    fetchEgresos()
+  }
+  fetchEgresos()
+}
+
+/* =============================================
+   2.13 Cierre mensual + 2.3 Reconciliación caja
+   ============================================= */
+const cierreMesSel = ref(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+
+const cierreMesesDisponibles = computed(() => {
+  const set = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
+    if (p.fecha_agendamiento && /^\d{4}-\d{2}/.test(p.fecha_agendamiento)) {
+      set.add(p.fecha_agendamiento.slice(0, 7))
+    }
+  })
+  egresosList.value.forEach((e: any) => {
+    if (e.created_at) {
+      const d = new Date(e.created_at)
+      if (!isNaN(d.getTime())) set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+  })
+  const now = new Date()
+  set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+  return [...set].sort((a, b) => b.localeCompare(a)).map(value => {
+    const [y, m] = value.split('-')
+    return { value, label: `${NOMBRES_MESES_LABEL[parseInt(m) - 1]} ${y}` }
+  })
+})
+
+const cierrePacientesDelMes = computed(() => {
+  const m = cierreMesSel.value
+  const wpp = pacientesWpp.value.filter((p: any) => p.fecha_agendamiento?.startsWith(m))
+  const fbig = pacientesFbIg.value.filter((p: any) => p.fecha_agendamiento?.startsWith(m))
+  return { wpp, fbig }
+})
+
+const cierreIngresos = computed(() => {
+  const { wpp, fbig } = cierrePacientesDelMes.value
+  const sumPac = (arr: any[]) => arr.reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+  return sumPac(wpp) + sumPac(fbig)
+})
+
+// Misma lógica de filtrado que la vista Egresos — garantiza que el cierre
+// muestre exactamente los mismos movimientos del mes seleccionado.
+const cierreEgresosFiltrados = computed(() => {
+  if (!cierreMesSel.value) return []
+  return egresosList.value.filter((e: any) => {
+    if (e.descartado) return false
+    if (e.deleted_at) return false
+    if (!e.created_at) return false
+    const d = new Date(e.created_at)
+    if (isNaN(d.getTime())) return false
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    return key === cierreMesSel.value
+  })
+})
+const cierreEgresos = computed(() =>
+  cierreEgresosFiltrados.value.reduce((s, e) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+)
+const cierreEgresosCount = computed(() => cierreEgresosFiltrados.value.length)
+const cierreUtilidad = computed(() => cierreIngresos.value - cierreEgresos.value)
+const cierrePacientes = computed(() => {
+  const { wpp, fbig } = cierrePacientesDelMes.value
+  return wpp.length + fbig.length
+})
+
+const cierrePorFuente = computed(() => {
+  const r: Record<string, number> = {}
+  const { wpp, fbig } = cierrePacientesDelMes.value
+  wpp.forEach((p: any) => {
+    const f = !p.numero || isEncrypted(p.numero) ? 'TikTok' : 'WhatsApp'
+    r[f] = (r[f] || 0) + 1
+  })
+  fbig.forEach((p: any) => {
+    const rs = String(p.red_social || '').toLowerCase()
+    const f = rs.includes('facebook') ? 'Facebook' : 'Instagram'
+    r[f] = (r[f] || 0) + 1
+  })
+  return r
+})
+
+const cierreEgresosPorCategoria = computed(() => {
+  const map: Record<string, { count: number; total: number }> = {}
+  cierreEgresosFiltrados.value.forEach((e: any) => {
+    const cat = e.categoria || 'OTROS'
+    if (!map[cat]) map[cat] = { count: 0, total: 0 }
+    map[cat].count++
+    map[cat].total += (Number(e.precio) || 0) * (Number(e.cantidad) || 0)
+  })
+  return Object.entries(map).map(([categoria, v]) => ({ categoria, ...v })).sort((a, b) => b.total - a.total)
+})
+
+const exportarCierreMensualPDF = () => {
+  if (!import.meta.client) return
+  const win = window.open('', '_blank')
+  if (!win) return
+  const fmt = (n: number) => 'S/ ' + n.toLocaleString('es-PE', { minimumFractionDigits: 2 })
+  const mesLabel = cierreMesesDisponibles.value.find(x => x.value === cierreMesSel.value)?.label || cierreMesSel.value
+  const fuenteRows = Object.entries(cierrePorFuente.value).map(([f, c]) => `<tr><td>${f}</td><td>${c}</td></tr>`).join('')
+  const egRows = cierreEgresosPorCategoria.value.map(e => `<tr><td>${e.categoria}</td><td>${e.count}</td><td>${fmt(e.total)}</td></tr>`).join('')
+  win.document.write(`<!DOCTYPE html><html><head><title>Cierre ${mesLabel}</title>
+    <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:24px auto;padding:0 16px;color:#222;}h1{font-size:1.6rem;margin-bottom:0;}h2{font-size:1.1rem;margin-top:24px;border-bottom:1px solid #ccc;padding-bottom:4px;}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:0.92rem;}th,td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;}th{background:#f5f5f5;}.kpi{display:flex;gap:16px;margin:12px 0;}.kpi>div{flex:1;padding:12px;background:#f9f9f9;border-radius:6px;}.kpi h3{margin:0;font-size:0.78rem;color:#666;text-transform:uppercase;}.kpi b{font-size:1.4rem;}@media print{body{margin:0;}}</style>
+    </head><body>
+    <h1>Cierre Mensual — Healup</h1>
+    <div style="opacity:0.7;font-size:0.92rem;">${mesLabel}</div>
+    <div class="kpi">
+      <div><h3>Ingresos</h3><b style="color:#22c55e;">${fmt(cierreIngresos.value)}</b><br><small>${cierrePacientes.value} pacientes</small></div>
+      <div><h3>Egresos</h3><b style="color:#ef4444;">${fmt(cierreEgresos.value)}</b><br><small>${cierreEgresosCount.value} movimientos</small></div>
+      <div><h3>Utilidad</h3><b style="color:#3b82f6;">${fmt(cierreUtilidad.value)}</b></div>
+    </div>
+    <h2>Pacientes por fuente</h2>
+    <table><tr><th>Fuente</th><th>Cantidad</th></tr>${fuenteRows}</table>
+    <h2>Egresos por categoría</h2>
+    <table><tr><th>Categoría</th><th>Movimientos</th><th>Total</th></tr>${egRows}</table>
+    <p style="margin-top:32px;opacity:0.5;font-size:0.78rem;">Generado el ${new Date().toLocaleString('es-PE')} — Cmd+P → Guardar como PDF.</p>
+  </body></html>`)
+  win.document.close()
+  setTimeout(() => win.print(), 400)
+}
+
+// 2.3 Reconciliación caja: ingresos por método (mes actual)
+const ingresosEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return [...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(m) && (p.metodo_de_pago || '').toUpperCase() === 'EFECTIVO')
+    .reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+})
+const ingresosNoEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return [...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => {
+      if (!p.fecha_agendamiento?.startsWith(m)) return false
+      const mp = (p.metodo_de_pago || '').toUpperCase()
+      return mp && mp !== 'EFECTIVO'
+    })
+    .reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+})
+
+const egresosEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = now.getMonth(); const y = now.getFullYear()
+  return egresosList.value.filter((e: any) => {
+    if (e.descartado || e.deleted_at) return false
+    const d = new Date(e.created_at)
+    return d.getMonth() === m && d.getFullYear() === y && (e.metodo_pago || '').toUpperCase() === 'EFECTIVO'
+  }).reduce((s, e) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+})
+const egresosNoEfectivoMesActual = computed(() => {
+  const now = new Date()
+  const m = now.getMonth(); const y = now.getFullYear()
+  return egresosList.value.filter((e: any) => {
+    if (e.descartado || e.deleted_at) return false
+    const d = new Date(e.created_at)
+    if (!(d.getMonth() === m && d.getFullYear() === y)) return false
+    const mp = (e.metodo_pago || '').toUpperCase()
+    return mp && mp !== 'EFECTIVO'
+  }).reduce((s, e) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+})
+
+const saldoCajaChica       = computed(() => ingresosEfectivoMesActual.value - egresosEfectivoMesActual.value)
+const saldoCuentaBancaria  = computed(() => ingresosNoEfectivoMesActual.value - egresosNoEfectivoMesActual.value)
+
+const saldoRealCajaChica       = ref(0)
+const saldoRealCuentaBancaria  = ref(0)
+const cerrandoDia              = ref(false)
+const cierreDiaResultado       = ref<{ fecha: string; detalle: string } | null>(null)
+
+const cerrarDia = async () => {
+  cerrandoDia.value = true
+  try {
+    const audit = useHealupAudit()
+    const fecha = new Date().toISOString().slice(0, 10)
+    const detalle = [
+      `📊 Cierre del día ${fecha}`,
+      ``,
+      `Caja chica (calc.): S/ ${saldoCajaChica.value.toFixed(2)}`,
+      `Caja chica (real) : S/ ${saldoRealCajaChica.value.toFixed(2)}`,
+      `Diferencia caja   : S/ ${(saldoRealCajaChica.value - saldoCajaChica.value).toFixed(2)}`,
+      ``,
+      `Cuenta (calc.): S/ ${saldoCuentaBancaria.value.toFixed(2)}`,
+      `Cuenta (real) : S/ ${saldoRealCuentaBancaria.value.toFixed(2)}`,
+      `Diferencia cuenta : S/ ${(saldoRealCuentaBancaria.value - saldoCuentaBancaria.value).toFixed(2)}`,
+    ].join('\n')
+    await audit.log({
+      entidad: 'cita', accion: 'state_change', campo: 'cierre_dia',
+      valor_despues: {
+        fecha,
+        caja_calc: saldoCajaChica.value, caja_real: saldoRealCajaChica.value,
+        cuenta_calc: saldoCuentaBancaria.value, cuenta_real: saldoRealCuentaBancaria.value
+      },
+      notas: 'Cierre de día con cuadre manual'
+    })
+    cierreDiaResultado.value = { fecha, detalle }
+  } catch (e: any) {
+    alert(`Error al cerrar día: ${e?.message || e}`)
+  } finally {
+    cerrandoDia.value = false
   }
 }
 

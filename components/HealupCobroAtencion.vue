@@ -676,13 +676,27 @@ const cargarCitasHoy = async () => {
     const [y, m, d] = isoDate.split('-')
     const ddmmyyyy = `${d}-${m}-${y}`
 
-    const { data, error } = await supabase
+    // Select robusto: pide solo columnas que SÍ existen. Las columnas
+    // metodo_reserva / monto_reserva / procedimiento_solicitado son
+    // opcionales (vienen con la migración SQL pendiente). Si existen
+    // las trae; si no, omite el select extendido.
+    const baseCols = 'id, date, time, subject, client_name, client_surname, client_dni, client_phone, client_email, procedure_id, cabina'
+    const extCols  = ', metodo_reserva, monto_reserva, procedimiento_solicitado'
+    let resp = await supabase
       .from('healup_calendar_events')
-      .select('id, date, time, subject, client_name, client_surname, client_dni, client_phone, client_email, procedure_id, cabina, metodo_reserva, monto_reserva, procedimiento_solicitado')
+      .select(baseCols + extCols)
       .or(`date.eq.${isoDate},date.eq.${ddmmyyyy}`)
       .order('time', { ascending: true })
-    if (error) throw error
-    citasHoy.value = data || []
+    if (resp.error) {
+      // Retry sin columnas extendidas si la migración no aplica todavía
+      resp = await supabase
+        .from('healup_calendar_events')
+        .select(baseCols)
+        .or(`date.eq.${isoDate},date.eq.${ddmmyyyy}`)
+        .order('time', { ascending: true })
+    }
+    if (resp.error) throw resp.error
+    citasHoy.value = resp.data || []
   } catch (e: any) {
     console.error('[CobroAtencion] Error cargando citas:', e?.message)
   } finally {

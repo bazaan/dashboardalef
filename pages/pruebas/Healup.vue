@@ -1182,8 +1182,6 @@
           <v-tab value="gcal_sync">📅 Google Calendar</v-tab>
           <v-tab value="resumen">Resumen</v-tab>
           <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
-          <v-tab value="egresos">💸 Egresos</v-tab>
-          <v-tab value="gastos_variables">📊 Gastos Variables</v-tab>
           <v-tab value="ir_catalogo" @click.prevent="activeView = 'procedimientos'">📦 Catálogo →</v-tab>
         </v-tabs>
 
@@ -1267,152 +1265,52 @@
 
         </div><!-- fin tab resumen -->
 
-        <!-- ── TAB: EGRESOS (movido desde sidebar Egresos) ── -->
-        <div v-if="facturacionTab === 'egresos'" style="padding: 0 0 2rem 0;">
-          <header class="top-header" style="background:transparent; padding:8px 0;">
-            <h2 style="font-size:1.1rem; margin:0;">Egresos</h2>
-            <button class="btn-primary" @click="openEgresoDialog()">
-              <v-icon icon="mdi-plus" size="16" />
-              <span>Agregar Egreso</span>
-            </button>
-          </header>
+      </div>
 
-          <div class="content-area">
-            <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; padding: 4px 0 12px;">
-              <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; flex:1; min-width:0;">
-                <v-icon icon="mdi-calendar-month" size="18" style="opacity:0.6;" />
-                <v-chip :color="egresosMesSel === '' ? 'grey-darken-2' : 'default'"
-                  :variant="egresosMesSel === '' ? 'flat' : 'outlined'"
-                  size="small" style="cursor:pointer;" @click="egresosMesSel = ''">Todos</v-chip>
-                <v-chip v-for="m in egresosMesesDisponibles" :key="m.value"
-                  :color="egresosMesSel === m.value ? 'error' : 'default'"
-                  :variant="egresosMesSel === m.value ? 'flat' : 'outlined'"
-                  size="small" style="cursor:pointer;" @click="egresosMesSel = m.value">{{ m.label }}</v-chip>
+      <!-- ==========  VISTA: GASTOS VARIABLES  ========== -->
+      <div v-else-if="activeView === 'gastos_variables'" class="view-container">
+        <header class="top-header">
+          <h1>Gastos Variables</h1>
+        </header>
+        <div class="content-area">
+          <div class="costos-panel precios-section" style="margin-bottom:1.25rem;">
+            <div class="costos-seccion" style="border-bottom:none; padding-bottom:0;">
+              <div class="costos-seccion-label">
+                <span class="costos-bullet-dot"></span>
+                <v-icon icon="mdi-bullhorn-outline" size="14" style="margin-right:5px;" />
+                GASTOS VARIABLES ADICIONALES
+                <button class="btn-add-row" style="margin-left:auto;" @click="agregarGastoVar">
+                  <v-icon icon="mdi-plus" size="13" /> Agregar
+                </button>
               </div>
-              <div class="stat-card" style="background: rgba(239,68,68,0.08); padding: 8px 16px; min-width: 200px; max-width: 260px; flex-shrink:0; margin:0;">
-                <div class="stat-title" style="color:#ef4444; font-size: 0.7rem; margin:0;">{{ egresosMesSel ? 'Total ' + egresosMesLabel : 'Total Histórico' }}</div>
-                <div class="stat-value" style="color:#ef4444; font-size:1.35rem; line-height:1.15; margin:0;">S/ {{ egresosFiltradosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
-                <div class="stat-subtitle" style="font-size: 0.65rem; opacity: 0.75;">{{ egresosFiltrados.length }} movimientos</div>
-              </div>
-            </div>
-
-            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding: 6px 0 8px;">
-              <v-icon icon="mdi-tag" size="14" style="opacity:0.5;" />
-              <v-chip :color="egresoCatFiltro === '' ? 'grey-darken-2' : 'default'"
-                :variant="egresoCatFiltro === '' ? 'flat' : 'outlined'"
-                size="x-small" style="cursor:pointer;" @click="egresoCatFiltro = ''">Todas categorías</v-chip>
-              <v-chip v-for="c in EGRESO_CATEGORIAS" :key="c.value"
-                :color="egresoCatFiltro === c.value ? c.color : 'default'"
-                :variant="egresoCatFiltro === c.value ? 'flat' : 'outlined'"
-                size="x-small" :prepend-icon="c.icon" style="cursor:pointer;"
-                @click="egresoCatFiltro = egresoCatFiltro === c.value ? '' : c.value">{{ c.value }}</v-chip>
-              <span style="opacity:0.3; padding: 0 4px;">·</span>
-              <v-icon icon="mdi-cash-multiple" size="14" style="opacity:0.5;" />
-              <v-chip :color="egresoMetodoFiltro === '' ? 'grey-darken-2' : 'default'"
-                :variant="egresoMetodoFiltro === '' ? 'flat' : 'outlined'"
-                size="x-small" style="cursor:pointer;" @click="egresoMetodoFiltro = ''">Todos métodos</v-chip>
-              <v-chip v-for="m in EGRESO_METODOS" :key="m"
-                :color="egresoMetodoFiltro === m ? 'primary' : 'default'"
-                :variant="egresoMetodoFiltro === m ? 'flat' : 'outlined'"
-                size="x-small" style="cursor:pointer;"
-                @click="egresoMetodoFiltro = egresoMetodoFiltro === m ? '' : m">{{ m }}</v-chip>
-            </div>
-
-            <div class="table-section">
-              <v-card flat class="custom-data-table">
-                <v-card-title class="table-search-bar">
-                  <span class="table-title">{{ egresosMesSel ? 'Egresos · ' + egresosMesLabel : 'Lista de Egresos (Todos)' }}</span>
-                  <v-spacer />
-                  <v-btn icon size="small" variant="text" color="success"
-                    @click="downloadExcel(egresosFiltrados, egresosHeaders, `healup-egresos-${egresosMesSel || 'todos'}`)">
-                    <v-icon>mdi-file-excel</v-icon>
-                    <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
-                  </v-btn>
-                </v-card-title>
-                <v-data-table :headers="egresosHeaders" :items="egresosFiltrados" :loading="loadingEgresos"
-                  class="elevation-0" no-data-text="No hay egresos registrados en este mes">
-                  <template v-slot:item.categoria="{ item }">
-                    <v-chip v-if="item.categoria"
-                      :color="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).color || 'grey'"
-                      :prepend-icon="(EGRESO_CATEGORIAS.find(c => c.value === item.categoria) || {}).icon || 'mdi-tag'"
-                      size="x-small" variant="tonal" label>{{ item.categoria }}</v-chip>
-                    <span v-else style="opacity:0.5; font-size:0.75rem;">{{ item.tipo_egreso || '—' }}</span>
-                  </template>
-                  <template v-slot:item.metodo_pago="{ item }">
-                    <v-chip v-if="item.metodo_pago" size="x-small" variant="outlined"
-                      :color="item.metodo_pago === 'EFECTIVO' ? 'success' : 'primary'"
-                      :prepend-icon="item.metodo_pago === 'EFECTIVO' ? 'mdi-cash' : 'mdi-bank-transfer'">
-                      {{ item.metodo_pago }}
-                    </v-chip>
-                    <span v-else style="opacity:0.4;">—</span>
-                  </template>
-                  <template v-slot:item.precio="{ item }">
-                    S/ {{ Number(item.precio || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
-                  </template>
-                  <template v-slot:item.total="{ item }">
-                    <strong>S/ {{ ((Number(item.precio) || 0) * (Number(item.cantidad) || 0)).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</strong>
-                  </template>
-                  <template v-slot:item.created_at="{ item }">
-                    <span style="font-size:0.78rem;">{{ new Date(item.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) }}</span>
-                  </template>
-                  <template v-slot:item.actions="{ item }">
-                    <button class="icon-btn" @click="openEgresoDialog(item)">
-                      <v-icon icon="mdi-pencil" size="16" />
-                    </button>
-                    <button class="icon-btn" @click="deleteEgreso(item.id)">
-                      <v-icon icon="mdi-delete" size="16" />
-                    </button>
-                  </template>
-                </v-data-table>
-              </v-card>
-            </div>
-          </div>
-        </div><!-- fin tab egresos -->
-
-        <!-- ── TAB: GASTOS VARIABLES (movido desde Estructura de Precios) ── -->
-        <div v-if="facturacionTab === 'gastos_variables'" style="padding: 0 0 2rem 0;">
-          <header class="top-header" style="background:transparent; padding:8px 0;">
-            <h2 style="font-size:1.1rem; margin:0;">Gastos Variables Adicionales</h2>
-          </header>
-
-          <div class="content-area">
-            <div class="costos-panel precios-section" style="margin-bottom:1.25rem;">
-              <div class="costos-seccion" style="border-bottom:none;padding-bottom:0;">
-                <div class="costos-seccion-label">
-                  <span class="costos-bullet-dot"></span>
-                  <v-icon icon="mdi-bullhorn-outline" size="14" style="margin-right:5px;" />
-                  GASTOS VARIABLES ADICIONALES
-                  <button class="btn-add-row" style="margin-left:auto;" @click="agregarGastoVar">
-                    <v-icon icon="mdi-plus" size="13" /> Agregar
+              <div class="costos-items-list">
+                <div v-for="(g, i) in gastosVarExtra" :key="i" class="costos-item-row">
+                  <span class="item-viñeta">•</span>
+                  <input v-model="g.nombre" type="text" class="ci-name" placeholder="Concepto (ej: Publicidad)" />
+                  <div class="ci-fields">
+                    <div class="ci-field editable">
+                      <label>Monto/mes</label>
+                      <div class="ci-field-input"><span class="ci-prefix">S/</span><input v-model.number="g.monto" type="number" min="0" class="ci-input" /></div>
+                    </div>
+                  </div>
+                  <button class="btn-del-row" @click="eliminarGastoVar(i)" title="Eliminar">
+                    <v-icon icon="mdi-close" size="13" />
                   </button>
                 </div>
-                <div class="costos-items-list">
-                  <div v-for="(g, i) in gastosVarExtra" :key="i" class="costos-item-row">
-                    <span class="item-viñeta">•</span>
-                    <input v-model="g.nombre" type="text" class="ci-name" placeholder="Concepto (ej: Publicidad)" />
-                    <div class="ci-fields">
-                      <div class="ci-field editable">
-                        <label>Monto/mes</label>
-                        <div class="ci-field-input"><span class="ci-prefix">S/</span><input v-model.number="g.monto" type="number" min="0" class="ci-input" /></div>
-                      </div>
-                    </div>
-                    <button class="btn-del-row" @click="eliminarGastoVar(i)" title="Eliminar">
-                      <v-icon icon="mdi-close" size="13" />
-                    </button>
-                  </div>
-                </div>
-                <div class="costos-seccion-total">
-                  Total variables: <strong>{{ fmtS(preciosCalc.totalGastosVarExtra) }}</strong>
+                <div v-if="!gastosVarExtra.length" style="opacity:0.5; padding: 12px; text-align: center; font-size: 0.85rem;">
+                  Sin gastos variables aún. Click "Agregar" para empezar.
                 </div>
               </div>
-            </div>
-            <div style="font-size:0.78rem; opacity:0.6; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius:8px;">
-              <v-icon icon="mdi-information-outline" size="14" />
-              Estos gastos también se reflejan en Estructura de Precios para el cálculo del punto de equilibrio.
+              <div class="costos-seccion-total">
+                Total variables / mes: <strong>{{ fmtS(preciosCalc.totalGastosVarExtra) }}</strong>
+              </div>
             </div>
           </div>
-        </div><!-- fin tab gastos variables -->
-
+          <div style="font-size:0.78rem; opacity:0.6; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius:8px;">
+            <v-icon icon="mdi-information-outline" size="14" />
+            Estos gastos también se incluyen en el cálculo del punto de equilibrio en "Estructura de Precios".
+          </div>
+        </div>
       </div>
 
       <!-- ==========  VISTA: PROCEDIMIENTOS  ========== -->
@@ -6162,13 +6060,17 @@ function handleNavigation(item: any) {
 }
 
 const financiasItems = [
-  // Vista con tabs (Cobro Atención / GCal / Egresos / Gastos Variables / Factura Electrónica / Catálogo)
-  { icon: 'mdi-currency-usd', label: 'Contabilidad', id: 'contabilidad' },
-  // Vista PSE original (mantiene compatibilidad con flujo viejo de facturas)
-  { icon: 'mdi-receipt-text', label: 'Facturación PSE', id: 'facturacion' },
-  { icon: 'mdi-calculator-variant', label: 'Estructura de Precios', id: 'precios' },
-  { icon: 'mdi-finance', label: 'Cierre mensual', id: 'cierre_mensual' },
-  { icon: 'mdi-bank-check', label: 'Reconciliación caja', id: 'reconciliacion' }
+  // Vista de KPIs/gráficos financieros (header "Contabilidad" en la vista)
+  { icon: 'mdi-currency-usd',          label: 'Contabilidad',         id: 'facturacion' },
+  // Vista con tabs Cobro Atención / GCal / Factura Electrónica / Catálogo
+  { icon: 'mdi-receipt-text',          label: 'Facturación',          id: 'contabilidad' },
+  // Egresos: vista dedicada (viejo sidebar item, restaurado)
+  { icon: 'mdi-cash-minus',            label: 'Egresos',              id: 'egresos' },
+  // Gastos variables adicionales: vista nueva dedicada
+  { icon: 'mdi-bullhorn-outline',      label: 'Gastos Variables',     id: 'gastos_variables' },
+  { icon: 'mdi-calculator-variant',    label: 'Estructura de Precios', id: 'precios' },
+  { icon: 'mdi-finance',               label: 'Cierre mensual',       id: 'cierre_mensual' },
+  { icon: 'mdi-bank-check',            label: 'Reconciliación caja',  id: 'reconciliacion' }
 ]
 
 // ── ESTRUCTURA DE PRECIOS Y PUNTO DE EQUILIBRIO ──────────────────────────────

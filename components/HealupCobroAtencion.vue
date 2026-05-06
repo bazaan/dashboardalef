@@ -325,6 +325,92 @@
             </v-card-text>
           </v-card>
 
+          <!-- Métodos de Pago -->
+          <v-card flat class="cobro-card mb-4" v-if="itemsProcedimiento.length">
+            <v-card-title class="cobro-card-title">
+              <v-icon icon="mdi-cash-multiple" class="me-2" />
+              Metodos de Pago
+            </v-card-title>
+            <v-card-text>
+              <div
+                v-for="(pago, idx) in pagos"
+                :key="idx"
+                style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"
+              >
+                <v-select
+                  v-model="pago.metodo"
+                  :items="metodosPagoOpciones"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  style="flex: 1; max-width: 160px;"
+                  :disabled="!!boletaProcedimiento"
+                />
+                <v-text-field
+                  v-model.number="pago.monto"
+                  type="number"
+                  prefix="S/"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  style="flex: 1;"
+                  :disabled="!!boletaProcedimiento"
+                  @keydown.enter="autocompletarUltimoPago"
+                />
+                <v-btn
+                  v-if="pagos.length > 1"
+                  icon
+                  size="x-small"
+                  variant="text"
+                  color="error"
+                  :disabled="!!boletaProcedimiento"
+                  @click="eliminarPago(idx)"
+                >
+                  <v-icon icon="mdi-close" size="16" />
+                </v-btn>
+                <div v-else style="width: 28px;" />
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+                <v-btn
+                  size="small"
+                  variant="text"
+                  color="primary"
+                  prepend-icon="mdi-plus"
+                  :disabled="!!boletaProcedimiento"
+                  @click="agregarPago"
+                >
+                  Agregar metodo
+                </v-btn>
+                <v-btn
+                  size="x-small"
+                  variant="tonal"
+                  color="secondary"
+                  :disabled="!!boletaProcedimiento"
+                  @click="autocompletarUltimoPago"
+                >
+                  Autocompletar
+                </v-btn>
+              </div>
+
+              <div
+                style="display: flex; justify-content: space-between; margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); font-weight: 600;"
+                :style="{ color: pagosCompletos ? 'var(--success, #4caf50)' : Math.abs(totalPagos - totalProcConIgv) > 0.02 && totalPagos > 0 ? 'var(--error, #f44336)' : 'inherit' }"
+              >
+                <span>Total pagos</span>
+                <span>S/ {{ formatNum(totalPagos) }} / S/ {{ formatNum(totalProcConIgv) }}</span>
+              </div>
+
+              <v-alert
+                v-if="totalPagos > 0 && !pagosCompletos && Math.abs(totalPagos - totalProcConIgv) > 0.02"
+                density="compact" variant="tonal" type="warning"
+                class="mt-2" style="font-size: 0.78rem;"
+              >
+                La suma de pagos no coincide con el total a cobrar
+              </v-alert>
+            </v-card-text>
+          </v-card>
+
           <!-- Acciones: emitir + notificar -->
           <v-card flat class="cobro-card">
             <v-card-text>
@@ -347,7 +433,7 @@
                 variant="elevated"
                 class="mb-3"
                 :loading="emitiendoProcedimiento"
-                :disabled="!itemsProcedimiento.length || !!boletaProcedimiento"
+                :disabled="!itemsProcedimiento.length || !!boletaProcedimiento || !pagosCompletos"
                 prepend-icon="mdi-send"
                 @click="emitirBoletaProcedimiento"
               >
@@ -562,6 +648,35 @@ const buscarProcedimiento    = ref('')
 const boletaProcedimiento   = ref<any>(null)
 const emitiendoProcedimiento = ref(false)
 const errorProcedimiento    = ref('')
+
+// Multi-pago
+const metodosPagoOpciones = ['Yape', 'Plin', 'Efectivo', 'Transferencia', 'Tarjeta']
+const pagos = ref<{ metodo: string; monto: number | null }[]>([
+  { metodo: 'Yape', monto: null }
+])
+const totalPagos = computed(() =>
+  pagos.value.reduce((s, p) => s + Number(p.monto || 0), 0)
+)
+const pagosCompletos = computed(() =>
+  pagos.value.length > 0 &&
+  pagos.value.every(p => p.metodo && Number(p.monto) > 0) &&
+  Math.abs(totalPagos.value - totalProcConIgv.value) < 0.02
+)
+const agregarPago = () => {
+  pagos.value.push({ metodo: 'Efectivo', monto: null })
+}
+const eliminarPago = (idx: number) => {
+  if (pagos.value.length > 1) pagos.value.splice(idx, 1)
+}
+const autocompletarUltimoPago = () => {
+  if (pagos.value.length < 2) {
+    pagos.value[0].monto = +totalProcConIgv.value.toFixed(2)
+    return
+  }
+  const sumOtros = pagos.value.slice(0, -1).reduce((s, p) => s + Number(p.monto || 0), 0)
+  const resta = +(totalProcConIgv.value - sumOtros).toFixed(2)
+  if (resta > 0) pagos.value[pagos.value.length - 1].monto = resta
+}
 
 // Notificaciones
 const enviandoEmail  = ref(false)
@@ -1057,6 +1172,19 @@ const emitirBoletaProcedimiento = async () => {
       }).eq('id', paciente.value.event_id)
     }
 
+    // Guardar metodos de pago (multi-pago)
+    const registrosPago = pagos.value
+      .filter(p => p.metodo && Number(p.monto) > 0)
+      .map(p => ({
+        event_id:       paciente.value.event_id || null,
+        comprobante_id: resp?.comprobante_id || null,
+        metodo_pago:    p.metodo,
+        monto:          Number(p.monto)
+      }))
+    if (registrosPago.length) {
+      await supabase.from('healup_cita_pagos').insert(registrosPago)
+    }
+
   } catch (err: any) {
     errorProcedimiento.value = err?.statusMessage || err?.message || 'Error al emitir la boleta de procedimiento'
   } finally {
@@ -1144,6 +1272,7 @@ const resetFlujo = () => {
   emailEnviado.value        = false
   whatsappEnviado.value     = false
   showDialogConsulta.value  = false
+  pagos.value               = [{ metodo: 'Yape', monto: null }]
 }
 
 /* ═══════════════════════════════════════════════════════════

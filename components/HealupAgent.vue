@@ -20,16 +20,41 @@
               </div>
             </div>
           </div>
-          <div style="display:flex; gap:4px;">
+          <div style="display:flex; gap:4px; align-items:center;">
+            <v-btn :icon="autoListenAfterSpeak ? 'mdi-headphones' : 'mdi-headphones-off'"
+              size="small" variant="text"
+              :color="autoListenAfterSpeak ? 'amber' : ''"
+              @click="autoListenAfterSpeak = !autoListenAfterSpeak"
+              :title="autoListenAfterSpeak ? 'Manos libres: ON' : 'Manos libres: OFF'" />
             <v-btn icon="mdi-cog-outline" size="small" variant="text"
               @click="showSettings = !showSettings" :title="`Atajo: ${shortcutLabel}`" />
-            <v-btn icon="mdi-broom" size="small" variant="text" @click="reset" title="Nueva conversación" />
+            <v-btn icon="mdi-broom" size="small" variant="text" @click="reset" title="Nueva conversacion" />
             <v-btn icon="mdi-close" size="small" variant="text" @click="close" />
           </div>
         </div>
 
-        <!-- Settings: configurar atajo -->
+        <!-- Settings: micrófono + atajo -->
         <div v-if="showSettings" class="agent-settings">
+          <!-- Selector de micrófono -->
+          <div style="font-size:0.78rem; opacity:0.75; margin-bottom:6px;">Microfono</div>
+          <v-select
+            :model-value="selectedMicId"
+            @update:model-value="setMic($event)"
+            :items="availableMics"
+            item-title="label"
+            item-value="deviceId"
+            density="compact"
+            variant="outlined"
+            hide-details
+            placeholder="Microfono del sistema"
+            style="margin-bottom:12px;"
+          >
+            <template #prepend-inner>
+              <v-icon icon="mdi-microphone" size="16" />
+            </template>
+          </v-select>
+
+          <!-- Atajo de teclado -->
           <div style="font-size:0.78rem; opacity:0.75; margin-bottom:6px;">Atajo de teclado</div>
           <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
             <v-checkbox v-model="newShortcutMeta" label="⌘ Cmd" density="compact" hide-details style="flex:0 0 auto;" />
@@ -60,6 +85,12 @@
               <button class="agent-suggestion" @click="sendMessage('Dame el resumen del mes')">
                 📈 Resumen financiero del mes
               </button>
+              <button class="agent-suggestion" @click="sendMessage('¿Qué citas hay hoy?')">
+                📅 Citas de hoy
+              </button>
+              <button class="agent-suggestion" @click="sendMessage('¿Hay insumos con stock bajo?')">
+                📦 Stock bajo
+              </button>
             </div>
           </div>
           <div v-for="(t, i) in turns" :key="i" :class="['agent-msg', `role-${t.role}`]">
@@ -80,15 +111,16 @@
         <div class="agent-input">
           <button class="agent-mic" :class="{ active: isListening }"
             @click="isListening ? stopListening() : startListening()"
-            :title="isListening ? 'Detener' : 'Hablar'">
-            <v-icon :icon="isListening ? 'mdi-microphone' : 'mdi-microphone-outline'" size="22" />
+            :disabled="isThinking"
+            :title="isListening ? 'Parar grabacion (Whisper)' : 'Grabar voz (Whisper)'">
+            <v-icon :icon="isListening ? 'mdi-stop' : 'mdi-microphone'" size="22" />
             <div v-if="isListening" class="mic-pulse"></div>
           </button>
           <input v-model="inputText" type="text"
-            placeholder="Escribí o dictá tu mensaje…"
+            :placeholder="isListening ? 'Grabando... click mic para enviar' : 'Escribi o dicta tu mensaje...'"
             @keydown.enter="onEnter"
-            :disabled="isThinking" />
-          <button class="agent-send" :disabled="!inputText.trim() || isThinking" @click="onSend"
+            :disabled="isThinking || isListening" />
+          <button class="agent-send" :disabled="!inputText.trim() || isThinking || isListening" @click="onSend"
             :title="'Enviar (Enter)'">
             <v-icon icon="mdi-send" size="20" />
           </button>
@@ -105,11 +137,13 @@
 const {
   isOpen, isThinking, isListening, isSpeaking,
   turns, inputText, lastError, shortcut, shortcutLabel,
+  autoListenAfterSpeak, availableMics, selectedMicId,
   open, close, reset, sendMessage,
-  startListening, stopListening, stopSpeaking, setShortcut,
+  startListening, stopListening, stopSpeaking, setShortcut, loadMics, setMic,
 } = useHealupAgent()
 
 const showSettings = ref(false)
+watch(showSettings, (v) => { if (v) loadMics() })
 const newShortcutKey   = ref(shortcut.value.key)
 const newShortcutMeta  = ref(!!shortcut.value.meta)
 const newShortcutCtrl  = ref(!!shortcut.value.ctrl)
@@ -288,9 +322,14 @@ watch(turns, () => {
 }
 .agent-send:disabled { opacity: 0.35; cursor: not-allowed; }
 .agent-mic.active {
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.5);
+  background: rgba(239,68,68,0.25);
+  border-color: rgba(239,68,68,0.6);
   color: #ef4444;
+  animation: mic-glow 1.5s ease-in-out infinite;
+}
+@keyframes mic-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(239,68,68,0.3); }
+  50% { box-shadow: 0 0 20px rgba(239,68,68,0.6); }
 }
 .mic-pulse {
   position: absolute; inset: -4px; border-radius: 50%;

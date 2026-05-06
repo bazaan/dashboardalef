@@ -42,6 +42,11 @@ const saveShortcut = (s: KeyShortcut) => {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)) } catch {}
 }
 
+const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 export const useHealupAgent = () => {
   const supabase = useSupabaseClient()
 
@@ -73,68 +78,153 @@ export const useHealupAgent = () => {
     conversationId.value = `conv-${Date.now()}`
   }
 
-  // ── Web Speech API: reconocimiento (input) ──
-  let recognition: any = null
-  const initRecognition = () => {
-    if (!import.meta.client || recognition) return
-    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) return
-    recognition = new SR()
-    recognition.lang = 'es-PE'
-    recognition.continuous = false
-    recognition.interimResults = true
-    recognition.onresult = (event: any) => {
-      let text = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        text += event.results[i][0].transcript
+  // ── Micrófono: enumerar dispositivos ──
+  const availableMics = ref<{ deviceId: string; label: string }[]>([])
+  const selectedMicId = ref<string>('')
+  let activeStream: MediaStream | null = null
+
+  const loadMics = async () => {
+    if (!import.meta.client) return
+    try {
+      // Pedir permiso primero (necesario para ver labels)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach(t => t.stop())
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      availableMics.value = devices
+        .filter(d => d.kind === 'audioinput')
+        .map(d => ({ deviceId: d.deviceId, label: d.label || `Micrófono ${d.deviceId.slice(0, 6)}` }))
+      // Restaurar selección guardada
+      if (import.meta.client) {
+        const saved = localStorage.getItem('healup_agent_mic_v1')
+        if (saved && availableMics.value.some(m => m.deviceId === saved)) {
+          selectedMicId.value = saved
+        }
       }
-      inputText.value = text
-    }
-    recognition.onerror = (e: any) => {
-      lastError.value = `Error de voz: ${e?.error || 'desconocido'}`
-      isListening.value = false
-    }
-    recognition.onend = () => {
-      isListening.value = false
-      // Auto-enviar si hay texto
-      if (inputText.value.trim()) {
-        sendMessage(inputText.value)
-      }
+    } catch (e: any) {
+      console.warn('[Agent] No se pudo enumerar micrófonos:', e?.message)
     }
   }
 
-  const startListening = () => {
-    if (!import.meta.client) return
-    initRecognition()
-    if (!recognition) {
-      lastError.value = 'Tu navegador no soporta reconocimiento de voz. Usá Chrome/Edge o escribí.'
-      return
+  const setMic = (deviceId: string) => {
+    selectedMicId.value = deviceId
+    if (import.meta.client) {
+      try { localStorage.setItem('healup_agent_mic_v1', deviceId) } catch {}
     }
+  }
+
+  // ── Whisper transcription via MediaRecorder ──
+  let mediaRecorder: MediaRecorder | null = null
+  let audioChunks: Blob[] = []
+
+  const releaseStream = () => {
+    if (activeStream) {
+      activeStream.getTracks().forEach(t => t.stop())
+      activeStream = null
+    }
+  }
+
+  const startListening = async () => {
+    if (!import.meta.client) return
     inputText.value = ''
+    lastError.value = ''
     try {
-      recognition.start()
+      releaseStream()
+      const constraints: any = {
+        audio: selectedMicId.value ? { deviceId: { exact: selectedMicId.value } } : true
+      }
+      activeStream = await navigator.mediaDevices.getUserMedia(constraints)
+      audioChunks = []
+      // Prefer webm (Chrome), fallback to mp4 (Safari)
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : ''
+      mediaRecorder = mimeType
+        ? new MediaRecorder(activeStream, { mimeType })
+        : new MediaRecorder(activeStream)
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data)
+      }
+      mediaRecorder.onstop = async () => {
+        releaseStream()
+        if (!audioChunks.length) { isListening.value = false; return }
+        const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' })
+        audioChunks = []
+        // Transcribir con Whisper
+        isListening.value = false
+        isThinking.value = true
+        inputText.value = 'Transcribiendo...'
+        try {
+          const ext = (mediaRecorder?.mimeType || '').includes('mp4') ? 'mp4' : 'webm'
+          const formData = new FormData()
+          formData.append('audio', blob, `audio.${ext}`)
+          const resp: any = await $fetch('/api/healup/transcribe', {
+            method: 'POST',
+            body: formData
+          })
+          const text = (resp?.text || '').trim()
+          if (text) {
+            inputText.value = text
+            // Auto-send
+            sendMessage(text)
+          } else {
+            inputText.value = ''
+            lastError.value = 'No se detectó audio. Intentá de nuevo.'
+            isThinking.value = false
+          }
+        } catch (e: any) {
+          inputText.value = ''
+          lastError.value = `Error al transcribir: ${e?.data?.statusMessage || e?.message || e}`
+          isThinking.value = false
+        }
+      }
+      mediaRecorder.start()
       isListening.value = true
     } catch (e: any) {
       lastError.value = `No se pudo iniciar el micrófono: ${e?.message || e}`
+      releaseStream()
     }
   }
+
   const stopListening = () => {
-    if (recognition && isListening.value) {
-      try { recognition.stop() } catch {}
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop()
+    } else {
+      isListening.value = false
+      releaseStream()
     }
-    isListening.value = false
   }
 
   // ── Síntesis de voz (output) ──
+  const autoListenAfterSpeak = ref(false)
+
+  const getSpanishVoice = (): SpeechSynthesisVoice | null => {
+    if (!import.meta.client || !window.speechSynthesis) return null
+    const voices = window.speechSynthesis.getVoices()
+    // Prefer: es-PE > es-MX > es-ES > any es-*
+    return voices.find(v => v.lang === 'es-PE')
+      || voices.find(v => v.lang === 'es-MX')
+      || voices.find(v => v.lang === 'es-ES')
+      || voices.find(v => v.lang.startsWith('es'))
+      || null
+  }
+
   const speak = (text: string) => {
     if (!import.meta.client || !window.speechSynthesis) return
     stopSpeaking()
     const u = new SpeechSynthesisUtterance(text)
-    u.lang = 'es-PE'
+    const voice = getSpanishVoice()
+    if (voice) { u.voice = voice; u.lang = voice.lang }
+    else u.lang = 'es-PE'
     u.rate = 1.05
     u.pitch = 1.0
     u.onstart = () => { isSpeaking.value = true }
-    u.onend = () => { isSpeaking.value = false }
+    u.onend = () => {
+      isSpeaking.value = false
+      // Auto-restart mic for hands-free conversation
+      if (autoListenAfterSpeak.value) {
+        setTimeout(() => startListening(), 300)
+      }
+    }
     u.onerror = () => { isSpeaking.value = false }
     window.speechSynthesis.speak(u)
   }
@@ -246,6 +336,204 @@ export const useHealupAgent = () => {
         })
       }
 
+      if (name === 'consultar_citas_hoy') {
+        const fecha = input?.fecha || todayISO()
+        const [y, m, d] = fecha.split('-')
+        const ddmmyyyy = `${d}-${m}-${y}`
+        const { data, error } = await (supabase.from('healup_calendar_events') as any)
+          .select('id,client_name,client_surname,time,subject,estado,cabina,cobro_completado,metodo_reserva,monto_reserva')
+          .or(`date.eq.${fecha},date.eq.${ddmmyyyy}`)
+          .order('time', { ascending: true })
+          .limit(30)
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        return JSON.stringify({
+          ok: true, fecha, total: data?.length || 0,
+          citas: (data || []).map((c: any) => ({
+            id: c.id,
+            hora: (c.time || '').substring(0, 5),
+            paciente: `${c.client_name || ''} ${c.client_surname || ''}`.trim(),
+            procedimiento: c.subject || '',
+            estado: c.estado || 'pendiente',
+            cabina: c.cabina || 'cabina1',
+            cobrado: !!c.cobro_completado,
+            reserva: c.monto_reserva ? `S/${c.monto_reserva} ${c.metodo_reserva || ''}` : null
+          }))
+        })
+      }
+
+      if (name === 'crear_cita') {
+        const payload: any = {
+          date: input.fecha,
+          time: `${input.hora}:00`,
+          client_name: input.client_name,
+          client_surname: input.client_surname || '',
+          client_phone: input.client_phone || '',
+          client_dni: input.client_dni || '',
+          client_email: input.client_email || '',
+          subject: input.subject,
+          cabina: input.cabina || 'cabina1',
+          company_id: 'healup',
+          estado: 'pendiente',
+          event_reason: 'Tratamiento'
+        }
+        const { data, error } = await (supabase.from('healup_calendar_events') as any).insert(payload).select().single()
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        return JSON.stringify({ ok: true, id: data?.id, fecha: input.fecha, hora: input.hora, paciente: input.client_name, procedimiento: input.subject })
+      }
+
+      if (name === 'actualizar_cita') {
+        const updates: any = {}
+        if (input.estado) { updates.estado = input.estado; updates.estado_actualizado_en = new Date().toISOString() }
+        if (input.hora) updates.time = `${input.hora}:00`
+        if (input.fecha) updates.date = input.fecha
+        if (input.subject) updates.subject = input.subject
+        if (input.cobro_completado !== undefined) updates.cobro_completado = input.cobro_completado
+        const { data, error } = await (supabase.from('healup_calendar_events') as any).update(updates).eq('id', input.cita_id).select().single()
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        return JSON.stringify({ ok: true, id: input.cita_id, cambios: Object.keys(updates) })
+      }
+
+      if (name === 'buscar_paciente') {
+        const results: any[] = []
+        for (const tabla of ['PacientesBDwppHEALUP', 'PacientesBDfbigHEALUP']) {
+          let q = (supabase.from(tabla) as any).select('id,nombre,dni,numero,correo,procedimiento,precio_tratamiento,estado,metodo_de_pago,fecha_agendamiento,created_at')
+          if (input?.nombre) q = q.ilike('nombre', `%${input.nombre}%`)
+          if (input?.dni) q = q.eq('dni', input.dni)
+          if (input?.telefono) q = q.ilike('numero', `%${input.telefono}%`)
+          const { data } = await q.order('created_at', { ascending: false }).limit(10)
+          if (data?.length) results.push(...data.map((p: any) => ({ ...p, fuente: tabla.includes('wpp') ? 'WhatsApp' : 'FB/IG' })))
+        }
+        return JSON.stringify({ ok: true, total: results.length, pacientes: results.slice(0, 15) })
+      }
+
+      if (name === 'registrar_paciente') {
+        const payload: any = {
+          nombre: input.nombre,
+          dni: input.dni || '',
+          numero: input.numero || '',
+          correo: input.correo || null,
+          procedimiento: input.procedimiento || '',
+          precio_tratamiento: Number(input.precio_tratamiento) || 0,
+          metodo_de_pago: input.metodo_de_pago || '',
+          fecha_agendamiento: input.fecha_agendamiento || null,
+          estado: 'En espera',
+          agendamiento: 'Dashboard',
+          company_id: 'healup'
+        }
+        const { data, error } = await (supabase.from('PacientesBDwppHEALUP') as any).insert(payload).select().single()
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        return JSON.stringify({ ok: true, id: data?.id, nombre: input.nombre })
+      }
+
+      if (name === 'actualizar_paciente') {
+        const updates: any = {}
+        if (input.estado) updates.estado = input.estado
+        if (input.precio_tratamiento !== undefined) updates.precio_tratamiento = Number(input.precio_tratamiento)
+        if (input.metodo_de_pago) updates.metodo_de_pago = input.metodo_de_pago
+        if (input.procedimiento) updates.procedimiento = input.procedimiento
+        const { data, error } = await (supabase.from('PacientesBDwppHEALUP') as any).update(updates).eq('id', input.paciente_id).select().single()
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        return JSON.stringify({ ok: true, id: input.paciente_id, cambios: Object.keys(updates) })
+      }
+
+      if (name === 'listar_procedimientos') {
+        let q = (supabase.from('healup_procedures') as any)
+          .select('id,name,sku,grupo,price,tipo,cabina,activo')
+          .eq('activo', true)
+          .order('grupo').order('name')
+        if (input?.grupo) q = q.ilike('grupo', `%${input.grupo}%`)
+        if (input?.nombre) q = q.ilike('name', `%${input.nombre}%`)
+        const { data, error } = await q.limit(50)
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        return JSON.stringify({
+          ok: true, total: data?.length || 0,
+          procedimientos: (data || []).map((p: any) => ({
+            id: p.id, nombre: p.name, sku: p.sku, grupo: p.grupo,
+            precio_sin_igv: p.price, precio_con_igv: +(p.price * 1.18).toFixed(2),
+            tipo: p.tipo, cabina: p.cabina
+          }))
+        })
+      }
+
+      if (name === 'consultar_stock') {
+        let query = (supabase.from('healup_stock_items') as any)
+          .select('id,nombre,categoria,unidad,cantidad_actual,umbral_minimo,costo_unitario')
+          .order('nombre')
+        if (input?.nombre) query = query.ilike('nombre', `%${input.nombre}%`)
+        const { data, error } = await query.limit(50)
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        let items = data || []
+        if (input?.solo_bajos) {
+          items = items.filter((i: any) => Number(i.cantidad_actual) <= Number(i.umbral_minimo))
+        }
+        return JSON.stringify({
+          ok: true, total_items: items.length,
+          items: items.map((i: any) => ({
+            id: i.id, nombre: i.nombre, categoria: i.categoria, unidad: i.unidad,
+            cantidad: i.cantidad_actual, minimo: i.umbral_minimo,
+            bajo: Number(i.cantidad_actual) <= Number(i.umbral_minimo)
+          }))
+        })
+      }
+
+      if (name === 'movimiento_stock') {
+        // Insert movement
+        const mov: any = {
+          stock_item_id: input.stock_item_id,
+          tipo: input.tipo,
+          cantidad: Number(input.cantidad),
+          motivo: input.motivo || null,
+          notas: input.notas || null,
+          registrado_por: 'agente_voz'
+        }
+        const { error: movErr } = await (supabase.from('healup_stock_movements') as any).insert(mov)
+        if (movErr) return JSON.stringify({ ok: false, error: movErr.message })
+        // Update stock quantity
+        const delta = input.tipo === 'entrada' ? Number(input.cantidad) : -Number(input.cantidad)
+        const { data: item } = await (supabase.from('healup_stock_items') as any).select('cantidad_actual,nombre').eq('id', input.stock_item_id).single()
+        const nuevaCantidad = Math.max(0, Number(item?.cantidad_actual || 0) + delta)
+        await (supabase.from('healup_stock_items') as any).update({ cantidad_actual: nuevaCantidad }).eq('id', input.stock_item_id)
+        return JSON.stringify({ ok: true, item: item?.nombre, tipo: input.tipo, cantidad: input.cantidad, stock_actual: nuevaCantidad })
+      }
+
+      if (name === 'modificar_egreso') {
+        if (input.eliminar) {
+          const { error } = await (supabase.from('egresos_healup') as any).update({ descartado: true, deleted_at: new Date().toISOString() }).eq('id', input.egreso_id)
+          if (error) return JSON.stringify({ ok: false, error: error.message })
+          return JSON.stringify({ ok: true, accion: 'eliminado', id: input.egreso_id })
+        }
+        const updates: any = {}
+        if (input.nombre) updates.nombre = input.nombre
+        if (input.precio !== undefined) updates.precio = Number(input.precio)
+        if (input.cantidad !== undefined) updates.cantidad = Number(input.cantidad)
+        if (input.categoria) updates.categoria = input.categoria
+        if (input.metodo_pago) updates.metodo_pago = input.metodo_pago
+        const { data, error } = await (supabase.from('egresos_healup') as any).update(updates).eq('id', input.egreso_id).select().single()
+        if (error) return JSON.stringify({ ok: false, error: error.message })
+        return JSON.stringify({ ok: true, accion: 'modificado', id: input.egreso_id, cambios: Object.keys(updates) })
+      }
+
+      if (name === 'consultar_leads') {
+        const limite = input?.limite || 20
+        const results: any[] = []
+        for (const tabla of ['GeneralBDwppHEALUP', 'GeneralBDfbigHEALUP']) {
+          let q = (supabase.from(tabla) as any).select('id,nombre,numero,lead_status,reason_ia_qualification,servicio_interes,created_at')
+          if (input?.estado) q = q.eq('lead_status', input.estado)
+          if (input?.mes) {
+            const [y, m] = input.mes.split('-')
+            const nm = String(parseInt(m) % 12 + 1).padStart(2, '0')
+            const ny = parseInt(m) === 12 ? String(parseInt(y) + 1) : y
+            q = q.gte('created_at', `${input.mes}-01`).lt('created_at', `${ny}-${nm}-01`)
+          }
+          const { data } = await q.order('created_at', { ascending: false }).limit(limite)
+          if (data?.length) results.push(...data.map((l: any) => ({ ...l, fuente: tabla.includes('wpp') ? 'WhatsApp' : 'FB/IG' })))
+        }
+        const frios = results.filter(l => l.lead_status?.includes('fri')).length
+        const tibios = results.filter(l => l.lead_status?.includes('tibi')).length
+        const calientes = results.filter(l => l.lead_status?.includes('caliente')).length
+        return JSON.stringify({ ok: true, total: results.length, frios, tibios, calientes, leads: results.slice(0, limite) })
+      }
+
       return JSON.stringify({ ok: false, error: `Tool desconocida: ${name}` })
     } catch (e: any) {
       return JSON.stringify({ ok: false, error: e?.message || String(e) })
@@ -265,8 +553,8 @@ export const useHealupAgent = () => {
     messages.value.push({ role: 'user', content: trimmed })
 
     try {
-      // Loop de tool use: hasta 5 iteraciones para evitar bucles
-      for (let i = 0; i < 5; i++) {
+      // Loop de tool use: hasta 8 iteraciones (más tools = puede encadenar más)
+      for (let i = 0; i < 8; i++) {
         const resp: any = await $fetch('/api/healup/agent-chat', {
           method: 'POST',
           body: { messages: messages.value }
@@ -345,6 +633,11 @@ export const useHealupAgent = () => {
     if (!import.meta.client) return
     window.addEventListener('keydown', handleKeyDown)
     conversationId.value = `conv-${Date.now()}`
+    // Preload voices (Web Speech API loads them async)
+    if (window.speechSynthesis) {
+      window.speechSynthesis.getVoices()
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
+    }
   })
   onBeforeUnmount(() => {
     if (!import.meta.client) return
@@ -356,8 +649,9 @@ export const useHealupAgent = () => {
   return {
     isOpen, isThinking, isListening, isSpeaking,
     turns, inputText, lastError, shortcut, shortcutLabel,
+    autoListenAfterSpeak, availableMics, selectedMicId,
     open, close, reset, sendMessage,
     startListening, stopListening, speak, stopSpeaking,
-    setShortcut,
+    setShortcut, loadMics, setMic,
   }
 }

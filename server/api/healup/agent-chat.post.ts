@@ -63,29 +63,191 @@ const TOOLS = [
         mes: { type: 'string', description: 'YYYY-MM, default mes actual.' }
       }
     }
+  },
+  {
+    name: 'consultar_citas_hoy',
+    description: 'Consultar las citas de hoy en healup_calendar_events. Usar cuando el usuario pregunte "qué citas hay hoy", "quién viene hoy", "agenda de hoy", "cuántos pacientes tenemos".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fecha: { type: 'string', description: 'Fecha en YYYY-MM-DD. Si no se especifica, usar hoy.' }
+      }
+    }
+  },
+  {
+    name: 'crear_cita',
+    description: 'Crear una nueva cita en healup_calendar_events. Usar cuando digan "agendá a María para mañana a las 3", "nueva cita", "agendar paciente".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fecha: { type: 'string', description: 'Fecha en YYYY-MM-DD' },
+        hora: { type: 'string', description: 'Hora en HH:MM (24h). Ej: "15:00"' },
+        client_name: { type: 'string', description: 'Nombre del paciente' },
+        client_surname: { type: 'string', description: 'Apellido del paciente' },
+        client_phone: { type: 'string', description: 'Teléfono (opcional)' },
+        client_dni: { type: 'string', description: 'DNI (opcional)' },
+        client_email: { type: 'string', description: 'Email (opcional)' },
+        subject: { type: 'string', description: 'Procedimiento o motivo de la cita' },
+        cabina: { type: 'string', enum: ['cabina1', 'cabina2'], description: 'Cabina 1 (doctora/invasivos) o Cabina 2 (no invasivos). Default cabina1.' }
+      },
+      required: ['fecha', 'hora', 'client_name', 'subject']
+    }
+  },
+  {
+    name: 'actualizar_cita',
+    description: 'Actualizar estado u otros campos de una cita existente. Usar para "cancelar cita", "marcar como atendido", "cambiar hora", "reagendar".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        cita_id: { type: 'number', description: 'ID de la cita a actualizar' },
+        estado: { type: 'string', enum: ['pendiente', 'confirmada', 'en_atencion', 'atendida', 'cancelada', 'no_show'], description: 'Nuevo estado' },
+        hora: { type: 'string', description: 'Nueva hora HH:MM (si reagenda)' },
+        fecha: { type: 'string', description: 'Nueva fecha YYYY-MM-DD (si reagenda)' },
+        subject: { type: 'string', description: 'Nuevo procedimiento/motivo' },
+        cobro_completado: { type: 'boolean', description: 'Marcar como cobrado' }
+      },
+      required: ['cita_id']
+    }
+  },
+  {
+    name: 'buscar_paciente',
+    description: 'Buscar pacientes en PacientesBDwppHEALUP y PacientesBDfbigHEALUP. Usar cuando digan "buscá a María", "datos de la paciente García", "historial de...".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Nombre o apellido para buscar (parcial)' },
+        dni: { type: 'string', description: 'DNI exacto para buscar' },
+        telefono: { type: 'string', description: 'Número de teléfono para buscar' }
+      }
+    }
+  },
+  {
+    name: 'registrar_paciente',
+    description: 'Registrar un nuevo paciente en PacientesBDwppHEALUP. Usar cuando digan "agregá paciente nuevo", "registrá a María García".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Nombre completo del paciente' },
+        dni: { type: 'string', description: 'DNI' },
+        numero: { type: 'string', description: 'Teléfono con prefijo 51 (ej: 51987654321)' },
+        correo: { type: 'string', description: 'Email (opcional)' },
+        procedimiento: { type: 'string', description: 'Procedimiento de interés' },
+        precio_tratamiento: { type: 'number', description: 'Precio del tratamiento en soles' },
+        metodo_de_pago: { type: 'string', description: 'Método de pago: Efectivo, Yape, Plin, Transferencia, Tarjeta' },
+        fecha_agendamiento: { type: 'string', description: 'Fecha y hora de la cita en formato ISO' }
+      },
+      required: ['nombre']
+    }
+  },
+  {
+    name: 'actualizar_paciente',
+    description: 'Actualizar datos de un paciente existente. Usar para "cambiá el estado de María a Finalizado", "actualizá el precio", "marcá como atendido".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        paciente_id: { type: 'number', description: 'ID del paciente' },
+        estado: { type: 'string', description: 'Nuevo estado: En espera, En proceso, Finalizado, Cancelado' },
+        precio_tratamiento: { type: 'number', description: 'Nuevo precio' },
+        metodo_de_pago: { type: 'string', description: 'Nuevo método de pago' },
+        procedimiento: { type: 'string', description: 'Nuevo procedimiento' }
+      },
+      required: ['paciente_id']
+    }
+  },
+  {
+    name: 'listar_procedimientos',
+    description: 'Listar el catálogo de procedimientos de Healup. Usar cuando pregunten "qué procedimientos tenemos", "cuánto cuesta el botox", "catálogo".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        grupo: { type: 'string', description: 'Filtrar por grupo (ej: "MEDICINA ESTETICA", "FACIAL")' },
+        nombre: { type: 'string', description: 'Buscar por nombre (parcial)' }
+      }
+    }
+  },
+  {
+    name: 'consultar_stock',
+    description: 'Consultar el inventario/stock actual de insumos. Usar cuando pregunten "cuánto botox queda", "qué insumos tenemos", "stock bajo", "inventario".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Filtro por nombre del insumo (opcional, búsqueda parcial).' },
+        solo_bajos: { type: 'boolean', description: 'true para mostrar solo items con stock bajo el umbral mínimo.' }
+      }
+    }
+  },
+  {
+    name: 'movimiento_stock',
+    description: 'Registrar entrada o salida de stock (insumos). Usar para "ingresaron 5 viales de botox", "se usaron 2 jeringas de hialurónico", "ajustar stock".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stock_item_id: { type: 'number', description: 'ID del item de stock' },
+        tipo: { type: 'string', enum: ['entrada', 'salida', 'ajuste'], description: 'Tipo de movimiento' },
+        cantidad: { type: 'number', description: 'Cantidad del movimiento' },
+        motivo: { type: 'string', description: 'Motivo: compra, procedimiento, ajuste, vencimiento, etc.' },
+        notas: { type: 'string', description: 'Notas adicionales (opcional)' }
+      },
+      required: ['stock_item_id', 'tipo', 'cantidad']
+    }
+  },
+  {
+    name: 'modificar_egreso',
+    description: 'Modificar un egreso existente (cambiar nombre, precio, categoría, etc.) o eliminarlo (soft delete). Usar para "corregí el egreso de delivery", "borrá el último egreso".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        egreso_id: { type: 'string', description: 'ID (UUID) del egreso a modificar' },
+        nombre: { type: 'string', description: 'Nuevo nombre/descripción' },
+        precio: { type: 'number', description: 'Nuevo precio' },
+        cantidad: { type: 'number', description: 'Nueva cantidad' },
+        categoria: { type: 'string', enum: ['INSUMOS', 'DELIVERY', 'MARKETING', 'MANTENIMIENTO', 'SUELDOS', 'OTROS'], description: 'Nueva categoría' },
+        metodo_pago: { type: 'string', enum: ['EFECTIVO', 'YAPE', 'PLIN', 'TRANSFERENCIA', 'TARJETA_CREDITO', 'QR'], description: 'Nuevo método' },
+        eliminar: { type: 'boolean', description: 'true para soft-delete (marcar como descartado)' }
+      },
+      required: ['egreso_id']
+    }
+  },
+  {
+    name: 'consultar_leads',
+    description: 'Consultar leads (prospectos) de WhatsApp y redes sociales. Usar para "cuántos leads tenemos", "leads calientes", "prospectos del mes".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        estado: { type: 'string', enum: ['lead_frio', 'lead_tibio', 'lead_caliente'], description: 'Filtrar por estado del lead' },
+        mes: { type: 'string', description: 'Mes en YYYY-MM para filtrar por fecha de creación' },
+        limite: { type: 'number', description: 'Máximo de resultados (default 20)' }
+      }
+    }
   }
 ]
 
-const SYSTEM_PROMPT = `Eres el asistente conversacional del dashboard Healup (clínica de medicina estética en Lima, Perú).
+const SYSTEM_PROMPT = `Eres el asistente completo del dashboard Healup — clínica de medicina estética en Lima, Perú.
 
 Hablás español rioplatense neutro, cálido y profesional. Trabajás con la administradora de la clínica (Carlos, Valeria o el equipo).
 
-Tu trabajo: ayudar a registrar egresos, consultar números del mes, y dar resúmenes financieros — todo vía conversación natural.
+Tenés acceso COMPLETO a toda la base de datos del dashboard: citas, pacientes, egresos, stock/insumos, procedimientos, leads. Podés consultar, crear, modificar y eliminar registros.
+
+CAPACIDADES:
+- EGRESOS: registrar, listar por mes, modificar, eliminar (soft delete)
+- CITAS: consultar agenda del día, crear nuevas citas, actualizar estado (pendiente/confirmada/en_atencion/atendida/cancelada/no_show), reagendar
+- PACIENTES: buscar por nombre/DNI/teléfono, registrar nuevos, actualizar estado y datos
+- PROCEDIMIENTOS: consultar catálogo completo con precios (price = valor_unitario sin IGV, total = price * 1.18)
+- STOCK: consultar inventario, ver stock bajo, registrar entradas/salidas/ajustes de insumos
+- LEADS: consultar prospectos por estado (frío/tibio/caliente) y mes
+- RESUMEN: ingresos, egresos, utilidad y pacientes del mes
 
 REGLAS:
-1. Cuando el usuario describa un gasto/egreso, usá la tool register_egreso. NO confirmes antes — registralo y reportá lo que hiciste.
-2. Si falta información obligatoria (nombre, categoría, precio, método de pago), preguntá una sola vez y registrá.
-3. Para categorías:
-   - Botox/toxina/hialurónico/agujas/insumos médicos → INSUMOS
-   - Delivery/envío/moto → DELIVERY
-   - Publicidad/Meta/TikTok/contenido → MARKETING
-   - Limpieza/mantenimiento → MANTENIMIENTO
-   - Sueldos/honorarios → SUELDOS
-   - Resto → OTROS
-4. Si el usuario dice "yape", "plin", "efectivo", "transferencia", "tarjeta", mapealo al enum.
-5. Después de cada acción exitosa, respondé con UN PÁRRAFO breve confirmando qué hiciste y mostrando los datos clave (S/ total, categoría, fecha si aplica).
-6. Si el usuario pide consulta (cuánto gasté, balance, etc.), usá la tool correspondiente.
-7. Sé directo, no uses emojis salvo que el usuario los use.
+1. Cuando el usuario pida una acción (registrar, modificar, crear), ejecutala directamente con la tool. NO confirmes antes.
+2. Si falta info obligatoria, preguntá una sola vez y luego ejecutá.
+3. Para egresos — categorías: INSUMOS (botox/hialurónico/agujas), DELIVERY, MARKETING, MANTENIMIENTO, SUELDOS, OTROS.
+4. Mapeá métodos de pago: "yape"→YAPE, "plin"→PLIN, "efectivo"→EFECTIVO, "transferencia"→TRANSFERENCIA, "tarjeta"→TARJETA_CREDITO.
+5. Después de cada acción, confirmá en 1-2 oraciones con datos clave.
+6. Cabina 1 = doctora/invasivos (reserva S/50), Cabina 2 = no invasivos (reserva S/20).
+7. Tus respuestas se leen en voz alta — sé conciso y natural. Máximo 3-4 oraciones. Evitá listas largas.
+8. Para buscar pacientes, intentá primero por nombre en PacientesBDwppHEALUP, luego PacientesBDfbigHEALUP.
+9. Los precios de procedimientos en el catálogo son sin IGV. Para decir el precio al usuario multiplicá por 1.18.
+10. Si el usuario pregunta algo que no podés resolver con las tools, respondé honestamente.
 
 Hoy es ${new Date().toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`
 
@@ -127,7 +289,7 @@ export default defineEventHandler(async (event) => {
       },
       body: {
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: SYSTEM_PROMPT,
         tools: TOOLS,
         messages: body.messages

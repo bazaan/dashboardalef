@@ -239,7 +239,8 @@ Doble sistema para auditar acciones:
 |---|---|---|
 | `N8nPanicButton.vue` | `clientKey` ('healup'\|'brada'\|'alegrated'), `label` | Activa/desactiva workflow n8n. Solo estas 3 empresas tienen workflows configurados |
 | `FacturacionPSE.vue` | — | Emite y gestiona facturas/boletas electrónicas (formulario libre). Solo Healup y ECS |
-| `HealupCobroAtencion.vue` | — | Wizard 3 pasos para cobro de atención médica Healup: paso 1 = seleccionar cita, paso 2 = emitir boleta consulta S/50, paso 3 = procedimientos con descuento S/50 aplicado |
+| `HealupCobroAtencion.vue` | — | Wizard 2 pasos para cobro de atención médica Healup: paso 1 = seleccionar cita/paciente, paso 2 = procedimientos + multi-pago (N metodos por transaccion) + descuento reserva aplicado. Guarda pagos en `healup_cita_pagos` |
+| `HealupAgent.vue` | — | Agente conversacional AI completo — chat + grabacion de voz Whisper + sintesis. 14 tools: egresos, citas, pacientes, stock, procedimientos, leads. Selector de microfono, modo manos libres, atajo teclado configurable |
 | `HealupCatalogoProcedimientos.vue` | — | CRUD completo del catálogo `healup_procedures`. Agrupado por `grupo`, muestra precio sin/con IGV. Protege el ítem de consulta de ser eliminado |
 | `HealupGCalSync.vue` | — | Sincronización Google Calendar ↔ dashboard. Muestra eventos GCal del día, estado de sync, botón importar individual/masivo. Usa endpoint `/api/healup/gcal-events` |
 | `Settings/SettingsView.vue` | `companyId`, `currentUser` | CRUD de usuarios + logs de auditoría. Todos los dashboards |
@@ -264,6 +265,8 @@ Doble sistema para auditar acciones:
 | GET | `/api/healup/gcal-events` | Autenticados Healup. Query: `?date=YYYY-MM-DD`. Llama Google Calendar API directo → retorna eventos GCal + estado sync con Supabase |
 | POST | `/api/healup/importar-gcal` | Autenticados Healup. Body: `{ date, time, client_name, client_surname, client_phone?, client_dni?, cabina? }` |
 | POST | `/api/healup/boleta-auto` | n8n (api_key auth). Auto-genera boleta consulta S/50 al confirmar cita. Retorna PDF + mensaje WhatsApp listo |
+| POST | `/api/healup/agent-chat` | Autenticados Healup. Proxy a Claude API (claude-sonnet-4-6) con 14 tools. Body: `{ messages }` |
+| POST | `/api/healup/transcribe` | Autenticados Healup. Transcripcion de audio via Whisper (OpenAI). FormData con campo `audio` |
 
 ---
 
@@ -344,6 +347,9 @@ GOOGLE_SERVICE_ACCOUNT_JSON='{"client_email":"...","private_key":"..."}'
 GOOGLE_CALENDAR_ID_HEALUP=healupaestheticlab@gmail.com
 # Boleta automática (n8n llama al confirmar cita)
 HEALUP_BOLETA_AUTO_KEY=healup-auto-2026
+# Agente AI Healup
+ANTHROPIC_API_KEY=              # Claude API para agent-chat
+OPENAI_API_KEY=                 # Whisper transcripcion de voz
 ```
 
 ---
@@ -373,6 +379,11 @@ HEALUP_BOLETA_AUTO_KEY=healup-auto-2026
 | `GeneralBDfbigHEALUP` | Leads de Facebook e Instagram. Usa `instagram_handle` en vez de `numero` |
 | `PacientesBDwppHEALUP` | Pacientes captados por WhatsApp. Campo clave: `fecha_agendamiento` |
 | `PacientesBDfbigHEALUP` | Pacientes captados por FB/IG. Campo clave: `fecha_agendamiento` |
+| `egresos_healup` | Egresos/gastos. Campos: `tipo_egreso`, `nombre`, `precio`, `cantidad`, `categoria`, `metodo_pago`, `referencia`, `deleted_at`, `descartado` |
+| `healup_cita_pagos` | Multi-pago por atencion (1:N). Campos: `event_id`, `comprobante_id`, `metodo_pago` (Yape/Plin/Efectivo/Transferencia/Tarjeta), `monto` |
+| `healup_stock_items` | Inventario de insumos. Campos: `nombre`, `categoria`, `unidad`, `cantidad_actual`, `umbral_minimo`, `costo_unitario` |
+| `healup_stock_movements` | Movimientos de stock (entrada/salida/ajuste). FK a `healup_stock_items` |
+| `healup_procedure_supplies` | Insumos por procedimiento (para descuento automatico de stock) |
 
 **Columnas de trazabilidad de cobro en `healup_calendar_events`** (agregadas en `sql/healup_cobro_atencion.sql`):
 
@@ -414,22 +425,45 @@ La sección de contabilidad tiene 3 tabs (la activa por defecto es `cobro_atenci
 
 ### Flujo de Cobro de Atención (`HealupCobroAtencion.vue`)
 
-Wizard de 3 pasos que implementa las reglas de negocio de cobro:
+Wizard de 2 pasos:
 
 1. **Paso 1 — Seleccionar paciente**: Carga citas del día desde `healup_calendar_events`. Pre-llena nombre, apellido, DNI, email, teléfono y procedimiento desde la cita seleccionada (o entrada manual).
 
-2. **Paso 2 — Boleta de consulta**: Emite siempre una boleta B001 por S/50 (Consulta Médica, SKU `CON-001`, `valor_unitario=42.37`, `tipo_de_igv=1`). Actualiza `healup_calendar_events` con `boleta_consulta_*`.
+2. **Paso 2 — Precotización + Multi-pago**: Selector del catálogo de procedimientos (filtrable por nombre/SKU, agrupado por `grupo`) + panel de resumen con descuento de reserva auto-aplicado + **multi-pago** (N metodos de pago por transaccion, ej: S/500 Yape + S/200 Transferencia + S/50 Efectivo). La boleta solo se puede emitir cuando la suma de pagos cuadra con el total. Los pagos se guardan en `healup_cita_pagos`. Descuento = monto_reserva de la cita (S/50 cabina 1, S/20 cabina 2). Botones para enviar boleta por email y WhatsApp.
 
-3. **Paso 3 — Procedimientos**: Selector del catálogo (filtrable por nombre/SKU, agrupado por `grupo`) con descuento S/50 auto-aplicado. Descuento pre-IGV = `50/1.18 = 42.37`. Enviado como `descuento_global` a NubeFact. Después de emitir: botones para enviar por email y WhatsApp. Actualiza `healup_calendar_events` con `boleta_proc_*` y `cobro_completado = true`.
-
-**Constantes clave en el componente:**
+**Constantes clave:**
 ```javascript
-CONSULTA_VALOR_UNIT = 42.37      // 50 / 1.18 — precio sin IGV de la consulta
-DESCUENTO_PRETAX   = 42.37      // descuento_global enviado a NubeFact
 SERIE_BOLETA       = 'B001'
 ```
 
-**Numeración de boletas:** Consulta `MAX(numero)` en `comprobantes_pse` para la serie + 1. Posible race condition con múltiples operadores — futuro: migrar a secuencia SQL.
+**Multi-pago:** Opciones: Yape, Plin, Efectivo, Transferencia, Tarjeta. Boton "Autocompletar" rellena el ultimo pago con el restante. Validacion: suma de pagos === total. Se guardan en tabla `healup_cita_pagos` (event_id, comprobante_id, metodo_pago, monto).
+
+**Numeración de boletas:** Consulta `MAX(numero)` en `comprobantes_pse` para la serie + 1.
+
+### Agente AI Healup (`HealupAgent.vue` + `useHealupAgent.ts`)
+
+Panel flotante con chat conversacional + voz (Whisper). Acceso completo a toda la BD del dashboard via 14 tools:
+
+| Tool | Accion |
+|---|---|
+| `register_egreso` | Crear egreso |
+| `list_egresos_mes` | Listar egresos del mes |
+| `modificar_egreso` | Editar o soft-delete egreso |
+| `resumen_mes` | Resumen financiero (ingresos, egresos, utilidad, pacientes) |
+| `consultar_citas_hoy` | Agenda del dia (o cualquier fecha) |
+| `crear_cita` | Agendar nueva cita |
+| `actualizar_cita` | Cambiar estado, reagendar, marcar cobrado |
+| `buscar_paciente` | Buscar por nombre/DNI/telefono |
+| `registrar_paciente` | Crear paciente nuevo |
+| `actualizar_paciente` | Modificar estado, precio, metodo pago |
+| `listar_procedimientos` | Catalogo con precios sin/con IGV |
+| `consultar_stock` | Inventario, stock bajo |
+| `movimiento_stock` | Entrada/salida/ajuste de insumos |
+| `consultar_leads` | Leads por estado y mes |
+
+**Voz:** Grabacion via MediaRecorder → transcripcion Whisper (OpenAI) → respuesta Claude → sintesis de voz (Web Speech API con seleccion de voz espanola).
+**Config:** Selector de microfono, modo manos libres (auto-restart mic tras respuesta), atajo de teclado configurable (default Cmd+J).
+**Requiere:** `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` en env vars.
 
 > Ver guía completa de replicación en `referencia/facturacion/flujo-cobro-atencion.md`
 

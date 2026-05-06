@@ -6485,13 +6485,15 @@ const dedupKeyForAgendado = (row: any): string => {
   return 'name:' + name
 }
 
-// Convertidos = pacientes en WPP/FBIG con fecha_agendamiento en el mes (deduplicados)
+// Convertidos = pacientes WPP/FBIG cuya CONVERSIÓN ocurrió este mes
+// (created_at del registro), deduplicados. La card de Leads mide la
+// conversión del mes — coherente con "Nuevos este Mes" en Pacientes.
 const hotLeadsConvertedCount = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const claves = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value]
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(thisMonth))
+    .filter((p: any) => p.created_at?.startsWith(thisMonth))
     .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
   return claves.size
 })
@@ -6504,13 +6506,13 @@ const pacientesAgendadosMesSel = ref('') // YYYY-MM seleccionado (vacío = mes a
 // Etiquetas de meses (compartido entre dialogs/viñetas; el contador usa el mismo array más abajo)
 const NOMBRES_MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-// Meses disponibles: SOLO desde fecha_agendamiento de pacientes en redes
-// (WPP + FBIG). El calendario es referencia operativa, no fuente de pacientes.
+// Meses disponibles: desde created_at (fecha de conversión) de pacientes
+// en redes. Coherente con la métrica de la stat card.
 const pacientesAgendadosMesesDisponibles = computed(() => {
   const set = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
-    const fa = p.fecha_agendamiento
-    if (fa && /^\d{4}-\d{2}/.test(fa)) set.add(fa.slice(0, 7))
+    const ca = p.created_at
+    if (ca && /^\d{4}-\d{2}/.test(ca)) set.add(ca.slice(0, 7))
   })
   // Asegurar mes actual presente aunque esté vacío
   const now = new Date()
@@ -6724,19 +6726,16 @@ const pacientesAgendadosMes = computed(() => {
     }
   }
 
-  // SOLO pacientes en redes (WPP + FBIG). El calendario es referencia
-  // operativa y NO es fuente de pacientes — la clínica vende por
-  // WhatsApp / TikTok / Instagram / Facebook. Eventos del calendario
-  // sin contraparte en redes son bloqueos, reuniones o data legacy.
+  // Pacientes convertidos en el mes seleccionado (created_at).
+  // Misma métrica que hotLeadsConvertedCount → coincide con la stat card.
   const wppRaw = pacientesWpp.value
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
+    .filter((p: any) => p.created_at?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'wpp'))
   const fbigRaw = pacientesFbIg.value
-    .filter((p: any) => p.fecha_agendamiento?.startsWith(targetMonth))
+    .filter((p: any) => p.created_at?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'fbig'))
 
   // Dedup en cascada — mismo paciente en WPP y FBIG cuenta una vez.
-  // Misma clave usada por hotLeadsConvertedCount, así ambos números coinciden.
   const claves = new Set<string>()
   const wpp: any[] = []
   for (const r of wppRaw) {
@@ -6749,8 +6748,9 @@ const pacientesAgendadosMes = computed(() => {
     if (!claves.has(k)) { claves.add(k); fbig.push(r) }
   }
 
+  // Orden DESC por created_at (más reciente primero).
   return [...wpp, ...fbig].sort((a, b) =>
-    String(b.fecha_agendamiento).localeCompare(String(a.fecha_agendamiento))
+    String(b.created_at).localeCompare(String(a.created_at))
   )
 })
 

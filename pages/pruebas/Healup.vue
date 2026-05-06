@@ -1274,18 +1274,18 @@
         </header>
         <div class="content-area">
 
-          <!-- ALEF · Comisión IA del mes (automático, no editable) -->
+          <!-- ALEF · Comisión por conversiones del mes (automático, no editable) -->
           <div style="background: linear-gradient(135deg, rgba(218,165,32,0.08), rgba(218,165,32,0.04)); border: 1px solid rgba(218,165,32,0.25); border-radius: 10px; padding: 16px 18px; margin-bottom: 1.25rem;">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
               <div style="display:flex; align-items:center; gap:10px;">
-                <v-icon icon="mdi-robot" size="22" color="amber" />
+                <v-icon icon="mdi-handshake" size="22" color="amber" />
                 <div>
-                  <div style="font-weight:700; font-size:0.95rem; color:#daa520;">ALEF · Comisión IA</div>
+                  <div style="font-weight:700; font-size:0.95rem; color:#daa520;">ALEF · Comisión por conversiones</div>
                   <div style="font-size:0.78rem; opacity:0.75;">
                     Mes en curso ·
-                    <strong style="color:#daa520;">{{ alefBreakdown.facialesCount }}</strong> faciales × S/{{ ALEF_TARIFA_FACIAL }}
+                    <strong style="color:#daa520;">{{ alefBreakdown.cabina1Count }}</strong> reserva S/50 × S/{{ ALEF_COMISION_ALTA }}
                     +
-                    <strong style="color:#daa520;">{{ alefBreakdown.otrosCount }}</strong> estética × S/{{ ALEF_TARIFA_OTROS }}
+                    <strong style="color:#daa520;">{{ alefBreakdown.cabina2Count }}</strong> reserva S/20 × S/{{ ALEF_COMISION_BAJA }}
                   </div>
                 </div>
               </div>
@@ -1294,34 +1294,44 @@
                   S/ {{ alefBreakdown.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                 </div>
                 <div style="font-size:0.7rem; opacity:0.6; margin-top:2px;">
-                  Automático · solo agendamiento = IA
+                  {{ alefBreakdown.totalConversiones }} conversiones
+                  <span v-if="alefBreakdown.excluidosCount"> · {{ alefBreakdown.excluidosCount }} excluido(s)</span>
                 </div>
               </div>
             </div>
 
-            <!-- Detalle expandible -->
-            <details v-if="alefBreakdown.facialesCount + alefBreakdown.otrosCount > 0"
+            <details v-if="alefBreakdown.totalConversiones > 0"
               style="margin-top:10px; border-top:1px solid rgba(218,165,32,0.2); padding-top:10px;">
               <summary style="cursor:pointer; font-size:0.78rem; opacity:0.8;">
-                Ver detalle de pacientes IA del mes
+                Ver detalle de pacientes del mes
               </summary>
               <div style="margin-top:8px; font-size:0.78rem;">
-                <div v-if="alefBreakdown.facialesCount > 0">
+                <div v-if="alefBreakdown.cabina1Count > 0">
                   <div style="font-weight:600; opacity:0.85; margin-bottom:4px;">
-                    Faciales (skin care) — S/ {{ ALEF_TARIFA_FACIAL }} c/u:
+                    Cabina 1 — Medicina estética (reserva S/50, ALEF S/{{ ALEF_COMISION_ALTA }}):
                   </div>
                   <ul style="margin:0; padding-left:18px;">
-                    <li v-for="p in alefBreakdown.faciales" :key="p.id" style="opacity:0.85;">
+                    <li v-for="p in alefBreakdown.cabina1" :key="p.id" style="opacity:0.85;">
                       {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
                     </li>
                   </ul>
                 </div>
-                <div v-if="alefBreakdown.otrosCount > 0" style="margin-top:8px;">
+                <div v-if="alefBreakdown.cabina2Count > 0" style="margin-top:8px;">
                   <div style="font-weight:600; opacity:0.85; margin-bottom:4px;">
-                    Estética (no-facial) — S/ {{ ALEF_TARIFA_OTROS }} c/u:
+                    Cabina 2 — No invasivos (reserva S/20, ALEF S/{{ ALEF_COMISION_BAJA }}):
                   </div>
                   <ul style="margin:0; padding-left:18px;">
-                    <li v-for="p in alefBreakdown.otros" :key="p.id" style="opacity:0.85;">
+                    <li v-for="p in alefBreakdown.cabina2" :key="p.id" style="opacity:0.85;">
+                      {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="alefBreakdown.excluidosCount > 0" style="margin-top:8px;">
+                  <div style="font-weight:600; opacity:0.6; margin-bottom:4px;">
+                    Excluidos (post-procedimientos, no son conversiones nuevas):
+                  </div>
+                  <ul style="margin:0; padding-left:18px;">
+                    <li v-for="p in alefBreakdown.excluidos" :key="p.id" style="opacity:0.6;">
                       {{ p.nombre || '—' }} — <em>{{ p.procedimiento || 'sin proc.' }}</em>
                     </li>
                   </ul>
@@ -1329,7 +1339,7 @@
               </div>
             </details>
             <div v-else style="margin-top:8px; font-size:0.78rem; opacity:0.6;">
-              Aún no hay pacientes convertidos por la IA este mes.
+              Aún no hay conversiones este mes.
             </div>
           </div>
 
@@ -6168,51 +6178,90 @@ function eliminarGastoVar(i: number) {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// ALEF — Comisión IA del mes (gasto variable automático)
-// Regla: S/10 por cada paciente convertido por la IA cuyo procedimiento
-// sea facial (FACIAL BASICO / FACIAL PREMIUM = skin care).
-// S/20 por cada paciente convertido por la IA cuyo procedimiento sea
-// estético no-facial (medicina estética, HIFU, corporal, etc.).
-// Solo cuenta pacientes con agendamiento === 'IA'.
+// ALEF — Comisión por conversión del mes (gasto variable automático)
+// Regla operativa de la clínica:
+//   Si la paciente reservó con S/ 50 (cabina 1, medicina estética
+//   con doctora) → comisión ALEF = S/ 20.
+//   Si la paciente reservó con S/ 20 (cabina 2, no invasivos /
+//   skin cares / HIFU / corporal) → comisión ALEF = S/ 10.
+// Cuenta TODAS las conversiones del mes (created_at), no solo IA.
+// EXCLUYE post-procedimientos (retiros, controles, follow-ups) que
+// no son conversiones nuevas.
 // ──────────────────────────────────────────────────────────────────
-const ALEF_TARIFA_FACIAL = 10
-const ALEF_TARIFA_OTROS  = 20
+const ALEF_COMISION_BAJA = 10  // si reserva fue S/20
+const ALEF_COMISION_ALTA = 20  // si reserva fue S/50
 
-const alefEsFacialSkin = (paciente: any): boolean => {
-  // Vía procedure_id (preferido)
-  const pid = paciente?.procedure_id ? String(paciente.procedure_id) : ''
+// Grupos del catálogo que pertenecen a Cabina 2 (S/20 reserva → ALEF S/10)
+const ALEF_GRUPOS_CABINA_2 = new Set([
+  'FACIAL BASICO', 'FACIAL PREMIUM', 'HIFU 22D',
+  'CORPORAL REDUCCION', 'CORPORAL GLUTEOS', 'CORPORAL REAFIRMACION',
+  'CARBOXITERAPIA', 'LIPO PAPADA ENZIMÁTICO'
+])
+
+// Keywords en texto libre que indican Cabina 2
+const ALEF_KEYS_CABINA_2 = [
+  'glass skin','prime skin','calm babe','eternal glow','pure babe','prestige glow',
+  'skin care','limpieza facial','exfoli','hifu','lipopapada','carboxi',
+  'corporal','reduccion','reducción','glúteo','gluteo','reafirma'
+]
+
+// Keywords que indican post-procedimiento (NO cuenta como conversión)
+const ALEF_KEYS_EXCLUIR = ['retiro','control','follow','seguimiento','revisión','revision']
+
+const alefClasificarPaciente = (p: any): 'CABINA_1' | 'CABINA_2' | 'EXCLUIDO' => {
+  const txt = String(p?.procedimiento || '').toLowerCase().trim()
+
+  // 1) Excluir post-procedimientos
+  if (ALEF_KEYS_EXCLUIR.some(k => txt.includes(k))) return 'EXCLUIDO'
+
+  // 2) Detectar cabina vía procedure_id (preferido)
+  const pid = p?.procedure_id ? String(p.procedure_id) : ''
   if (pid && procedures.value?.length) {
-    const proc = procedures.value.find((x: any) => String(x.id) === pid)
+    const proc = procedures.value.find((x: any) => String(x.id) === pid) as any
     if (proc) {
-      const grupo = String((proc as any).grupo || '').toUpperCase()
-      // FACIAL BASICO o FACIAL PREMIUM = skin cares
-      return grupo === 'FACIAL BASICO' || grupo === 'FACIAL PREMIUM'
+      const grupo = String(proc.grupo || '').toUpperCase()
+      if (ALEF_GRUPOS_CABINA_2.has(grupo)) return 'CABINA_2'
+      if (proc.cabina === 'cabina2') return 'CABINA_2'
+      // Catálogo apunta a cabina1 explícito o por defecto
+      return 'CABINA_1'
     }
   }
-  // Fallback por nombre (texto libre del paciente)
-  const txt = String(paciente?.procedimiento || '').toLowerCase()
-  const skinKeys = [
-    'glass skin', 'prime skin', 'calm babe', 'eternal glow',
-    'pure babe', 'prestige glow', 'skin care', 'limpieza facial', 'exfoli'
-  ]
-  return skinKeys.some(k => txt.includes(k))
+
+  // 3) Fallback por keywords del texto libre
+  if (ALEF_KEYS_CABINA_2.some(k => txt.includes(k))) return 'CABINA_2'
+
+  // Default: medicina estética (cabina 1)
+  return 'CABINA_1'
 }
 
 const alefBreakdown = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const ia = [...pacientesWpp.value, ...pacientesFbIg.value]
-    .filter((p: any) => p.created_at?.startsWith(thisMonth) && p.agendamiento === 'IA')
-  const faciales = ia.filter(alefEsFacialSkin)
-  const otros = ia.filter((p: any) => !alefEsFacialSkin(p))
-  const monto = faciales.length * ALEF_TARIFA_FACIAL + otros.length * ALEF_TARIFA_OTROS
+  const todos = [...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.created_at?.startsWith(thisMonth))
+
+  const cabina1: any[] = []  // S/50 reserva → ALEF S/20
+  const cabina2: any[] = []  // S/20 reserva → ALEF S/10
+  const excluidos: any[] = [] // retiros / post-procedimientos
+
+  todos.forEach((p: any) => {
+    const cls = alefClasificarPaciente(p)
+    if (cls === 'CABINA_1') cabina1.push(p)
+    else if (cls === 'CABINA_2') cabina2.push(p)
+    else excluidos.push(p)
+  })
+
+  const monto = cabina1.length * ALEF_COMISION_ALTA + cabina2.length * ALEF_COMISION_BAJA
   return {
-    faciales,
-    otros,
-    facialesCount: faciales.length,
-    otrosCount: otros.length,
+    cabina1,                   // pacientes con reserva S/50 (medicina estética)
+    cabina2,                   // pacientes con reserva S/20 (no invasivos)
+    excluidos,                 // post-procedimientos (retiros, etc.)
+    cabina1Count: cabina1.length,
+    cabina2Count: cabina2.length,
+    excluidosCount: excluidos.length,
+    totalConversiones: cabina1.length + cabina2.length,
     monto,
-    mes: thisMonth
+    mes: thisMonth,
   }
 })
 

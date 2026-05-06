@@ -131,109 +131,157 @@
 
     <!-- ==========  MAIN CONTENT  ========== -->
     <div class="main-content">
-      <!-- ==========  VISTA: DASHBOARD  ========== -->
+      <!-- ==========  VISTA: DASHBOARD CONSOLIDADO  ========== -->
       <div v-if="activeView === 'dashboard'" class="view-container">
         <header class="top-header">
-          <h1>Dashboard</h1>
-          <button class="btn-primary" @click="fetchContribuyentes">
+          <h1>Alef Company — Vista Consolidada</h1>
+          <button class="btn-primary" @click="fetchAllCompanies">
             <v-icon icon="mdi-refresh" size="16" />
-            <span>Refresh Data</span>
+            <span>Actualizar</span>
           </button>
         </header>
 
         <div class="content-area">
-          <!-- Stats Grid -->
+          <!-- KPIs Globales -->
           <div class="stats-grid">
-            <div v-for="(stat, i) in stats" :key="i" class="stat-card">
-              <div class="stat-header">
-                <span class="stat-title">{{ stat.title }}</span>
-                <div :class="['stat-change', stat.trend]">
-                  <v-icon :icon="stat.trend === 'up' ? 'mdi-trending-up' : 'mdi-trending-down'" size="12" />
-                  {{ stat.change }}
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Empresas Activas</span></div>
+              <div class="stat-value">{{ companiesData.filter(c => c.loaded).length }}</div>
+              <div class="stat-description">de {{ companiesData.length }} totales</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Total Leads (mes)</span></div>
+              <div class="stat-value">{{ totalGlobalLeads.toLocaleString() }}</div>
+              <div class="stat-description">Todas las empresas combinadas</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Conversiones (mes)</span></div>
+              <div class="stat-value">{{ totalGlobalConversiones.toLocaleString() }}</div>
+              <div class="stat-description">Pacientes / clientes nuevos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Ingresos Totales (mes)</span></div>
+              <div class="stat-value">S/ {{ totalGlobalRevenue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-description">Sumado de todas las cuentas</div>
+            </div>
+          </div>
+
+          <!-- Galeria de Empresas -->
+          <div style="margin-top: 1.5rem;">
+            <h2 style="margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600; color: var(--foreground);">Empresas</h2>
+
+            <div class="alef-companies-grid">
+              <div v-for="co in companiesData" :key="co.id" class="alef-company-card" @click="navigateTo(co.dashboardPath)">
+                <!-- Header -->
+                <div class="alef-co-header">
+                  <div class="alef-co-logo">
+                    <v-img v-if="co.logo" :src="co.logo" style="width: 36px; height: 36px; border-radius: 50%;" />
+                    <div v-else style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px;">
+                      {{ co.name.charAt(0) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-weight: 600; font-size: 0.95rem; color: var(--foreground);">{{ co.name }}</div>
+                    <div style="font-size: 0.72rem; color: var(--muted-foreground);">{{ co.type }}</div>
+                  </div>
+                  <v-spacer />
+                  <div :class="['alef-co-status', co.loaded ? 'active' : 'loading']">
+                    {{ co.loaded ? 'Activo' : 'Cargando...' }}
+                  </div>
+                </div>
+
+                <!-- Metricas -->
+                <div class="alef-co-metrics" v-if="co.loaded">
+                  <div class="alef-co-metric">
+                    <div class="alef-co-metric-value">{{ co.leadsTotal.toLocaleString() }}</div>
+                    <div class="alef-co-metric-label">Leads</div>
+                  </div>
+                  <div class="alef-co-metric">
+                    <div class="alef-co-metric-value">{{ co.conversiones }}</div>
+                    <div class="alef-co-metric-label">Conversiones</div>
+                  </div>
+                  <div class="alef-co-metric">
+                    <div class="alef-co-metric-value">S/ {{ co.revenue.toLocaleString('es-PE', { maximumFractionDigits: 0 }) }}</div>
+                    <div class="alef-co-metric-label">Ingresos</div>
+                  </div>
+                  <div class="alef-co-metric">
+                    <div class="alef-co-metric-value">S/ {{ co.egresos.toLocaleString('es-PE', { maximumFractionDigits: 0 }) }}</div>
+                    <div class="alef-co-metric-label">Egresos</div>
+                  </div>
+                </div>
+                <div v-else style="padding: 1rem; text-align: center;">
+                  <v-progress-circular indeterminate size="24" width="2" color="primary" />
+                </div>
+
+                <!-- Barras de temperatura de leads -->
+                <div class="alef-co-temps" v-if="co.loaded && co.leadsTotal > 0">
+                  <div class="alef-co-temp-bar">
+                    <div class="alef-co-temp-fill caliente" :style="{ width: pct(co.calientes, co.leadsTotal) }" />
+                    <div class="alef-co-temp-fill tibio" :style="{ width: pct(co.tibios, co.leadsTotal) }" />
+                    <div class="alef-co-temp-fill frio" :style="{ width: pct(co.frios, co.leadsTotal) }" />
+                  </div>
+                  <div class="alef-co-temp-legend">
+                    <span style="color: #ef4444;">{{ co.calientes }} cal</span>
+                    <span style="color: #f59e0b;">{{ co.tibios }} tib</span>
+                    <span style="color: #3b82f6;">{{ co.frios }} frio</span>
+                  </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="alef-co-footer">
+                  <span style="font-size: 0.72rem; color: var(--muted-foreground);">
+                    <v-icon icon="mdi-open-in-new" size="12" /> Ver dashboard
+                  </span>
+                  <span v-if="co.chatwootUrl" style="font-size: 0.72rem; color: var(--muted-foreground);">
+                    <a :href="co.chatwootUrl" target="_blank" @click.stop style="color: inherit; text-decoration: none;">
+                      <v-icon icon="mdi-chat" size="12" /> Chats
+                    </a>
+                  </span>
                 </div>
               </div>
-              <div class="stat-value">{{ stat.value }}</div>
-              <div class="stat-subtitle">
-                <v-icon :icon="stat.trend === 'up' ? 'mdi-trending-up' : 'mdi-trending-down'" size="16" />
-                {{ stat.subtitle }}
-              </div>
-              <div class="stat-description">{{ stat.description }}</div>
             </div>
           </div>
 
-          <!-- Chart Section -->
-          <div class="chart-section">
-            <div class="chart-header">
-              <div class="chart-title-section">
-                <h2>Total Visitors</h2>
-                <div class="chart-subtitle">Total for the last 3 months</div>
-              </div>
-              <div class="time-filters">
-                <button v-for="btn in zoomButtons" :key="btn.id"
-                  :class="['time-btn', { active: activeZoom === btn.id }]" @click="handleZoom(btn.id)">
-                  {{ btn.label }}
-                </button>
-              </div>
-            </div>
-            <div class="chart-area">
-              <client-only>
-                <apexchart type="area" height="350" :options="chartOptions" :series="series" />
-              </client-only>
-            </div>
-          </div>
-
-          <!-- Table Section -->
-          <div class="table-section">
-            <div class="table-tabs">
-              <button v-for="tab in tabs" :key="tab.value" :class="['tab', { active: activeTab === tab.value }]"
-                @click="activeTab = tab.value">
-                {{ tab.label }}
-                <span v-if="tab.badge" class="badge">{{ tab.badge }}</span>
-              </button>
-              <div class="spacer" />
-              <button class="tab-action">
-                <v-icon icon="mdi-view-column" size="16" />
-                Customize Columns
-              </button>
-              <button class="tab-action primary" @click="fetchContribuyentes">
-                <v-icon icon="mdi-plus" size="16" />
-                Add Section
-              </button>
-            </div>
-            <v-card flat class="custom-data-table">
-              <v-card-title class="table-search-bar">
-                <span class="table-title">Pacientes</span>
-                <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(contribuyentes, headers, 'alef-pacientes')">
-                  <v-icon>mdi-file-excel</v-icon>
-                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
-                </v-btn>
-                <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Search" single-line hide-details
-                  density="compact" variant="outlined" class="search-field"></v-text-field>
-              </v-card-title>
-              <v-data-table :headers="headers" :items="contribuyentes" :search="search" :loading="loading"
-                :items-per-page="10" class="elevation-0" loading-text="Cargando datos de Supabase..."
-                no-data-text="No hay datos disponibles">
-                <template v-slot:item.estado="{ item }">
-                  <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
-                    <span class="status-dot" />
-                    {{ item.estado }}
+          <!-- Tabla comparativa -->
+          <div style="margin-top: 2rem;">
+            <h2 style="margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600; color: var(--foreground);">Comparativa Mensual</h2>
+            <v-card flat style="background: var(--card); border: 1px solid var(--border); border-radius: 12px;">
+              <v-data-table
+                :headers="companyTableHeaders"
+                :items="companiesData.filter(c => c.loaded)"
+                :items-per-page="-1"
+                density="compact"
+                class="elevation-0"
+                style="background: transparent;"
+              >
+                <template v-slot:item.name="{ item }">
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex-shrink: 0;">
+                      <v-img v-if="item.logo" :src="item.logo" style="width: 100%; height: 100%;" />
+                      <div v-else style="width: 100%; height: 100%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 10px;">{{ item.name.charAt(0) }}</div>
+                    </div>
+                    <span style="font-weight: 500;">{{ item.name }}</span>
+                  </div>
+                </template>
+                <template v-slot:item.revenue="{ item }">
+                  S/ {{ item.revenue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                </template>
+                <template v-slot:item.egresos="{ item }">
+                  S/ {{ item.egresos.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                </template>
+                <template v-slot:item.utilidad="{ item }">
+                  <span :style="{ color: (item.revenue - item.egresos) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }">
+                    S/ {{ (item.revenue - item.egresos).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                   </span>
                 </template>
-                <template v-slot:item.actions="{ item }">
-                  <button class="icon-btn" @click="editItem(item)">
-                    <v-icon icon="mdi-pencil" size="16" />
-                  </button>
-                  <button class="icon-btn" @click="deleteItem(item)">
-                    <v-icon icon="mdi-delete" size="16" />
-                  </button>
+                <template v-slot:item.tasaConversion="{ item }">
+                  {{ item.leadsTotal > 0 ? ((item.conversiones / item.leadsTotal) * 100).toFixed(1) : '0' }}%
                 </template>
               </v-data-table>
             </v-card>
           </div>
+
         </div>
-
-
       </div>
 
       <!-- ==========  VISTA: SETTINGS  ========== -->
@@ -1427,7 +1475,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
 
@@ -1693,7 +1741,7 @@ onMounted(() => {
   applyTheme()
   fetchContribuyentes()
   fetchEgresos()
-  handleZoom('one_month')
+  fetchAllCompanies()
 })
 
 function logout() {
@@ -1728,130 +1776,245 @@ const documentItems = [
   { icon: 'mdi-robot-mower', label: 'Meta', id: 'meta' }
 ]
 
-/* ---------------- Stats ---------------- */
-const stats: Stat[] = [
+/* ---------------- Empresas Consolidadas ---------------- */
+
+interface CompanyData {
+  id: string
+  name: string
+  type: string
+  logo: string
+  dashboardPath: string
+  chatwootUrl: string
+  loaded: boolean
+  leadsTotal: number
+  frios: number
+  tibios: number
+  calientes: number
+  conversiones: number
+  revenue: number
+  egresos: number
+  leadTablesWpp: string
+  leadTablesFbig: string
+  pacientesTablesWpp: string
+  pacientesTablesFbig: string
+  egresosTable: string
+  revenueModel: 'medical' | 'ecommerce' | 'receivables' | 'none'
+  purchaseTables: string[]
+}
+
+const companiesData = reactive<CompanyData[]>([
   {
-    title: 'Total Revenue',
-    value: '$1,250.00',
-    change: '+12.5%',
-    trend: 'up',
-    subtitle: 'Trending up this month',
-    description: 'Visitors for the last 6 months'
+    id: 'healup', name: 'Healup', type: 'Medicina Estética', logo: '',
+    dashboardPath: '/pruebas/Healup', chatwootUrl: 'https://chats.alef.company/app/accounts/2/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppHEALUP', leadTablesFbig: 'GeneralBDfbigHEALUP',
+    pacientesTablesWpp: 'PacientesBDwppHEALUP', pacientesTablesFbig: 'PacientesBDfbigHEALUP',
+    egresosTable: 'egresos_healup', revenueModel: 'medical', purchaseTables: []
   },
   {
-    title: 'New Customers',
-    value: '1,234',
-    change: '-20%',
-    trend: 'down',
-    subtitle: 'Down 20% this period',
-    description: 'Acquisition needs attention'
+    id: 'solari', name: 'Solari', type: 'Medicina Estética', logo: '',
+    dashboardPath: '/pruebas/Solari', chatwootUrl: 'https://chats.alef.company/app/accounts/2/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppSOLARI', leadTablesFbig: 'GeneralBDfbigSOLARI',
+    pacientesTablesWpp: 'PacientesBDwppSOLARI', pacientesTablesFbig: 'PacientesBDfbigSOLARI',
+    egresosTable: 'egresos_solari', revenueModel: 'medical', purchaseTables: []
   },
   {
-    title: 'Active Accounts',
-    value: '45,678',
-    change: '+12.5%',
-    trend: 'up',
-    subtitle: 'Strong user retention',
-    description: 'Engagement exceed targets'
+    id: 'clinicaarroyo', name: 'Clínica Arroyo', type: 'Clínica Médica', logo: '',
+    dashboardPath: '/pruebas/ClinicaArroyo', chatwootUrl: 'https://chats.alef.company/app/accounts/5/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppARROYO', leadTablesFbig: 'GeneralBDfbigARROYO',
+    pacientesTablesWpp: 'PacientesBDwppARROYO', pacientesTablesFbig: 'PacientesBDfbigARROYO',
+    egresosTable: 'egresos_clinicaarroyo', revenueModel: 'medical', purchaseTables: []
   },
   {
-    title: 'Growth Rate',
-    value: '4.5%',
-    change: '+4.5%',
-    trend: 'up',
-    subtitle: 'Steady performance increase',
-    description: 'Meets growth projections'
+    id: 'estetikamedika', name: 'Estetika Medika', type: 'Medicina Estética', logo: '',
+    dashboardPath: '/pruebas/EstetikaMedika', chatwootUrl: 'https://chats.alef.company/app/accounts/14/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppEstetikaMedika', leadTablesFbig: 'GeneralBDfbigEstetikaMedika',
+    pacientesTablesWpp: 'PacientesBDwppEstetikaMedika', pacientesTablesFbig: 'PacientesBDfbigEstetikaMedika',
+    egresosTable: 'egresos_EstetikaMedika', revenueModel: 'medical', purchaseTables: []
+  },
+  {
+    id: 'davila', name: 'Miguel Davila', type: 'Medicina Estética', logo: '',
+    dashboardPath: '/pruebas/MiguelDavila', chatwootUrl: 'https://chats.alef.company/app/accounts/3/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppDAVILA', leadTablesFbig: 'GeneralBDfbigDAVILA',
+    pacientesTablesWpp: 'PacientesBDwppDAVILA', pacientesTablesFbig: 'PacientesBDfbigDAVILA',
+    egresosTable: 'egresos_DAVILA', revenueModel: 'medical', purchaseTables: []
+  },
+  {
+    id: 'brada', name: 'Brada Perfumes', type: 'E-commerce Perfumes', logo: '',
+    dashboardPath: '/pruebas/BradaPerfumes', chatwootUrl: 'https://chats.alef.company/app/accounts/8/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppBRADA', leadTablesFbig: '',
+    pacientesTablesWpp: '', pacientesTablesFbig: '',
+    egresosTable: 'egresos_brada', revenueModel: 'ecommerce', purchaseTables: ['comprasBDwppBRADA', 'comprasBDwppBRADA24_7']
+  },
+  {
+    id: 'alegrated', name: 'Alegrated', type: 'E-commerce', logo: '',
+    dashboardPath: '/pruebas/Alegrated', chatwootUrl: 'https://chats.alef.company/app/accounts/7/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppALEGRATED', leadTablesFbig: 'GeneralBDfbigALEGRATED',
+    pacientesTablesWpp: '', pacientesTablesFbig: '',
+    egresosTable: 'egresos_alegrated', revenueModel: 'ecommerce', purchaseTables: ['compraswpplimaalegrated', 'compraswppprovinciaalegrated', 'compraswppextranjeroalegrated']
+  },
+  {
+    id: 'skip', name: 'SKIP', type: 'Paracaidismo / Servicios', logo: '',
+    dashboardPath: '/pruebas/SKIP', chatwootUrl: 'https://chats.alef.company/app/accounts/10/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppSKIP', leadTablesFbig: 'GeneralBDfbigSKIP',
+    pacientesTablesWpp: '', pacientesTablesFbig: '',
+    egresosTable: 'skip_egresos', revenueModel: 'ecommerce', purchaseTables: ['skip_reservas']
+  },
+  {
+    id: 'origitec', name: 'Origitec', type: 'Tech E-commerce', logo: '',
+    dashboardPath: '/pruebas/Origitec', chatwootUrl: 'https://chats.alef.company/app/accounts/10/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppOrigitec', leadTablesFbig: 'GeneralBDfbigOrigitec',
+    pacientesTablesWpp: '', pacientesTablesFbig: '',
+    egresosTable: 'egresos_origitec', revenueModel: 'ecommerce', purchaseTables: ['pago_completo_motorizado', 'pago_completo_courier', 'pago_completo_recojo_tienda', 'reserva_recojo_tienda']
+  },
+  {
+    id: 'estasconsuerte', name: 'Estás Con Suerte', type: 'Sorteos / Suscripciones', logo: '',
+    dashboardPath: '/pruebas/EstasConSuerte', chatwootUrl: 'https://chats.alef.company/app/accounts/10/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'ECS_GeneralBDwpp', leadTablesFbig: 'ECS_GeneralBDfbig',
+    pacientesTablesWpp: '', pacientesTablesFbig: '',
+    egresosTable: 'ECS_egresos', revenueModel: 'ecommerce', purchaseTables: ['ECS_pago_completo_motorizado', 'ECS_pago_completo_courier', 'ECS_pago_completo_recojo_tienda', 'ECS_reserva_recojo_tienda']
+  },
+  {
+    id: 'gatwick', name: 'Gatwick', type: 'CCTV / Servicios Técnicos', logo: '',
+    dashboardPath: '/pruebas/Gatwick', chatwootUrl: 'https://chats.alef.company/app/accounts/15/dashboard',
+    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
+    leadTablesWpp: 'GeneralBDwppGATWICK', leadTablesFbig: 'GeneralBDfbigGATWICK',
+    pacientesTablesWpp: 'ClientesBDwppGATWICK', pacientesTablesFbig: 'ClientesBDfbigGATWICK',
+    egresosTable: 'egresos_GATWICK', revenueModel: 'receivables', purchaseTables: ['gatwick_cobranzas']
   }
+])
+
+const companyTableHeaders = [
+  { title: 'Empresa', key: 'name', sortable: true },
+  { title: 'Leads', key: 'leadsTotal', sortable: true },
+  { title: 'Conversiones', key: 'conversiones', sortable: true },
+  { title: 'Tasa Conv.', key: 'tasaConversion', sortable: true },
+  { title: 'Ingresos', key: 'revenue', sortable: true },
+  { title: 'Egresos', key: 'egresos', sortable: true },
+  { title: 'Utilidad', key: 'utilidad', sortable: true }
 ]
 
-/* ---------------- Tabs ---------------- */
-const tabs: Tab[] = [
-  { label: 'Outline', value: 'outline' },
-  { label: 'Past Performance', value: 'performance', badge: '3' },
-  { label: 'Key Personnel', value: 'personnel', badge: '2' },
-  { label: 'Focus Documents', value: 'focus' }
-]
+const totalGlobalLeads = computed(() => companiesData.reduce((s, c) => s + c.leadsTotal, 0))
+const totalGlobalConversiones = computed(() => companiesData.reduce((s, c) => s + c.conversiones, 0))
+const totalGlobalRevenue = computed(() => companiesData.reduce((s, c) => s + c.revenue, 0))
 
-/* ---------------- ApexCharts Data ---------------- */
-const fullData: [number, number][] = [
-  [1358982000000, 38.10],
-  [1359068400000, 38.32],
-  [1359327600000, 38.24],
-  [1359414000000, 38.52],
-  [1359500400000, 37.94],
-  [1359586800000, 37.83],
-  [1359673200000, 38.34],
-  [1359932400000, 38.10],
-  [1360018800000, 38.51],
-  [1360105200000, 38.40],
-  [1360191600000, 38.07],
-  [1360278000000, 39.12],
-  [1360537200000, 38.64],
-  [1360623600000, 38.89],
-  [1360710000000, 38.81],
-  [1360796400000, 38.61],
-  [1360882800000, 38.63],
-  [1361228400000, 38.99],
-  [1361314800000, 38.77],
-  [1361401200000, 38.34],
-  [1361487600000, 38.55],
-  [1361746800000, 38.11],
-  [1361833200000, 38.59],
-  [1361919600000, 39.60]]
-
-const ranges: Record<string, [number, number]> = {
-  one_month: [Date.UTC(2013, 1, 1), Date.UTC(2013, 1, 27)],
-  six_months: [Date.UTC(2012, 8, 27), Date.UTC(2013, 1, 27)],
-  one_year: [Date.UTC(2012, 1, 27), Date.UTC(2013, 1, 27)],
-  ytd: [Date.UTC(2013, 0, 1), Date.UTC(2013, 1, 27)],
-  all: [fullData[0][0], fullData.at(-1)![0]]
+function pct(val: number, total: number) {
+  if (!total) return '0%'
+  return Math.round((val / total) * 100) + '%'
 }
 
-const series = ref([{ name: 'Visitors', data: fullData }])
-const chartEl = ref<any>(null)
+const currentMonthPrefix = computed(() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+})
 
-const chartOptions = computed<ApexOptions>(() => ({
-  chart: {
-    id: 'area-datetime',
-    type: 'area',
-    zoom: { autoScaleYaxis: true },
-    background: 'transparent',
-    foreColor: getComputedStyle(document.documentElement)
-      .getPropertyValue('--foreground')
-      .trim()
-  },
-  colors: ['var(--chart-3)'],
-  fill: {
-    type: 'gradient',
-    gradient: {
-      shadeIntensity: 1,
-      opacityFrom: 0.7,
-      opacityTo: 0.05,
-      stops: [0, 100]
+async function safeCount(table: string): Promise<any[]> {
+  if (!table) return []
+  try {
+    const { data } = await (client.from(table) as any).select('*')
+    return data || []
+  } catch { return [] }
+}
+
+async function fetchCompanyData(co: CompanyData) {
+  const now = new Date()
+  const mesActual = now.getMonth()
+  const anioActual = now.getFullYear()
+
+  try {
+    // Leads WPP
+    const leadsWpp = await safeCount(co.leadTablesWpp)
+    const leadsFbig = await safeCount(co.leadTablesFbig)
+    const allLeads = [...leadsWpp, ...leadsFbig]
+
+    // Filtrar leads del mes actual
+    const leadsThisMonth = allLeads.filter(l => {
+      const d = new Date(l.created_at)
+      return d.getMonth() === mesActual && d.getFullYear() === anioActual
+    })
+
+    co.leadsTotal = leadsThisMonth.length
+
+    // Temperatura
+    co.frios = leadsThisMonth.filter(l => (l.lead_status || '').toLowerCase().includes('fri')).length
+    co.tibios = leadsThisMonth.filter(l => (l.lead_status || '').toLowerCase().includes('tibi')).length
+    co.calientes = leadsThisMonth.filter(l => (l.lead_status || '').toLowerCase().includes('caliente')).length
+
+    // Conversiones (pacientes del mes)
+    if (co.revenueModel === 'medical') {
+      const pacWpp = await safeCount(co.pacientesTablesWpp)
+      const pacFbig = await safeCount(co.pacientesTablesFbig)
+      const allPac = [...pacWpp, ...pacFbig]
+      co.conversiones = allPac.filter(p => {
+        const fa = p.fecha_agendamiento || ''
+        return fa.startsWith(currentMonthPrefix.value)
+      }).length
+
+      // Revenue: sum precio_reserva + precio_tratamiento de pacientes del mes
+      const pacMes = allPac.filter(p => (p.fecha_agendamiento || '').startsWith(currentMonthPrefix.value))
+      co.revenue = pacMes.reduce((s, p) => {
+        const reserva = parseFloat(p.precio_reserva) || 0
+        const tratamiento = parseFloat(p.precio_tratamiento) || 0
+        return s + reserva + tratamiento
+      }, 0)
+    } else if (co.revenueModel === 'ecommerce') {
+      // Revenue: sum precio from purchase tables
+      let totalRev = 0
+      let totalSales = 0
+      for (const pt of co.purchaseTables) {
+        const rows = await safeCount(pt)
+        const mesRows = rows.filter(r => {
+          const d = new Date(r.created_at)
+          return d.getMonth() === mesActual && d.getFullYear() === anioActual
+        })
+        totalSales += mesRows.length
+        totalRev += mesRows.reduce((s, r) => s + (parseFloat(r.precio) || 0) * (parseInt(r.cantidad) || 1), 0)
+      }
+      co.revenue = totalRev
+      co.conversiones = totalSales
+    } else if (co.revenueModel === 'receivables') {
+      // Gatwick: cobranzas pagadas del mes
+      const rows = await safeCount('gatwick_cobranzas')
+      const mesRows = rows.filter(r => {
+        const d = new Date(r.created_at)
+        return d.getMonth() === mesActual && d.getFullYear() === anioActual
+      })
+      co.revenue = mesRows.filter(r => r.estado_pago === 'pagado').reduce((s, r) => s + (parseFloat(r.monto) || 0), 0)
+      co.conversiones = mesRows.filter(r => r.estado_pago === 'pagado').length
     }
-  },
-  grid: { borderColor: 'var(--border)', strokeDashArray: 4 },
-  dataLabels: { enabled: false },
-  xaxis: { type: 'datetime' },
-  theme: { mode: isDark.value ? 'dark' : 'light' }
-}))
 
-const activeZoom = ref<keyof typeof ranges>('one_month')
+    // Egresos
+    const egresosRows = await safeCount(co.egresosTable)
+    co.egresos = egresosRows.filter(e => {
+      if (e.deleted_at || e.descartado || e.deleted) return false
+      const d = new Date(e.created_at)
+      return d.getMonth() === mesActual && d.getFullYear() === anioActual
+    }).reduce((s, e) => s + ((parseFloat(e.precio) || 0) * (parseInt(e.cantidad) || 1)), 0)
 
-function handleZoom(btnId: keyof typeof ranges) {
-  activeZoom.value = btnId
-  const [start, end] = ranges[btnId]
-  series.value[0].data = fullData.filter(([ts]) => ts >= start && ts <= end)
-  nextTick(() => chartEl.value?.zoomX(start, end))
+    co.loaded = true
+  } catch (err) {
+    console.error(`[AlefCompany] Error fetching ${co.id}:`, err)
+    co.loaded = true
+  }
 }
 
-const zoomButtons = [
-  { id: 'one_month', label: '1M' },
-  { id: 'six_months', label: '6M' },
-  { id: 'one_year', label: '1Y' },
-  { id: 'ytd', label: 'YTD' },
-  { id: 'all', label: 'ALL' }
-]
+async function fetchAllCompanies() {
+  companiesData.forEach(c => { c.loaded = false })
+  // Fetch in parallel batches of 3 to not overwhelm Supabase
+  for (let i = 0; i < companiesData.length; i += 3) {
+    const batch = companiesData.slice(i, i + 3)
+    await Promise.all(batch.map(co => fetchCompanyData(co)))
+  }
+}
 
 /* ---------------- Calendar Types & Interfaces ---------------- */
 const client = useSupabaseClient()
@@ -3365,5 +3528,100 @@ onUnmounted(() => {
   color: #16a34a;
   border-color: #16a34a;
   opacity: 1;
+}
+
+/* ── GALERIA DE EMPRESAS ───────────────────────────────── */
+.alef-companies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.alef-company-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.alef-company-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  transform: translateY(-2px);
+}
+
+.alef-co-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.alef-co-status {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.alef-co-status.active { background: rgba(34,197,94,0.15); color: #16a34a; }
+.alef-co-status.loading { background: rgba(234,179,8,0.15); color: #ca8a04; }
+
+.alef-co-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.alef-co-metric {
+  text-align: center;
+  padding: 0.4rem 0;
+  background: var(--sidebar);
+  border-radius: 8px;
+}
+.alef-co-metric-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+.alef-co-metric-label {
+  font-size: 0.65rem;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+
+.alef-co-temps {
+  margin-bottom: 0.5rem;
+}
+.alef-co-temp-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sidebar);
+  display: flex;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.alef-co-temp-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+.alef-co-temp-fill.caliente { background: #ef4444; }
+.alef-co-temp-fill.tibio { background: #f59e0b; }
+.alef-co-temp-fill.frio { background: #3b82f6; }
+
+.alef-co-temp-legend {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.alef-co-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
 }
 </style>

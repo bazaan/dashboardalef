@@ -696,7 +696,53 @@ const cargarCitasHoy = async () => {
         .order('time', { ascending: true })
     }
     if (resp.error) throw resp.error
-    citasHoy.value = resp.data || []
+    const raw = resp.data || []
+
+    // ── DEDUP de citas duplicadas ──
+    // Origen del problema: la BD tiene citas con dos formatos de fecha
+    // ('2026-05-06' ISO y '06-05-2026' legacy DD-MM-YYYY). Además la IA
+    // y el operador a veces crean 2 entradas para el mismo paciente.
+    // Estrategia: si hay 2+ citas con mismo DNI o mismo teléfono normalizado,
+    // mantenemos solo la de `created_at` más reciente (la corregida).
+    // Si no tiene DNI ni teléfono, la mantenemos siempre.
+    const normPhone = (p: string) => {
+      const d = String(p || '').replace(/[^\d]/g, '')
+      return d.startsWith('51') && d.length === 11 ? d.slice(2) : d
+    }
+    const keyOf = (r: any): string | null => {
+      const dni = String(r.client_dni || '').trim()
+      if (dni) return 'dni:' + dni
+      const ph = normPhone(r.client_phone)
+      if (ph) return 'tel:' + ph
+      return null
+    }
+    const byKey = new Map<string, any>()
+    const sinKey: any[] = []
+    let duplicados = 0
+    for (const r of raw) {
+      const k = keyOf(r)
+      if (!k) {
+        sinKey.push(r)
+        continue
+      }
+      const prev = byKey.get(k)
+      if (!prev) {
+        byKey.set(k, r)
+      } else {
+        duplicados++
+        // Conservar la más reciente por created_at
+        const prevCa = String(prev.created_at || '')
+        const curCa = String(r.created_at || '')
+        if (curCa > prevCa) byKey.set(k, r)
+      }
+    }
+    const deduped = [...byKey.values(), ...sinKey].sort((a, b) =>
+      String(a.time || '').localeCompare(String(b.time || ''))
+    )
+    if (duplicados > 0) {
+      console.warn(`[CobroAtencion] ${duplicados} cita(s) duplicada(s) ocultada(s) por dedup (DNI o teléfono).`)
+    }
+    citasHoy.value = deduped
   } catch (e: any) {
     console.error('[CobroAtencion] Error cargando citas:', e?.message)
   } finally {

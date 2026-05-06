@@ -4281,6 +4281,9 @@
 
     <!-- PROC SUPPLY DIALOG removed — replaced by per-procedure Receta dialog -->
 
+    <!-- ==========  AGENTE CONVERSACIONAL DE VOZ  ========== -->
+    <HealupAgent />
+
   </div>
 </template>
 

@@ -719,15 +719,26 @@
                 mes ant: {{ hotLeadsCountPrev }}
               </div>
             </div>
-            <div class="stat-card" style="cursor: pointer;" @click="openPacientesAgendadosDialog"
-              title="Ver lista detallada de pacientes agendados este mes">
+            <div class="stat-card" style="cursor: pointer;" @click="openPacientesAgendadosDialog('conversion')"
+              title="Pacientes nuevos convertidos este mes (created_at)">
               <div class="stat-value" style="color: #22c55e">{{ hotLeadsConvertedCount }}</div>
               <div class="stat-title">
-                Pacientes este mes
+                Convertidos este mes
                 <v-icon size="14" icon="mdi-arrow-top-right" style="opacity:0.5; margin-left:2px;" />
               </div>
               <div class="stat-change up">
                 {{ totalConversionRate.toFixed(1) }}% del total · {{ hotToPatientRate.toFixed(1) }}% de calientes
+              </div>
+            </div>
+            <div class="stat-card" style="cursor: pointer;" @click="openPacientesAgendadosDialog('cita')"
+              title="Pacientes con cita programada para este mes (fecha_agendamiento)">
+              <div class="stat-value" style="color: #daa520">{{ pacientesConCitaEsteMes }}</div>
+              <div class="stat-title">
+                Citas este mes
+                <v-icon size="14" icon="mdi-arrow-top-right" style="opacity:0.5; margin-left:2px;" />
+              </div>
+              <div class="stat-change up">
+                Pacientes que tienen cita en {{ NOMBRES_MESES_LABEL[new Date().getMonth()] }}
               </div>
             </div>
           </div>
@@ -2906,7 +2917,7 @@
       <v-card>
         <v-card-title class="d-flex align-center pa-4" style="gap:12px; flex-wrap:wrap;">
           <v-icon icon="mdi-account-multiple-check" color="success" />
-          <span class="text-h6">Pacientes agendados — {{ pacientesAgendadosMesLabel }}</span>
+          <span class="text-h6">{{ pacientesAgendadosModo === 'cita' ? 'Citas en' : 'Convertidos en' }} {{ pacientesAgendadosMesLabel }}</span>
           <v-chip color="success" variant="flat" size="small">{{ pacientesAgendadosMes.length }} pacientes</v-chip>
           <v-chip color="grey-darken-2" variant="tonal" size="small">
             Reservas: S/ {{ pacientesAgendadosTotalReserva.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
@@ -6486,14 +6497,25 @@ const dedupKeyForAgendado = (row: any): string => {
 }
 
 // Convertidos = pacientes WPP/FBIG cuya CONVERSIÓN ocurrió este mes
-// (created_at del registro), deduplicados. La card de Leads mide la
-// conversión del mes — coherente con "Nuevos este Mes" en Pacientes.
+// (created_at del registro), deduplicados. Card "Convertidos este mes".
 const hotLeadsConvertedCount = computed(() => {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const claves = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value]
     .filter((p: any) => p.created_at?.startsWith(thisMonth))
+    .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
+  return claves.size
+})
+
+// Citas = pacientes WPP/FBIG con CITA programada este mes
+// (fecha_agendamiento), deduplicados. Card "Citas este mes".
+const pacientesConCitaEsteMes = computed(() => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const claves = new Set<string>()
+  ;[...pacientesWpp.value, ...pacientesFbIg.value]
+    .filter((p: any) => p.fecha_agendamiento?.startsWith(thisMonth))
     .forEach((p: any) => claves.add(dedupKeyForAgendado(p)))
   return claves.size
 })
@@ -6506,13 +6528,14 @@ const pacientesAgendadosMesSel = ref('') // YYYY-MM seleccionado (vacío = mes a
 // Etiquetas de meses (compartido entre dialogs/viñetas; el contador usa el mismo array más abajo)
 const NOMBRES_MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-// Meses disponibles: desde created_at (fecha de conversión) de pacientes
-// en redes. Coherente con la métrica de la stat card.
+// Meses disponibles: dependen del modo del dialog (conversion → created_at,
+// cita → fecha_agendamiento).
 const pacientesAgendadosMesesDisponibles = computed(() => {
+  const campo = pacientesAgendadosModo.value === 'cita' ? 'fecha_agendamiento' : 'created_at'
   const set = new Set<string>()
   ;[...pacientesWpp.value, ...pacientesFbIg.value].forEach((p: any) => {
-    const ca = p.created_at
-    if (ca && /^\d{4}-\d{2}/.test(ca)) set.add(ca.slice(0, 7))
+    const v = p[campo]
+    if (v && /^\d{4}-\d{2}/.test(v)) set.add(v.slice(0, 7))
   })
   // Asegurar mes actual presente aunque esté vacío
   const now = new Date()
@@ -6726,13 +6749,13 @@ const pacientesAgendadosMes = computed(() => {
     }
   }
 
-  // Pacientes convertidos en el mes seleccionado (created_at).
-  // Misma métrica que hotLeadsConvertedCount → coincide con la stat card.
+  // Filtra por created_at (modo conversion) o fecha_agendamiento (modo cita)
+  const campoFiltro = pacientesAgendadosModo.value === 'cita' ? 'fecha_agendamiento' : 'created_at'
   const wppRaw = pacientesWpp.value
-    .filter((p: any) => p.created_at?.startsWith(targetMonth))
+    .filter((p: any) => p[campoFiltro]?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'wpp'))
   const fbigRaw = pacientesFbIg.value
-    .filter((p: any) => p.created_at?.startsWith(targetMonth))
+    .filter((p: any) => p[campoFiltro]?.startsWith(targetMonth))
     .map((p: any) => buildRow(p, 'fbig'))
 
   // Dedup en cascada — mismo paciente en WPP y FBIG cuenta una vez.
@@ -6748,9 +6771,9 @@ const pacientesAgendadosMes = computed(() => {
     if (!claves.has(k)) { claves.add(k); fbig.push(r) }
   }
 
-  // Orden DESC por created_at (más reciente primero).
+  // Orden DESC por el campo del filtro (más reciente primero).
   return [...wpp, ...fbig].sort((a, b) =>
-    String(b.created_at).localeCompare(String(a.created_at))
+    String(b[campoFiltro] || '').localeCompare(String(a[campoFiltro] || ''))
   )
 })
 
@@ -6814,8 +6837,12 @@ function getMetodoPagoStyle(raw: string): { color: string; icon: string; label: 
   return { color: 'grey-darken-1', icon: 'mdi-cash-multiple', label: raw }
 }
 
-function openPacientesAgendadosDialog() {
+// Modo del dialog: 'conversion' (filtra por created_at) | 'cita' (filtra por fecha_agendamiento)
+const pacientesAgendadosModo = ref<'conversion' | 'cita'>('conversion')
+
+function openPacientesAgendadosDialog(modo: 'conversion' | 'cita' = 'conversion') {
   pacientesAgendadosSearch.value = ''
+  pacientesAgendadosModo.value = modo
   // Default al mes actual cada vez que se abre
   const now = new Date()
   pacientesAgendadosMesSel.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`

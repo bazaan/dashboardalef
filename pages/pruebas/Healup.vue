@@ -6162,8 +6162,10 @@ function handleNavigation(item: any) {
 }
 
 const financiasItems = [
-  { icon: 'mdi-currency-usd', label: 'Contabilidad', id: 'facturacion' },
-  { icon: 'mdi-chart-line', label: 'Facturación', id: 'contabilidad' },
+  // Vista con tabs (Cobro Atención / GCal / Egresos / Gastos Variables / Factura Electrónica / Catálogo)
+  { icon: 'mdi-currency-usd', label: 'Contabilidad', id: 'contabilidad' },
+  // Vista PSE original (mantiene compatibilidad con flujo viejo de facturas)
+  { icon: 'mdi-receipt-text', label: 'Facturación PSE', id: 'facturacion' },
   { icon: 'mdi-calculator-variant', label: 'Estructura de Precios', id: 'precios' },
   { icon: 'mdi-finance', label: 'Cierre mensual', id: 'cierre_mensual' },
   { icon: 'mdi-bank-check', label: 'Reconciliación caja', id: 'reconciliacion' }

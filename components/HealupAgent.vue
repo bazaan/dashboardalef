@@ -1,9 +1,10 @@
 <template>
   <ClientOnly>
     <!-- Botón flotante (siempre visible para abrir el agente) -->
-    <button v-if="!isOpen" class="agent-fab" @click="open"
-      :title="`ValerIA · ${shortcutLabel}`">
-      <v-icon icon="mdi-microphone" size="28" color="white" />
+    <button v-if="!isOpen" class="agent-fab" :class="{ 'jarvis-active': wakeWordActive }" @click="open"
+      :title="wakeWordActive ? 'ValerIA escuchando... decí &quot;Oye ValerIA&quot;' : `ValerIA · ${shortcutLabel}`">
+      <v-icon :icon="wakeWordActive ? 'mdi-account-voice' : 'mdi-microphone'" size="28" color="white" />
+      <div v-if="wakeWordActive" class="jarvis-pulse"></div>
     </button>
 
     <!-- Panel de chat deslizante -->
@@ -21,6 +22,10 @@
             </div>
           </div>
           <div style="display:flex; gap:4px; align-items:center;">
+            <v-btn icon="mdi-account-voice" size="small" variant="text"
+              :color="wakeWordActive ? 'green' : ''"
+              @click="toggleWakeWord"
+              :title="wakeWordActive ? 'Modo Jarvis: ON — Decí &quot;Oye ValerIA&quot;' : 'Modo Jarvis: OFF'" />
             <v-btn :icon="autoListenAfterSpeak ? 'mdi-headphones' : 'mdi-headphones-off'"
               size="small" variant="text"
               :color="autoListenAfterSpeak ? 'amber' : ''"
@@ -135,11 +140,11 @@
 
 <script setup lang="ts">
 const {
-  isOpen, isThinking, isListening, isSpeaking,
+  isOpen, isThinking, isListening, isSpeaking, wakeWordActive,
   turns, inputText, lastError, shortcut, shortcutLabel,
   autoListenAfterSpeak, availableMics, selectedMicId,
   open, close, reset, sendMessage,
-  startListening, stopListening, stopSpeaking, setShortcut, loadMics, setMic,
+  startListening, stopListening, stopSpeaking, toggleWakeWord, setShortcut, loadMics, setMic,
 } = useHealupAgent()
 
 const showSettings = ref(false)
@@ -340,5 +345,29 @@ watch(turns, () => {
   0% { transform: scale(0.92); opacity: 0.7; }
   70% { transform: scale(1.2); opacity: 0; }
   100% { transform: scale(1.2); opacity: 0; }
+}
+
+/* Jarvis mode */
+.agent-fab.jarvis-active {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 6px 20px rgba(34,197,94,0.4);
+  animation: jarvis-breathe 3s ease-in-out infinite;
+}
+.agent-fab.jarvis-active:hover {
+  box-shadow: 0 8px 28px rgba(34,197,94,0.55);
+}
+.jarvis-pulse {
+  position: absolute; inset: -6px; border-radius: 50%;
+  border: 2px solid #22c55e; opacity: 0;
+  animation: jarvis-ring 2.5s infinite;
+}
+@keyframes jarvis-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+@keyframes jarvis-ring {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  60% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
 }
 </style>

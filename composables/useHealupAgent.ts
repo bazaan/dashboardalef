@@ -69,6 +69,7 @@ export const useHealupAgent = () => {
     isOpen.value = false
     stopListening()
     stopSpeaking()
+    // Don't stop wake word on close — Jarvis mode stays active even with panel closed
   }
   const reset = () => {
     turns.value = []
@@ -191,6 +192,114 @@ export const useHealupAgent = () => {
     } else {
       isListening.value = false
       releaseStream()
+    }
+  }
+
+  // ── Wake word ("Oye ValerIA") — modo Jarvis ──
+  const wakeWordActive = ref(false)
+  let wakeRecognition: any = null
+
+  const startWakeWord = () => {
+    if (!import.meta.client) return
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      lastError.value = 'Tu navegador no soporta reconocimiento de voz continuo. Usá Chrome.'
+      return
+    }
+    stopWakeWord()
+    wakeRecognition = new SpeechRecognition()
+    wakeRecognition.lang = 'es-PE'
+    wakeRecognition.continuous = true
+    wakeRecognition.interimResults = true
+    wakeRecognition.maxAlternatives = 3
+
+    wakeRecognition.onresult = (ev: any) => {
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        for (let alt = 0; alt < ev.results[i].length; alt++) {
+          const t = (ev.results[i][alt].transcript || '').toLowerCase()
+          if (t.includes('valeria') || t.includes('valería') || t.includes('oye vale') || t.includes('hey vale')) {
+            // Wake word detected — extract command after wake word
+            let command = ''
+            if (ev.results[i].isFinal) {
+              command = t.replace(/.*?(valeria|valería|oye vale|hey vale)\s*/i, '').trim()
+            }
+            stopWakeWord()
+            wakeWordActive.value = true // keep state for UI
+            if (!isOpen.value) open()
+
+            if (command && command.length > 3) {
+              // Wake word + command in same utterance (e.g. "Oye ValerIA cuánto hay en caja")
+              sendMessage(command)
+              // Restart wake word after response
+              const unwatchCmd = watch(isThinking, (v) => {
+                if (!v && wakeWordActive.value) {
+                  unwatchCmd()
+                  // Wait for TTS to finish, then restart
+                  const unwatchSpeak = watch(isSpeaking, (sp) => {
+                    if (!sp && wakeWordActive.value) {
+                      unwatchSpeak()
+                      setTimeout(() => startWakeWord(), 500)
+                    }
+                  }, { immediate: true })
+                }
+              })
+            } else {
+              // Just wake word — start Whisper recording for the command
+              setTimeout(() => {
+                startListening()
+                // After Whisper finishes and response is done, restart wake word
+                const unwatchThink = watch(isThinking, (v) => {
+                  if (!v && wakeWordActive.value) {
+                    unwatchThink()
+                    const unwatchSpeak2 = watch(isSpeaking, (sp) => {
+                      if (!sp && wakeWordActive.value) {
+                        unwatchSpeak2()
+                        setTimeout(() => startWakeWord(), 500)
+                      }
+                    }, { immediate: true })
+                  }
+                })
+              }, 200)
+            }
+            return
+          }
+        }
+      }
+    }
+
+    wakeRecognition.onerror = (ev: any) => {
+      // 'no-speech' and 'aborted' are normal — just restart
+      if (ev.error === 'no-speech' || ev.error === 'aborted') {
+        if (wakeWordActive.value) setTimeout(() => startWakeWord(), 300)
+        return
+      }
+      console.warn('[WakeWord] Error:', ev.error)
+    }
+
+    wakeRecognition.onend = () => {
+      // Auto-restart if still in wake word mode (browser stops after silence)
+      if (wakeWordActive.value && !isListening.value && !isThinking.value) {
+        setTimeout(() => startWakeWord(), 300)
+      }
+    }
+
+    wakeRecognition.start()
+  }
+
+  const stopWakeWord = () => {
+    if (wakeRecognition) {
+      try { wakeRecognition.abort() } catch {}
+      wakeRecognition = null
+    }
+  }
+
+  const toggleWakeWord = () => {
+    if (wakeWordActive.value) {
+      wakeWordActive.value = false
+      stopWakeWord()
+    } else {
+      wakeWordActive.value = true
+      startWakeWord()
     }
   }
 
@@ -721,14 +830,16 @@ export const useHealupAgent = () => {
     window.removeEventListener('keydown', handleKeyDown)
     stopListening()
     stopSpeaking()
+    stopWakeWord()
+    wakeWordActive.value = false
   })
 
   return {
-    isOpen, isThinking, isListening, isSpeaking,
+    isOpen, isThinking, isListening, isSpeaking, wakeWordActive,
     turns, inputText, lastError, shortcut, shortcutLabel,
     autoListenAfterSpeak, availableMics, selectedMicId,
     open, close, reset, sendMessage,
     startListening, stopListening, speak, stopSpeaking,
-    setShortcut, loadMics, setMic,
+    toggleWakeWord, setShortcut, loadMics, setMic,
   }
 }

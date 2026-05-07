@@ -2,7 +2,7 @@
   <ClientOnly>
     <!-- Botón flotante (siempre visible para abrir el agente) -->
     <button v-if="!isOpen" class="agent-fab" @click="open"
-      :title="`Asistente de voz · ${shortcutLabel}`">
+      :title="`ValerIA · ${shortcutLabel}`">
       <v-icon icon="mdi-microphone" size="28" color="white" />
     </button>
 
@@ -14,9 +14,9 @@
           <div style="display:flex; align-items:center; gap:10px;">
             <v-icon icon="mdi-robot-happy" color="amber" size="22" />
             <div>
-              <div style="font-weight:700; font-size:0.95rem;">Asistente Healup</div>
+              <div style="font-weight:700; font-size:0.95rem;">ValerIA</div>
               <div style="font-size:0.72rem; opacity:0.65;">
-                Hablale: "registrá un egreso de 50 soles en yape por delivery"
+                Hablá con ValerIA: egresos, citas, pacientes, stock y más
               </div>
             </div>
           </div>

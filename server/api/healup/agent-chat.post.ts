@@ -209,6 +209,16 @@ const TOOLS = [
     }
   },
   {
+    name: 'consultar_caja_chica',
+    description: 'Consultar el saldo de caja chica (efectivo en mano) y cuenta bancaria del mes. Calcula ingresos en efectivo menos egresos en efectivo. Usar cuando pregunten "cuánto hay en caja chica", "saldo de caja", "efectivo disponible", "cuánta plata hay", "caja", "saldo bancario".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        mes: { type: 'string', description: 'YYYY-MM, default mes actual.' }
+      }
+    }
+  },
+  {
     name: 'consultar_leads',
     description: 'Consultar leads (prospectos) de WhatsApp y redes sociales. Usar para "cuántos leads tenemos", "leads calientes", "prospectos del mes".',
     input_schema: {
@@ -236,6 +246,7 @@ CAPACIDADES:
 - STOCK: consultar inventario, ver stock bajo, registrar entradas/salidas/ajustes de insumos
 - LEADS: consultar prospectos por estado (frío/tibio/caliente) y mes
 - RESUMEN: ingresos, egresos, utilidad y pacientes del mes
+- CAJA CHICA: saldo de efectivo en mano (ingresos efectivo − egresos efectivo) y saldo de cuenta bancaria (ingresos no-efectivo − egresos no-efectivo)
 
 REGLAS:
 1. Cuando el usuario pida una acción (registrar, modificar, crear), ejecutala directamente con la tool. NO confirmes antes.

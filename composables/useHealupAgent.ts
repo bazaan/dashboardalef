@@ -309,30 +309,47 @@ export const useHealupAgent = () => {
           const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
         })()
         const [y, m] = mes.split('-')
+        const mesNum = parseInt(m) - 1 // 0-indexed for JS Date
+        const yearNum = parseInt(y)
         const nm = String(parseInt(m) % 12 + 1).padStart(2, '0')
         const ny = parseInt(m) === 12 ? String(parseInt(y) + 1) : y
 
-        // Pacientes nuevos (created_at)
+        // Pacientes — fetch all and filter by fecha_agendamiento (matches dashboard logic)
         const wppQ = (supabase.from('PacientesBDwppHEALUP') as any)
-          .select('id,precio,precio_tratamiento', { count: 'exact', head: false })
-          .gte('created_at', `${mes}-01`).lt('created_at', `${ny}-${nm}-01`)
+          .select('id,precio,precio_tratamiento,fecha_agendamiento,metodo_de_pago')
         const fbigQ = (supabase.from('PacientesBDfbigHEALUP') as any)
-          .select('id,precio,precio_tratamiento', { count: 'exact', head: false })
-          .gte('created_at', `${mes}-01`).lt('created_at', `${ny}-${nm}-01`)
+          .select('id,precio,precio_tratamiento,fecha_agendamiento,metodo_de_pago')
         const egrQ = (supabase.from('egresos_healup') as any)
-          .select('precio,cantidad')
+          .select('precio,cantidad,metodo_pago,descartado,deleted_at')
           .gte('created_at', `${mes}-01`).lt('created_at', `${ny}-${nm}-01`)
 
         const [wpp, fbig, egr] = await Promise.all([wppQ, fbigQ, egrQ])
-        const sumPac = (rows: any[]) => (rows || []).reduce((s, p) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
-        const ingresos = sumPac(wpp.data || []) + sumPac(fbig.data || [])
-        const egresos = (egr.data || []).reduce((s: number, e: any) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
-        const pacientes = (wpp.data?.length || 0) + (fbig.data?.length || 0)
+
+        // Filter pacientes by fecha_agendamiento month (same as dashboard)
+        const filterByMonth = (rows: any[]) => (rows || []).filter((p: any) => {
+          if (!p.fecha_agendamiento) return false
+          const d = new Date(p.fecha_agendamiento)
+          return d.getMonth() === mesNum && d.getFullYear() === yearNum
+        })
+        const pacMes = [...filterByMonth(wpp.data || []), ...filterByMonth(fbig.data || [])]
+        const ingresos = pacMes.reduce((s: number, p: any) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+
+        const egresosActivos = (egr.data || []).filter((e: any) => !e.descartado && !e.deleted_at)
+        const egresos = egresosActivos.reduce((s: number, e: any) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+
+        // Caja chica (efectivo)
+        const ingEfectivo = pacMes.filter((p: any) => (p.metodo_de_pago || '').toUpperCase() === 'EFECTIVO')
+          .reduce((s: number, p: any) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+        const egrEfectivo = egresosActivos.filter((e: any) => (e.metodo_pago || '').toUpperCase() === 'EFECTIVO')
+          .reduce((s: number, e: any) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+
         return JSON.stringify({
-          ok: true, mes, pacientes_convertidos: pacientes,
+          ok: true, mes,
+          pacientes_convertidos: pacMes.length,
           ingresos: +ingresos.toFixed(2),
           egresos: +egresos.toFixed(2),
-          utilidad: +(ingresos - egresos).toFixed(2)
+          utilidad: +(ingresos - egresos).toFixed(2),
+          caja_chica_efectivo: +(ingEfectivo - egrEfectivo).toFixed(2)
         })
       }
 
@@ -511,6 +528,66 @@ export const useHealupAgent = () => {
         const { data, error } = await (supabase.from('egresos_healup') as any).update(updates).eq('id', input.egreso_id).select().single()
         if (error) return JSON.stringify({ ok: false, error: error.message })
         return JSON.stringify({ ok: true, accion: 'modificado', id: input.egreso_id, cambios: Object.keys(updates) })
+      }
+
+      if (name === 'consultar_caja_chica') {
+        const mes = (input?.mes as string) || (() => {
+          const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+        })()
+        const [y, m] = mes.split('-')
+        const nm = String(parseInt(m) % 12 + 1).padStart(2, '0')
+        const ny = parseInt(m) === 12 ? String(parseInt(y) + 1) : y
+        const desde = `${mes}-01`
+        const hasta = `${ny}-${nm}-01`
+
+        // Ingresos de pacientes (precio_reserva/precio + precio_tratamiento) por método de pago
+        const [wppPac, fbigPac, egrData] = await Promise.all([
+          (supabase.from('PacientesBDwppHEALUP') as any)
+            .select('precio,precio_tratamiento,metodo_de_pago')
+            .gte('created_at', desde).lt('created_at', hasta),
+          (supabase.from('PacientesBDfbigHEALUP') as any)
+            .select('precio,precio_tratamiento,metodo_de_pago')
+            .gte('created_at', desde).lt('created_at', hasta),
+          (supabase.from('egresos_healup') as any)
+            .select('precio,cantidad,metodo_pago,descartado,deleted_at')
+            .gte('created_at', desde).lt('created_at', hasta)
+        ])
+
+        const allPacientes = [...(wppPac.data || []), ...(fbigPac.data || [])]
+        const sumPac = (rows: any[], esEfectivo: boolean) => rows
+          .filter((p: any) => {
+            const mp = (p.metodo_de_pago || '').toUpperCase()
+            return esEfectivo ? mp === 'EFECTIVO' : (mp && mp !== 'EFECTIVO')
+          })
+          .reduce((s: number, p: any) => s + (Number(p.precio) || 0) + (Number(p.precio_tratamiento) || 0), 0)
+
+        const ingresosEfectivo = sumPac(allPacientes, true)
+        const ingresosNoEfectivo = sumPac(allPacientes, false)
+
+        const egresosActivos = (egrData.data || []).filter((e: any) => !e.descartado && !e.deleted_at)
+        const sumEgr = (rows: any[], esEfectivo: boolean) => rows
+          .filter((e: any) => {
+            const mp = (e.metodo_pago || '').toUpperCase()
+            return esEfectivo ? mp === 'EFECTIVO' : (mp && mp !== 'EFECTIVO')
+          })
+          .reduce((s: number, e: any) => s + (Number(e.precio) || 0) * (Number(e.cantidad) || 0), 0)
+
+        const egresosEfectivo = sumEgr(egresosActivos, true)
+        const egresosNoEfectivo = sumEgr(egresosActivos, false)
+
+        const cajaChica = ingresosEfectivo - egresosEfectivo
+        const cuentaBancaria = ingresosNoEfectivo - egresosNoEfectivo
+
+        return JSON.stringify({
+          ok: true, mes,
+          caja_chica_efectivo: +cajaChica.toFixed(2),
+          ingresos_efectivo: +ingresosEfectivo.toFixed(2),
+          egresos_efectivo: +egresosEfectivo.toFixed(2),
+          cuenta_bancaria: +cuentaBancaria.toFixed(2),
+          ingresos_no_efectivo: +ingresosNoEfectivo.toFixed(2),
+          egresos_no_efectivo: +egresosNoEfectivo.toFixed(2),
+          total_disponible: +(cajaChica + cuentaBancaria).toFixed(2)
+        })
       }
 
       if (name === 'consultar_leads') {

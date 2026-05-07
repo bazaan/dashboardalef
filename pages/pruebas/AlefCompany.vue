@@ -2218,10 +2218,10 @@ const saveMemberCargo = async (item: any) => {
 }
 
 /* ---------------- Reportes ---------------- */
-const reportMonth = ref(() => {
+const reportMonth = ref((() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-})()
+})())
 
 const reportMonthOptions = computed(() => {
   const opts = []

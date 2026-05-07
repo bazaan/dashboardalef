@@ -31,8 +31,8 @@
       <nav class="sidebar-nav">
         <div class="nav-section">
           <div class="nav-label">Inicio</div>
-          <button v-for="item in menuItems" :key="item.id" :class="['nav-item', { active: activeView === item.id }]"
-            @click="activeView = item.id">
+          <button v-for="item in menuItems" :key="item.id" :class="['nav-item', { active: activeView === item.id && !item.url }]"
+            @click="item.url ? window.open(item.url, '_blank') : activeView = item.id">
             <v-icon :icon="item.icon" size="18" />
             <span>{{ item.label }}</span>
             <span v-if="item.id === 'alertas_crm' && alertasCRMCount > 0" class="nav-badge">{{ alertasCRMCount }}</span>
@@ -2017,7 +2017,7 @@ const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
   { icon: 'mdi-clipboard-list', label: 'Actividades', id: 'actividades' },
-  { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'conversaciones' },
+  { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'conversaciones', url: 'https://chats.alef.company/app/accounts/1/dashboard' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
   { icon: 'mdi-bell-alert', label: 'Alertas CRM', id: 'alertas_crm' }
 ]
@@ -2071,7 +2071,7 @@ const companiesData = reactive<CompanyData[]>([
   },
   {
     id: 'solari', name: 'Solari', type: 'Medicina Estética', logo: '',
-    dashboardPath: '/pruebas/Solari', chatwootUrl: 'https://chats.alef.company/app/accounts/2/dashboard',
+    dashboardPath: '/pruebas/Solari', chatwootUrl: 'https://chats.alef.company/app/accounts/6/dashboard',
     loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
     leadTablesWpp: 'GeneralBDwppSOLARI', leadTablesFbig: 'GeneralBDfbigSOLARI',
     pacientesTablesWpp: 'PacientesBDwppSOLARI', pacientesTablesFbig: 'PacientesBDfbigSOLARI',
@@ -2103,7 +2103,7 @@ const companiesData = reactive<CompanyData[]>([
   },
   {
     id: 'skip', name: 'SKIP', type: 'Paracaidismo / Servicios', logo: '',
-    dashboardPath: '/pruebas/SKIP', chatwootUrl: 'https://chats.alef.company/app/accounts/10/dashboard',
+    dashboardPath: '/pruebas/SKIP', chatwootUrl: 'https://chats.alef.company/app/accounts/13/dashboard',
     loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
     leadTablesWpp: 'GeneralBDwppSKIP', leadTablesFbig: 'GeneralBDfbigSKIP',
     pacientesTablesWpp: '', pacientesTablesFbig: '',
@@ -2119,7 +2119,7 @@ const companiesData = reactive<CompanyData[]>([
   },
   {
     id: 'estasconsuerte', name: 'Estás Con Suerte', type: 'Sorteos / Suscripciones', logo: '',
-    dashboardPath: '/pruebas/EstasConSuerte', chatwootUrl: 'https://chats.alef.company/app/accounts/10/dashboard',
+    dashboardPath: '/pruebas/EstasConSuerte', chatwootUrl: 'https://chats.alef.company/app/accounts/12/dashboard',
     loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
     leadTablesWpp: 'ECS_GeneralBDwpp', leadTablesFbig: 'ECS_GeneralBDfbig',
     pacientesTablesWpp: '', pacientesTablesFbig: '',

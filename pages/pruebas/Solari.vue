@@ -2818,7 +2818,7 @@ const menuItems = [
 ]
 
 const chatItems = [
-  { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'conversaciones', url: 'https://chats.alef.company/app/accounts/2/dashboard' }
+  { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'conversaciones', url: 'https://chats.alef.company/app/accounts/6/dashboard' }
 ]
 
 function handleNavigation(item: any) {

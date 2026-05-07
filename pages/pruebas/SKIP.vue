@@ -2845,7 +2845,7 @@ const chatsItems = [
     icon: 'mdi-message-reply',
     label: 'Conversaciones',
     id: 'chatwoot',
-    url: 'https://chats.alef.company/app/accounts/10/dashboard'
+    url: 'https://chats.alef.company/app/accounts/13/dashboard'
   }
 ]
 

@@ -58,6 +58,20 @@
         </div>
 
         <div class="nav-section">
+          <div class="nav-label">ADMINISTRACIÓN</div>
+          <button :class="['nav-item', { active: activeView === 'equipo' }]"
+            @click="activeView = 'equipo'">
+            <v-icon icon="mdi-account-group" size="18" />
+            <span>Equipo</span>
+          </button>
+          <button :class="['nav-item', { active: activeView === 'reportes' }]"
+            @click="activeView = 'reportes'">
+            <v-icon icon="mdi-file-chart" size="18" />
+            <span>Reportes</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
           <div class="nav-label">MARKETING</div>
           <button :class="['nav-item', { active: activeView === 'remarketing' }]"
             @click="activeView = 'remarketing'">
@@ -1074,6 +1088,249 @@
         </div>
       </div>
 
+      <!-- ==========  VISTA: EQUIPO ALEF  ========== -->
+      <div v-else-if="activeView === 'equipo'" class="view-container">
+        <header class="top-header">
+          <h1>Equipo Alef Company</h1>
+          <button class="btn-primary" @click="showNewMemberDialog = true">
+            <v-icon icon="mdi-account-plus" size="16" />
+            <span>Agregar Miembro</span>
+          </button>
+        </header>
+
+        <div class="content-area">
+          <!-- KPIs del equipo -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Total Miembros</span></div>
+              <div class="stat-value">{{ teamMembers.length }}</div>
+              <div class="stat-description">Equipo completo de Alef</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Empresas Cubiertas</span></div>
+              <div class="stat-value">{{ [...new Set(teamMembers.map(m => m.company_id))].length }}</div>
+              <div class="stat-description">Con al menos 1 miembro</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Admins</span></div>
+              <div class="stat-value">{{ teamMembers.filter(m => m.role === 'admin').length }}</div>
+              <div class="stat-description">Administradores de empresa</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Agentes</span></div>
+              <div class="stat-value">{{ teamMembers.filter(m => m.role === 'agente' || m.role === 'agent').length }}</div>
+              <div class="stat-description">Operadores de dashboard</div>
+            </div>
+          </div>
+
+          <!-- Organigrama por empresa -->
+          <div style="margin-top: 1.5rem;">
+            <h2 style="margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600; color: var(--foreground);">Organigrama por Empresa</h2>
+            <div class="alef-companies-grid">
+              <div v-for="grupo in teamByCompany" :key="grupo.company" class="alef-company-card" style="cursor: default;">
+                <div class="alef-co-header">
+                  <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px;">
+                    {{ grupo.company.charAt(0).toUpperCase() }}
+                  </div>
+                  <div>
+                    <div style="font-weight: 600; font-size: 0.95rem; color: var(--foreground);">{{ grupo.company }}</div>
+                    <div style="font-size: 0.72rem; color: var(--muted-foreground);">{{ grupo.members.length }} miembros</div>
+                  </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                  <div v-for="m in grupo.members" :key="m.id"
+                    style="display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.6rem; background: var(--sidebar); border-radius: 8px;">
+                    <div style="width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;"
+                      :style="{ background: m.role === 'superadmin' ? '#daa520' : m.role === 'admin' ? '#3b82f6' : '#64748b', color: '#fff' }">
+                      {{ (m.full_name || m.email || '?')[0].toUpperCase() }}
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-size: 0.82rem; font-weight: 500; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ m.full_name || m.email }}
+                      </div>
+                      <div style="font-size: 0.68rem; color: var(--muted-foreground);">{{ m.cargo || m.role }}</div>
+                    </div>
+                    <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 99px; font-weight: 600;"
+                      :style="{
+                        background: m.role === 'superadmin' ? 'rgba(218,165,32,0.15)' : m.role === 'admin' ? 'rgba(59,130,246,0.15)' : 'rgba(100,116,139,0.15)',
+                        color: m.role === 'superadmin' ? '#daa520' : m.role === 'admin' ? '#3b82f6' : '#64748b'
+                      }">
+                      {{ m.role }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabla completa -->
+          <div style="margin-top: 2rem;">
+            <h2 style="margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600; color: var(--foreground);">Directorio Completo</h2>
+            <v-card flat style="background: var(--card); border: 1px solid var(--border); border-radius: 12px;">
+              <v-card-title class="table-search-bar">
+                <v-text-field v-model="teamSearch" append-inner-icon="mdi-magnify" label="Buscar miembro..." single-line hide-details density="compact" variant="outlined" class="search-field" />
+              </v-card-title>
+              <v-data-table
+                :headers="teamHeaders"
+                :items="teamMembers"
+                :search="teamSearch"
+                :items-per-page="20"
+                density="compact"
+                class="elevation-0"
+                style="background: transparent;"
+              >
+                <template v-slot:item.full_name="{ item }">
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;"
+                      :style="{ background: item.role === 'superadmin' ? '#daa520' : item.role === 'admin' ? '#3b82f6' : '#64748b', color: '#fff' }">
+                      {{ (item.full_name || item.email || '?')[0].toUpperCase() }}
+                    </div>
+                    <span style="font-weight: 500;">{{ item.full_name || '—' }}</span>
+                  </div>
+                </template>
+                <template v-slot:item.role="{ item }">
+                  <span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; font-weight: 600;"
+                    :style="{
+                      background: item.role === 'superadmin' ? 'rgba(218,165,32,0.15)' : item.role === 'admin' ? 'rgba(59,130,246,0.15)' : 'rgba(100,116,139,0.15)',
+                      color: item.role === 'superadmin' ? '#daa520' : item.role === 'admin' ? '#3b82f6' : '#64748b'
+                    }">
+                    {{ item.role }}
+                  </span>
+                </template>
+                <template v-slot:item.cargo="{ item }">
+                  <span v-if="editingMemberId === item.id">
+                    <v-text-field v-model="editingCargo" density="compact" variant="outlined" hide-details style="max-width: 200px;"
+                      @keyup.enter="saveMemberCargo(item)" @blur="saveMemberCargo(item)" />
+                  </span>
+                  <span v-else @dblclick="startEditCargo(item)" style="cursor: pointer;" :title="'Doble click para editar'">
+                    {{ item.cargo || '—' }}
+                  </span>
+                </template>
+                <template v-slot:item.created_at="{ item }">
+                  {{ item.created_at ? new Date(item.created_at).toLocaleDateString('es-PE') : '—' }}
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========  VISTA: REPORTES  ========== -->
+      <div v-else-if="activeView === 'reportes'" class="view-container">
+        <header class="top-header">
+          <h1>Reportes Consolidados</h1>
+          <button class="btn-primary" @click="fetchAllCompanies">
+            <v-icon icon="mdi-refresh" size="16" />
+            <span>Actualizar</span>
+          </button>
+        </header>
+
+        <div class="content-area">
+          <!-- Selector de mes -->
+          <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+            <v-select v-model="reportMonth" :items="reportMonthOptions" density="compact" variant="outlined" hide-details
+              style="max-width: 200px;" label="Mes" />
+          </div>
+
+          <!-- KPIs globales del mes -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Ingresos Totales</span></div>
+              <div class="stat-value">S/ {{ totalGlobalRevenue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-description">Todas las empresas</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Egresos Totales</span></div>
+              <div class="stat-value" style="color: #ef4444;">S/ {{ totalGlobalEgresos.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-description">Todas las empresas</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Utilidad Neta</span></div>
+              <div class="stat-value" :style="{ color: (totalGlobalRevenue - totalGlobalEgresos) >= 0 ? '#22c55e' : '#ef4444' }">
+                S/ {{ (totalGlobalRevenue - totalGlobalEgresos).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+              </div>
+              <div class="stat-description">Ingresos - Egresos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Leads Totales</span></div>
+              <div class="stat-value">{{ totalGlobalLeads.toLocaleString() }}</div>
+              <div class="stat-description">{{ totalGlobalConversiones }} conversiones</div>
+            </div>
+          </div>
+
+          <!-- Gráfico de barras: Ingresos vs Egresos por empresa -->
+          <div style="margin-top: 1.5rem;">
+            <v-card flat style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem;">
+              <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--foreground);">Ingresos vs Egresos por Empresa</h3>
+              <client-only>
+                <apexchart type="bar" height="350" :options="reportChartOptions" :series="reportChartSeries" />
+              </client-only>
+            </v-card>
+          </div>
+
+          <!-- Gráfico de pie: Distribución de leads por empresa -->
+          <div style="margin-top: 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <v-card flat style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem;">
+              <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--foreground);">Distribución de Leads</h3>
+              <client-only>
+                <apexchart type="donut" height="300" :options="leadsDonutOptions" :series="leadsDonutSeries" />
+              </client-only>
+            </v-card>
+            <v-card flat style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem;">
+              <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--foreground);">Distribución de Ingresos</h3>
+              <client-only>
+                <apexchart type="donut" height="300" :options="revenueDonutOptions" :series="revenueDonutSeries" />
+              </client-only>
+            </v-card>
+          </div>
+
+          <!-- Tabla ranking -->
+          <div style="margin-top: 1.5rem;">
+            <v-card flat style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem;">
+              <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--foreground);">Ranking de Empresas</h3>
+              <v-data-table
+                :headers="[
+                  { title: '#', key: 'rank', width: '50px' },
+                  { title: 'Empresa', key: 'name' },
+                  { title: 'Ingresos', key: 'revenue', sortable: true },
+                  { title: 'Egresos', key: 'egresos', sortable: true },
+                  { title: 'Utilidad', key: 'utilidad', sortable: true },
+                  { title: 'Leads', key: 'leadsTotal', sortable: true },
+                  { title: 'Conv.', key: 'conversiones', sortable: true },
+                  { title: 'Tasa', key: 'tasa', sortable: true }
+                ]"
+                :items="companiesRanking"
+                :items-per-page="-1"
+                density="compact"
+                class="elevation-0"
+                style="background: transparent;"
+              >
+                <template v-slot:item.rank="{ index }">
+                  <span style="font-weight: 700; color: var(--muted-foreground);">{{ index + 1 }}</span>
+                </template>
+                <template v-slot:item.name="{ item }">
+                  <span style="font-weight: 600;">{{ item.name }}</span>
+                </template>
+                <template v-slot:item.revenue="{ item }">
+                  S/ {{ item.revenue.toLocaleString('es-PE', { maximumFractionDigits: 0 }) }}
+                </template>
+                <template v-slot:item.egresos="{ item }">
+                  S/ {{ item.egresos.toLocaleString('es-PE', { maximumFractionDigits: 0 }) }}
+                </template>
+                <template v-slot:item.utilidad="{ item }">
+                  <span :style="{ color: (item.revenue - item.egresos) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }">
+                    S/ {{ (item.revenue - item.egresos).toLocaleString('es-PE', { maximumFractionDigits: 0 }) }}
+                  </span>
+                </template>
+                <template v-slot:item.tasa="{ item }">
+                  {{ item.leadsTotal > 0 ? ((item.conversiones / item.leadsTotal) * 100).toFixed(1) : '0' }}%
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ==========  EGRESOS DIALOG  ========== -->
@@ -1742,6 +1999,7 @@ onMounted(() => {
   fetchContribuyentes()
   fetchEgresos()
   fetchAllCompanies()
+  fetchTeam()
 })
 
 function logout() {
@@ -1906,6 +2164,127 @@ const companyTableHeaders = [
 const totalGlobalLeads = computed(() => companiesData.reduce((s, c) => s + c.leadsTotal, 0))
 const totalGlobalConversiones = computed(() => companiesData.reduce((s, c) => s + c.conversiones, 0))
 const totalGlobalRevenue = computed(() => companiesData.reduce((s, c) => s + c.revenue, 0))
+const totalGlobalEgresos = computed(() => companiesData.reduce((s, c) => s + c.egresos, 0))
+
+/* ---------------- Equipo ---------------- */
+const teamMembers = ref<any[]>([])
+const teamSearch = ref('')
+const showNewMemberDialog = ref(false)
+const editingMemberId = ref<number | null>(null)
+const editingCargo = ref('')
+
+const teamHeaders = [
+  { title: 'Nombre', key: 'full_name', sortable: true },
+  { title: 'Email', key: 'email', sortable: true },
+  { title: 'Empresa', key: 'company_id', sortable: true },
+  { title: 'Rol', key: 'role', sortable: true },
+  { title: 'Cargo', key: 'cargo', sortable: true },
+  { title: 'Desde', key: 'created_at', sortable: true }
+]
+
+const teamByCompany = computed(() => {
+  const map: Record<string, any[]> = {}
+  teamMembers.value.forEach(m => {
+    const co = m.company_id || 'sin empresa'
+    if (!map[co]) map[co] = []
+    map[co].push(m)
+  })
+  return Object.entries(map)
+    .map(([company, members]) => ({ company, members: members.sort((a: any, b: any) => {
+      const order: Record<string, number> = { superadmin: 0, admin: 1, agente: 2, agent: 2 }
+      return (order[a.role] ?? 3) - (order[b.role] ?? 3)
+    })}))
+    .sort((a, b) => a.company.localeCompare(b.company))
+})
+
+const fetchTeam = async () => {
+  const { data } = await (client.from('dashboardlogin') as any)
+    .select('id,email,full_name,role,company_id,cargo,created_at')
+    .order('company_id')
+    .order('role')
+  teamMembers.value = data || []
+}
+
+const startEditCargo = (item: any) => {
+  editingMemberId.value = item.id
+  editingCargo.value = item.cargo || ''
+}
+
+const saveMemberCargo = async (item: any) => {
+  if (editingMemberId.value !== item.id) return
+  await (client.from('dashboardlogin') as any).update({ cargo: editingCargo.value }).eq('id', item.id)
+  item.cargo = editingCargo.value
+  editingMemberId.value = null
+}
+
+/* ---------------- Reportes ---------------- */
+const reportMonth = ref(() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+})()
+
+const reportMonthOptions = computed(() => {
+  const opts = []
+  const now = new Date()
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = d.toLocaleDateString('es-PE', { year: 'numeric', month: 'long' })
+    opts.push({ title: label.charAt(0).toUpperCase() + label.slice(1), value: val })
+  }
+  return opts
+})
+
+const companiesRanking = computed(() => {
+  return [...companiesData]
+    .filter(c => c.loaded)
+    .sort((a, b) => (b.revenue - b.egresos) - (a.revenue - a.egresos))
+})
+
+const reportChartOptions = computed<ApexOptions>(() => ({
+  chart: { type: 'bar', background: 'transparent', foreColor: 'var(--foreground)', toolbar: { show: false } },
+  plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 4 } },
+  dataLabels: { enabled: false },
+  stroke: { show: true, width: 2, colors: ['transparent'] },
+  xaxis: { categories: companiesData.filter(c => c.loaded).map(c => c.name) },
+  yaxis: { labels: { formatter: (v: number) => `S/${(v/1000).toFixed(0)}k` } },
+  colors: ['#22c55e', '#ef4444'],
+  legend: { position: 'top' },
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  grid: { borderColor: 'var(--border)', strokeDashArray: 4 }
+}))
+
+const reportChartSeries = computed(() => {
+  const loaded = companiesData.filter(c => c.loaded)
+  return [
+    { name: 'Ingresos', data: loaded.map(c => +c.revenue.toFixed(2)) },
+    { name: 'Egresos', data: loaded.map(c => +c.egresos.toFixed(2)) }
+  ]
+})
+
+const leadsDonutOptions = computed<ApexOptions>(() => ({
+  chart: { type: 'donut', background: 'transparent' },
+  labels: companiesData.filter(c => c.loaded && c.leadsTotal > 0).map(c => c.name),
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  legend: { position: 'bottom', fontSize: '11px' },
+  dataLabels: { enabled: true, formatter: (_: any, opts: any) => opts.w.config.series[opts.seriesIndex] }
+}))
+
+const leadsDonutSeries = computed(() =>
+  companiesData.filter(c => c.loaded && c.leadsTotal > 0).map(c => c.leadsTotal)
+)
+
+const revenueDonutOptions = computed<ApexOptions>(() => ({
+  chart: { type: 'donut', background: 'transparent' },
+  labels: companiesData.filter(c => c.loaded && c.revenue > 0).map(c => c.name),
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  legend: { position: 'bottom', fontSize: '11px' },
+  dataLabels: { enabled: true, formatter: (val: number) => val.toFixed(1) + '%' }
+}))
+
+const revenueDonutSeries = computed(() =>
+  companiesData.filter(c => c.loaded && c.revenue > 0).map(c => +c.revenue.toFixed(0))
+)
 
 function pct(val: number, total: number) {
   if (!total) return '0%'

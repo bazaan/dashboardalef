@@ -2078,14 +2078,6 @@ const companiesData = reactive<CompanyData[]>([
     egresosTable: 'egresos_solari', revenueModel: 'medical', purchaseTables: []
   },
   {
-    id: 'clinicaarroyo', name: 'Clínica Arroyo', type: 'Clínica Médica', logo: '',
-    dashboardPath: '/pruebas/ClinicaArroyo', chatwootUrl: 'https://chats.alef.company/app/accounts/5/dashboard',
-    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
-    leadTablesWpp: 'GeneralBDwppARROYO', leadTablesFbig: 'GeneralBDfbigARROYO',
-    pacientesTablesWpp: 'PacientesBDwppARROYO', pacientesTablesFbig: 'PacientesBDfbigARROYO',
-    egresosTable: 'egresos_clinicaarroyo', revenueModel: 'medical', purchaseTables: []
-  },
-  {
     id: 'estetikamedika', name: 'Estetika Medika', type: 'Medicina Estética', logo: '',
     dashboardPath: '/pruebas/EstetikaMedika', chatwootUrl: 'https://chats.alef.company/app/accounts/14/dashboard',
     loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
@@ -2108,14 +2100,6 @@ const companiesData = reactive<CompanyData[]>([
     leadTablesWpp: 'GeneralBDwppBRADA', leadTablesFbig: '',
     pacientesTablesWpp: '', pacientesTablesFbig: '',
     egresosTable: 'egresos_brada', revenueModel: 'ecommerce', purchaseTables: ['comprasBDwppBRADA', 'comprasBDwppBRADA24_7']
-  },
-  {
-    id: 'alegrated', name: 'Alegrated', type: 'E-commerce', logo: '',
-    dashboardPath: '/pruebas/Alegrated', chatwootUrl: 'https://chats.alef.company/app/accounts/7/dashboard',
-    loaded: false, leadsTotal: 0, frios: 0, tibios: 0, calientes: 0, conversiones: 0, revenue: 0, egresos: 0,
-    leadTablesWpp: 'GeneralBDwppALEGRATED', leadTablesFbig: 'GeneralBDfbigALEGRATED',
-    pacientesTablesWpp: '', pacientesTablesFbig: '',
-    egresosTable: 'egresos_alegrated', revenueModel: 'ecommerce', purchaseTables: ['compraswpplimaalegrated', 'compraswppprovinciaalegrated', 'compraswppextranjeroalegrated']
   },
   {
     id: 'skip', name: 'SKIP', type: 'Paracaidismo / Servicios', logo: '',

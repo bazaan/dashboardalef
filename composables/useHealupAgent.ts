@@ -116,6 +116,7 @@ export const useHealupAgent = () => {
   // ── Whisper transcription via MediaRecorder ──
   let mediaRecorder: MediaRecorder | null = null
   let audioChunks: Blob[] = []
+  let recordingStartTime = 0
 
   const releaseStream = () => {
     if (activeStream) {
@@ -147,7 +148,13 @@ export const useHealupAgent = () => {
       }
       mediaRecorder.onstop = async () => {
         releaseStream()
-        if (!audioChunks.length) { isListening.value = false; return }
+        const recordingDuration = Date.now() - recordingStartTime
+        if (!audioChunks.length || recordingDuration < 800) {
+          // Too short — probably accidental click
+          isListening.value = false
+          if (recordingDuration < 800) lastError.value = 'Grabación muy corta. Mantené presionado al menos 1 segundo.'
+          return
+        }
         const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' })
         audioChunks = []
         // Transcribir con Whisper
@@ -179,6 +186,7 @@ export const useHealupAgent = () => {
         }
       }
       mediaRecorder.start()
+      recordingStartTime = Date.now()
       isListening.value = true
     } catch (e: any) {
       lastError.value = `No se pudo iniciar el micrófono: ${e?.message || e}`

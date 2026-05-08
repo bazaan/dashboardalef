@@ -2059,11 +2059,11 @@ const fetchStock = async () => {
 const fetchCompras = async () => {
   loading.value = true
 
-  let tableName = 'pago_completo_motorizado'
+  let tableName = 'ORIGITEC_pago_completo_motorizado'
   if (tipoVentaSeleccionada.value === 'Ventas Courier') {
-    tableName = 'pago_completo_courier'
+    tableName = 'ORIGITEC_pago_completo_courier'
   } else if (tipoVentaSeleccionada.value === 'Ventas Recojo en tienda') {
-    tableName = 'pago_completo_recojo_tienda'
+    tableName = 'ORIGITEC_pago_completo_recojo_tienda'
   }
 
   try {
@@ -2124,9 +2124,9 @@ const fetchGlobalAccounting = async () => {
   loadingGlobalAccounting.value = true
   try {
     const [resMot, resCou, resTie, resRes] = await Promise.all([
-      client.from('pago_completo_motorizado').select('precio, cantidad'),
-      client.from('pago_completo_courier').select('precio, cantidad'),
-      client.from('pago_completo_recojo_tienda').select('precio, cantidad'),
+      client.from('ORIGITEC_pago_completo_motorizado').select('precio, cantidad'),
+      client.from('ORIGITEC_pago_completo_courier').select('precio, cantidad'),
+      client.from('ORIGITEC_pago_completo_recojo_tienda').select('precio, cantidad'),
       client.from('reserva_recojo_tienda').select('precio, cantidad')
     ])
 

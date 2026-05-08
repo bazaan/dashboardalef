@@ -1573,6 +1573,14 @@
                 </template>
 
                 <template v-slot:item.actions="{ item }">
+                  <v-tooltip location="top" v-if="item.consentimiento_aceptado">
+                    <template v-slot:activator="{ props }">
+                      <button v-bind="props" class="icon-btn" @click="openConsentimientoViewer(item)">
+                        <v-icon icon="mdi-file-document-check" size="16" color="success" />
+                      </button>
+                    </template>
+                    <span>Ver consentimiento firmado</span>
+                  </v-tooltip>
                   <v-tooltip location="top">
                     <template v-slot:activator="{ props }">
                       <button v-bind="props" class="icon-btn" @click="openEventDialogFromHistory(item)">
@@ -1599,6 +1607,38 @@
               </v-data-table>
             </v-card>
           </div>
+        </div>
+      </div>
+
+      <!-- ==========  VISTA: CONSENTIMIENTO INFORMADO (TABLET)  ========== -->
+      <div v-else-if="activeView === 'consentimiento'" class="view-container">
+        <header class="top-header">
+          <h1>Consentimiento Informado</h1>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <v-chip v-if="tabletMode" color="success" variant="flat" size="small" prepend-icon="mdi-tablet-cellphone">
+              Modo Tablet activo
+            </v-chip>
+            <v-chip v-else color="info" variant="tonal" size="small" prepend-icon="mdi-tablet">
+              Optimizado para tablet
+            </v-chip>
+            <button v-if="!tabletMode" class="btn-secondary" @click="activeView = 'historialClinico'">
+              <v-icon icon="mdi-folder" size="16" />
+              <span>Ver historias clínicas</span>
+            </button>
+            <v-btn
+              v-if="tabletMode"
+              size="small"
+              variant="text"
+              color="error"
+              prepend-icon="mdi-lock-open"
+              @click="exitTabletMode"
+            >Salir modo tablet</v-btn>
+          </div>
+        </header>
+        <div class="content-area">
+          <ClientOnly>
+            <HealupConsentimientoForm @saved="onConsentimientoSaved" />
+          </ClientOnly>
         </div>
       </div>
 
@@ -1842,7 +1882,7 @@
         <header class="top-header">
           <h1>Mi Cuenta</h1>
         </header>
-        <div class="content-area">
+        <div class="content-area" style="display:flex; flex-direction:column; gap:1.25rem;">
           <v-card class="pa-4" max-width="600">
             <v-card-title>Editar Perfil</v-card-title>
             <v-card-text>
@@ -1851,6 +1891,46 @@
               <v-text-field label="Email" v-model="currentUser.email" variant="outlined" readonly disabled
                 class="mb-4"></v-text-field>
               <v-btn color="primary" block>Guardar Cambios</v-btn>
+            </v-card-text>
+          </v-card>
+
+          <!-- Modo Tablet · default consentimiento por paciente -->
+          <v-card class="pa-4" max-width="600" :class="{ 'tablet-mode-active': tabletMode }"
+                  style="border:1px solid rgba(218,165,32,0.25);">
+            <v-card-title class="d-flex align-center" style="gap:.5rem;">
+              <v-icon icon="mdi-tablet-cellphone" :color="tabletMode ? 'success' : 'primary'" />
+              <span>Modo Tablet</span>
+              <v-chip v-if="tabletMode" size="x-small" color="success" variant="flat" class="ml-2">Activo</v-chip>
+            </v-card-title>
+            <v-card-text>
+              <p class="text-body-2 mb-4" style="color:var(--text-secondary, #64748b);">
+                Cuando esté <strong>activo</strong>, esta tablet abrirá el formulario de
+                <strong>Consentimiento Informado</strong> por defecto cada vez que se cargue
+                el dashboard. Ideal para que cada paciente lo llene antes de su atención.
+                <br /><br />
+                Al guardar una firma, el formulario se reinicia automáticamente para el
+                siguiente paciente. Para salir, use el botón <em>"Salir modo tablet"</em>
+                en la parte superior del formulario.
+              </p>
+              <v-switch
+                v-model="tabletMode"
+                color="success"
+                :label="tabletMode ? 'Modo Tablet activado' : 'Modo Tablet desactivado'"
+                hide-details
+                inset
+                @change="onTabletModeChange"
+              />
+              <v-alert
+                v-if="tabletMode"
+                type="info"
+                variant="tonal"
+                density="compact"
+                class="mt-4"
+                icon="mdi-information"
+              >
+                La próxima vez que se cargue esta tablet, abrirá directamente el
+                formulario de consentimiento.
+              </v-alert>
             </v-card-text>
           </v-card>
         </div>
@@ -4297,6 +4377,12 @@
         :lead-tablas="{ wpp: 'GeneralBDwppHEALUP', fbig: 'GeneralBDfbigHEALUP' }"
       />
 
+    <!-- ==========  CONSENTIMIENTO INFORMADO · VIEWER DIALOG  ========== -->
+    <HealupConsentimientoViewer
+      v-model="showConsentimientoViewer"
+      :historia="selectedConsentimientoHistoria"
+    />
+
     <!-- ==========  AGENTE CONVERSACIONAL DE VOZ  ========== -->
     <HealupAgent />
 
@@ -6614,6 +6700,7 @@ const documentItems = [
   { icon: 'mdi-arrow-right-bold-circle', label: 'Procedimientos', id: 'procedimientos' },
   { icon: 'mdi-chart-bar', label: 'Contador Procedimientos', id: 'contadorProcedimientos' },
   { icon: 'mdi-warehouse', label: 'Almacén', id: 'stock' },
+  { icon: 'mdi-pen', label: 'Consentimiento', id: 'consentimiento' },
   { icon: 'mdi-folder', label: 'Historial Clínico', id: 'historialClinico' },
   { icon: 'mdi-robot-mower', label: 'Meta', id: 'meta' }
 ]
@@ -9709,6 +9796,63 @@ const medicalHistoryFormData = ref({
 const showMedicalProfileDialog = ref(false)
 const selectedMedicalProfile = ref<MedicalHistoryEntry | null>(null)
 
+/* ---------------- Consentimiento Informado (fase 2) ---------------- */
+const showConsentimientoViewer = ref(false)
+const selectedConsentimientoHistoria = ref<any | null>(null)
+
+function openConsentimientoViewer(item: any) {
+  selectedConsentimientoHistoria.value = item
+  showConsentimientoViewer.value = true
+}
+
+async function onConsentimientoSaved(_id?: number) {
+  // Recarga la lista de historia clínica + ambas listas de pacientes
+  // (el form auto-crea el paciente nuevo en PacientesBDwppHEALUP cuando aplique)
+  await Promise.all([
+    fetchMedicalHistory(),
+    fetchPacientesWpp(),
+    fetchPacientesFbIg()
+  ])
+}
+
+/* ---------------- Modo Tablet (kiosk consentimiento) ---------------- */
+const TABLET_MODE_KEY = 'healup_tablet_mode'
+const tabletMode = ref(false)
+
+function onTabletModeChange() {
+  if (typeof window === 'undefined') return
+  if (tabletMode.value) {
+    localStorage.setItem(TABLET_MODE_KEY, '1')
+    activeView.value = 'consentimiento'
+  } else {
+    localStorage.removeItem(TABLET_MODE_KEY)
+  }
+}
+
+function exitTabletMode() {
+  if (typeof window === 'undefined') return
+  if (!confirm('¿Salir del modo tablet?\n\nTendrá que volver a activarlo desde "Mi Cuenta → Modo Tablet".')) return
+  tabletMode.value = false
+  localStorage.removeItem(TABLET_MODE_KEY)
+  activeView.value = 'dashboard'
+}
+
+// Cargar el flag al montar (SSR-safe)
+onMounted(() => {
+  if (typeof window === 'undefined') return
+  try {
+    const flag = localStorage.getItem(TABLET_MODE_KEY)
+    if (flag === '1') {
+      tabletMode.value = true
+      // Ir directo al consentimiento, salvo que el usuario haya navegado explícitamente
+      // a otra vista vía hash/query (caso admin que quiere bypass).
+      const params = new URLSearchParams(window.location.search)
+      const bypass = params.get('admin') === '1'
+      if (!bypass) activeView.value = 'consentimiento'
+    }
+  } catch { /* localStorage puede estar bloqueado */ }
+})
+
 function openMedicalProfileDialog(item: MedicalHistoryEntry) {
   selectedMedicalProfile.value = item
   showMedicalProfileDialog.value = true
@@ -10107,7 +10251,19 @@ async function fetchMedicalHistory() {
       attachmentName: e.attachment_name,
       attachmentData: e.attachment_data,
       returnNote: e.nota_de_devolucion,
-      status: e.estado
+      status: e.estado,
+      // Consentimiento informado (fase 2)
+      edad: e.edad,
+      txp: e.txp,
+      tx_realizar: e.tx_realizar,
+      doctor_nombre: e.doctor_nombre,
+      consentimiento_aceptado: e.consentimiento_aceptado,
+      consentimiento_tipo: e.consentimiento_tipo,
+      consentimiento_payload: e.consentimiento_payload,
+      consentimiento_fecha: e.consentimiento_fecha,
+      firma_paciente: e.firma_paciente,
+      firma_doctor: e.firma_doctor,
+      dispositivo: e.dispositivo
     }))
   } catch (error) {
     console.error('Error loading medical history:', error)

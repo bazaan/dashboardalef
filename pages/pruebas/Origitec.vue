@@ -2070,13 +2070,13 @@ const fetchCompras = async () => {
     const { data, error } = await client
       .from(tableName)
       .select('*')
-      .order('created_at', { ascending: false })
 
     if (error) throw error
 
     compras.value = data as any[]
-  } catch (error) {
-    console.error('Error al cargar compras:', error)
+  } catch (err: any) {
+    console.error('Error al cargar compras:', err)
+    compras.value = []
   } finally {
     loading.value = false
   }

@@ -65,6 +65,10 @@
             <span class="label">Tx por realizar</span>
             <strong>{{ historia.tx_realizar || '—' }}</strong>
           </div>
+          <div v-if="historia.como_nos_conocio" class="data-cell">
+            <span class="label">¿Cómo nos conoció?</span>
+            <strong>{{ historia.como_nos_conocio }}</strong>
+          </div>
         </div>
 
         <v-divider class="my-4" />

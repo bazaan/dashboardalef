@@ -23,7 +23,8 @@ ALTER TABLE healup_medical_history
   ADD COLUMN IF NOT EXISTS doctor_nombre          TEXT,
   ADD COLUMN IF NOT EXISTS dispositivo            TEXT,    -- 'tablet', 'mobile', 'desktop'
   ADD COLUMN IF NOT EXISTS user_agent             TEXT,
-  ADD COLUMN IF NOT EXISTS paciente_origen        TEXT;    -- 'wpp' | 'fbig' | 'manual'
+  ADD COLUMN IF NOT EXISTS paciente_origen        TEXT,    -- 'wpp' | 'fbig' | 'manual'
+  ADD COLUMN IF NOT EXISTS como_nos_conocio       TEXT;    -- canal de adquisición ('Instagram', 'Recomendación', etc.)
 
 COMMENT ON COLUMN healup_medical_history.firma_doctor
   IS '{ url: dataURL base64, fecha: ISO timestamp, nombre: string }';
@@ -52,5 +53,6 @@ CREATE INDEX IF NOT EXISTS idx_healup_mh_consentimiento_fecha
 --   DROP COLUMN IF EXISTS doctor_nombre,
 --   DROP COLUMN IF EXISTS dispositivo,
 --   DROP COLUMN IF EXISTS user_agent,
---   DROP COLUMN IF EXISTS paciente_origen;
+--   DROP COLUMN IF EXISTS paciente_origen,
+--   DROP COLUMN IF EXISTS como_nos_conocio;
 -- DROP INDEX IF EXISTS idx_healup_mh_consentimiento_fecha;

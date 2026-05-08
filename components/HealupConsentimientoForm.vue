@@ -139,6 +139,32 @@
           />
         </v-col>
       </v-row>
+
+      <!-- ¿Cómo nos conoció? — canal de adquisición (marketing) -->
+      <v-row class="form-row form-row-large">
+        <v-col cols="12" :md="form.como_nos_conocio === 'Otro' ? 6 : 12">
+          <v-select
+            v-model="form.como_nos_conocio"
+            :items="canalesAdquisicion"
+            label="¿Cómo nos conoció?"
+            variant="outlined"
+            density="comfortable"
+            prepend-inner-icon="mdi-help-circle-outline"
+            hint="Esto nos ayuda a mejorar la experiencia"
+            persistent-hint
+          />
+        </v-col>
+        <v-col v-if="form.como_nos_conocio === 'Otro'" cols="12" md="6">
+          <v-text-field
+            v-model="form.como_nos_conocio_detalle"
+            label="¿Cómo? · especifique"
+            variant="outlined"
+            density="comfortable"
+            placeholder="Ej. Folleto en clínica, evento, podcast…"
+            autofocus
+          />
+        </v-col>
+      </v-row>
     </v-card>
 
     <!-- MODO PACIENTE EXISTENTE: autocomplete + form pre-llenado editable -->
@@ -430,7 +456,9 @@ function setMode(mode: ModoSeleccion) {
       telefono: '',
       tx_realizar: '',
       consentimiento_aceptado: false,
-      doctor_nombre: form.doctor_nombre  // mantener el doctor
+      doctor_nombre: form.doctor_nombre,  // mantener el doctor
+      como_nos_conocio: '',
+      como_nos_conocio_detalle: ''
     })
   }
 }
@@ -447,8 +475,22 @@ const form = reactive({
   telefono: '',
   tx_realizar: '',
   consentimiento_aceptado: false,
-  doctor_nombre: ''
+  doctor_nombre: '',
+  como_nos_conocio: '' as string,
+  como_nos_conocio_detalle: '' as string
 })
+
+const canalesAdquisicion = [
+  'Instagram',
+  'Facebook',
+  'TikTok',
+  'WhatsApp',
+  'Google',
+  'Recomendación / Amigo',
+  'Pasé por la clínica',
+  'YouTube',
+  'Otro'
+]
 
 const saving = ref(false)
 const snackbar = reactive({ show: false, color: 'success', text: '' })
@@ -476,7 +518,9 @@ function resetForm() {
     telefono: '',
     tx_realizar: '',
     consentimiento_aceptado: false,
-    doctor_nombre: ''
+    doctor_nombre: '',
+    como_nos_conocio: '',
+    como_nos_conocio_detalle: ''
   })
 }
 
@@ -534,6 +578,11 @@ async function submit() {
     const dispositivo = detectDevice()
     const ua = (typeof navigator !== 'undefined') ? navigator.userAgent : ''
 
+    // Combinar canal + detalle para el campo final
+    const canalFinal = form.como_nos_conocio === 'Otro' && form.como_nos_conocio_detalle
+      ? `Otro: ${form.como_nos_conocio_detalle.trim()}`
+      : form.como_nos_conocio || null
+
     const consentimientoPayload = {
       titulo: 'Consentimiento Informado · Ácido Hialurónico',
       tx_realizar: form.tx_realizar,
@@ -548,7 +597,8 @@ async function submit() {
         edad: form.edad,
         telefono: form.telefono,
         txp: form.txp,
-        fecha: form.fecha
+        fecha: form.fecha,
+        como_nos_conocio: canalFinal
       }
     }
 
@@ -585,7 +635,8 @@ async function submit() {
 
       dispositivo,
       user_agent: ua,
-      paciente_origen: pacienteSeleccionado.value?.origen || 'manual'
+      paciente_origen: pacienteSeleccionado.value?.origen || 'manual',
+      como_nos_conocio: canalFinal
     }
 
     const { data, error } = await (client as any)

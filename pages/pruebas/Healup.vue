@@ -10263,7 +10263,8 @@ async function fetchMedicalHistory() {
       consentimiento_fecha: e.consentimiento_fecha,
       firma_paciente: e.firma_paciente,
       firma_doctor: e.firma_doctor,
-      dispositivo: e.dispositivo
+      dispositivo: e.dispositivo,
+      como_nos_conocio: e.como_nos_conocio
     }))
   } catch (error) {
     console.error('Error loading medical history:', error)

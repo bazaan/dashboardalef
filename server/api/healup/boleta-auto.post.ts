@@ -5,8 +5,8 @@
  * cuando el agente de WhatsApp confirma una cita y el paciente paga.
  *
  * n8n llama este endpoint después de crear el evento en healup_calendar_events.
- * Retorna los datos de la boleta (PDF, serie, número) para que n8n
- * envíe la boleta al paciente por WhatsApp.
+ * Guarda la boleta como PENDIENTE en comprobantes_pse (no la emite a SUNAT).
+ * El staff revisa y emite manualmente desde el dashboard.
  *
  * Body:
  * {
@@ -25,9 +25,8 @@
  *   serie:       "B001",
  *   numero:      123,
  *   total:       50.00,
- *   enlace_pdf:  "https://...",
- *   enlace:      "https://...",   — consulta SUNAT
- *   mensaje_wpp: "📄 Boleta de Consulta — Heal Up Lab\n..."  — texto listo para WhatsApp
+ *   pendiente:   true,
+ *   comprobante_id: 456
  * }
  *
  * Variables de entorno:
@@ -104,7 +103,6 @@ export default defineEventHandler(async (event) => {
         total: CONSULTA_TOTAL,
         enlace_pdf: comp?.enlace_del_pdf || null,
         enlace: comp?.enlace || null,
-        mensaje_wpp: buildMensajeWpp(SERIE, existing.boleta_consulta_numero, fullName, CONSULTA_TOTAL, comp?.enlace_del_pdf)
       }
     }
   }
@@ -131,7 +129,7 @@ export default defineEventHandler(async (event) => {
   // ── Calcular campos del ítem ──
   const precioUnitario = +(CONSULTA_VALOR_UNIT * 1.18).toFixed(6) // 49.9966
 
-  // ── Payload PSE.PE / NubeFact ──
+  // ── Payload PSE.PE / NubeFact (guardado para emisión posterior) ──
   const facturaPayload = {
     operacion: 'generar_comprobante',
     tipo_de_comprobante: 2,
@@ -165,28 +163,7 @@ export default defineEventHandler(async (event) => {
     }]
   }
 
-  // ── Emitir boleta via PSE.PE ──
-  let response: any
-  try {
-    response = await $fetch(HEALUP_PSE.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': HEALUP_PSE.token
-      },
-      body: facturaPayload
-    })
-    console.log(`[BoletaAuto] Emitida: ${SERIE}-${numero} para ${fullName} — SUNAT:`, response?.aceptada_por_sunat)
-  } catch (err: any) {
-    const detail = err?.data ?? err?.message ?? err
-    console.error('[BoletaAuto] Error PSE:', detail)
-    throw createError({
-      statusCode: 502,
-      statusMessage: `Error al emitir boleta: ${typeof detail === 'string' ? detail : (detail?.errors || detail?.message || 'Error PSE.PE')}`
-    })
-  }
-
-  // ── Guardar en comprobantes_pse ──
+  // ── Guardar como PENDIENTE en comprobantes_pse (NO emitir a SUNAT) ──
   let comprobanteId: number | null = null
   try {
     const { data: inserted, error: dbErr } = await supabase
@@ -212,28 +189,25 @@ export default defineEventHandler(async (event) => {
         total_igv: CONSULTA_IGV,
         total: CONSULTA_TOTAL,
         formato_de_pdf: 'A4',
-        aceptada_por_sunat: !!response?.aceptada_por_sunat,
-        sunat_description: response?.sunat_description || null,
-        codigo_hash: response?.codigo_hash || null,
-        enlace: response?.enlace || null,
-        enlace_del_pdf: response?.enlace_del_pdf || null,
-        enlace_del_xml: response?.enlace_del_xml || null,
-        enlace_del_cdr: response?.enlace_del_cdr || null,
+        aceptada_por_sunat: false,
+        estado: 'pendiente',
         items: facturaPayload.items,
         payload_enviado: facturaPayload,
-        respuesta_completa: response
+        respuesta_completa: null,
       }, { onConflict: 'company_id,tipo_de_comprobante,serie,numero' })
       .select('id')
       .single()
 
     if (dbErr) {
-      console.error('[BoletaAuto] Error guardando:', dbErr.message)
-    } else {
-      comprobanteId = inserted?.id || null
-      console.log(`[BoletaAuto] Guardada en comprobantes_pse: id=${comprobanteId}`)
+      console.error('[BoletaAuto] Error guardando pendiente:', dbErr.message)
+      throw createError({ statusCode: 500, statusMessage: `Error guardando boleta pendiente: ${dbErr.message}` })
     }
+    comprobanteId = inserted?.id || null
+    console.log(`[BoletaAuto] Pendiente guardada: ${SERIE}-${numero} id=${comprobanteId} para ${fullName}`)
   } catch (e: any) {
+    if (e.statusCode) throw e
     console.error('[BoletaAuto] Excepción guardando:', e?.message)
+    throw createError({ statusCode: 500, statusMessage: `Error guardando boleta: ${e?.message}` })
   }
 
   // ── Trazabilidad en el evento del calendario ──
@@ -251,36 +225,15 @@ export default defineEventHandler(async (event) => {
   }
 
   // ── Response para n8n ──
-  const enlacePdf = response?.enlace_del_pdf || null
-  const enlace = response?.enlace || null
-  const bNum = String(numero).padStart(8, '0')
-
   return {
     success: true,
     ya_emitida: false,
+    pendiente: true,
     serie: SERIE,
     numero,
-    numero_formateado: `${SERIE}-${bNum}`,
+    numero_formateado: `${SERIE}-${String(numero).padStart(8, '0')}`,
     total: CONSULTA_TOTAL,
-    enlace_pdf: enlacePdf,
-    enlace: enlace,
-    aceptada_por_sunat: !!response?.aceptada_por_sunat,
     comprobante_id: comprobanteId,
-    mensaje_wpp: buildMensajeWpp(SERIE, numero, fullName, CONSULTA_TOTAL, enlacePdf, enlace)
+    mensaje: `Boleta ${SERIE}-${numero} guardada como pendiente. Se emitirá desde el dashboard.`
   }
 })
-
-/* ─── Helper: mensaje listo para WhatsApp ────────── */
-function buildMensajeWpp(serie: string, numero: number, nombre: string, total: number, pdfUrl?: string | null, enlace?: string | null): string {
-  const bNum = String(numero).padStart(8, '0')
-  const totalFmt = total.toLocaleString('es-PE', { minimumFractionDigits: 2 })
-  return [
-    `*Boleta de Consulta — Heal Up Lab*`,
-    `📄 ${serie}-${bNum}`,
-    `👤 ${nombre}`,
-    `💰 Total: S/ ${totalFmt}`,
-    pdfUrl ? `\n📎 *Ver PDF:* ${pdfUrl}` : '',
-    enlace ? `🔍 *Consulta SUNAT:* ${enlace}` : '',
-    '\n_Emitido electrónicamente. Este comprobante es válido ante SUNAT._'
-  ].filter(Boolean).join('\n')
-}

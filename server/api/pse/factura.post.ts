@@ -143,9 +143,116 @@ function sanitizarPayload(p: any, tipoComprobante: number) {
   return out
 }
 
+/* ═════════════════════════════════════════════════════════════
+   HELPERS REUTILIZABLES (exportados para emitir.post.ts)
+   ═════════════════════════════════════════════════════════════ */
+export { EMPRESAS, sanitizarPayload, toFechaNubefact }
+
+function getSupabase(event: any) {
+  try { return serverSupabaseServiceRole(event) }
+  catch { return null }
+}
+
+function getUserEmail(event: any): string | null {
+  try {
+    const s = JSON.parse(getCookie(event, 'dashboard_session') || '{}')
+    return s?.email || null
+  } catch { return null }
+}
+
+function toDateIso(v: any): string | null {
+  if (!v) return null
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(v))
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`
+  return String(v)
+}
+
+function nz(v: any) { return (v === '' || v === undefined || v === null ? null : v) }
+
+/** Construye el row para comprobantes_pse a partir del payload sanitizado */
+export function buildRow(key: string, empresa: EmpresaConfig, facturaPayload: any, response: any, userEmail: string | null) {
+  return {
+    emitido_por:                 userEmail,
+    company_id:                  key,
+    ruc_emisor:                  empresa.ruc,
+    razon_social_emisor:         empresa.razon_social,
+    demo:                        empresa.demo,
+    tipo_de_comprobante:         facturaPayload.tipo_de_comprobante,
+    serie:                       facturaPayload.serie,
+    numero:                      Number(facturaPayload.numero),
+    sunat_transaction:           nz(facturaPayload.sunat_transaction),
+    fecha_de_emision:            toDateIso(facturaPayload.fecha_de_emision),
+    fecha_de_vencimiento:        toDateIso(facturaPayload.fecha_de_vencimiento),
+    cliente_tipo_de_documento:   String(facturaPayload.cliente_tipo_de_documento ?? ''),
+    cliente_numero_de_documento: facturaPayload.cliente_numero_de_documento,
+    cliente_denominacion:        facturaPayload.cliente_denominacion,
+    cliente_direccion:           nz(facturaPayload.cliente_direccion),
+    cliente_email:               nz(facturaPayload.cliente_email),
+    cliente_email_1:             nz(facturaPayload.cliente_email_1),
+    cliente_email_2:             nz(facturaPayload.cliente_email_2),
+    moneda:                      facturaPayload.moneda || 1,
+    tipo_de_cambio:              nz(facturaPayload.tipo_de_cambio),
+    porcentaje_de_igv:           facturaPayload.porcentaje_de_igv || 18,
+    total_gravada:               Number(facturaPayload.total_gravada)   || 0,
+    total_inafecta:              Number(facturaPayload.total_inafecta)  || 0,
+    total_exonerada:             Number(facturaPayload.total_exonerada) || 0,
+    total_gratuita:              Number(facturaPayload.total_gratuita)  || 0,
+    total_igv:                   Number(facturaPayload.total_igv)       || 0,
+    total_descuento:             Number(facturaPayload.total_descuento) || 0,
+    descuento_global:            nz(facturaPayload.descuento_global),
+    total_anticipo:              nz(facturaPayload.total_anticipo),
+    total_impuestos_bolsas:      nz(facturaPayload.total_impuestos_bolsas),
+    total:                       Number(facturaPayload.total),
+    documento_que_se_modifica_tipo:   nz(facturaPayload.documento_que_se_modifica_tipo),
+    documento_que_se_modifica_serie:  nz(facturaPayload.documento_que_se_modifica_serie),
+    documento_que_se_modifica_numero: nz(facturaPayload.documento_que_se_modifica_numero),
+    tipo_de_nota_de_credito:          nz(facturaPayload.tipo_de_nota_de_credito),
+    tipo_de_nota_de_debito:           nz(facturaPayload.tipo_de_nota_de_debito),
+    detraccion:                  !!facturaPayload.detraccion,
+    detraccion_tipo:             nz(facturaPayload.detraccion_tipo),
+    detraccion_porcentaje:       nz(facturaPayload.detraccion_porcentaje),
+    detraccion_total:            nz(facturaPayload.detraccion_total),
+    medio_de_pago_detraccion:    nz(facturaPayload.medio_de_pago_detraccion),
+    percepcion_tipo:             nz(facturaPayload.percepcion_tipo),
+    percepcion_base_imponible:   nz(facturaPayload.percepcion_base_imponible),
+    total_percepcion:            nz(facturaPayload.total_percepcion),
+    total_incluido_percepcion:   nz(facturaPayload.total_incluido_percepcion),
+    retencion_tipo:              nz(facturaPayload.retencion_tipo),
+    retencion_base_imponible:    nz(facturaPayload.retencion_base_imponible),
+    total_retencion:             nz(facturaPayload.total_retencion),
+    observaciones:               nz(facturaPayload.observaciones),
+    orden_compra_servicio:       nz(facturaPayload.orden_compra_servicio),
+    condiciones_de_pago:         nz(facturaPayload.condiciones_de_pago),
+    medio_de_pago:               nz(facturaPayload.medio_de_pago),
+    placa_vehiculo:              nz(facturaPayload.placa_vehiculo),
+    codigo_unico:                nz(facturaPayload.codigo_unico),
+    formato_de_pdf:              facturaPayload.formato_de_pdf || 'A4',
+    generado_por_contingencia:   !!facturaPayload.generado_por_contingencia,
+    bienes_region_selva:         !!facturaPayload.bienes_region_selva,
+    servicios_region_selva:      !!facturaPayload.servicios_region_selva,
+    aceptada_por_sunat:          !!(response as any)?.aceptada_por_sunat,
+    sunat_description:           (response as any)?.sunat_description || null,
+    sunat_note:                  (response as any)?.sunat_note        || null,
+    sunat_responsecode:          (response as any)?.sunat_responsecode ? String((response as any).sunat_responsecode) : null,
+    sunat_soap_error:            (response as any)?.sunat_soap_error  || null,
+    codigo_hash:                 (response as any)?.codigo_hash       || null,
+    cadena_para_codigo_qr:       (response as any)?.cadena_para_codigo_qr || null,
+    key_name:                    (response as any)?.key_name          || null,
+    enlace:                      (response as any)?.enlace            || null,
+    enlace_del_pdf:              (response as any)?.enlace_del_pdf    || null,
+    enlace_del_xml:              (response as any)?.enlace_del_xml    || null,
+    enlace_del_cdr:              (response as any)?.enlace_del_cdr    || null,
+    items:                       facturaPayload.items || [],
+    venta_al_credito:            facturaPayload.venta_al_credito || null,
+    guias:                       facturaPayload.guias || null,
+    payload_enviado:             facturaPayload,
+    respuesta_completa:          response
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { company_id, payload } = body
+  const { company_id, payload, solo_pendiente } = body
 
   if (!company_id || !payload) {
     throw createError({ statusCode: 400, statusMessage: 'Faltan company_id o payload' })
@@ -167,13 +274,60 @@ export default defineEventHandler(async (event) => {
   const facturaPayload = {
     operacion: 'generar_comprobante',
     ...sanitizado,
-    // Overrides finales — estas llaves NO deben ser sobreescribibles
-    sunat_transaction: sanitizado.sunat_transaction ?? 1,  // requerido por PSE.PE — sin esto lanza error 40
+    sunat_transaction: sanitizado.sunat_transaction ?? 1,
     enviar_automaticamente_a_la_sunat: true,
     enviar_automaticamente_al_cliente: false,
     porcentaje_de_igv: 18.00
   }
 
+  const userEmail = getUserEmail(event)
+
+  let supabase: any
+  try { supabase = serverSupabaseServiceRole(event) }
+  catch {
+    try { supabase = await serverSupabaseClient(event) }
+    catch { supabase = null }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // MODO PENDIENTE: guardar en Supabase sin emitir a PSE.PE
+  // ══════════════════════════════════════════════════════════════
+  if (solo_pendiente) {
+    console.log('[PSE][Pendiente]', facturaPayload.serie + '-' + facturaPayload.numero, 'total:', facturaPayload.total)
+
+    if (!supabase) {
+      throw createError({ statusCode: 500, statusMessage: 'No se pudo conectar a Supabase' })
+    }
+
+    const row = {
+      ...buildRow(key, empresa, facturaPayload, {}, userEmail),
+      estado: 'pendiente',
+      aceptada_por_sunat: false,
+    }
+
+    const { data: inserted, error: dbErr } = await supabase
+      .from('comprobantes_pse')
+      .upsert(row, { onConflict: 'company_id,tipo_de_comprobante,serie,numero' })
+      .select('id')
+      .single()
+
+    if (dbErr) {
+      throw createError({ statusCode: 500, statusMessage: `Error guardando pendiente: ${dbErr.message}` })
+    }
+
+    return {
+      pendiente: true,
+      comprobante_id: inserted?.id,
+      serie: facturaPayload.serie,
+      numero: facturaPayload.numero,
+      total: facturaPayload.total,
+      cliente_denominacion: facturaPayload.cliente_denominacion,
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // MODO EMISION DIRECTA (legacy — usado por emitir.post.ts)
+  // ══════════════════════════════════════════════════════════════
   console.log('[PSE]', empresa.razon_social, '(RUC', empresa.ruc + ')', empresa.demo ? '[DEMO]' : '[PROD]')
   console.log('[PSE] →', facturaPayload.tipo_de_comprobante === 1 ? 'FACTURA' : 'BOLETA',
               facturaPayload.serie + '-' + facturaPayload.numero,
@@ -185,7 +339,7 @@ export default defineEventHandler(async (event) => {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json; charset=utf-8',
-        'Authorization': empresa.token  // JWT puro, sin prefijo
+        'Authorization': empresa.token
       },
       body: facturaPayload
     })
@@ -193,158 +347,28 @@ export default defineEventHandler(async (event) => {
     console.log('[PSE] OK:', (response as any)?.serie, (response as any)?.numero,
                 'aceptada_por_sunat:', (response as any)?.aceptada_por_sunat)
 
-    // ──────────────────────────────────────────────────────────────────
-    // PERSISTENCIA EN SUPABASE (tabla comprobantes_pse)
-    // No hacemos throw si falla la inserción: el comprobante ya existe
-    // en NubeFact/SUNAT y el usuario debe poder verlo.
-    // ──────────────────────────────────────────────────────────────────
-    try {
-      // Preferimos service_role (bypass RLS); si no está configurado, caemos al anon client
-      let supabase: any
+    if (supabase) {
       try {
-        supabase = serverSupabaseServiceRole(event)
-      } catch (e: any) {
-        console.warn('[PSE][Supabase] service_role no disponible, usando anon:', e?.message)
-        supabase = await serverSupabaseClient(event)
+        const row = {
+          ...buildRow(key, empresa, facturaPayload, response, userEmail),
+          estado: 'emitido',
+        }
+
+        const { data: inserted, error: dbErr } = await supabase
+          .from('comprobantes_pse')
+          .upsert(row, { onConflict: 'company_id,tipo_de_comprobante,serie,numero' })
+          .select('id')
+          .single()
+
+        if (dbErr) {
+          console.error('[PSE][Supabase] error guardando comprobante:', dbErr.message)
+        } else {
+          console.log('[PSE][Supabase] comprobante guardado:', row.serie + '-' + row.numero, '→', inserted?.id)
+          ;(response as any).comprobante_id = inserted?.id
+        }
+      } catch (dbErr: any) {
+        console.error('[PSE][Supabase] excepción guardando comprobante:', dbErr?.message || dbErr)
       }
-
-      const userEmail = getCookie(event, 'dashboard_session')
-        ? (() => {
-            try {
-              const s = JSON.parse(getCookie(event, 'dashboard_session') || '{}')
-              return s?.email || null
-            } catch { return null }
-          })()
-        : null
-
-      const toDateIso = (v: any): string | null => {
-        if (!v) return null
-        // Viene en DD-MM-YYYY desde la sanitización
-        const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(v))
-        if (m) return `${m[3]}-${m[2]}-${m[1]}`
-        return String(v)
-      }
-
-      const nz = (v: any) => (v === '' || v === undefined || v === null ? null : v)
-
-      const row = {
-        // Meta
-        emitido_por:                 userEmail,
-        // Emisor
-        company_id:                  key,
-        ruc_emisor:                  empresa.ruc,
-        razon_social_emisor:         empresa.razon_social,
-        demo:                        empresa.demo,
-
-        // Identificación
-        tipo_de_comprobante:         facturaPayload.tipo_de_comprobante,
-        serie:                       facturaPayload.serie,
-        numero:                      Number(facturaPayload.numero),
-        sunat_transaction:           nz(facturaPayload.sunat_transaction),
-
-        // Fechas (DB usa DATE en ISO YYYY-MM-DD)
-        fecha_de_emision:            toDateIso(facturaPayload.fecha_de_emision),
-        fecha_de_vencimiento:        toDateIso(facturaPayload.fecha_de_vencimiento),
-
-        // Cliente
-        cliente_tipo_de_documento:   String(facturaPayload.cliente_tipo_de_documento ?? ''),
-        cliente_numero_de_documento: facturaPayload.cliente_numero_de_documento,
-        cliente_denominacion:        facturaPayload.cliente_denominacion,
-        cliente_direccion:           nz(facturaPayload.cliente_direccion),
-        cliente_email:               nz(facturaPayload.cliente_email),
-        cliente_email_1:             nz(facturaPayload.cliente_email_1),
-        cliente_email_2:             nz(facturaPayload.cliente_email_2),
-
-        // Moneda y totales
-        moneda:                      facturaPayload.moneda || 1,
-        tipo_de_cambio:              nz(facturaPayload.tipo_de_cambio),
-        porcentaje_de_igv:           facturaPayload.porcentaje_de_igv || 18,
-        total_gravada:               Number(facturaPayload.total_gravada)   || 0,
-        total_inafecta:              Number(facturaPayload.total_inafecta)  || 0,
-        total_exonerada:             Number(facturaPayload.total_exonerada) || 0,
-        total_gratuita:              Number(facturaPayload.total_gratuita)  || 0,
-        total_igv:                   Number(facturaPayload.total_igv)       || 0,
-        total_descuento:             Number(facturaPayload.total_descuento) || 0,
-        descuento_global:            nz(facturaPayload.descuento_global),
-        total_anticipo:              nz(facturaPayload.total_anticipo),
-        total_impuestos_bolsas:      nz(facturaPayload.total_impuestos_bolsas),
-        total:                       Number(facturaPayload.total),
-
-        // Documento que modifica
-        documento_que_se_modifica_tipo:   nz(facturaPayload.documento_que_se_modifica_tipo),
-        documento_que_se_modifica_serie:  nz(facturaPayload.documento_que_se_modifica_serie),
-        documento_que_se_modifica_numero: nz(facturaPayload.documento_que_se_modifica_numero),
-        tipo_de_nota_de_credito:          nz(facturaPayload.tipo_de_nota_de_credito),
-        tipo_de_nota_de_debito:           nz(facturaPayload.tipo_de_nota_de_debito),
-
-        // Detracción
-        detraccion:                  !!facturaPayload.detraccion,
-        detraccion_tipo:             nz(facturaPayload.detraccion_tipo),
-        detraccion_porcentaje:       nz(facturaPayload.detraccion_porcentaje),
-        detraccion_total:            nz(facturaPayload.detraccion_total),
-        medio_de_pago_detraccion:    nz(facturaPayload.medio_de_pago_detraccion),
-
-        // Percepción / Retención
-        percepcion_tipo:             nz(facturaPayload.percepcion_tipo),
-        percepcion_base_imponible:   nz(facturaPayload.percepcion_base_imponible),
-        total_percepcion:            nz(facturaPayload.total_percepcion),
-        total_incluido_percepcion:   nz(facturaPayload.total_incluido_percepcion),
-        retencion_tipo:              nz(facturaPayload.retencion_tipo),
-        retencion_base_imponible:    nz(facturaPayload.retencion_base_imponible),
-        total_retencion:             nz(facturaPayload.total_retencion),
-
-        // Info adicional
-        observaciones:               nz(facturaPayload.observaciones),
-        orden_compra_servicio:       nz(facturaPayload.orden_compra_servicio),
-        condiciones_de_pago:         nz(facturaPayload.condiciones_de_pago),
-        medio_de_pago:               nz(facturaPayload.medio_de_pago),
-        placa_vehiculo:              nz(facturaPayload.placa_vehiculo),
-        codigo_unico:                nz(facturaPayload.codigo_unico),
-        formato_de_pdf:              facturaPayload.formato_de_pdf || 'A4',
-
-        // Flags
-        generado_por_contingencia:   !!facturaPayload.generado_por_contingencia,
-        bienes_region_selva:         !!facturaPayload.bienes_region_selva,
-        servicios_region_selva:      !!facturaPayload.servicios_region_selva,
-
-        // Respuesta SUNAT
-        aceptada_por_sunat:          !!(response as any)?.aceptada_por_sunat,
-        sunat_description:           (response as any)?.sunat_description || null,
-        sunat_note:                  (response as any)?.sunat_note        || null,
-        sunat_responsecode:          (response as any)?.sunat_responsecode ? String((response as any).sunat_responsecode) : null,
-        sunat_soap_error:            (response as any)?.sunat_soap_error  || null,
-        codigo_hash:                 (response as any)?.codigo_hash       || null,
-        cadena_para_codigo_qr:       (response as any)?.cadena_para_codigo_qr || null,
-        key_name:                    (response as any)?.key_name          || null,
-
-        // Enlaces
-        enlace:                      (response as any)?.enlace            || null,
-        enlace_del_pdf:              (response as any)?.enlace_del_pdf    || null,
-        enlace_del_xml:              (response as any)?.enlace_del_xml    || null,
-        enlace_del_cdr:              (response as any)?.enlace_del_cdr    || null,
-
-        // Auditoría
-        items:                       facturaPayload.items || [],
-        venta_al_credito:            facturaPayload.venta_al_credito || null,
-        guias:                       facturaPayload.guias || null,
-        payload_enviado:             facturaPayload,
-        respuesta_completa:          response
-      }
-
-      const { data: inserted, error: dbErr } = await supabase
-        .from('comprobantes_pse')
-        .upsert(row, { onConflict: 'company_id,tipo_de_comprobante,serie,numero' })
-        .select('id')
-        .single()
-
-      if (dbErr) {
-        console.error('[PSE][Supabase] error guardando comprobante:', dbErr.message)
-      } else {
-        console.log('[PSE][Supabase] comprobante guardado:', row.serie + '-' + row.numero, '→', inserted?.id)
-        ;(response as any).comprobante_id = inserted?.id
-      }
-    } catch (dbErr: any) {
-      console.error('[PSE][Supabase] excepción guardando comprobante:', dbErr?.message || dbErr)
     }
 
     return response
@@ -354,8 +378,6 @@ export default defineEventHandler(async (event) => {
     console.error('[PSE Error] Status:', err?.status)
     console.error('[PSE Error] Body:', JSON.stringify(detail))
 
-    // Formatear mensaje de error según el formato de NubeFact
-    // { "errors": "...", "codigo": N }  o  { "error": "..." }
     let statusMessage = 'Error al emitir comprobante'
     if (typeof detail === 'string') {
       statusMessage = detail

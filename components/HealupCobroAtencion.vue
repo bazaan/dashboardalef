@@ -1048,17 +1048,18 @@ const emitirBoletaConsulta = async () => {
 
     const resp: any = await $fetch('/api/pse/factura', {
       method: 'POST',
-      body: { company_id: 'healup', payload }
+      body: { company_id: 'healup', payload, solo_pendiente: true }
     })
 
     boletaConsulta.value = {
       serie:          'B001',
       numero,
       total:          50.00,
-      comprobante_id: resp?.comprobante_id,
+      comprobante_id: resp?.comprobante_id || resp?.comprobante_id,
       enlace_pdf:     resp?.enlace_del_pdf,
       enlace:         resp?.enlace,
-      enlace_xml:     resp?.enlace_del_xml
+      enlace_xml:     resp?.enlace_del_xml,
+      pendiente:      !!resp?.pendiente
     }
 
     // Trazabilidad en el evento de calendario
@@ -1149,7 +1150,7 @@ const emitirBoletaProcedimiento = async () => {
 
     const resp: any = await $fetch('/api/pse/factura', {
       method: 'POST',
-      body: { company_id: 'healup', payload }
+      body: { company_id: 'healup', payload, solo_pendiente: true }
     })
 
     boletaProcedimiento.value = {
@@ -1159,7 +1160,8 @@ const emitirBoletaProcedimiento = async () => {
       comprobante_id: resp?.comprobante_id,
       enlace_pdf:     resp?.enlace_del_pdf,
       enlace:         resp?.enlace,
-      enlace_xml:     resp?.enlace_del_xml
+      enlace_xml:     resp?.enlace_del_xml,
+      pendiente:      !!resp?.pendiente
     }
 
     // Trazabilidad

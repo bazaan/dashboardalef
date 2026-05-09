@@ -57,6 +57,84 @@
     </v-dialog>
 
     <div class="content-area">
+
+      <!-- ── BOLETAS PENDIENTES (sin emitir a SUNAT) ── -->
+      <div v-if="pendientes.length > 0" class="table-section" style="margin-bottom: 24px;">
+        <v-card flat class="custom-data-table">
+          <v-card-title class="table-search-bar" style="background: linear-gradient(135deg, #f59e0b22, #f59e0b11);">
+            <span class="table-title">
+              <v-icon icon="mdi-clock-outline" color="warning" size="20" class="me-2" />
+              Pendientes de Emisión
+              <v-chip size="x-small" color="warning" class="ms-2">{{ pendientes.length }}</v-chip>
+            </span>
+            <v-spacer />
+            <v-btn
+              color="success"
+              variant="elevated"
+              size="small"
+              prepend-icon="mdi-send-check"
+              :loading="emitiendoTodas"
+              @click="emitirTodasPendientes">
+              Emitir Todas a SUNAT
+            </v-btn>
+          </v-card-title>
+
+          <v-data-table
+            :headers="[
+              { title: 'Tipo', key: 'tipo', width: '80px' },
+              { title: 'Serie-Número', key: 'serie' },
+              { title: 'Cliente', key: 'cliente' },
+              { title: 'Fecha', key: 'fecha', width: '110px' },
+              { title: 'Total', key: 'total', align: 'end', width: '100px' },
+              { title: 'Acciones', key: 'acciones', sortable: false, width: '180px' },
+            ]"
+            :items="pendientes"
+            density="compact"
+            :items-per-page="-1"
+            hide-default-footer
+            no-data-text="No hay comprobantes pendientes">
+
+            <template #item.tipo="{ item }">
+              <v-chip :color="colorTipo(item.tipo)" size="x-small" variant="flat">
+                {{ labelTipo(item.tipo) }}
+              </v-chip>
+            </template>
+
+            <template #item.serie="{ item }">
+              {{ item.serie }}-{{ item.numero }}
+            </template>
+
+            <template #item.total="{ item }">
+              S/ {{ Number(item.total).toFixed(2) }}
+            </template>
+
+            <template #item.acciones="{ item }">
+              <div style="display:flex; gap:6px; align-items:center;">
+                <v-btn
+                  color="success"
+                  variant="tonal"
+                  size="x-small"
+                  prepend-icon="mdi-send"
+                  :loading="emitiendoPendiente === item.id"
+                  @click="emitirPendiente(item)">
+                  Emitir
+                </v-btn>
+                <v-btn
+                  color="error"
+                  variant="tonal"
+                  size="x-small"
+                  icon="mdi-delete"
+                  @click="eliminarPendiente(item)"
+                />
+              </div>
+              <div v-if="item.error" style="color: #ef4444; font-size: 0.75rem; margin-top: 2px;">
+                {{ item.error }}
+              </div>
+            </template>
+          </v-data-table>
+        </v-card>
+      </div>
+
       <!-- ── LISTA DE COMPROBANTES EMITIDOS ── -->
       <div class="table-section">
         <v-card flat class="custom-data-table">
@@ -1573,6 +1651,12 @@ const comprobantesVista = computed(() => {
   return comprobantes.value
 })
 
+// Pendientes (boletas guardadas sin emitir a SUNAT)
+const pendientes          = ref<any[]>([])
+const loadingPendientes   = ref(false)
+const emitiendoPendiente  = ref<number | null>(null) // id del que se está emitiendo
+const emitiendoTodas      = ref(false)
+
 // Eliminar (pendientes PSE)
 const dialogEliminar   = ref(false)
 const eliminarTarget   = ref<any>(null)
@@ -2038,28 +2122,51 @@ const enviarFactura = async () => {
   try {
     const res = await $fetch<any>('/api/pse/factura', {
       method: 'POST',
-      body: { company_id: props.companyId, payload }
+      body: { company_id: props.companyId, payload, solo_pendiente: true }
     })
 
-    const aceptada = res.aceptada_por_sunat === true
-
-    respuestaSunat.value = {
-      aceptada,
-      descripcion:         res.sunat_description || res.errors || (aceptada ? 'Aceptada sin observaciones' : 'Sin descripción'),
-      serie:               res.serie,
-      numero:              res.numero,
-      enlace:              res.enlace           || null,   // consulta pública
-      enlace_pdf:          res.enlace_del_pdf   || null,
-      enlace_xml:          res.enlace_del_xml   || null,
-      enlace_cdr:          res.enlace_del_cdr   || null,
-      codigo_hash:         res.codigo_hash      || null,
-      sunat_note:          res.sunat_note       || null,
-      sunat_responsecode:  res.sunat_responsecode || null,
-      sunat_soap_error:    res.sunat_soap_error || null,
-      comprobante_id:      res.comprobante_id   || null   // id en Supabase
+    // Modo pendiente: no se emitió a SUNAT aún
+    if (res.pendiente) {
+      respuestaSunat.value = {
+        aceptada:       false,
+        pendiente:      true,
+        descripcion:    'Comprobante guardado como pendiente. Emítelo desde la sección de pendientes.',
+        serie:          res.serie,
+        numero:         res.numero,
+        comprobante_id: res.comprobante_id || null
+      }
+    } else {
+      const aceptada = res.aceptada_por_sunat === true
+      respuestaSunat.value = {
+        aceptada,
+        descripcion:         res.sunat_description || res.errors || (aceptada ? 'Aceptada sin observaciones' : 'Sin descripción'),
+        serie:               res.serie,
+        numero:              res.numero,
+        enlace:              res.enlace           || null,
+        enlace_pdf:          res.enlace_del_pdf   || null,
+        enlace_xml:          res.enlace_del_xml   || null,
+        enlace_cdr:          res.enlace_del_cdr   || null,
+        codigo_hash:         res.codigo_hash      || null,
+        sunat_note:          res.sunat_note       || null,
+        sunat_responsecode:  res.sunat_responsecode || null,
+        sunat_soap_error:    res.sunat_soap_error || null,
+        comprobante_id:      res.comprobante_id   || null
+      }
     }
 
-    if (aceptada) {
+    if (res.pendiente) {
+      // Agregar a lista de pendientes
+      pendientes.value.unshift({
+        id:      res.comprobante_id,
+        tipo:    f.tipo_de_comprobante,
+        serie:   res.serie,
+        numero:  res.numero,
+        cliente: f.cliente_denominacion,
+        fecha:   f.fecha_de_emision,
+        total:   t.total,
+      })
+      form.value.numero = (Number(form.value.numero) || 0) + 1
+    } else if (respuestaSunat.value?.aceptada) {
       // Precargar email del cliente si existe
       emailEnvio.value       = f.cliente_email || f.cliente_email_1 || ''
       mostrarEnvioCorreo.value = !!emailEnvio.value
@@ -2364,11 +2471,114 @@ const cargarComprobantes = async () => {
   }
 }
 
+/* ═════════════════════════════════════════════════════════════
+   PENDIENTES: CARGAR, EMITIR, ELIMINAR
+   ═════════════════════════════════════════════════════════════ */
+const cargarPendientes = async () => {
+  if (!props.companyId) return
+  loadingPendientes.value = true
+  try {
+    const key = props.companyId.toLowerCase().replace(/\s/g, '')
+    const { data, error } = await supabase
+      .from('comprobantes_pse')
+      .select('id, tipo_de_comprobante, serie, numero, cliente_denominacion, fecha_de_emision, total, error_emision, estado')
+      .eq('company_id', key)
+      .eq('estado', 'pendiente')
+      .order('numero', { ascending: true })
+
+    if (!error && data) {
+      pendientes.value = data.map((r: any) => ({
+        id:      r.id,
+        tipo:    r.tipo_de_comprobante,
+        serie:   r.serie,
+        numero:  r.numero,
+        cliente: r.cliente_denominacion,
+        fecha:   r.fecha_de_emision,
+        total:   Number(r.total) || 0,
+        error:   r.error_emision,
+      }))
+    }
+  } catch (e: any) {
+    console.error('[PSE] Error cargando pendientes:', e?.message)
+  } finally {
+    loadingPendientes.value = false
+  }
+}
+
+const emitirPendiente = async (item: any) => {
+  emitiendoPendiente.value = item.id
+  try {
+    const res = await $fetch<any>('/api/pse/emitir', {
+      method: 'POST',
+      body: { comprobante_id: item.id }
+    })
+    const r = res.resultados?.[0]
+    if (r?.ok) {
+      pendientes.value = pendientes.value.filter(p => p.id !== item.id)
+      comprobantes.value.unshift({
+        id:         item.id,
+        tipo:       item.tipo,
+        serie:      item.serie,
+        numero:     item.numero,
+        cliente:    item.cliente,
+        fecha:      item.fecha,
+        total:      item.total,
+        sunat_ok:   !!r.aceptada_por_sunat,
+        anulado:    false,
+        enlace_pdf: r.enlace_del_pdf || null,
+      })
+    } else {
+      const idx = pendientes.value.findIndex(p => p.id === item.id)
+      if (idx !== -1) pendientes.value[idx].error = r?.error || 'Error desconocido'
+    }
+  } catch (e: any) {
+    const idx = pendientes.value.findIndex(p => p.id === item.id)
+    if (idx !== -1) pendientes.value[idx].error = e?.data?.statusMessage || e?.message || 'Error'
+  } finally {
+    emitiendoPendiente.value = null
+  }
+}
+
+const emitirTodasPendientes = async () => {
+  if (pendientes.value.length === 0) return
+  emitiendoTodas.value = true
+  try {
+    const res = await $fetch<any>('/api/pse/emitir', {
+      method: 'POST',
+      body: { company_id: props.companyId, todos: true }
+    })
+    // Recargar ambas listas
+    await Promise.all([cargarPendientes(), cargarComprobantes()])
+  } catch (e: any) {
+    console.error('[PSE] Error emitiendo todas:', e?.message)
+  } finally {
+    emitiendoTodas.value = false
+  }
+}
+
+const eliminarPendiente = async (item: any) => {
+  try {
+    const key = props.companyId.toLowerCase().replace(/\s/g, '')
+    await supabase
+      .from('comprobantes_pse')
+      .delete()
+      .eq('id', item.id)
+      .eq('estado', 'pendiente')
+
+    pendientes.value = pendientes.value.filter(p => p.id !== item.id)
+  } catch (e: any) {
+    console.error('[PSE] Error eliminando pendiente:', e?.message)
+  }
+}
+
 // Un solo watcher con immediate:true → cubre mount inicial Y cambios posteriores
 watch(
   () => props.companyId,
   (val) => {
-    if (val) cargarComprobantes()
+    if (val) {
+      cargarComprobantes()
+      cargarPendientes()
+    }
   },
   { immediate: true }
 )

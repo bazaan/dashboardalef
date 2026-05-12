@@ -104,8 +104,18 @@ export default defineEventHandler(async (event) => {
   const total_igv:      number = parseFloat((total - total_gravada).toFixed(2))
 
   // ── 4. Datos del cliente ───────────────────────────────────────────────
+  // Mapeo de tipo_documento: el sistema ECS puede enviar códigos propios.
+  // PSE.PE solo acepta: 1=DNI, 4=CE, 6=RUC. Cualquier otro → DNI por defecto.
+  const TIPO_DOC_MAP: Record<number | string, number | string> = {
+    1: 1,   // DNI → DNI
+    2: 1,   // DNI (código interno ECS) → DNI
+    4: 4,   // CE → CE
+    6: 6,   // RUC → RUC
+    7: 7,   // Pasaporte
+  }
   const cli = body?.cliente
-  const cliente_tipo   = cli?.tipo_documento  ?? '-'
+  const tipoRaw        = cli?.tipo_documento
+  const cliente_tipo   = tipoRaw != null ? (TIPO_DOC_MAP[tipoRaw] ?? 1) : '-'
   const cliente_num    = cli?.numero_documento ?? '00000000'
   const cliente_nom    = cli?.nombre           ?? 'CONSUMIDOR FINAL'
   const cliente_email  = cli?.email            ?? ''

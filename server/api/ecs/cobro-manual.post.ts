@@ -59,8 +59,12 @@ export default defineEventHandler(async (event) => {
   const total_igv:     number = parseFloat((total - total_gravada).toFixed(2))
 
   // ── Datos del cliente ─────────────────────────────────────────────────────
+  const TIPO_DOC_MAP: Record<number | string, number | string> = {
+    1: 1, 2: 1, 4: 4, 6: 6, 7: 7,
+  }
   const cli = body?.cliente
-  const cliente_tipo  = cli?.tipo_documento  ?? '-'
+  const tipoRaw       = cli?.tipo_documento
+  const cliente_tipo  = tipoRaw != null ? (TIPO_DOC_MAP[tipoRaw] ?? 1) : '-'
   const cliente_num   = cli?.numero_documento ?? '00000000'
   const cliente_nom   = cli?.nombre           ?? 'CONSUMIDOR FINAL'
   const cliente_email = cli?.email            ?? ''

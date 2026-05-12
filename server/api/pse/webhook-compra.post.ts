@@ -62,19 +62,39 @@ function hoy(): string {
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
+  const supabase = serverSupabaseServiceRole(event)
+
+  // ── Log de entrada (siempre, antes de validar) ─────────────────────────
+  let logId: number | null = null
+  try {
+    const { data: logRow } = await supabase.from('ecs_webhook_logs').insert({
+      payload:     body,
+      status:      'pending',
+      ip_address:  getHeader(event, 'x-forwarded-for') || getHeader(event, 'x-real-ip') || 'unknown'
+    }).select('id').single()
+    logId = logRow?.id ?? null
+  } catch { /* tabla puede no existir aún */ }
+
+  const updateLog = async (status: string, extra: Record<string, any> = {}) => {
+    if (!logId) return
+    try { await supabase.from('ecs_webhook_logs').update({ status, ...extra }).eq('id', logId) } catch {}
+  }
 
   // ── 1. Autenticación por secret ────────────────────────────────────────
   const secretEsperado = process.env.WEBHOOK_ECS_SECRET
   if (!secretEsperado) {
+    await updateLog('error', { error_message: 'WEBHOOK_ECS_SECRET no configurado' })
     throw createError({ statusCode: 500, statusMessage: 'WEBHOOK_ECS_SECRET no configurado en el servidor' })
   }
   if (body?.webhook_secret !== secretEsperado) {
+    await updateLog('error', { error_message: 'webhook_secret inválido' })
     throw createError({ statusCode: 401, statusMessage: 'webhook_secret inválido' })
   }
 
   // ── 2. Validación mínima ───────────────────────────────────────────────
   const plan = body?.plan
   if (!plan?.nombre || !plan?.precio_final) {
+    await updateLog('error', { error_message: 'Faltan plan.nombre o plan.precio_final' })
     throw createError({ statusCode: 400, statusMessage: 'Faltan plan.nombre o plan.precio_final' })
   }
 
@@ -91,13 +111,6 @@ export default defineEventHandler(async (event) => {
   const cliente_email  = cli?.email            ?? ''
 
   // ── 5. Número de boleta ────────────────────────────────────────────────
-  let supabase: any
-  try {
-    supabase = serverSupabaseServiceRole(event)
-  } catch {
-    throw createError({ statusCode: 500, statusMessage: 'No se pudo inicializar Supabase service role' })
-  }
-
   const numero = await proximoNumero(supabase)
 
   // ── 6. Armar payload PSE.PE ────────────────────────────────────────────
@@ -228,7 +241,14 @@ export default defineEventHandler(async (event) => {
     // No hacemos throw: la boleta ya existe en SUNAT
   }
 
-  // ── 9. Respuesta a la página web ───────────────────────────────────────
+  // ── 9. Actualizar log con éxito ────────────────────────────────────────
+  await updateLog('success', {
+    comprobante_serie:  SERIE_BOLETA,
+    comprobante_numero: numero,
+    enlace_pdf:         response?.enlace_del_pdf || null,
+  })
+
+  // ── 10. Respuesta a la página web ──────────────────────────────────────
   return {
     ok:                  true,
     serie:               SERIE_BOLETA,

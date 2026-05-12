@@ -812,165 +812,320 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: CONTABILIDAD GLOBAL  ========== -->
+      <!-- ==========  VISTA: FACTURACIÓN ECS  ========== -->
       <div v-else-if="activeView === 'contabilidad'" class="view-container">
 
-        <!-- PSE Tabs -->
-        <v-tabs
-          v-model="facturacionTab"
-          bg-color="transparent"
-          color="primary"
-          density="compact"
-          class="mb-4"
-          style="border-bottom: 1px solid var(--border);"
-        >
-          <v-tab value="resumen">Resumen</v-tab>
+        <!-- Tabs principales -->
+        <v-tabs v-model="facturacionTab" bg-color="transparent" color="primary" density="compact" class="mb-4"
+          style="border-bottom: 1px solid var(--border);">
+          <v-tab value="cobro_manual">💳 Cobro Manual</v-tab>
+          <v-tab value="boletas">📄 Boletas</v-tab>
           <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
+          <v-tab v-if="isSuperAdmin(currentUser)" value="endpoint">🔌 Endpoint</v-tab>
         </v-tabs>
 
-        <!-- PSE.PE: Factura Electrónica -->
+        <!-- ====== TAB: COBRO MANUAL ====== -->
+        <div v-show="facturacionTab === 'cobro_manual'" class="content-area">
+          <div style="max-width: 700px;">
+            <h2 style="margin-bottom: 1.5rem; font-size: 1.25rem;">Generar Boleta Manual</h2>
+
+            <!-- Resultado exitoso -->
+            <v-alert v-if="resultadoCobro" type="success" class="mb-4" closable @click:close="resultadoCobro = null">
+              <div class="font-weight-bold">✅ Boleta {{ resultadoCobro.serie }}-{{ resultadoCobro.comprobante_numero ?? resultadoCobro.numero }} emitida</div>
+              <div style="margin-top: 6px;">
+                SUNAT: {{ resultadoCobro.aceptada_por_sunat ? 'Aceptada ✅' : 'Pendiente ⏳' }}
+              </div>
+              <v-btn v-if="resultadoCobro.enlace_pdf" :href="resultadoCobro.enlace_pdf" target="_blank"
+                color="white" variant="outlined" size="small" class="mt-2">
+                <v-icon start>mdi-file-pdf-box</v-icon> Ver PDF
+              </v-btn>
+            </v-alert>
+
+            <!-- Error -->
+            <v-alert v-if="errorCobro" type="error" class="mb-4" closable @click:close="errorCobro = ''">
+              {{ errorCobro }}
+            </v-alert>
+
+            <v-card flat style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+
+              <!-- Sección: Plan -->
+              <div style="margin-bottom: 1.5rem;">
+                <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">Plan / Producto</div>
+                <v-row>
+                  <v-col cols="12">
+                    <v-select v-model="cobroForm.planSeleccionado" :items="planesSubscripcion"
+                      item-title="nombre" item-value="id" label="Seleccionar plan del catálogo (opcional)"
+                      variant="outlined" density="compact" clearable @update:model-value="onPlanSelect"
+                      :loading="loadingPlanes">
+                      <template v-slot:item="{ props, item }">
+                        <v-list-item v-bind="props" :subtitle="'S/ ' + item.raw.precio">
+                          <template v-slot:append>
+                            <v-chip size="x-small" color="primary">{{ item.raw.precio }}</v-chip>
+                          </template>
+                        </v-list-item>
+                      </template>
+                    </v-select>
+                  </v-col>
+                  <v-col cols="12" md="8">
+                    <v-text-field v-model="cobroForm.plan_nombre" label="Descripción del plan / producto *"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" md="4">
+                    <v-text-field v-model.number="cobroForm.precio_final" label="Precio final c/IGV (S/) *"
+                      variant="outlined" density="compact" type="number" min="0" step="0.01" />
+                  </v-col>
+                </v-row>
+                <!-- Preview de montos -->
+                <div v-if="cobroForm.precio_final > 0"
+                  style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--text-muted); display: flex; gap: 2rem;">
+                  <span>Base gravada: <strong style="color: var(--text);">S/ {{ (cobroForm.precio_final / 1.18).toFixed(2) }}</strong></span>
+                  <span>IGV 18%: <strong style="color: var(--text);">S/ {{ (cobroForm.precio_final - cobroForm.precio_final / 1.18).toFixed(2) }}</strong></span>
+                  <span>Total: <strong style="color: #10b981; font-size: 1rem;">S/ {{ Number(cobroForm.precio_final).toFixed(2) }}</strong></span>
+                </div>
+              </div>
+
+              <!-- Sección: Cliente -->
+              <div style="margin-bottom: 1.5rem;">
+                <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">Datos del Cliente <span style="font-weight: 400; text-transform: none;">(opcional — omitir emite a Consumidor Final)</span></div>
+                <v-row>
+                  <v-col cols="12" md="4">
+                    <v-select v-model="cobroForm.tipo_documento"
+                      :items="[{title:'DNI', value: 1}, {title:'RUC', value: 6}, {title:'Carnet Extranjer.', value: 4}]"
+                      item-title="title" item-value="value"
+                      label="Tipo documento" variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" md="4">
+                    <v-text-field v-model="cobroForm.numero_documento" label="Número documento"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" md="4">
+                    <v-text-field v-model="cobroForm.nombre_cliente" label="Nombre completo"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field v-model="cobroForm.email" label="Email (recibe PDF)"
+                      variant="outlined" density="compact" type="email" />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-select v-model="cobroForm.medio_de_pago"
+                      :items="['YAPE', 'PLIN', 'EFECTIVO', 'TARJETA', 'TRANSFERENCIA']"
+                      label="Medio de pago *" variant="outlined" density="compact" />
+                  </v-col>
+                </v-row>
+              </div>
+
+              <!-- Botón generar -->
+              <div style="display: flex; justify-content: flex-end;">
+                <button class="btn-primary" :disabled="loadingCobro || !cobroForm.plan_nombre || !cobroForm.precio_final || !cobroForm.medio_de_pago"
+                  @click="generarBoletaManual" style="min-width: 180px; justify-content: center;">
+                  <v-progress-circular v-if="loadingCobro" indeterminate size="16" width="2" class="mr-2" />
+                  <v-icon v-else icon="mdi-receipt" size="16" class="mr-1" />
+                  <span>{{ loadingCobro ? 'Generando...' : 'Generar Boleta' }}</span>
+                </button>
+              </div>
+            </v-card>
+          </div>
+        </div>
+
+        <!-- ====== TAB: BOLETAS ====== -->
+        <div v-show="facturacionTab === 'boletas'" class="content-area">
+
+          <!-- KPIs -->
+          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 1.5rem;">
+            <div class="stat-card">
+              <div class="stat-title">Total Boletas</div>
+              <div class="stat-value">{{ boletasECS.length }}</div>
+              <div class="stat-subtitle">Todas las emitidas</div>
+            </div>
+            <div class="stat-card" style="border-top: 4px solid #10b981;">
+              <div class="stat-title">Ingresos Totales</div>
+              <div class="stat-value">S/ {{ boletasTotalRevenue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-subtitle">Suma histórica</div>
+            </div>
+            <div class="stat-card" style="border-top: 4px solid #6366f1;">
+              <div class="stat-title">Desde la Web</div>
+              <div class="stat-value">{{ boletasECS.filter(b => b.emitido_por === 'webhook-web').length }}</div>
+              <div class="stat-subtitle">Automáticas (clientes)</div>
+            </div>
+            <div class="stat-card" style="border-top: 4px solid #f59e0b;">
+              <div class="stat-title">Manuales</div>
+              <div class="stat-value">{{ boletasECS.filter(b => b.emitido_por !== 'webhook-web').length }}</div>
+              <div class="stat-subtitle">Generadas desde dashboard</div>
+            </div>
+            <div class="stat-card" style="border-top: 4px solid #22c55e;">
+              <div class="stat-title">Aceptadas SUNAT</div>
+              <div class="stat-value">{{ boletasECS.filter(b => b.aceptada_por_sunat).length }}</div>
+              <div class="stat-subtitle">Con CDR válido</div>
+            </div>
+          </div>
+
+          <!-- Tabla de boletas -->
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Historial de Boletas</span>
+                <v-spacer />
+                <v-select v-model="boletasFiltroOrigen" :items="['Todas', 'Web (automáticas)', 'Manual']"
+                  variant="outlined" density="compact" hide-details style="max-width: 200px; margin-right: 12px;" />
+                <button class="btn-primary" @click="fetchBoletasECS" style="margin-right: 12px; padding: 6px 14px;">
+                  <v-icon icon="mdi-refresh" size="16" />
+                </button>
+                <v-text-field v-model="boletasSearch" append-inner-icon="mdi-magnify" label="Buscar"
+                  single-line hide-details density="compact" variant="outlined" class="search-field" />
+              </v-card-title>
+
+              <v-data-table :headers="headersBoletasECS" :items="boletasFiltradas" :search="boletasSearch"
+                :loading="loadingBoletas" class="elevation-0" no-data-text="No hay boletas registradas">
+
+                <template v-slot:item.serie_numero="{ item }">
+                  <span class="font-weight-bold">{{ item.serie }}-{{ item.numero }}</span>
+                </template>
+
+                <template v-slot:item.fecha_de_emision="{ item }">
+                  {{ item.fecha_de_emision ? new Date(item.fecha_de_emision).toLocaleDateString('es-PE') : '—' }}
+                </template>
+
+                <template v-slot:item.total="{ item }">
+                  <span class="font-weight-bold" style="color: #10b981;">S/ {{ Number(item.total).toFixed(2) }}</span>
+                </template>
+
+                <template v-slot:item.aceptada_por_sunat="{ item }">
+                  <v-chip :color="item.aceptada_por_sunat ? 'success' : 'warning'" size="small">
+                    {{ item.aceptada_por_sunat ? '✅ Aceptada' : '⏳ Pendiente' }}
+                  </v-chip>
+                </template>
+
+                <template v-slot:item.emitido_por="{ item }">
+                  <v-chip :color="item.emitido_por === 'webhook-web' ? 'primary' : 'secondary'" size="small" variant="tonal">
+                    {{ item.emitido_por === 'webhook-web' ? '🌐 Web' : '🖥️ Manual' }}
+                  </v-chip>
+                </template>
+
+                <template v-slot:item.enlace_del_pdf="{ item }">
+                  <v-btn v-if="item.enlace_del_pdf" :href="item.enlace_del_pdf" target="_blank"
+                    icon size="small" variant="text" color="primary">
+                    <v-icon>mdi-file-pdf-box</v-icon>
+                  </v-btn>
+                  <span v-else style="color: var(--text-muted);">—</span>
+                </template>
+
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+
+        <!-- ====== TAB: FACTURA ELECTRÓNICA ====== -->
         <div v-show="facturacionTab === 'factura_electronica'" style="padding: 0 0 2rem 0;">
           <FacturacionPSE company-id="estasconsuerte" />
         </div>
 
-        <!-- Resumen original -->
-        <div v-show="facturacionTab === 'resumen'">
-        <header class="top-header">
-          <h1>Contabilidad Global</h1>
-          <button class="btn-primary" @click="fetchGlobalAccounting">
-            <v-icon icon="mdi-refresh" size="16" />
-            <span>Actualizar Datos</span>
-          </button>
-        </header>
+        <!-- ====== TAB: ENDPOINT (solo superadmin) ====== -->
+        <div v-if="isSuperAdmin(currentUser) && facturacionTab === 'endpoint'" class="content-area">
+          <h2 style="margin-bottom: 1rem; font-size: 1.2rem;">🔌 Monitor de Endpoint</h2>
 
-        <div class="content-area">
-          <!-- KPI Stats Grid Global -->
-          <div class="stats-grid">
-            <div class="stat-card" style="border-top: 4px solid #a78bfa;">
-              <div class="stat-title">Ingresos Totales (S/)</div>
-              <div class="stat-value">S/ {{ totalGlobalRevenue.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+          <!-- Info del endpoint -->
+          <v-card flat class="mb-4" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 1rem;">
+              <v-icon color="success">mdi-check-circle</v-icon>
+              <span style="font-weight: 600;">Endpoint activo</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.875rem;">
+              <div style="display: flex; gap: 1rem; align-items: center;">
+                <span style="color: var(--text-muted); width: 120px;">URL:</span>
+                <code style="background: var(--bg); padding: 3px 8px; border-radius: 4px; font-size: 0.8rem;">POST https://dashboard.alef.company/api/pse/webhook-compra</code>
               </div>
-              <div class="stat-subtitle">Suma de todos los canales</div>
+              <div style="display: flex; gap: 1rem; align-items: center;">
+                <span style="color: var(--text-muted); width: 120px;">Token (secret):</span>
+                <code style="background: var(--bg); padding: 3px 8px; border-radius: 4px; font-size: 0.8rem;">ecs_webhook_2025_xK9mP3qL7nR2vT8w</code>
+              </div>
+              <div style="display: flex; gap: 1rem; align-items: flex-start;">
+                <span style="color: var(--text-muted); width: 120px;">Ejemplo body:</span>
+                <pre style="background: var(--bg); padding: 8px 12px; border-radius: 6px; font-size: 0.78rem; margin: 0; overflow-x: auto;">{{ ejemploPayloadEndpoint }}</pre>
+              </div>
             </div>
+          </v-card>
 
-            <div class="stat-card" style="border-top: 4px solid #a78bfa;">
-              <div class="stat-title">Ventas Totales (Unidades)</div>
-              <div class="stat-value">{{ totalGlobalSales }}</div>
-              <div class="stat-subtitle">Total de productos vendidos</div>
-            </div>
-
+          <!-- KPIs logs -->
+          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 1.5rem;">
             <div class="stat-card">
-              <div class="stat-title">Ticket Promedio Global</div>
-              <div class="stat-value">S/ {{ totalGlobalSales > 0 ? (totalGlobalRevenue /
-                totalGlobalSales).toLocaleString('es-PE', { minimumFractionDigits: 2 }) : 0 }}</div>
-              <div class="stat-subtitle">Promedio por unidad histórica</div>
+              <div class="stat-title">Llamadas Totales</div>
+              <div class="stat-value">{{ webhookLogs.length }}</div>
+            </div>
+            <div class="stat-card" style="border-top: 4px solid #22c55e;">
+              <div class="stat-title">Exitosas</div>
+              <div class="stat-value">{{ webhookLogs.filter(l => l.status === 'success').length }}</div>
+            </div>
+            <div class="stat-card" style="border-top: 4px solid #ef4444;">
+              <div class="stat-title">Con Error</div>
+              <div class="stat-value">{{ webhookLogs.filter(l => l.status === 'error').length }}</div>
+            </div>
+            <div class="stat-card" style="border-top: 4px solid #f59e0b;">
+              <div class="stat-title">Pendientes</div>
+              <div class="stat-value">{{ webhookLogs.filter(l => l.status === 'pending').length }}</div>
             </div>
           </div>
 
-          <!-- Desglose Por Canal en Línea -->
-          <div style="margin-top: 2rem; margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 1rem; color: #fff; font-size: 1.25rem;">Desglose por Canal de Venta</h2>
-            <v-row>
-              <!-- Motorizado -->
-              <v-col cols="12" md="3">
-                <v-card class="pa-4"
-                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #4ade80;">
-                  <h3 style="color: #4ade80; margin-bottom: 10px;">Motorizado</h3>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span style="color: #a0aec0;">Ingresos:</span>
-                    <strong style="color: #fff;">S/ {{ globalMotorizadoRevenue.toLocaleString('es-PE', {
-                      minimumFractionDigits: 2 }) }}</strong>
-                  </div>
-                  <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #a0aec0;">Unidades:</span>
-                    <strong style="color: #fff;">{{ globalMotorizadoSales }}</strong>
-                  </div>
-                </v-card>
-              </v-col>
-              <!-- Courier -->
-              <v-col cols="12" md="3">
-                <v-card class="pa-4"
-                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #60a5fa;">
-                  <h3 style="color: #60a5fa; margin-bottom: 10px;">Courier</h3>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span style="color: #a0aec0;">Ingresos:</span>
-                    <strong style="color: #fff;">S/ {{ globalCourierRevenue.toLocaleString('es-PE', {
-                      minimumFractionDigits:
-                      2 }) }}</strong>
-                  </div>
-                  <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #a0aec0;">Unidades:</span>
-                    <strong style="color: #fff;">{{ globalCourierSales }}</strong>
-                  </div>
-                </v-card>
-              </v-col>
-              <!-- Tienda -->
-              <v-col cols="12" md="3">
-                <v-card class="pa-4"
-                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #f472b6;">
-                  <h3 style="color: #f472b6; margin-bottom: 10px;">Recojo en Tienda</h3>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span style="color: #a0aec0;">Ingresos:</span>
-                    <strong style="color: #fff;">S/ {{ globalTiendaRevenue.toLocaleString('es-PE', {
-                      minimumFractionDigits:
-                      2 }) }}</strong>
-                  </div>
-                  <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #a0aec0;">Unidades:</span>
-                    <strong style="color: #fff;">{{ globalTiendaSales }}</strong>
-                  </div>
-                </v-card>
-              </v-col>
-              <!-- Reservas -->
-              <v-col cols="12" md="3">
-                <v-card class="pa-4"
-                  style="background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #fbbf24;">
-                  <h3 style="color: #fbbf24; margin-bottom: 10px;">Reservas</h3>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span style="color: #a0aec0;">Ingresos:</span>
-                    <strong style="color: #fff;">S/ {{ globalReservasRevenue.toLocaleString('es-PE', {
-                      minimumFractionDigits: 2 }) }}</strong>
-                  </div>
-                  <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #a0aec0;">Unidades:</span>
-                    <strong style="color: #fff;">{{ globalReservasSales }}</strong>
-                  </div>
-                </v-card>
-              </v-col>
-            </v-row>
-          </div>
+          <!-- Tabla de logs -->
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Log de Llamadas al Endpoint</span>
+                <v-spacer />
+                <button class="btn-primary" @click="fetchEndpointLogs" style="padding: 6px 14px; margin-right: 10px;">
+                  <v-icon icon="mdi-refresh" size="16" />
+                </button>
+              </v-card-title>
 
-          <!-- Charts Grid -->
-          <div class="two-column-grid" style="grid-template-columns: 1fr 1fr; margin-top: 2rem;">
-            <!-- Revenue Chart (Donut) -->
-            <div class="chart-section" style="height: auto;">
-              <div class="chart-header">
-                <h2>Ingresos por Canal (%)</h2>
-              </div>
-              <client-only>
-                <div v-if="loadingGlobalAccounting" style="padding: 2rem; text-align: center; color: #a0aec0;">Cargando
-                  gráficos...</div>
-                <apexchart v-else type="donut" height="350" :options="accountingRevenueOptions"
-                  :series="accountingRevenueSeries" />
-              </client-only>
-            </div>
+              <v-data-table :headers="headersWebhookLogs" :items="webhookLogs" :loading="loadingEndpointLogs"
+                class="elevation-0" no-data-text="Sin llamadas registradas. Crea la tabla ecs_webhook_logs en Supabase.">
 
-            <!-- Quantity Chart (Bar) -->
-            <div class="chart-section" style="height: auto;">
-              <div class="chart-header">
-                <h2>Volumen de Productos Vendidos</h2>
-              </div>
-              <client-only>
-                <div v-if="loadingGlobalAccounting" style="padding: 2rem; text-align: center; color: #a0aec0;">Cargando
-                  gráficos...</div>
-                <apexchart v-else type="bar" height="350" :options="accountingQuantityOptions"
-                  :series="accountingQuantitySeries" />
-              </client-only>
-            </div>
+                <template v-slot:item.created_at="{ item }">
+                  {{ item.created_at ? new Date(item.created_at).toLocaleString('es-PE') : '—' }}
+                </template>
+
+                <template v-slot:item.status="{ item }">
+                  <v-chip :color="item.status === 'success' ? 'success' : item.status === 'error' ? 'error' : 'warning'" size="small">
+                    {{ item.status === 'success' ? '✅ Éxito' : item.status === 'error' ? '❌ Error' : '⏳ Pendiente' }}
+                  </v-chip>
+                </template>
+
+                <template v-slot:item.cliente="{ item }">
+                  <span>{{ item.payload?.cliente?.nombre ?? 'Consumidor Final' }}</span>
+                </template>
+
+                <template v-slot:item.plan="{ item }">
+                  <span>{{ item.payload?.plan?.nombre ?? '—' }}</span>
+                </template>
+
+                <template v-slot:item.monto="{ item }">
+                  <span v-if="item.payload?.plan?.precio_final" style="color: #10b981; font-weight: 600;">
+                    S/ {{ Number(item.payload.plan.precio_final).toFixed(2) }}
+                  </span>
+                  <span v-else>—</span>
+                </template>
+
+                <template v-slot:item.comprobante="{ item }">
+                  <span v-if="item.comprobante_serie">{{ item.comprobante_serie }}-{{ item.comprobante_numero }}</span>
+                  <span v-else style="color: var(--text-muted);">—</span>
+                </template>
+
+                <template v-slot:item.error_message="{ item }">
+                  <span v-if="item.error_message" style="color: #ef4444; font-size: 0.8rem;">{{ item.error_message }}</span>
+                  <span v-else style="color: var(--text-muted);">—</span>
+                </template>
+
+                <template v-slot:item.enlace_pdf="{ item }">
+                  <v-btn v-if="item.enlace_pdf" :href="item.enlace_pdf" target="_blank" icon size="small" variant="text" color="primary">
+                    <v-icon>mdi-file-pdf-box</v-icon>
+                  </v-btn>
+                  <span v-else style="color: var(--text-muted);">—</span>
+                </template>
+
+              </v-data-table>
+            </v-card>
           </div>
         </div>
 
-        </div><!-- fin tab resumen -->
       </div>
 
       <!-- ==========  VISTA: PROCEDIMIENTOS  ========== -->
@@ -1949,6 +2104,155 @@ const accountingQuantityOptions = ref<ApexOptions>({
   plotOptions: { bar: { borderRadius: 4, distributed: true } },
   dataLabels: { enabled: true }
 })
+
+// ======================== COBRO MANUAL ECS ========================
+const loadingCobro   = ref(false)
+const errorCobro     = ref('')
+const resultadoCobro = ref<any>(null)
+
+const cobroForm = ref({
+  planSeleccionado:  null as number | null,
+  plan_nombre:       '',
+  precio_final:      0,
+  tipo_documento:    1,
+  numero_documento:  '',
+  nombre_cliente:    '',
+  email:             '',
+  medio_de_pago:     'YAPE',
+})
+
+const onPlanSelect = (planId: number | null) => {
+  if (!planId) return
+  const plan = planesSubscripcion.value.find((p: any) => p.id === planId)
+  if (plan) {
+    cobroForm.value.plan_nombre   = plan.nombre
+    cobroForm.value.precio_final  = Number(plan.precio)
+  }
+}
+
+const resetCobroForm = () => {
+  cobroForm.value = {
+    planSeleccionado: null, plan_nombre: '', precio_final: 0,
+    tipo_documento: 1, numero_documento: '', nombre_cliente: '', email: '', medio_de_pago: 'YAPE'
+  }
+}
+
+const generarBoletaManual = async () => {
+  loadingCobro.value  = true
+  errorCobro.value    = ''
+  resultadoCobro.value = null
+  try {
+    const body = {
+      cliente: {
+        tipo_documento:   cobroForm.value.tipo_documento,
+        numero_documento: cobroForm.value.numero_documento || '00000000',
+        nombre:           cobroForm.value.nombre_cliente  || 'CONSUMIDOR FINAL',
+        email:            cobroForm.value.email
+      },
+      plan: {
+        id:          cobroForm.value.planSeleccionado,
+        nombre:      cobroForm.value.plan_nombre,
+        precio_final: cobroForm.value.precio_final
+      },
+      medio_de_pago: cobroForm.value.medio_de_pago
+    }
+    const result = await $fetch('/api/ecs/cobro-manual', { method: 'POST', body })
+    resultadoCobro.value = result
+    resetCobroForm()
+    fetchBoletasECS()
+  } catch (err: any) {
+    errorCobro.value = err?.data?.statusMessage || err?.message || 'Error al generar la boleta'
+  } finally {
+    loadingCobro.value = false
+  }
+}
+
+// ======================== BOLETAS ECS ========================
+const boletasECS          = ref<any[]>([])
+const loadingBoletas       = ref(false)
+const boletasSearch        = ref('')
+const boletasFiltroOrigen  = ref('Todas')
+
+const boletasTotalRevenue = computed(() =>
+  boletasECS.value.reduce((s, b) => s + Number(b.total || 0), 0)
+)
+
+const boletasFiltradas = computed(() => {
+  if (boletasFiltroOrigen.value === 'Web (automáticas)') return boletasECS.value.filter(b => b.emitido_por === 'webhook-web')
+  if (boletasFiltroOrigen.value === 'Manual') return boletasECS.value.filter(b => b.emitido_por !== 'webhook-web')
+  return boletasECS.value
+})
+
+const headersBoletasECS = [
+  { title: 'N° Boleta',     key: 'serie_numero',       sortable: false },
+  { title: 'Fecha',         key: 'fecha_de_emision',   sortable: true  },
+  { title: 'Cliente',       key: 'cliente_denominacion', sortable: true },
+  { title: 'Plan',          key: 'observaciones',      sortable: true  },
+  { title: 'Monto',         key: 'total',              sortable: true  },
+  { title: 'Medio Pago',    key: 'medio_de_pago',      sortable: true  },
+  { title: 'SUNAT',         key: 'aceptada_por_sunat', sortable: false },
+  { title: 'Origen',        key: 'emitido_por',        sortable: false },
+  { title: 'PDF',           key: 'enlace_del_pdf',     sortable: false },
+]
+
+const fetchBoletasECS = async () => {
+  loadingBoletas.value = true
+  try {
+    const { data, error } = await client
+      .from('comprobantes_pse')
+      .select('*')
+      .eq('company_id', 'estasconsuerte')
+      .order('numero', { ascending: false })
+    if (error) throw error
+    boletasECS.value = data || []
+  } catch (e) {
+    console.error('Error cargando boletas ECS:', e)
+  } finally {
+    loadingBoletas.value = false
+  }
+}
+
+// ======================== ENDPOINT LOGS ========================
+const webhookLogs          = ref<any[]>([])
+const loadingEndpointLogs  = ref(false)
+
+const headersWebhookLogs = [
+  { title: 'Fecha/Hora',   key: 'created_at',          sortable: true  },
+  { title: 'Estado',       key: 'status',              sortable: false },
+  { title: 'Cliente',      key: 'cliente',             sortable: false },
+  { title: 'Plan',         key: 'plan',                sortable: false },
+  { title: 'Monto',        key: 'monto',               sortable: false },
+  { title: 'Boleta',       key: 'comprobante',         sortable: false },
+  { title: 'Error',        key: 'error_message',       sortable: false },
+  { title: 'PDF',          key: 'enlace_pdf',          sortable: false },
+]
+
+const ejemploPayloadEndpoint = `{
+  "webhook_secret": "ecs_webhook_2025_xK9mP3qL7nR2vT8w",
+  "cliente": { "tipo_documento": 1, "numero_documento": "12345678",
+                "nombre": "Juan Pérez", "email": "juan@email.com" },
+  "plan":    { "nombre": "Triple Fortuna", "precio_final": 34.90 },
+  "medio_de_pago": "YAPE"
+}`
+
+const fetchEndpointLogs = async () => {
+  loadingEndpointLogs.value = true
+  try {
+    const { data, error } = await client
+      .from('ecs_webhook_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) throw error
+    webhookLogs.value = data || []
+  } catch (e) {
+    console.error('Error cargando logs de endpoint:', e)
+    webhookLogs.value = []
+  } finally {
+    loadingEndpointLogs.value = false
+  }
+}
+
 // =================================================================
 
 // Stats para Compras
@@ -2012,7 +2316,7 @@ const deleteItem = async (item: any) => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
-const facturacionTab = ref('resumen')
+const facturacionTab = ref('cobro_manual')
 const activeTab = ref('ventas')
 const showUserMenu = ref(false)
 const stockMenuOpen = ref(false)
@@ -2616,6 +2920,13 @@ async function deleteStock(type: 'celulares' | 'laptops' | 'accesorios', id: str
 watch(activeView, (newVal) => {
   if (newVal === 'stock' && stockItems.value.length === 0) fetchStock()
   else if (newVal === 'leads' && leads.value.length === 0) fetchLeads()
+  else if (newVal === 'contabilidad' && boletasECS.value.length === 0) fetchBoletasECS()
+})
+
+// Watch facturacionTab to load endpoint logs on demand
+watch(facturacionTab, (newVal) => {
+  if (newVal === 'boletas' && boletasECS.value.length === 0) fetchBoletasECS()
+  if (newVal === 'endpoint' && webhookLogs.value.length === 0) fetchEndpointLogs()
 })
 
 /* ---------------- NOTIFICATIONS LOGIC ---------------- */

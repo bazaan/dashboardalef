@@ -80,15 +80,21 @@ export default defineEventHandler(async (event) => {
     try { await supabase.from('ecs_webhook_logs').update({ status, ...extra }).eq('id', logId) } catch {}
   }
 
-  // ── 1. Autenticación por secret ────────────────────────────────────────
+  // ── 1. Autenticación: Bearer header (preferido) o body fallback ──────────
   const secretEsperado = process.env.WEBHOOK_ECS_SECRET
   if (!secretEsperado) {
     await updateLog('error', { error_message: 'WEBHOOK_ECS_SECRET no configurado' })
     throw createError({ statusCode: 500, statusMessage: 'WEBHOOK_ECS_SECRET no configurado en el servidor' })
   }
-  if (body?.webhook_secret !== secretEsperado) {
-    await updateLog('error', { error_message: 'webhook_secret inválido' })
-    throw createError({ statusCode: 401, statusMessage: 'webhook_secret inválido' })
+
+  // Leer token desde Authorization: Bearer <token>  o desde body.webhook_secret
+  const authHeader   = getHeader(event, 'authorization') ?? ''
+  const bearerToken  = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
+  const secretRecibido = bearerToken ?? body?.webhook_secret ?? ''
+
+  if (secretRecibido !== secretEsperado) {
+    await updateLog('error', { error_message: 'Token de autorización inválido' })
+    throw createError({ statusCode: 401, statusMessage: 'Token de autorización inválido' })
   }
 
   // ── 2. Validación mínima ───────────────────────────────────────────────

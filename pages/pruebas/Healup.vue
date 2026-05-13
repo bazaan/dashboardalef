@@ -153,7 +153,7 @@
             <N8nPanicButton client-key="healup" label="IA Healup" />
 
             <button class="btn-primary"
-              @click="() => { fetchPacientesWpp(); fetchPacientesFbIg(); fetchCompras(); fetchLeads(); }">
+              @click="() => { fetchPacientesWpp(); fetchPacientesFbIg(); fetchPacientesTiktok(); fetchCompras(); fetchLeads(); }">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Actualizar</span>
             </button>
@@ -621,6 +621,83 @@
                 </template>
               </v-data-table>
             </v-card>
+
+            <!-- Table 3: TikTok -->
+            <v-card flat class="custom-data-table" style="margin-top: 2rem;">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">
+                  <v-icon icon="mdi-music-note" size="16" style="color:#ff0050; margin-right:4px;" />
+                  Lista de pacientes TikTok ({{ pacientesTiktokFiltrados.length }})
+                </span>
+                <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesTiktokFiltrados, headersPacientesTiktok, 'healup-pacientes-tiktok')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
+                <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
+                  density="compact" variant="outlined" class="search-field"></v-text-field>
+              </v-card-title>
+              <v-data-table :headers="headersPacientesTiktok" :items="pacientesTiktokFiltrados" :search="search" :loading="loading"
+                class="elevation-0" no-data-text="No hay pacientes de TikTok">
+                <template v-slot:item.tiktok_handle="{ item }">
+                  <span v-if="item.tiktok_handle" style="color:#ff0050;">@{{ item.tiktok_handle }}</span>
+                  <span v-else style="color:var(--text-secondary);">—</span>
+                </template>
+                <template v-slot:item.booking_sku="{ item }">
+                  <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
+                    style="font-family:monospace; letter-spacing:0.03em; cursor:default;"
+                    :title="`SKU Reserva: ${item.booking_sku}`">
+                    {{ item.booking_sku }}
+                  </v-chip>
+                  <span v-else style="color:var(--text-secondary); font-size:11px;">—</span>
+                </template>
+                <template v-slot:item.precio="{ item }">
+                  <span v-if="item.precio && Number(item.precio) > 0" style="color:#f59e0b; font-weight:600;">
+                    S/ {{ item.precio }}
+                  </span>
+                  <span v-else style="color:var(--text-secondary);">—</span>
+                </template>
+                <template v-slot:item.precio_tratamiento="{ item }">
+                  <span :style="Number(item.precio_tratamiento) > 0 ? 'color:#ef4444;font-weight:600;' : 'color:#22c55e;font-weight:600;'">
+                    S/ {{ item.precio_tratamiento }}
+                  </span>
+                </template>
+                <template v-slot:item.metodo_de_pago="{ item }">
+                  <div class="d-flex align-center">
+                    <v-icon v-if="item.metodo_de_pago === 'Yape'" color="purple-darken-1" size="small" class="mr-1">mdi-cellphone-marker</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago === 'Transferencia'" color="blue-darken-2" size="small" class="mr-1">mdi-bank-transfer-out</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago === 'Efectivo'" color="green" size="small" class="mr-1">mdi-cash</v-icon>
+                    <v-icon v-else-if="item.metodo_de_pago && item.metodo_de_pago.includes('Tarjeta')" color="orange" size="small" class="mr-1">mdi-credit-card</v-icon>
+                    <span>{{ item.metodo_de_pago }}</span>
+                  </div>
+                </template>
+                <template v-slot:item.estado="{ item }">
+                  <span :class="['status', item.estado === 'Activo' ? 'done' : 'in-process']">
+                    <span class="status-dot" />{{ item.estado }}
+                  </span>
+                </template>
+                <template v-slot:item.fecha_agendamiento="{ item }">
+                  {{ formatDateAgendamiento(item.fecha_agendamiento) }}
+                </template>
+                <template v-slot:item.agendamiento="{ item }">
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-icon v-bind="props" :icon="item.agendamiento === 'IA' ? 'mdi-robot' : 'mdi-account'"
+                        :color="item.agendamiento === 'IA' ? 'primary' : 'success'" size="24"></v-icon>
+                    </template>
+                    <span>{{ item.agendamiento === 'IA' ? 'Inteligencia Artificial' : 'Agente Humano' }}</span>
+                  </v-tooltip>
+                </template>
+                <template v-slot:item.actions="{ item }">
+                  <button class="icon-btn" @click="openPatientForm(item, 'tiktok')" title="Editar paciente">
+                    <v-icon icon="mdi-pencil" size="16" />
+                  </button>
+                  <button class="icon-btn" @click="deletePatient(item, 'tiktok')" title="Eliminar">
+                    <v-icon icon="mdi-delete" size="16" />
+                  </button>
+                </template>
+              </v-data-table>
+            </v-card>
           </div>
         </div>
       </div>
@@ -798,7 +875,7 @@
             </v-card>
 
             <!-- Table 2: Facebook e Instagram -->
-            <v-card flat class="custom-data-table">
+            <v-card flat class="custom-data-table" style="margin-bottom: 2rem;">
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de leads Facebook e Instagram</span>
                 <v-spacer></v-spacer>
@@ -810,6 +887,39 @@
               <v-data-table :headers="headersLeadsFbIg" :items="leadsFbIg" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de FB/IG">
                 <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
+                <template v-slot:item.lead_status="{ item }">
+                  <v-chip
+                    :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
+                    size="small">
+                    {{ item.lead_status }}
+                  </v-chip>
+                </template>
+              </v-data-table>
+            </v-card>
+
+            <!-- Table 3: TikTok -->
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">
+                  <v-icon icon="mdi-music-note" size="16" style="color:#ff0050; margin-right:4px;" />
+                  Lista de leads TikTok ({{ leadsTiktok.length }})
+                </span>
+                <v-spacer></v-spacer>
+                <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(leadsTiktok, headersLeadsTiktok, 'healup-leads-tiktok')">
+                  <v-icon>mdi-file-excel</v-icon>
+                  <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
+                </v-btn>
+              </v-card-title>
+              <v-data-table :headers="headersLeadsTiktok" :items="leadsTiktok" :search="leadsSearch" :loading="loadingLeads"
+                class="elevation-0" no-data-text="No hay leads de TikTok">
+                <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
+                <template v-slot:item.nombre="{ item }">
+                  {{ (!item.nombre || item.nombre === 'null' || item.nombre.trim() === '') ? '—' : item.nombre }}
+                </template>
+                <template v-slot:item.tiktok_handle="{ item }">
+                  <span v-if="item.tiktok_handle" style="color:#ff0050;">@{{ item.tiktok_handle }}</span>
+                  <span v-else style="color:var(--text-secondary);">—</span>
+                </template>
                 <template v-slot:item.lead_status="{ item }">
                   <v-chip
                     :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
@@ -1020,7 +1130,7 @@
           <h1>Contabilidad</h1>
           <div class="header-actions">
             <!-- Reuse fetchPacientes as refresh since data comes from there -->
-            <button class="btn-primary" @click="() => { fetchPacientesWpp(); fetchPacientesFbIg(); }">
+            <button class="btn-primary" @click="() => { fetchPacientesWpp(); fetchPacientesFbIg(); fetchPacientesTiktok(); }">
               <v-icon icon="mdi-refresh" size="16" />
               <span>Actualizar Datos</span>
             </button>
@@ -5753,12 +5863,14 @@ const client = useSupabaseClient()
 const search = ref('')
 const loading = ref(false)
 const n8nLoading = ref(false)
-const pacientesWpp = ref<any[]>([])
-const pacientesFbIg = ref<any[]>([])
+const pacientesWpp    = ref<any[]>([])
+const pacientesFbIg   = ref<any[]>([])
+const pacientesTiktok = ref<any[]>([])
 const compras = ref<any[]>([])
-const leadsWpp = ref<any[]>([])
-const leadsFbIg = ref<any[]>([])
-const leads = computed(() => [...leadsWpp.value, ...leadsFbIg.value])
+const leadsWpp     = ref<any[]>([])
+const leadsFbIg    = ref<any[]>([])
+const leadsTiktok  = ref<any[]>([])
+const leads = computed(() => [...leadsWpp.value, ...leadsFbIg.value, ...leadsTiktok.value])
 const loadingLeads = ref(false)
 const leadsSearch = ref('')
 const showCreateUserDialog = ref(false)
@@ -5796,6 +5908,21 @@ const headersPacientesFbIg = ref([
   { title: 'DNI', key: 'dni', sortable: true },
   { title: 'Número', key: 'numero', sortable: true },
   { title: 'Red Social', key: 'red_social', sortable: true },
+  { title: '🎫 SKU Reserva', key: 'booking_sku', sortable: false, width: '130px' },
+  { title: 'Anticipo', key: 'precio', sortable: true },
+  { title: 'Procedimiento', key: 'procedimiento', sortable: true },
+  { title: 'Saldo Pendiente', key: 'precio_tratamiento', sortable: true },
+  { title: 'Fecha Agendamiento', key: 'fecha_agendamiento', sortable: true },
+  { title: 'Método de pago', key: 'metodo_de_pago', sortable: true },
+  { title: 'Estado', key: 'estado', sortable: true },
+  { title: 'Agendado por', key: 'agendamiento', sortable: true, align: 'center' as const },
+  { title: 'Actions', key: 'actions', sortable: false }
+])
+
+const headersPacientesTiktok = ref([
+  { title: 'Nombre', key: 'nombre', sortable: true },
+  { title: 'DNI', key: 'dni', sortable: true },
+  { title: 'TikTok', key: 'tiktok_handle', sortable: true },
   { title: '🎫 SKU Reserva', key: 'booking_sku', sortable: false, width: '130px' },
   { title: 'Anticipo', key: 'precio', sortable: true },
   { title: 'Procedimiento', key: 'procedimiento', sortable: true },
@@ -5845,6 +5972,16 @@ const headersLeadsFbIg = ref([
   { title: 'Interés', key: 'servicio_interes', sortable: true, width: '250px', align: 'start' as const },
 ])
 
+const headersLeadsTiktok = ref([
+  { title: 'ID', key: 'id', sortable: true, width: '80px', align: 'start' as const },
+  { title: 'Fecha', key: 'created_at', sortable: true, width: '180px', align: 'start' as const },
+  { title: 'Nombre', key: 'nombre', sortable: true, width: '20%', align: 'start' as const },
+  { title: 'TikTok', key: 'tiktok_handle', sortable: true, width: '150px', align: 'start' as const },
+  { title: 'Estado', key: 'lead_status', sortable: true, width: '120px', align: 'start' as const },
+  { title: 'Razón IA', key: 'reason_ia_qualification', sortable: true, width: '35%', align: 'start' as const },
+  { title: 'Interés', key: 'servicio_interes', sortable: true, width: '250px', align: 'start' as const },
+])
+
 const headersLeads = ref([
   { title: 'ID', key: 'id', sortable: true, width: '80px', align: 'start' as const },
   { title: 'Fecha', key: 'created_at', sortable: true, width: '180px', align: 'start' as const },
@@ -5886,6 +6023,24 @@ const fetchPacientesFbIg = async () => {
     pacientesFbIg.value = data as any[]
   } catch (error) {
     console.error('Error al cargar pacientes FB/IG:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const fetchPacientesTiktok = async () => {
+  loading.value = true
+  try {
+    const { data, error } = await client
+      .from('PacientesBDtiktokHEALUP')
+      .select('*')
+      .order('id', { ascending: false })
+
+    if (error) throw error
+
+    pacientesTiktok.value = data as any[]
+  } catch (error) {
+    console.error('Error al cargar pacientes TikTok:', error)
   } finally {
     loading.value = false
   }
@@ -5947,9 +6102,23 @@ const fetchLeadsFbIg = async () => {
   }
 }
 
+const fetchLeadsTiktok = async () => {
+  try {
+    const { data, error } = await (client
+      .from('GeneralBDtiktokHEALUP')
+      .select('*') as any)
+      .order('id', { ascending: false })
+
+    if (error) throw error
+    leadsTiktok.value = data as any[] || []
+  } catch (error) {
+    console.error('Error loading leads TikTok:', error)
+  }
+}
+
 const fetchLeads = async () => {
   loadingLeads.value = true
-  await Promise.all([fetchLeadsWpp(), fetchLeadsFbIg()])
+  await Promise.all([fetchLeadsWpp(), fetchLeadsFbIg(), fetchLeadsTiktok()])
   loadingLeads.value = false
   console.log('Total Leads Loaded:', leads.value.length)
 }
@@ -6164,7 +6333,7 @@ const guardarVisita = async () => {
   }
 }
 
-const openPatientForm = (item: any | null, type: 'wpp' | 'fbig') => {
+const openPatientForm = (item: any | null, type: 'wpp' | 'fbig' | 'tiktok') => {
   selectedPatientType.value = type
   editingPatient.value = item
 
@@ -6270,42 +6439,37 @@ const savePatient = async () => {
 
     if (selectedPatientType.value === 'wpp') {
       const payload = commonPayload
-
       if (editingPatient.value) {
-        const { error } = await (client
-          .from('PacientesBDwppHEALUP') as any)
-          .update(payload)
-          .eq('id', editingPatient.value.id)
+        const { error } = await (client.from('PacientesBDwppHEALUP') as any).update(payload).eq('id', editingPatient.value.id)
         if (error) throw error
       } else {
-        const { error } = await client
-          .from('PacientesBDwppHEALUP')
-          .insert(payload as any)
+        const { error } = await client.from('PacientesBDwppHEALUP').insert(payload as any)
+        if (error) throw error
+      }
+    } else if (selectedPatientType.value === 'tiktok') {
+      const payload = { ...commonPayload, tiktok_handle: (patientFormData.value as any).tiktok_handle || '' }
+      if (editingPatient.value) {
+        const { error } = await (client.from('PacientesBDtiktokHEALUP') as any).update(payload).eq('id', editingPatient.value.id)
+        if (error) throw error
+      } else {
+        const { error } = await client.from('PacientesBDtiktokHEALUP').insert(payload as any)
         if (error) throw error
       }
     } else {
       const payload = { ...commonPayload, red_social: patientFormData.value.red_social }
-
       if (editingPatient.value) {
-        const { error } = await (client
-          .from('PacientesBDfbigHEALUP') as any)
-          .update(payload)
-          .eq('id', editingPatient.value.id)
+        const { error } = await (client.from('PacientesBDfbigHEALUP') as any).update(payload).eq('id', editingPatient.value.id)
         if (error) throw error
       } else {
-        const { error } = await client
-          .from('PacientesBDfbigHEALUP')
-          .insert(payload as any)
+        const { error } = await client.from('PacientesBDfbigHEALUP').insert(payload as any)
         if (error) throw error
       }
     }
 
     // Refresh data
-    if (selectedPatientType.value === 'wpp') {
-      await fetchPacientesWpp()
-    } else {
-      await fetchPacientesFbIg()
-    }
+    if (selectedPatientType.value === 'wpp') await fetchPacientesWpp()
+    else if (selectedPatientType.value === 'tiktok') await fetchPacientesTiktok()
+    else await fetchPacientesFbIg()
 
     // Automatic Medical History Creation for NEW patients
     if (!editingPatient.value) {
@@ -6420,12 +6584,14 @@ const savePatient = async () => {
   }
 }
 
-const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
+const deletePatient = async (item: any, type: 'wpp' | 'fbig' | 'tiktok') => {
   if (!confirm(`¿Estás seguro de que deseas eliminar a ${item.nombre}?`)) return
 
   loading.value = true
   try {
-    const tableName = type === 'wpp' ? 'PacientesBDwppHEALUP' : 'PacientesBDfbigHEALUP'
+    const tableName = type === 'wpp' ? 'PacientesBDwppHEALUP'
+      : type === 'tiktok' ? 'PacientesBDtiktokHEALUP'
+      : 'PacientesBDfbigHEALUP'
 
     const { error } = await (client
       .from(tableName)
@@ -6434,12 +6600,9 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
 
     if (error) throw error
 
-    // Refresh data
-    if (type === 'wpp') {
-      await fetchPacientesWpp()
-    } else {
-      await fetchPacientesFbIg()
-    }
+    if (type === 'wpp') await fetchPacientesWpp()
+    else if (type === 'tiktok') await fetchPacientesTiktok()
+    else await fetchPacientesFbIg()
   } catch (error) {
     console.error('Error deleting patient:', error)
     alert('Error al eliminar el paciente.')
@@ -6715,7 +6878,7 @@ const parseCurrency = (val: string | number) => {
 }
 
 // Computeds para Facturación (Basado en Pacientes)
-const allPacientes = computed(() => [...pacientesWpp.value, ...pacientesFbIg.value])
+const allPacientes = computed(() => [...pacientesWpp.value, ...pacientesFbIg.value, ...pacientesTiktok.value])
 
 // 2.5 Filtros de la vista Pacientes (mes seleccionado, default actual)
 const pacienteMesFiltro = ref<string>(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
@@ -6741,6 +6904,10 @@ const pacientesWppFiltrados = computed(() => {
 const pacientesFbIgFiltrados = computed(() => {
   if (!pacienteMesFiltro.value) return pacientesFbIg.value
   return pacientesFbIg.value.filter((p: any) => p.fecha_agendamiento?.startsWith(pacienteMesFiltro.value))
+})
+const pacientesTiktokFiltrados = computed(() => {
+  if (!pacienteMesFiltro.value) return pacientesTiktok.value
+  return pacientesTiktok.value.filter((p: any) => p.fecha_agendamiento?.startsWith(pacienteMesFiltro.value))
 })
 
 const pacientesMesActual = computed(() => {
@@ -9811,7 +9978,8 @@ async function onConsentimientoSaved(_id?: number) {
   await Promise.all([
     fetchMedicalHistory(),
     fetchPacientesWpp(),
-    fetchPacientesFbIg()
+    fetchPacientesFbIg(),
+    fetchPacientesTiktok()
   ])
 }
 
@@ -10875,6 +11043,7 @@ onMounted(() => {
   applyTheme()
   fetchPacientesWpp()
   fetchPacientesFbIg()
+  fetchPacientesTiktok()
   fetchCompras()
   fetchLeads()
   handleZoom('Mes')

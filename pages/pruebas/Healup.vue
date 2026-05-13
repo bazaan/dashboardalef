@@ -11048,10 +11048,9 @@ onMounted(() => {
   fetchLeads()
   handleZoom('Mes')
   fetchWorkingHours()
-  fetchEvents().then(() => {
-    // Auto-sync Google Calendar al cargar (silencioso, sin bloquear UI)
-    syncGCalToCalendar()
-  })
+  fetchEvents()
+  // Auto-sync Google Calendar desactivado (duplicaba y cambiaba horas de citas)
+  // fetchEvents().then(() => { syncGCalToCalendar() })
   fetchProcedures()
   fetchMedicalHistory()
   fetchEgresos()

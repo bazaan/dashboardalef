@@ -1755,7 +1755,7 @@
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
 
       <!-- ==========  VISTA: DEV · AGENT LOGS  ========== -->
-      <div v-else-if="activeView === 'dev_logs'" class="view-container">
+      <div v-if="activeView === 'dev_logs'" class="view-container">
         <header class="top-header">
           <div>
             <h1 style="display:flex; align-items:center; gap:0.5rem;">

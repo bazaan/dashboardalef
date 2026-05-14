@@ -95,6 +95,15 @@
             <span>Remarketing</span>
           </button>
         </div>
+
+        <div class="nav-section">
+          <div class="nav-label">SOPORTE</div>
+          <button :class="['nav-item', { active: activeView === 'tickets' }]"
+            @click="activeView = 'tickets'">
+            <v-icon icon="mdi-ticket-confirmation" size="18" />
+            <span>Tickets</span>
+          </button>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -1950,6 +1959,10 @@
         company-id="alef"
         :lead-tablas="{ wpp: '', fbig: '' }"
       />
+
+      <div v-else-if="activeView === 'tickets'" class="view-container">
+        <TicketPanel company-id="alef" empresa-nombre="Alef Company" :current-user="currentUser?.full_name || currentUser?.email" :is-alef="true" />
+      </div>
 
       <!-- ══════════  VISTA: BRIEF DEL DÍA  ══════════ -->
       <div v-else-if="activeView === 'brief'" class="view-container">

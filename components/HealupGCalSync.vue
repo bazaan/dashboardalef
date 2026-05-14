@@ -13,6 +13,16 @@
           style="max-width: 180px;"
         />
         <v-btn
+          color="warning"
+          variant="outlined"
+          prepend-icon="mdi-key-change"
+          size="default"
+          href="/api/healup/gcal-auth"
+          title="Haz clic aquí si Google Calendar no funciona o da error de permisos"
+        >
+          Renovar acceso Google
+        </v-btn>
+        <v-btn
           color="primary"
           variant="elevated"
           prepend-icon="mdi-sync"

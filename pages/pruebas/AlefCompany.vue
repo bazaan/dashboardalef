@@ -79,6 +79,12 @@
             <v-icon icon="mdi-file-chart" size="18" />
             <span>Reportes</span>
           </button>
+          <button :class="['nav-item', { active: activeView === 'dev_logs' }]"
+            @click="activeView = 'dev_logs'">
+            <v-icon icon="mdi-robot-excited" size="18" />
+            <span>Dev · Agent Logs</span>
+            <v-chip v-if="devLogsErrorCount > 0" color="error" size="x-small" class="ml-auto">{{ devLogsErrorCount }}</v-chip>
+          </button>
         </div>
 
         <div class="nav-section">
@@ -1748,6 +1754,197 @@
     <!-- ==========  CREATE USER DIALOG  ========== -->
     <!-- ==========  SETTINGS DIALOG (REMOVED)  ========== -->
 
+      <!-- ==========  VISTA: DEV · AGENT LOGS  ========== -->
+      <div v-else-if="activeView === 'dev_logs'" class="view-container">
+        <header class="top-header">
+          <div>
+            <h1 style="display:flex; align-items:center; gap:0.5rem;">
+              <v-icon icon="mdi-robot-excited" color="primary" />
+              Dev · Agent Logs
+            </h1>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin:2px 0 0 0;">
+              Ejecuciones de tools del agente IA — en tiempo real
+            </p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <v-select v-model="devLogsCompanyFilter"
+              :items="['Todas', 'healup', 'brada', 'estasconsuerte', 'estetikamedika', 'davila']"
+              variant="outlined" density="compact" hide-details style="min-width:180px;" label="Empresa" />
+            <v-select v-model="devLogsStatusFilter"
+              :items="['Todos', 'success', 'partial', 'error', 'running']"
+              variant="outlined" density="compact" hide-details style="min-width:140px;" label="Estado" />
+            <button class="btn-primary" @click="fetchDevLogs" style="padding:6px 14px;">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="content-area">
+
+          <!-- KPIs -->
+          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:1.5rem;">
+            <div class="stat-card">
+              <div class="stat-title">Total Ejecuciones</div>
+              <div class="stat-value">{{ devLogs.length }}</div>
+              <div class="stat-subtitle">Historial completo</div>
+            </div>
+            <div class="stat-card" style="border-top:4px solid #22c55e;">
+              <div class="stat-title">Exitosas</div>
+              <div class="stat-value" style="color:#22c55e;">{{ devLogs.filter(l=>l.status==='success').length }}</div>
+              <div class="stat-subtitle">100% completadas</div>
+            </div>
+            <div class="stat-card" style="border-top:4px solid #f59e0b;">
+              <div class="stat-title">Parciales</div>
+              <div class="stat-value" style="color:#f59e0b;">{{ devLogs.filter(l=>l.status==='partial').length }}</div>
+              <div class="stat-subtitle">Algunos pasos fallaron</div>
+            </div>
+            <div class="stat-card" style="border-top:4px solid #ef4444;">
+              <div class="stat-title">Errores</div>
+              <div class="stat-value" style="color:#ef4444;">{{ devLogs.filter(l=>l.status==='error').length }}</div>
+              <div class="stat-subtitle">Fallaron completamente</div>
+            </div>
+            <div class="stat-card" style="border-top:4px solid #6366f1;">
+              <div class="stat-title">Hoy</div>
+              <div class="stat-value">{{ devLogsHoy.length }}</div>
+              <div class="stat-subtitle">Ejecuciones de hoy</div>
+            </div>
+          </div>
+
+          <!-- Tabla principal -->
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Historial de Ejecuciones</span>
+                <v-spacer />
+                <v-text-field v-model="devLogsSearch" append-inner-icon="mdi-magnify" label="Buscar..."
+                  single-line hide-details density="compact" variant="outlined" class="search-field" />
+              </v-card-title>
+
+              <v-data-table :headers="headersDevLogs" :items="devLogsFiltrados" :search="devLogsSearch"
+                :loading="loadingDevLogs" class="elevation-0" no-data-text="Sin ejecuciones registradas aún."
+                @click:row="(_, { item }) => openDevLogDetail(item)">
+
+                <template v-slot:item.created_at="{ item }">
+                  <span style="font-size:0.8rem; white-space:nowrap;">
+                    {{ item.created_at ? new Date(item.created_at).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—' }}
+                  </span>
+                </template>
+
+                <template v-slot:item.company_id="{ item }">
+                  <v-chip size="small" variant="tonal" color="primary">{{ item.company_id }}</v-chip>
+                </template>
+
+                <template v-slot:item.tool_name="{ item }">
+                  <span style="font-weight:600;">{{ item.tool_name }}</span>
+                </template>
+
+                <template v-slot:item.status="{ item }">
+                  <v-chip
+                    :color="item.status==='success' ? 'success' : item.status==='partial' ? 'warning' : item.status==='error' ? 'error' : 'default'"
+                    size="small">
+                    <v-icon start size="12">
+                      {{ item.status==='success' ? 'mdi-check-circle' : item.status==='partial' ? 'mdi-alert-circle' : item.status==='error' ? 'mdi-close-circle' : 'mdi-loading' }}
+                    </v-icon>
+                    {{ item.status }}
+                  </v-chip>
+                </template>
+
+                <template v-slot:item.duration_ms="{ item }">
+                  <span style="font-size:0.8rem; color:var(--text-muted);">
+                    {{ item.duration_ms ? (item.duration_ms / 1000).toFixed(1) + 's' : '—' }}
+                  </span>
+                </template>
+
+                <template v-slot:item.cliente="{ item }">
+                  <span style="font-size:0.85rem;">{{ item.input_data?.nombre_completo ?? '—' }}</span>
+                </template>
+
+                <template v-slot:item.cita="{ item }">
+                  <span style="font-size:0.8rem; color:var(--text-muted);">
+                    {{ item.input_data?.inicio_cita ? new Date(item.input_data.inicio_cita).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—' }}
+                  </span>
+                </template>
+
+                <template v-slot:item.pasos="{ item }">
+                  <div style="display:flex; gap:4px;">
+                    <v-chip size="x-small" :color="item.output_data?.calendario?.ok ? 'success' : 'default'" variant="tonal">📅 Cal</v-chip>
+                    <v-chip size="x-small" :color="item.output_data?.paciente?.ok ? 'success' : 'default'" variant="tonal">👤 Pac</v-chip>
+                    <v-chip size="x-small" :color="item.output_data?.boleta?.ok ? 'success' : 'default'" variant="tonal">📄 Bol</v-chip>
+                  </div>
+                </template>
+
+                <template v-slot:item.error_message="{ item }">
+                  <span v-if="item.error_message" style="color:#ef4444; font-size:0.78rem; max-width:200px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    {{ item.error_message }}
+                  </span>
+                  <span v-else style="color:var(--text-muted);">—</span>
+                </template>
+
+                <template v-slot:item.acciones="{ item }">
+                  <v-btn icon size="small" variant="text" @click.stop="openDevLogDetail(item)">
+                    <v-icon>mdi-eye</v-icon>
+                  </v-btn>
+                </template>
+
+              </v-data-table>
+            </v-card>
+          </div>
+
+          <!-- Info del endpoint -->
+          <v-card flat class="mt-4" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.25rem;">
+            <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">
+              🔌 Endpoint del agente IA
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
+              <div style="display:flex; gap:1rem; align-items:center;">
+                <span style="color:var(--text-muted); width:100px;">URL:</span>
+                <code style="background:var(--bg); padding:3px 8px; border-radius:4px; font-size:0.8rem;">POST https://dashboard.alef.company/api/healup/calendario</code>
+              </div>
+              <div style="display:flex; gap:1rem; align-items:center;">
+                <span style="color:var(--text-muted); width:100px;">API Key:</span>
+                <code style="background:var(--bg); padding:3px 8px; border-radius:4px; font-size:0.8rem;">healup-calendario-2026</code>
+              </div>
+              <div style="display:flex; gap:1rem; align-items:center;">
+                <span style="color:var(--text-muted); width:100px;">Campos:</span>
+                <code style="background:var(--bg); padding:3px 8px; border-radius:4px; font-size:0.8rem;">api_key · nombre_completo · inicio_cita · fin_cita · numerotelefono · DNI · ID · red_social · tratamiento(s)</code>
+              </div>
+            </div>
+          </v-card>
+        </div>
+      </div>
+
+      <!-- Dialog: detalle del log -->
+      <v-dialog v-model="devLogDetailDialog" max-width="900" scrollable>
+        <v-card style="background:var(--surface); color:var(--text);">
+          <v-card-title style="display:flex; justify-content:space-between; align-items:center; padding:1rem 1.5rem; border-bottom:1px solid var(--border);">
+            <span style="font-size:1rem; font-weight:600;">
+              Log #{{ devLogSelected?.id }} — {{ devLogSelected?.tool_name }} · {{ devLogSelected?.company_id }}
+            </span>
+            <v-btn icon variant="text" @click="devLogDetailDialog = false"><v-icon>mdi-close</v-icon></v-btn>
+          </v-card-title>
+          <v-card-text v-if="devLogSelected" style="padding:1.5rem;">
+            <v-row>
+              <v-col cols="12" md="6">
+                <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">📥 Input recibido</div>
+                <pre style="background:var(--bg); padding:1rem; border-radius:8px; font-size:0.75rem; overflow-x:auto; white-space:pre-wrap;">{{ JSON.stringify(devLogSelected.input_data, null, 2) }}</pre>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">📤 Output generado</div>
+                <pre style="background:var(--bg); padding:1rem; border-radius:8px; font-size:0.75rem; overflow-x:auto; white-space:pre-wrap;">{{ JSON.stringify(devLogSelected.output_data, null, 2) }}</pre>
+              </v-col>
+            </v-row>
+            <div v-if="devLogSelected.error_message" style="margin-top:1rem; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:0.75rem 1rem; font-size:0.85rem; color:#ef4444;">
+              ⚠️ {{ devLogSelected.error_message }}
+            </div>
+            <div style="display:flex; gap:2rem; margin-top:1rem; font-size:0.82rem; color:var(--text-muted);">
+              <span>⏱ Duración: <strong>{{ devLogSelected.duration_ms ? (devLogSelected.duration_ms/1000).toFixed(2)+'s' : '—' }}</strong></span>
+              <span>🕐 Fecha: <strong>{{ devLogSelected.created_at ? new Date(devLogSelected.created_at).toLocaleString('es-PE') : '—' }}</strong></span>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-dialog>
+
       <RemarketingPanel
         v-if="activeView === 'remarketing'"
         company-id="alef"
@@ -2107,6 +2304,74 @@ const deleteItem = async (item: any) => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = ref('dashboard')
+
+// ======================== DEV · AGENT LOGS ========================
+const devLogs              = ref<any[]>([])
+const loadingDevLogs       = ref(false)
+const devLogsSearch        = ref('')
+const devLogsCompanyFilter = ref('Todas')
+const devLogsStatusFilter  = ref('Todos')
+const devLogDetailDialog   = ref(false)
+const devLogSelected       = ref<any>(null)
+
+const devLogsHoy = computed(() => {
+  const hoy = new Date().toISOString().slice(0, 10)
+  return devLogs.value.filter(l => l.created_at?.startsWith(hoy))
+})
+
+const devLogsErrorCount = computed(() =>
+  devLogs.value.filter(l => l.status === 'error').length
+)
+
+const devLogsFiltrados = computed(() => {
+  let list = devLogs.value
+  if (devLogsCompanyFilter.value !== 'Todas')
+    list = list.filter(l => l.company_id === devLogsCompanyFilter.value)
+  if (devLogsStatusFilter.value !== 'Todos')
+    list = list.filter(l => l.status === devLogsStatusFilter.value)
+  return list
+})
+
+const headersDevLogs = [
+  { title: 'Fecha/Hora',  key: 'created_at',    sortable: true  },
+  { title: 'Empresa',     key: 'company_id',     sortable: true  },
+  { title: 'Tool',        key: 'tool_name',      sortable: true  },
+  { title: 'Estado',      key: 'status',         sortable: false },
+  { title: 'Pasos',       key: 'pasos',          sortable: false },
+  { title: 'Cliente',     key: 'cliente',        sortable: false },
+  { title: 'Cita',        key: 'cita',           sortable: false },
+  { title: 'Duración',    key: 'duration_ms',    sortable: true  },
+  { title: 'Error',       key: 'error_message',  sortable: false },
+  { title: '',            key: 'acciones',       sortable: false },
+]
+
+const fetchDevLogs = async () => {
+  loadingDevLogs.value = true
+  try {
+    const { data, error } = await client
+      .from('agent_tool_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (error) throw error
+    devLogs.value = data || []
+  } catch (e) {
+    console.error('Error cargando agent_tool_logs:', e)
+    devLogs.value = []
+  } finally {
+    loadingDevLogs.value = false
+  }
+}
+
+const openDevLogDetail = (log: any) => {
+  devLogSelected.value = log
+  devLogDetailDialog.value = true
+}
+
+// Cargar logs al entrar a la vista
+watch(activeView, (v) => {
+  if (v === 'dev_logs' && devLogs.value.length === 0) fetchDevLogs()
+})
 const facturacionTab = ref('resumen')
 const activeTab = ref('outline')
 const showDashboardMenu = ref(false)

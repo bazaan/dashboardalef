@@ -1924,32 +1924,68 @@
       </div>
 
       <!-- Dialog: detalle del log -->
-      <v-dialog v-model="devLogDetailDialog" max-width="900" scrollable>
-        <v-card style="background:var(--surface); color:var(--text);">
-          <v-card-title style="display:flex; justify-content:space-between; align-items:center; padding:1rem 1.5rem; border-bottom:1px solid var(--border);">
-            <span style="font-size:1rem; font-weight:600;">
-              Log #{{ devLogSelected?.id }} — {{ devLogSelected?.tool_name }} · {{ devLogSelected?.company_id }}
-            </span>
-            <v-btn icon variant="text" @click="devLogDetailDialog = false"><v-icon>mdi-close</v-icon></v-btn>
+      <v-dialog v-model="devLogDetailDialog" max-width="960" scrollable>
+        <v-card style="background:#111827; color:#f1f5f9; border:1px solid #1e293b;">
+          <!-- Header -->
+          <v-card-title style="display:flex; justify-content:space-between; align-items:center; padding:1rem 1.5rem; border-bottom:1px solid #1e293b; background:#0a0f1e;">
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+              <v-chip :color="devLogSelected?.status==='success' ? 'success' : devLogSelected?.status==='partial' ? 'warning' : 'error'" size="small">
+                {{ devLogSelected?.status }}
+              </v-chip>
+              <span style="font-size:0.95rem; font-weight:600;">
+                Log #{{ devLogSelected?.id }} — {{ devLogSelected?.tool_name }} · {{ devLogSelected?.company_id }}
+              </span>
+              <span style="font-size:0.78rem; color:#64748b;">
+                {{ devLogSelected?.created_at ? new Date(devLogSelected.created_at).toLocaleString('es-PE') : '' }}
+                {{ devLogSelected?.duration_ms ? ' · ' + (devLogSelected.duration_ms/1000).toFixed(2) + 's' : '' }}
+              </span>
+            </div>
+            <v-btn icon variant="text" color="#94a3b8" @click="devLogDetailDialog = false">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
           </v-card-title>
-          <v-card-text v-if="devLogSelected" style="padding:1.5rem;">
-            <v-row>
-              <v-col cols="12" md="6">
-                <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">📥 Input recibido</div>
-                <pre style="background:var(--bg); padding:1rem; border-radius:8px; font-size:0.75rem; overflow-x:auto; white-space:pre-wrap;">{{ JSON.stringify(devLogSelected.input_data, null, 2) }}</pre>
-              </v-col>
-              <v-col cols="12" md="6">
-                <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">📤 Output generado</div>
-                <pre style="background:var(--bg); padding:1rem; border-radius:8px; font-size:0.75rem; overflow-x:auto; white-space:pre-wrap;">{{ JSON.stringify(devLogSelected.output_data, null, 2) }}</pre>
-              </v-col>
-            </v-row>
-            <div v-if="devLogSelected.error_message" style="margin-top:1rem; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:0.75rem 1rem; font-size:0.85rem; color:#ef4444;">
+
+          <v-card-text v-if="devLogSelected" style="padding:1.25rem; background:#111827;">
+            <!-- Chips de pasos -->
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:1rem;">
+              <v-chip size="small" :color="devLogSelected.output_data?.google_calendar?.ok===true ? 'success' : devLogSelected.output_data?.google_calendar?.ok===false ? 'error' : 'default'" variant="tonal">
+                📅 GCal {{ devLogSelected.output_data?.google_calendar?.ok===true ? '✅' : devLogSelected.output_data?.google_calendar?.ok===false ? '❌' : '—' }}
+              </v-chip>
+              <v-chip size="small" :color="devLogSelected.output_data?.calendario?.ok===true ? 'success' : devLogSelected.output_data?.calendario?.ok===false ? 'error' : 'default'" variant="tonal">
+                🗓 Supabase {{ devLogSelected.output_data?.calendario?.ok===true ? '✅' : devLogSelected.output_data?.calendario?.ok===false ? '❌' : '—' }}
+              </v-chip>
+              <v-chip size="small" :color="devLogSelected.output_data?.paciente?.ok===true ? 'success' : devLogSelected.output_data?.paciente?.ok===false ? 'error' : 'default'" variant="tonal">
+                👤 Paciente {{ devLogSelected.output_data?.paciente?.ok===true ? '✅' : devLogSelected.output_data?.paciente?.ok===false ? '❌' : '—' }}
+              </v-chip>
+              <v-chip size="small" :color="devLogSelected.output_data?.boleta?.ok===true ? 'success' : devLogSelected.output_data?.boleta?.ok===false ? 'error' : 'default'" variant="tonal">
+                📄 Boleta {{ devLogSelected.output_data?.boleta?.ok===true ? '✅' : devLogSelected.output_data?.boleta?.ok===false ? '❌' : '—' }}
+              </v-chip>
+            </div>
+
+            <!-- Alerta si GCal falló -->
+            <div v-if="devLogSelected.output_data?.google_calendar?.ok===false"
+              style="margin-bottom:1rem; background:#1a0505; border:1px solid #7f1d1d; border-radius:8px; padding:0.75rem 1rem;">
+              <div style="font-size:0.75rem; font-weight:700; color:#fca5a5; margin-bottom:0.3rem;">❌ Google Calendar — Error</div>
+              <code style="font-size:0.72rem; color:#fca5a5; white-space:pre-wrap; word-break:break-all;">{{ devLogSelected.output_data.google_calendar.error }}</code>
+            </div>
+
+            <!-- Error global -->
+            <div v-if="devLogSelected.error_message"
+              style="margin-bottom:1rem; background:#1a0505; border:1px solid #ef4444; border-radius:8px; padding:0.75rem 1rem; font-size:0.85rem; color:#fca5a5;">
               ⚠️ {{ devLogSelected.error_message }}
             </div>
-            <div style="display:flex; gap:2rem; margin-top:1rem; font-size:0.82rem; color:var(--text-muted);">
-              <span>⏱ Duración: <strong>{{ devLogSelected.duration_ms ? (devLogSelected.duration_ms/1000).toFixed(2)+'s' : '—' }}</strong></span>
-              <span>🕐 Fecha: <strong>{{ devLogSelected.created_at ? new Date(devLogSelected.created_at).toLocaleString('es-PE') : '—' }}</strong></span>
-            </div>
+
+            <!-- JSON panels -->
+            <v-row>
+              <v-col cols="12" md="6">
+                <div style="font-size:0.7rem; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">📥 Input recibido</div>
+                <pre style="background:#0d1117; border:1px solid #21262d; color:#c9d1d9; padding:1rem; border-radius:8px; font-size:0.72rem; overflow:auto; white-space:pre-wrap; max-height:420px; line-height:1.6; font-family:'Fira Code',monospace,sans-serif;">{{ JSON.stringify(devLogSelected.input_data, null, 2) }}</pre>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div style="font-size:0.7rem; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">📤 Output generado</div>
+                <pre style="background:#0d1117; border:1px solid #21262d; color:#c9d1d9; padding:1rem; border-radius:8px; font-size:0.72rem; overflow:auto; white-space:pre-wrap; max-height:420px; line-height:1.6; font-family:'Fira Code',monospace,sans-serif;">{{ JSON.stringify(devLogSelected.output_data, null, 2) }}</pre>
+              </v-col>
+            </v-row>
           </v-card-text>
         </v-card>
       </v-dialog>

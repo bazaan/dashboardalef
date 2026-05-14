@@ -1109,6 +1109,21 @@
         </header>
 
         <div class="content-area">
+
+          <!-- Equipo interno Alef -->
+          <h2 style="font-size:1rem;font-weight:600;color:var(--foreground);margin-bottom:0.75rem;">Equipo Interno</h2>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.75rem;margin-bottom:2rem;">
+            <div v-for="m in equipoAlef" :key="m.nombre" class="alef-company-card" style="cursor:default;">
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;" :style="{background:m.color}">{{ m.inicial }}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:0.9rem;color:var(--foreground);">{{ m.nombre }} {{ m.apellido }}</div>
+                  <div style="font-size:0.72rem;color:var(--muted-foreground);line-height:1.3;">{{ m.cargo }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- KPIs del equipo -->
           <div class="stats-grid">
             <div class="stat-card">

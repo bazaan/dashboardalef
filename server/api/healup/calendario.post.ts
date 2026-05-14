@@ -79,11 +79,9 @@ function splitName(full: string): { name: string; surname: string } {
 function parseProcedure(raw: string): string {
   if (!raw) return ''
   const first = raw.split(',')[0].trim()
-  return first
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^\w\s]/g, ' ')
-    .trim()
+  // Limpia tildes via tabla de reemplazo (sin regex Unicode que rompe el build)
+  const mapa: Record<string,string> = {a:'a',e:'e',i:'i',o:'o',u:'u',A:'A',E:'E',I:'I',O:'O',U:'U',n:'n',N:'N'}
+  return first.replace(/./g, (c) => mapa[c] ?? c).replace(/[^\w\s]/g, ' ').trim()
 }
 
 /** Limpia el número de teléfono: quita prefijo "51" si tiene 11 dígitos */

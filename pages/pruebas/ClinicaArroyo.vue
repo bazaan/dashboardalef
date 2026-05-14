@@ -73,6 +73,15 @@
             <span>Remarketing</span>
           </button>
         </div>
+
+        <div class="nav-section">
+          <div class="nav-label">SOPORTE</div>
+          <button :class="['nav-item', { active: activeView === 'tickets' }]"
+            @click="activeView = 'tickets'">
+            <v-icon icon="mdi-ticket-confirmation" size="18" />
+            <span>Tickets</span>
+          </button>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -1177,6 +1186,11 @@
         company-id="clinicaarroyo"
         :lead-tablas="{ wpp: 'GeneralBDwppARROYO', fbig: 'GeneralBDfbigARROYO' }"
       />
+
+      <!-- ==========  VISTA: TICKETS  ========== -->
+      <div v-if="activeView === 'tickets'" class="view-container">
+        <TicketPanel company-id="Clinica Arroyo" empresa-nombre="Clínica Arroyo" :current-user="currentUser?.full_name" />
+      </div>
 
     </div>
 

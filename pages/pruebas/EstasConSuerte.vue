@@ -92,6 +92,15 @@
           </button>
         </div>
 
+        <div class="nav-section">
+          <div class="nav-label">SOPORTE</div>
+          <button :class="['nav-item', { active: activeView === 'tickets' }]"
+            @click="activeView = 'tickets'">
+            <v-icon icon="mdi-ticket-confirmation" size="18" />
+            <span>Tickets</span>
+          </button>
+        </div>
+
       </nav>
 
       <div class="sidebar-footer">
@@ -1707,6 +1716,11 @@
         company-id="estasconsuerte"
         :lead-tablas="{ wpp: 'ECS_GeneralBDwpp', fbig: 'ECS_GeneralBDfbig' }"
       />
+
+      <!-- ==========  VISTA: TICKETS  ========== -->
+      <div v-if="activeView === 'tickets'" class="view-container">
+        <TicketPanel company-id="EstasConSuerte" empresa-nombre="Estás Con Suerte" :current-user="currentUser?.full_name" />
+      </div>
   </div>
 </template>
 

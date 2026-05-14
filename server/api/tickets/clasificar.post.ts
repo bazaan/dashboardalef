@@ -1,11 +1,8 @@
 /**
  * POST /api/tickets/clasificar
  * Usa Claude para clasificar un ticket y asignarlo al miembro correcto del equipo Alef.
+ * Usa fetch nativo — sin dependencia de @anthropic-ai/sdk
  */
-
-import Anthropic from '@anthropic-ai/sdk'
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const EQUIPO = `
 - Julio: Prompts y agentes IA nivel estándar. Problemas con respuestas del agente, ajustes de tono, flujos básicos de conversación, preguntas sobre cómo funciona el agente.
@@ -48,13 +45,22 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional:
 }`
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 256,
-      messages: [{ role: 'user', content: prompt }]
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 256,
+        messages: [{ role: 'user', content: prompt }]
+      })
     })
 
-    const text = (response.content[0] as any).text.trim()
+    const data = await response.json() as any
+    const text = data.content[0].text.trim()
     const result = JSON.parse(text)
 
     // Validar campos

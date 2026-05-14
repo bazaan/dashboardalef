@@ -2090,50 +2090,110 @@
             <p style="font-size:0.8rem;color:var(--muted-foreground);margin:0;">{{ new Date().toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' }) }}</p>
           </div>
           <div style="display:flex;align-items:center;gap:0.5rem;">
-            <input type="date" v-model="reportesFecha" @change="fetchReportes()" style="font-size:0.82rem;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--foreground);" />
+            <input type="date" v-model="reportesFecha" @change="fetchReportes(); fetchReportesEmpresas()" style="font-size:0.82rem;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--foreground);" />
           </div>
         </header>
         <div class="content-area">
 
-          <!-- Grid de 5 miembros -->
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:2rem;">
-            <div v-for="m in equipoAlef" :key="m.nombre" class="alef-company-card" style="cursor:pointer;" @click="abrirReporte(m)">
-              <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
-                <div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;" :style="{background: m.color}">{{ m.inicial }}</div>
-                <div style="flex:1;min-width:0;">
-                  <div style="font-weight:600;font-size:0.92rem;color:var(--foreground);">{{ m.nombre }} {{ m.apellido }}</div>
-                  <div style="font-size:0.72rem;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ m.cargo }}</div>
+          <!-- Tabs: Equipo vs Empresas -->
+          <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;border-bottom:1px solid var(--border);padding-bottom:0;">
+            <button :class="['rep-tab-btn', { active: reportesTab === 'equipo' }]" @click="reportesTab = 'equipo'">
+              👥 Equipo Alef
+            </button>
+            <button :class="['rep-tab-btn', { active: reportesTab === 'empresas' }]" @click="reportesTab = 'empresas'; fetchReportesEmpresas()">
+              🏢 Todas las Empresas
+            </button>
+          </div>
+
+          <!-- ── TAB: EQUIPO ALEF ── -->
+          <div v-if="reportesTab === 'equipo'">
+            <!-- Grid de 5 miembros -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:2rem;">
+              <div v-for="m in equipoAlef" :key="m.nombre" class="alef-company-card" style="cursor:pointer;" @click="abrirReporte(m)">
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+                  <div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;" :style="{background: m.color}">{{ m.inicial }}</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:0.92rem;color:var(--foreground);">{{ m.nombre }} {{ m.apellido }}</div>
+                    <div style="font-size:0.72rem;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ m.cargo }}</div>
+                  </div>
+                  <v-icon v-if="getReporteDeHoy(m.nombre)" icon="mdi-check-circle" color="success" size="22" />
+                  <v-icon v-else icon="mdi-circle-outline" size="22" style="color:var(--border);" />
                 </div>
-                <v-icon v-if="getReporteDeHoy(m.nombre)" icon="mdi-check-circle" color="success" size="22" />
-                <v-icon v-else icon="mdi-circle-outline" size="22" style="color:var(--border);" />
+                <div v-if="getReporteDeHoy(m.nombre)" style="font-size:0.8rem;color:var(--foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+                  {{ getReporteDeHoy(m.nombre)?.logros }}
+                </div>
+                <div v-else style="font-size:0.78rem;color:var(--muted-foreground);font-style:italic;">Sin reporte hoy</div>
               </div>
-              <div v-if="getReporteDeHoy(m.nombre)" style="font-size:0.8rem;color:var(--foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
-                {{ getReporteDeHoy(m.nombre)?.logros }}
+            </div>
+
+            <!-- Lista histórica equipo -->
+            <h2 style="font-size:1rem;font-weight:600;color:var(--foreground);margin-bottom:0.75rem;">Todos los Reportes del Equipo</h2>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+              <div v-for="r in reportesDiarios" :key="r.id" class="brief-card">
+                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                  <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;"
+                    :style="{background: equipoAlef.find(m=>m.nombre===r.autor.split(' ')[0])?.color || '#64748b'}">
+                    {{ r.autor.split(' ').map((n:string)=>n[0]).slice(0,2).join('') }}
+                  </div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:0.88rem;color:var(--foreground);">{{ r.autor }}</div>
+                    <div style="font-size:0.72rem;color:var(--muted-foreground);">{{ r.cargo }} · {{ new Date(r.fecha).toLocaleDateString('es-PE',{day:'numeric',month:'short'}) }}</div>
+                  </div>
+                  <button class="btn-secondary" style="font-size:0.75rem;" @click="verReporteDetalle(r)">Ver</button>
+                </div>
+                <div style="margin-top:0.5rem;font-size:0.82rem;color:var(--foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ r.logros }}</div>
+                <div v-if="r.blockers" style="margin-top:0.35rem;font-size:0.78rem;color:#ef4444;">⚠ {{ r.blockers }}</div>
               </div>
-              <div v-else style="font-size:0.78rem;color:var(--muted-foreground);font-style:italic;">Sin reporte hoy</div>
+              <div v-if="reportesDiarios.length===0" style="color:var(--muted-foreground);font-size:0.85rem;text-align:center;padding:1.5rem;">Sin reportes para esta fecha.</div>
             </div>
           </div>
 
-          <!-- Tabla histórica -->
-          <h2 style="font-size:1rem;font-weight:600;color:var(--foreground);margin-bottom:0.75rem;">Todos los Reportes</h2>
-          <div style="display:flex;flex-direction:column;gap:0.5rem;">
-            <div v-for="r in reportesDiarios" :key="r.id" class="brief-card">
-              <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-                <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;"
-                  :style="{background: equipoAlef.find(m=>m.nombre===r.autor.split(' ')[0])?.color || '#64748b'}">
-                  {{ r.autor.split(' ').map((n:string)=>n[0]).slice(0,2).join('') }}
+          <!-- ── TAB: EMPRESAS ── -->
+          <div v-else-if="reportesTab === 'empresas'">
+            <!-- Resumen del día: grid de empresas -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:0.75rem;margin-bottom:2rem;">
+              <div v-for="emp in todasEmpresas" :key="emp.id" class="alef-company-card"
+                :style="{ cursor: getReporteEmpresaHoy(emp.id) ? 'pointer' : 'default', borderColor: getReporteEmpresaHoy(emp.id) ? '#22c55e' : undefined }"
+                @click="getReporteEmpresaHoy(emp.id) && verReporteEmpresa(getReporteEmpresaHoy(emp.id))">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <div style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;background:var(--primary);">
+                    {{ emp.nombre.slice(0,2).toUpperCase() }}
+                  </div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:0.88rem;color:var(--foreground);">{{ emp.nombre }}</div>
+                    <div v-if="getReporteEmpresaHoy(emp.id)" style="font-size:0.7rem;color:#16a34a;margin-top:2px;">✓ Reporte enviado</div>
+                    <div v-else style="font-size:0.7rem;color:var(--muted-foreground);margin-top:2px;font-style:italic;">Sin reporte hoy</div>
+                  </div>
+                  <v-icon v-if="getReporteEmpresaHoy(emp.id)" icon="mdi-check-circle" color="success" size="20" />
+                  <v-icon v-else icon="mdi-circle-outline" size="20" style="color:var(--border);" />
                 </div>
-                <div style="flex:1;min-width:0;">
-                  <div style="font-weight:600;font-size:0.88rem;color:var(--foreground);">{{ r.autor }}</div>
-                  <div style="font-size:0.72rem;color:var(--muted-foreground);">{{ r.cargo }} · {{ new Date(r.fecha).toLocaleDateString('es-PE',{day:'numeric',month:'short'}) }}</div>
+                <div v-if="getReporteEmpresaHoy(emp.id)" style="margin-top:0.6rem;font-size:0.78rem;color:var(--muted-foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+                  {{ getReporteEmpresaHoy(emp.id)?.resumen }}
                 </div>
-                <button class="btn-secondary" style="font-size:0.75rem;" @click="verReporteDetalle(r)">Ver</button>
               </div>
-              <div style="margin-top:0.5rem;font-size:0.82rem;color:var(--foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ r.logros }}</div>
-              <div v-if="r.blockers" style="margin-top:0.35rem;font-size:0.78rem;color:#ef4444;">⚠ {{ r.blockers }}</div>
             </div>
-            <div v-if="reportesDiarios.length===0" style="color:var(--muted-foreground);font-size:0.85rem;text-align:center;padding:1.5rem;">Sin reportes para esta fecha.</div>
+
+            <!-- Lista de todos los reportes de empresas -->
+            <h2 style="font-size:1rem;font-weight:600;color:var(--foreground);margin-bottom:0.75rem;">Historial de Reportes — Todas las Empresas</h2>
+            <div v-if="loadingReportesEmpresas" style="text-align:center;padding:2rem;color:var(--muted-foreground);">Cargando...</div>
+            <div v-else style="display:flex;flex-direction:column;gap:0.5rem;">
+              <div v-for="r in reportesEmpresas" :key="r.id" class="brief-card" style="cursor:pointer;" @click="verReporteEmpresa(r)">
+                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                  <div style="width:32px;height:32px;border-radius:8px;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;">
+                    {{ r.empresa_nombre.slice(0,2).toUpperCase() }}
+                  </div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:0.88rem;color:var(--foreground);">{{ r.empresa_nombre }}</div>
+                    <div style="font-size:0.72rem;color:var(--muted-foreground);">por {{ r.autor }} · {{ new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'}) }}</div>
+                  </div>
+                  <span v-if="r.blockers" style="font-size:0.68rem;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;">⚠ blocker</span>
+                </div>
+                <div style="margin-top:0.5rem;font-size:0.82rem;color:var(--foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ r.resumen }}</div>
+              </div>
+              <div v-if="reportesEmpresas.length===0" style="color:var(--muted-foreground);font-size:0.85rem;text-align:center;padding:1.5rem;">Sin reportes de empresas para esta fecha.</div>
+            </div>
           </div>
+
         </div>
 
         <!-- Dialog Crear/Ver Reporte -->
@@ -2187,6 +2247,37 @@
             </v-card-text>
             <v-card-actions style="padding:0.5rem 1.5rem 1.25rem;justify-content:flex-end;">
               <button class="btn-secondary" @click="showReporteDetalle=false">Cerrar</button>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Dialog: Ver reporte de empresa -->
+        <v-dialog v-model="showReporteEmpresaDlg" max-width="500">
+          <v-card v-if="reporteEmpresaSeleccionado" style="background:var(--card);border:1px solid var(--border);border-radius:16px;">
+            <v-card-title style="font-size:1rem;font-weight:700;padding:1.25rem 1.5rem 0.25rem;">{{ reporteEmpresaSeleccionado.empresa_nombre }}</v-card-title>
+            <v-card-subtitle style="padding:0 1.5rem 0.75rem;font-size:0.75rem;">
+              {{ new Date(reporteEmpresaSeleccionado.fecha + 'T12:00:00').toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long'}) }} · por {{ reporteEmpresaSeleccionado.autor }}
+            </v-card-subtitle>
+            <v-card-text style="padding:0 1.5rem 1rem;display:flex;flex-direction:column;gap:1rem;">
+              <div>
+                <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted-foreground);margin-bottom:0.4rem;">Resumen del día</div>
+                <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:var(--foreground);margin:0;">{{ reporteEmpresaSeleccionado.resumen }}</p>
+              </div>
+              <div v-if="reporteEmpresaSeleccionado.logros">
+                <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted-foreground);margin-bottom:0.4rem;">Logros</div>
+                <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:var(--foreground);margin:0;">{{ reporteEmpresaSeleccionado.logros }}</p>
+              </div>
+              <div v-if="reporteEmpresaSeleccionado.pendientes">
+                <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted-foreground);margin-bottom:0.4rem;">Pendientes</div>
+                <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:var(--foreground);margin:0;">{{ reporteEmpresaSeleccionado.pendientes }}</p>
+              </div>
+              <div v-if="reporteEmpresaSeleccionado.blockers">
+                <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#ef4444;margin-bottom:0.4rem;">⚠ Blockers</div>
+                <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:#ef4444;margin:0;">{{ reporteEmpresaSeleccionado.blockers }}</p>
+              </div>
+            </v-card-text>
+            <v-card-actions style="padding:0.5rem 1.5rem 1.25rem;justify-content:flex-end;">
+              <button class="btn-secondary" @click="showReporteEmpresaDlg=false">Cerrar</button>
             </v-card-actions>
           </v-card>
         </v-dialog>
@@ -4109,6 +4200,50 @@ async function saveReporte() {
     .upsert(payload, { onConflict: 'fecha,autor' })
   if (!error) { showReporteDialog.value = false; await fetchReportes() }
 }
+
+/* ══════════════════════════════════════════════════════
+   REPORTES DE EMPRESAS (todas las clínicas/companies)
+══════════════════════════════════════════════════════ */
+const reportesTab = ref<'equipo' | 'empresas'>('equipo')
+const reportesEmpresas = ref<any[]>([])
+const loadingReportesEmpresas = ref(false)
+const showReporteEmpresaDlg = ref(false)
+const reporteEmpresaSeleccionado = ref<any>(null)
+
+const todasEmpresas = [
+  { id: 'Heal up', nombre: 'Healup' },
+  { id: 'Brada', nombre: 'Brada Perfumes' },
+  { id: 'Alegrated', nombre: 'Alegrated' },
+  { id: 'Clinica Arroyo', nombre: 'Clínica Arroyo' },
+  { id: 'EstasConSuerte', nombre: 'Estás Con Suerte' },
+  { id: 'Estetika Medika', nombre: 'Estetika Medika' },
+  { id: 'Davila', nombre: 'Miguel Davila' },
+  { id: 'Origitec', nombre: 'Origitec' },
+  { id: 'SKIP', nombre: 'SKIP' },
+  { id: 'solari', nombre: 'Solari' },
+]
+
+function getReporteEmpresaHoy(empresaId: string) {
+  return reportesEmpresas.value.find(r => r.empresa_id === empresaId && r.fecha === reportesFecha.value) ?? null
+}
+
+function verReporteEmpresa(r: any) {
+  reporteEmpresaSeleccionado.value = r
+  showReporteEmpresaDlg.value = true
+}
+
+async function fetchReportesEmpresas() {
+  loadingReportesEmpresas.value = true
+  try {
+    const { data } = await (client as any)
+      .from('alef_reportes_empresa')
+      .select('*')
+      .order('fecha', { ascending: false })
+      .limit(100)
+    reportesEmpresas.value = data || []
+  } catch (e) { console.error('Error reportes empresas:', e) }
+  loadingReportesEmpresas.value = false
+}
 </script>
 
 <style scoped>
@@ -4659,6 +4794,22 @@ async function saveReporte() {
   border-color: #22c55e;
   box-shadow: 0 0 0 3px rgba(34,197,94,0.1);
 }
+
+.rep-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.rep-tab-btn:hover { color: var(--foreground); }
+.rep-tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
 .form-label {
   display: block;
   font-size: 0.78rem;

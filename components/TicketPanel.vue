@@ -216,7 +216,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { createClient } from '@supabase/supabase-js'
 
 const props = defineProps<{
   companyId: string
@@ -225,9 +224,7 @@ const props = defineProps<{
   isAlef?: boolean
 }>()
 
-const SUPABASE_URL = useRuntimeConfig().public.supabaseUrl || ''
-const SUPABASE_KEY = useRuntimeConfig().public.supabaseKey || ''
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+const supabase = useSupabaseClient()
 
 // ── Estado ──
 const tab = ref('mis_tickets')

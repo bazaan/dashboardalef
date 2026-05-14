@@ -76,6 +76,11 @@
 
         <div class="nav-section">
           <div class="nav-label">SOPORTE</div>
+          <button :class="['nav-item', { active: activeView === 'reporte' }]"
+            @click="activeView = 'reporte'">
+            <v-icon icon="mdi-clipboard-text" size="18" />
+            <span>Reporte Diario</span>
+          </button>
           <button :class="['nav-item', { active: activeView === 'tickets' }]"
             @click="activeView = 'tickets'">
             <v-icon icon="mdi-ticket-confirmation" size="18" />
@@ -4495,6 +4500,11 @@
         company-id="healup"
         :lead-tablas="{ wpp: 'GeneralBDwppHEALUP', fbig: 'GeneralBDfbigHEALUP' }"
       />
+
+      <!-- ==========  VISTA: REPORTE DIARIO  ========== -->
+      <div v-if="activeView === 'reporte'" class="view-container">
+        <ReporteEmpresaPanel empresa-id="Heal up" empresa-nombre="Healup" :current-user="currentUser?.full_name" />
+      </div>
 
       <!-- ==========  VISTA: TICKETS  ========== -->
       <div v-if="activeView === 'tickets'" class="view-container">

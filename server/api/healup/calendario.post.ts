@@ -30,6 +30,10 @@
  */
 
 import { serverSupabaseServiceRole } from '#supabase/server'
+import { getGoogleAccessToken } from '~/server/utils/google-auth'
+
+const GCAL_API    = 'https://www.googleapis.com/calendar/v3'
+const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID_HEALUP || 'healupaestheticlab@gmail.com'
 
 const API_KEY = 'healup-calendario-2026'
 
@@ -153,7 +157,46 @@ export default defineEventHandler(async (event) => {
 
   const results: Record<string, any> = {}
 
-  // ── 4. Insertar en healup_calendar_events ─────────────────────────────────
+  // ── 4. Crear evento en Google Calendar ────────────────────────────────────
+  // Replica exactamente lo que hacía la tool "agendar" del agente n8n
+  try {
+    const accessToken = await getGoogleAccessToken()
+    const calId       = encodeURIComponent(CALENDAR_ID)
+
+    // Peru es UTC-5 — si el ISO no trae zona horaria la añadimos
+    const addTZ = (iso: string) => /[Zz]|[+-]\d{2}:\d{2}$/.test(iso) ? iso : `${iso}-05:00`
+
+    const gcalBody = {
+      summary:     nombre_completo,
+      description: `Nombre Completo: ${nombre_completo}\nNúmero: ${phone}\nDNI: ${dniStr}`,
+      start: { dateTime: addTZ(inicio_cita), timeZone: 'America/Lima' },
+      end:   { dateTime: addTZ(fin_cita || inicio_cita), timeZone: 'America/Lima' },
+    }
+
+    const res = await fetch(`${GCAL_API}/calendars/${calId}/events`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(gcalBody),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      throw new Error(`GCal API ${res.status}: ${errText}`)
+    }
+
+    const gcalEvent = await res.json() as any
+    results.google_calendar = {
+      ok:      true,
+      eventId: gcalEvent.id,
+      htmlLink: gcalEvent.htmlLink,
+      summary:  gcalEvent.summary,
+    }
+  } catch (e: any) {
+    console.error('[calendario] Error en Google Calendar:', e?.message)
+    results.google_calendar = { ok: false, error: e?.message ?? 'Error creando evento en GCal' }
+  }
+
+  // ── 6. Insertar en healup_calendar_events ─────────────────────────────────
   try {
     const { data: calData, error: calError } = await (supabase
       .from('healup_calendar_events') as any)
@@ -183,7 +226,7 @@ export default defineEventHandler(async (event) => {
     results.calendario = { ok: false, error: e?.message ?? 'Error insertando cita' }
   }
 
-  // ── 5. Upsert en PacientesBDwppHEALUP ────────────────────────────────────
+  // ── 7. Upsert en PacientesBDwppHEALUP ────────────────────────────────────
   try {
     const pacPayload: Record<string, any> = {
       nombre:             nombre_completo,
@@ -211,7 +254,7 @@ export default defineEventHandler(async (event) => {
     results.paciente = { ok: false, error: e?.message ?? 'Error actualizando paciente' }
   }
 
-  // ── 6. Generar boleta de consulta ─────────────────────────────────────────
+  // ── 8. Generar boleta de consulta ─────────────────────────────────────────
   try {
     const boletaResp = await $fetch<any>('/api/pse/boleta-consulta', {
       method: 'POST',
@@ -237,24 +280,26 @@ export default defineEventHandler(async (event) => {
     results.boleta = { ok: false, error: e?.message ?? 'Error generando boleta' }
   }
 
-  // ── 7. Construir respuesta final ───────────────────────────────────────────
+  // ── 9. Construir respuesta final ───────────────────────────────────────────
   const fechaHuman = isoToHumanEs(inicio_cita)
   const pdfLink    = results.boleta?.enlace_pdf ?? 'no disponible'
   const hayError   = Object.values(results).some((r: any) => r?.ok === false)
 
   const output = {
-    ok:         !hayError,
-    message:    `Se ha agendado correctamente:\nFecha y hora: ${fechaHuman}\nenlace_pdf: ${pdfLink}`,
-    calendario: results.calendario,
-    paciente:   results.paciente,
-    boleta:     results.boleta,
-    log_id:     logId,
+    ok:              !hayError,
+    message:         `Se ha agendado correctamente:\nFecha y hora: ${fechaHuman}\nenlace_pdf: ${pdfLink}`,
+    google_calendar: results.google_calendar,
+    calendario:      results.calendario,
+    paciente:        results.paciente,
+    boleta:          results.boleta,
+    log_id:          logId,
   }
 
   await updateLog(hayError ? 'partial' : 'success', output)
 
   console.log(
     `[calendario] Healup | ${client_name} ${client_surname} | ${date} ${time}`,
+    `| gcal:${results.google_calendar?.ok ? '✅' : '❌'}`,
     `| cal:${results.calendario?.ok ? '✅' : '❌'}`,
     `| pac:${results.paciente?.ok ? '✅' : '❌'}`,
     `| boleta:${results.boleta?.ok ? '✅' : '❌'}`,

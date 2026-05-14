@@ -64,6 +64,16 @@
             <v-icon icon="mdi-account-group" size="18" />
             <span>Equipo</span>
           </button>
+          <button :class="['nav-item', { active: activeView === 'brief' }]"
+            @click="activeView = 'brief'; fetchBriefs()">
+            <v-icon icon="mdi-lightning-bolt" size="18" />
+            <span>Brief del Día</span>
+          </button>
+          <button :class="['nav-item', { active: activeView === 'reportes_diarios' }]"
+            @click="activeView = 'reportes_diarios'; fetchReportes()">
+            <v-icon icon="mdi-clipboard-check" size="18" />
+            <span>Reportes Diarios</span>
+          </button>
           <button :class="['nav-item', { active: activeView === 'reportes' }]"
             @click="activeView = 'reportes'">
             <v-icon icon="mdi-file-chart" size="18" />
@@ -1728,6 +1738,235 @@
         company-id="alef"
         :lead-tablas="{ wpp: '', fbig: '' }"
       />
+
+      <!-- ══════════  VISTA: BRIEF DEL DÍA  ══════════ -->
+      <div v-else-if="activeView === 'brief'" class="view-container">
+        <header class="top-header">
+          <div>
+            <h1>Brief del Día</h1>
+            <p style="font-size:0.8rem;color:var(--muted-foreground);margin:0;">{{ new Date().toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' }) }}</p>
+          </div>
+          <button class="btn-primary" @click="showBriefDialog = true; resetBriefForm()">
+            <v-icon icon="mdi-plus" size="16" />
+            <span>Nuevo Brief</span>
+          </button>
+        </header>
+        <div class="content-area">
+
+          <!-- Brief de hoy -->
+          <div v-if="briefHoy" style="margin-bottom:1.5rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+              <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span>
+              <span style="font-size:0.8rem;font-weight:600;color:#16a34a;text-transform:uppercase;letter-spacing:0.05em;">Hoy</span>
+            </div>
+            <div class="brief-card brief-card--hoy">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:0.5rem;">
+                <h2 style="font-size:1.15rem;font-weight:700;color:var(--foreground);margin:0;">{{ briefHoy.titulo }}</h2>
+                <span style="font-size:0.72rem;color:var(--muted-foreground);">por {{ briefHoy.autor }}</span>
+              </div>
+              <p style="margin:0.75rem 0;font-size:0.88rem;color:var(--foreground);line-height:1.6;white-space:pre-wrap;">{{ briefHoy.contenido }}</p>
+              <div v-if="briefHoy.prioridades?.length" style="margin-top:0.75rem;">
+                <div style="font-size:0.75rem;font-weight:600;color:var(--muted-foreground);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;">Prioridades</div>
+                <div style="display:flex;flex-direction:column;gap:0.4rem;">
+                  <div v-for="(p, i) in briefHoy.prioridades" :key="i" style="display:flex;align-items:center;gap:0.6rem;">
+                    <span style="width:20px;height:20px;border-radius:50%;background:var(--primary);color:#fff;font-size:0.68rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ i+1 }}</span>
+                    <span style="font-size:0.85rem;color:var(--foreground);">{{ p }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else style="text-align:center;padding:2rem;background:var(--card);border:2px dashed var(--border);border-radius:12px;margin-bottom:1.5rem;">
+            <v-icon icon="mdi-lightning-bolt-outline" size="40" style="color:var(--muted-foreground);margin-bottom:0.5rem;" />
+            <p style="color:var(--muted-foreground);margin:0;">No hay brief para hoy todavía.</p>
+            <button class="btn-primary" style="margin-top:0.75rem;" @click="showBriefDialog = true; resetBriefForm()">Crear Brief del Día</button>
+          </div>
+
+          <!-- Histórico -->
+          <h2 style="font-size:1rem;font-weight:600;color:var(--foreground);margin-bottom:0.75rem;">Briefs Anteriores</h2>
+          <div v-if="briefsAnteriores.length === 0" style="color:var(--muted-foreground);font-size:0.85rem;">Sin briefs anteriores.</div>
+          <div style="display:flex;flex-direction:column;gap:0.75rem;">
+            <div v-for="b in briefsAnteriores" :key="b.id" class="brief-card" style="cursor:pointer;" @click="verBriefDetalle(b)">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:0.72rem;color:var(--muted-foreground);">{{ new Date(b.fecha).toLocaleDateString('es-PE', {weekday:'short',day:'numeric',month:'short'}) }}</span>
+                <span style="font-size:0.72rem;color:var(--muted-foreground);">por {{ b.autor }}</span>
+              </div>
+              <div style="font-weight:600;font-size:0.92rem;color:var(--foreground);margin-top:0.25rem;">{{ b.titulo }}</div>
+              <div style="font-size:0.82rem;color:var(--muted-foreground);margin-top:0.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.contenido }}</div>
+              <div v-if="b.prioridades?.length" style="margin-top:0.4rem;font-size:0.72rem;color:var(--muted-foreground);">{{ b.prioridades.length }} prioridade{{ b.prioridades.length > 1 ? 's' : '' }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dialog Nuevo Brief -->
+        <v-dialog v-model="showBriefDialog" max-width="560" persistent>
+          <v-card style="background:var(--card);border:1px solid var(--border);border-radius:16px;">
+            <v-card-title style="font-size:1rem;font-weight:700;padding:1.25rem 1.5rem 0;">Nuevo Brief</v-card-title>
+            <v-card-text style="padding:1rem 1.5rem;">
+              <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                <div>
+                  <label class="form-label">Tu nombre</label>
+                  <v-select v-model="briefForm.autor" :items="equipoAlef.map(m=>m.nombre+' '+m.apellido).map(s=>s.trim())" density="compact" variant="outlined" hide-details />
+                </div>
+                <div>
+                  <label class="form-label">Título del brief</label>
+                  <v-text-field v-model="briefForm.titulo" density="compact" variant="outlined" hide-details placeholder="Ej: Semana de lanzamiento Doc C" />
+                </div>
+                <div>
+                  <label class="form-label">Contenido</label>
+                  <v-textarea v-model="briefForm.contenido" density="compact" variant="outlined" hide-details rows="4" placeholder="Contexto del día, decisiones importantes, foco del equipo..." />
+                </div>
+                <div>
+                  <label class="form-label">Prioridades del día</label>
+                  <div style="display:flex;flex-direction:column;gap:0.4rem;">
+                    <div v-for="(p, i) in briefForm.prioridades" :key="i" style="display:flex;gap:0.5rem;align-items:center;">
+                      <v-text-field v-model="briefForm.prioridades[i]" density="compact" variant="outlined" hide-details :placeholder="`Prioridad ${i+1}`" style="flex:1;" />
+                      <v-btn icon size="small" variant="text" @click="briefForm.prioridades.splice(i,1)"><v-icon>mdi-close</v-icon></v-btn>
+                    </div>
+                    <button class="btn-secondary" style="align-self:flex-start;font-size:0.8rem;" @click="briefForm.prioridades.push('')">+ Agregar prioridad</button>
+                  </div>
+                </div>
+              </div>
+            </v-card-text>
+            <v-card-actions style="padding:0.75rem 1.5rem 1.25rem;gap:0.5rem;justify-content:flex-end;">
+              <button class="btn-secondary" @click="showBriefDialog=false">Cancelar</button>
+              <button class="btn-primary" :disabled="!briefForm.titulo || !briefForm.contenido || !briefForm.autor" @click="saveBrief()">Publicar Brief</button>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Dialog Ver Detalle Brief -->
+        <v-dialog v-model="showBriefDetalle" max-width="560">
+          <v-card v-if="briefSeleccionado" style="background:var(--card);border:1px solid var(--border);border-radius:16px;">
+            <v-card-title style="font-size:1rem;font-weight:700;padding:1.25rem 1.5rem 0.25rem;">{{ briefSeleccionado.titulo }}</v-card-title>
+            <v-card-subtitle style="padding:0 1.5rem 0.75rem;font-size:0.75rem;">{{ new Date(briefSeleccionado.fecha).toLocaleDateString('es-PE', {weekday:'long',day:'numeric',month:'long'}) }} · por {{ briefSeleccionado.autor }}</v-card-subtitle>
+            <v-card-text style="padding:0 1.5rem 1rem;">
+              <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:var(--foreground);">{{ briefSeleccionado.contenido }}</p>
+              <div v-if="briefSeleccionado.prioridades?.length" style="margin-top:1rem;">
+                <div style="font-size:0.72rem;font-weight:600;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">Prioridades</div>
+                <div v-for="(p,i) in briefSeleccionado.prioridades" :key="i" style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.35rem;">
+                  <span style="width:20px;height:20px;border-radius:50%;background:var(--primary);color:#fff;font-size:0.68rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ i+1 }}</span>
+                  <span style="font-size:0.85rem;">{{ p }}</span>
+                </div>
+              </div>
+            </v-card-text>
+            <v-card-actions style="padding:0.5rem 1.5rem 1.25rem;justify-content:flex-end;">
+              <button class="btn-secondary" @click="showBriefDetalle=false">Cerrar</button>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </div>
+
+      <!-- ══════════  VISTA: REPORTES DIARIOS  ══════════ -->
+      <div v-else-if="activeView === 'reportes_diarios'" class="view-container">
+        <header class="top-header">
+          <div>
+            <h1>Reportes Diarios</h1>
+            <p style="font-size:0.8rem;color:var(--muted-foreground);margin:0;">{{ new Date().toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' }) }}</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <input type="date" v-model="reportesFecha" @change="fetchReportes()" style="font-size:0.82rem;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--foreground);" />
+          </div>
+        </header>
+        <div class="content-area">
+
+          <!-- Grid de 5 miembros -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:2rem;">
+            <div v-for="m in equipoAlef" :key="m.nombre" class="alef-company-card" style="cursor:pointer;" @click="abrirReporte(m)">
+              <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+                <div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;" :style="{background: m.color}">{{ m.inicial }}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:0.92rem;color:var(--foreground);">{{ m.nombre }} {{ m.apellido }}</div>
+                  <div style="font-size:0.72rem;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ m.cargo }}</div>
+                </div>
+                <v-icon v-if="getReporteDeHoy(m.nombre)" icon="mdi-check-circle" color="success" size="22" />
+                <v-icon v-else icon="mdi-circle-outline" size="22" style="color:var(--border);" />
+              </div>
+              <div v-if="getReporteDeHoy(m.nombre)" style="font-size:0.8rem;color:var(--foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+                {{ getReporteDeHoy(m.nombre)?.logros }}
+              </div>
+              <div v-else style="font-size:0.78rem;color:var(--muted-foreground);font-style:italic;">Sin reporte hoy</div>
+            </div>
+          </div>
+
+          <!-- Tabla histórica -->
+          <h2 style="font-size:1rem;font-weight:600;color:var(--foreground);margin-bottom:0.75rem;">Todos los Reportes</h2>
+          <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            <div v-for="r in reportesDiarios" :key="r.id" class="brief-card">
+              <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;"
+                  :style="{background: equipoAlef.find(m=>m.nombre===r.autor.split(' ')[0])?.color || '#64748b'}">
+                  {{ r.autor.split(' ').map((n:string)=>n[0]).slice(0,2).join('') }}
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:0.88rem;color:var(--foreground);">{{ r.autor }}</div>
+                  <div style="font-size:0.72rem;color:var(--muted-foreground);">{{ r.cargo }} · {{ new Date(r.fecha).toLocaleDateString('es-PE',{day:'numeric',month:'short'}) }}</div>
+                </div>
+                <button class="btn-secondary" style="font-size:0.75rem;" @click="verReporteDetalle(r)">Ver</button>
+              </div>
+              <div style="margin-top:0.5rem;font-size:0.82rem;color:var(--foreground);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ r.logros }}</div>
+              <div v-if="r.blockers" style="margin-top:0.35rem;font-size:0.78rem;color:#ef4444;">⚠ {{ r.blockers }}</div>
+            </div>
+            <div v-if="reportesDiarios.length===0" style="color:var(--muted-foreground);font-size:0.85rem;text-align:center;padding:1.5rem;">Sin reportes para esta fecha.</div>
+          </div>
+        </div>
+
+        <!-- Dialog Crear/Ver Reporte -->
+        <v-dialog v-model="showReporteDialog" max-width="520" persistent>
+          <v-card style="background:var(--card);border:1px solid var(--border);border-radius:16px;">
+            <v-card-title style="font-size:1rem;font-weight:700;padding:1.25rem 1.5rem 0;">
+              Reporte — {{ reporteForm.autor }}
+              <div style="font-size:0.72rem;font-weight:400;color:var(--muted-foreground);margin-top:2px;">{{ reporteForm.cargo }}</div>
+            </v-card-title>
+            <v-card-text style="padding:1rem 1.5rem;">
+              <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                <div>
+                  <label class="form-label">¿Qué hice hoy? <span style="color:#ef4444;">*</span></label>
+                  <v-textarea v-model="reporteForm.logros" density="compact" variant="outlined" hide-details rows="3" placeholder="Tareas completadas, avances, resultados..." />
+                </div>
+                <div>
+                  <label class="form-label">Pendientes para mañana</label>
+                  <v-textarea v-model="reporteForm.pendientes" density="compact" variant="outlined" hide-details rows="2" placeholder="Qué queda por hacer..." />
+                </div>
+                <div>
+                  <label class="form-label">Blockers / Impedimentos</label>
+                  <v-textarea v-model="reporteForm.blockers" density="compact" variant="outlined" hide-details rows="2" placeholder="Algo que te bloquea o necesitas de alguien..." />
+                </div>
+              </div>
+            </v-card-text>
+            <v-card-actions style="padding:0.75rem 1.5rem 1.25rem;gap:0.5rem;justify-content:flex-end;">
+              <button class="btn-secondary" @click="showReporteDialog=false">Cancelar</button>
+              <button class="btn-primary" :disabled="!reporteForm.logros" @click="saveReporte()">Guardar Reporte</button>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Dialog Ver detalle reporte -->
+        <v-dialog v-model="showReporteDetalle" max-width="480">
+          <v-card v-if="reporteSeleccionado" style="background:var(--card);border:1px solid var(--border);border-radius:16px;">
+            <v-card-title style="font-size:1rem;font-weight:700;padding:1.25rem 1.5rem 0.25rem;">{{ reporteSeleccionado.autor }}</v-card-title>
+            <v-card-subtitle style="padding:0 1.5rem 0.75rem;font-size:0.75rem;">{{ reporteSeleccionado.cargo }} · {{ new Date(reporteSeleccionado.fecha).toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long'}) }}</v-card-subtitle>
+            <v-card-text style="padding:0 1.5rem 1rem;display:flex;flex-direction:column;gap:1rem;">
+              <div>
+                <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted-foreground);margin-bottom:0.4rem;">Qué hice hoy</div>
+                <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:var(--foreground);margin:0;">{{ reporteSeleccionado.logros }}</p>
+              </div>
+              <div v-if="reporteSeleccionado.pendientes">
+                <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted-foreground);margin-bottom:0.4rem;">Pendientes</div>
+                <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:var(--foreground);margin:0;">{{ reporteSeleccionado.pendientes }}</p>
+              </div>
+              <div v-if="reporteSeleccionado.blockers">
+                <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#ef4444;margin-bottom:0.4rem;">⚠ Blockers</div>
+                <p style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;color:var(--foreground);margin:0;">{{ reporteSeleccionado.blockers }}</p>
+              </div>
+            </v-card-text>
+            <v-card-actions style="padding:0.5rem 1.5rem 1.25rem;justify-content:flex-end;">
+              <button class="btn-secondary" @click="showReporteDetalle=false">Cerrar</button>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </div>
+
   </div>
 </template>
 
@@ -3454,6 +3693,129 @@ onMounted(() => {
 onUnmounted(() => {
   if (alertasInterval) clearInterval(alertasInterval)
 })
+
+/* ══════════════════════════════════════════════════════
+   EQUIPO ALEF — Miembros hardcoded
+══════════════════════════════════════════════════════ */
+const equipoAlef = [
+  { nombre: 'Juan Pablo', apellido: 'Jesús',    cargo: 'Técnico / Sistemas e Ingeniería',     color: '#daa520', inicial: 'JP' },
+  { nombre: 'Carlos',     apellido: '',          cargo: 'Comercial / Administrativo y Tributario', color: '#3b82f6', inicial: 'CA' },
+  { nombre: 'Piero',      apellido: 'Belmonte',  cargo: 'System Prompt & Publicidad',          color: '#8b5cf6', inicial: 'PB' },
+  { nombre: 'Julio',      apellido: '',          cargo: 'Senior Prompt Engineer',              color: '#06b6d4', inicial: 'JU' },
+  { nombre: 'Roberto',    apellido: '',          cargo: 'Dashboard & Infraestructura IA',      color: '#10b981', inicial: 'RO' },
+]
+
+/* ══════════════════════════════════════════════════════
+   BRIEF DEL DÍA
+══════════════════════════════════════════════════════ */
+interface Brief {
+  id: string
+  fecha: string
+  titulo: string
+  contenido: string
+  prioridades: string[]
+  autor: string
+  created_at: string
+}
+
+const briefs = ref<Brief[]>([])
+const showBriefDialog = ref(false)
+const showBriefDetalle = ref(false)
+const briefSeleccionado = ref<Brief | null>(null)
+const briefForm = reactive({ titulo: '', contenido: '', prioridades: [''] as string[], autor: '' })
+
+const hoyISO = new Date().toISOString().slice(0, 10)
+const briefHoy = computed(() => briefs.value.find(b => b.fecha === hoyISO) ?? null)
+const briefsAnteriores = computed(() => briefs.value.filter(b => b.fecha !== hoyISO))
+
+function resetBriefForm() {
+  briefForm.titulo = ''; briefForm.contenido = ''; briefForm.prioridades = ['']; briefForm.autor = ''
+}
+function verBriefDetalle(b: Brief) { briefSeleccionado.value = b; showBriefDetalle.value = true }
+
+async function fetchBriefs() {
+  try {
+    const { data } = await (client as any).from('alef_briefs').select('*').order('fecha', { ascending: false }).limit(20)
+    briefs.value = data || []
+  } catch (e) { console.error('Error briefs:', e) }
+}
+
+async function saveBrief() {
+  const prioridades = briefForm.prioridades.filter(p => p.trim())
+  const { error } = await (client as any).from('alef_briefs').insert({
+    titulo: briefForm.titulo.trim(),
+    contenido: briefForm.contenido.trim(),
+    prioridades,
+    autor: briefForm.autor,
+    fecha: hoyISO,
+  })
+  if (!error) { showBriefDialog.value = false; await fetchBriefs() }
+}
+
+/* ══════════════════════════════════════════════════════
+   REPORTES DIARIOS
+══════════════════════════════════════════════════════ */
+interface ReporteDiario {
+  id: string
+  fecha: string
+  autor: string
+  cargo: string
+  logros: string
+  pendientes: string
+  blockers: string
+}
+
+const reportesDiarios = ref<ReporteDiario[]>([])
+const reportesFecha = ref(hoyISO)
+const showReporteDialog = ref(false)
+const showReporteDetalle = ref(false)
+const reporteSeleccionado = ref<ReporteDiario | null>(null)
+const reporteForm = reactive({ autor: '', cargo: '', logros: '', pendientes: '', blockers: '' })
+
+function getReporteDeHoy(nombreMiembro: string) {
+  return reportesDiarios.value.find(r => r.fecha === reportesFecha.value && r.autor.startsWith(nombreMiembro)) ?? null
+}
+
+function abrirReporte(m: typeof equipoAlef[0]) {
+  const nombre = `${m.nombre} ${m.apellido}`.trim()
+  const existente = getReporteDeHoy(m.nombre)
+  reporteForm.autor = nombre
+  reporteForm.cargo = m.cargo
+  reporteForm.logros = existente?.logros ?? ''
+  reporteForm.pendientes = existente?.pendientes ?? ''
+  reporteForm.blockers = existente?.blockers ?? ''
+  showReporteDialog.value = true
+}
+
+function verReporteDetalle(r: ReporteDiario) { reporteSeleccionado.value = r; showReporteDetalle.value = true }
+
+async function fetchReportes() {
+  try {
+    const { data } = await (client as any)
+      .from('alef_reportes_diarios')
+      .select('*')
+      .eq('fecha', reportesFecha.value)
+      .order('created_at', { ascending: false })
+    reportesDiarios.value = data || []
+  } catch (e) { console.error('Error reportes:', e) }
+}
+
+async function saveReporte() {
+  const payload = {
+    fecha: reportesFecha.value,
+    autor: reporteForm.autor,
+    cargo: reporteForm.cargo,
+    logros: reporteForm.logros.trim(),
+    pendientes: reporteForm.pendientes.trim(),
+    blockers: reporteForm.blockers.trim(),
+    updated_at: new Date().toISOString(),
+  }
+  // Upsert por (fecha, autor)
+  const { error } = await (client as any)
+    .from('alef_reportes_diarios')
+    .upsert(payload, { onConflict: 'fecha,autor' })
+  if (!error) { showReporteDialog.value = false; await fetchReportes() }
+}
 </script>
 
 <style scoped>
@@ -3986,5 +4348,31 @@ onUnmounted(() => {
   align-items: center;
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);
+}
+
+/* ── BRIEF CARDS ───────────────────────────────────── */
+.brief-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.brief-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.brief-card--hoy {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.1);
+}
+.form-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 </style>

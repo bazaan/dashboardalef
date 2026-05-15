@@ -2502,7 +2502,7 @@ const devCompanies = [
 ]
 
 const COMPANY_TOOLS: Record<string, string[]> = {
-  healup:         ['Todas', 'Calendario'],
+  healup:         ['Todas', 'Calendario', 'CitaMultiple'],
   estasconsuerte: ['Todas'],
   brada:          ['Todas'],
   estetikamedika: ['Todas'],
@@ -2520,7 +2520,8 @@ const devToolsForCompany = computed(() =>
 )
 
 const devEndpoints = [
-  { company: 'healup', url: 'POST /api/healup/calendario  ·  api_key: healup-calendario-2026' },
+  { company: 'healup', url: 'POST /api/healup/calendario       ·  api_key: healup-calendario-2026' },
+  { company: 'healup', url: 'POST /api/healup/cita-multiple    ·  api_key: healup-cita-multiple-2026' },
 ]
 
 const devLogsCountByCompany = computed(() => {

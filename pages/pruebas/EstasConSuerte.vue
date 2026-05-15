@@ -832,11 +832,77 @@
         <!-- Tabs principales -->
         <v-tabs v-model="facturacionTab" bg-color="transparent" color="primary" density="compact" class="mb-4"
           style="border-bottom: 1px solid var(--border);">
-          <v-tab value="cobro_manual">💳 Cobro Manual</v-tab>
+          <v-tab value="cobro_manual">💳 Cobro</v-tab>
+          <v-tab value="boletas_pendientes">📋 Pendientes</v-tab>
           <v-tab value="boletas">📄 Boletas</v-tab>
-          <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
+          <v-tab value="factura_electronica">⚡ Facturas</v-tab>
           <v-tab v-if="isSuperAdmin(currentUser)" value="endpoint">🔌 Endpoint</v-tab>
         </v-tabs>
+
+        <!-- ====== TAB: BOLETAS PENDIENTES ====== -->
+        <div v-if="facturacionTab === 'boletas_pendientes'" style="padding: 0 0 2rem 0;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
+            <div>
+              <h2 style="font-size:1.1rem; font-weight:600; margin:0;">Boletas Pendientes de Emisión</h2>
+              <p style="font-size:0.85rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">
+                Generadas por el agente o la web. Revisá y emitís todas al final del día.
+              </p>
+            </div>
+            <div style="display:flex; gap:0.75rem; align-items:center;">
+              <button class="btn-secondary" @click="fetchBoletasPendientesECS" :disabled="loadingPendientesECS">
+                <v-icon icon="mdi-refresh" size="16" />
+              </button>
+              <button class="btn-primary" @click="emitirTodasPendientesECS"
+                :disabled="loadingEmisionECS || boletasPendientesECS.length === 0">
+                <v-icon icon="mdi-send" size="16" />
+                <span>{{ loadingEmisionECS ? 'Emitiendo...' : `Emitir todas (${boletasPendientesECS.length})` }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="emisionResultadoECS" style="margin-bottom:1rem; padding:1rem; border-radius:8px;"
+            :style="{ background: emisionResultadoECS.fallidos > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', border: `1px solid ${emisionResultadoECS.fallidos > 0 ? '#ef4444' : '#22c55e'}` }">
+            <strong>Emisión completada:</strong> {{ emisionResultadoECS.exitosos }} exitosas, {{ emisionResultadoECS.fallidos }} con error
+            <div v-for="r in emisionResultadoECS.resultados" :key="r.id" style="font-size:0.8rem; margin-top:0.25rem;">
+              {{ r.serie }}-{{ String(r.numero).padStart(4,'0') }}:
+              <span :style="{ color: r.ok ? '#22c55e' : '#ef4444' }">{{ r.ok ? '✓ emitida' : `✗ ${r.error}` }}</span>
+            </div>
+          </div>
+
+          <div v-if="loadingPendientesECS" style="text-align:center; padding:3rem; color:var(--text-secondary);">
+            <v-progress-circular indeterminate size="32" />
+          </div>
+          <div v-else-if="boletasPendientesECS.length === 0" style="text-align:center; padding:3rem; color:var(--text-secondary);">
+            <v-icon icon="mdi-check-circle-outline" size="48" style="opacity:0.4;" />
+            <p style="margin-top:0.75rem;">No hay boletas pendientes. Todo emitido.</p>
+          </div>
+          <div v-else>
+            <div style="display:flex; justify-content:flex-end; margin-bottom:0.5rem; font-size:0.85rem; color:var(--text-secondary);">
+              Total a emitir: <strong style="margin-left:0.25rem;">S/ {{ boletasPendientesECSTotal.toFixed(2) }}</strong>
+            </div>
+            <v-card flat style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+              <table style="width:100%; border-collapse:collapse;">
+                <thead>
+                  <tr style="background:var(--bg-secondary); font-size:0.8rem; color:var(--text-secondary);">
+                    <th style="padding:0.75rem 1rem; text-align:left;">Boleta</th>
+                    <th style="padding:0.75rem 1rem; text-align:left;">Cliente</th>
+                    <th style="padding:0.75rem 1rem; text-align:left;">Fecha</th>
+                    <th style="padding:0.75rem 1rem; text-align:right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="b in boletasPendientesECS" :key="b.id"
+                    style="border-top:1px solid var(--border); font-size:0.875rem;">
+                    <td style="padding:0.75rem 1rem; font-weight:600;">{{ b.serie }}-{{ String(b.numero).padStart(4,'0') }}</td>
+                    <td style="padding:0.75rem 1rem;">{{ b.cliente_denominacion || 'CONSUMIDOR FINAL' }}</td>
+                    <td style="padding:0.75rem 1rem; color:var(--text-secondary);">{{ b.fecha_de_emision }}</td>
+                    <td style="padding:0.75rem 1rem; text-align:right; font-weight:600;">S/ {{ Number(b.total).toFixed(2) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </v-card>
+          </div>
+        </div>
 
         <!-- ====== TAB: COBRO MANUAL ====== -->
         <div v-show="facturacionTab === 'cobro_manual'" class="content-area">
@@ -2947,10 +3013,52 @@ watch(activeView, (newVal) => {
   else if (newVal === 'contabilidad' && boletasECS.value.length === 0) fetchBoletasECS()
 })
 
+/* ---------------- Boletas Pendientes ECS ---------------- */
+const boletasPendientesECS = ref<any[]>([])
+const loadingPendientesECS = ref(false)
+const loadingEmisionECS = ref(false)
+const emisionResultadoECS = ref<any>(null)
+const boletasPendientesECSTotal = computed(() => boletasPendientesECS.value.reduce((s, b) => s + Number(b.total || 0), 0))
+
+async function fetchBoletasPendientesECS() {
+  loadingPendientesECS.value = true
+  try {
+    const supabase = useSupabaseClient()
+    const { data } = await supabase
+      .from('comprobantes_pse')
+      .select('id, serie, numero, fecha_de_emision, cliente_denominacion, total')
+      .eq('company_id', 'estasconsuerte')
+      .eq('estado', 'pendiente')
+      .order('numero', { ascending: true })
+    boletasPendientesECS.value = data || []
+  } finally {
+    loadingPendientesECS.value = false
+  }
+}
+
+async function emitirTodasPendientesECS() {
+  if (boletasPendientesECS.value.length === 0) return
+  loadingEmisionECS.value = true
+  emisionResultadoECS.value = null
+  try {
+    const resultado = await $fetch('/api/pse/emitir', {
+      method: 'POST',
+      body: { todos: true, company_id: 'estasconsuerte' }
+    })
+    emisionResultadoECS.value = resultado
+    await fetchBoletasPendientesECS()
+  } catch (e: any) {
+    emisionResultadoECS.value = { exitosos: 0, fallidos: boletasPendientesECS.value.length, resultados: [], error: e?.message }
+  } finally {
+    loadingEmisionECS.value = false
+  }
+}
+
 // Watch facturacionTab to load endpoint logs on demand
 watch(facturacionTab, (newVal) => {
   if (newVal === 'boletas' && boletasECS.value.length === 0) fetchBoletasECS()
   if (newVal === 'endpoint' && webhookLogs.value.length === 0) fetchEndpointLogs()
+  if (newVal === 'boletas_pendientes') fetchBoletasPendientesECS()
 })
 
 /* ---------------- NOTIFICATIONS LOGIC ---------------- */

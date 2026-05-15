@@ -1767,157 +1767,189 @@
       <div v-if="activeView === 'dev_logs'" class="view-container">
         <header class="top-header">
           <div>
-            <h1 style="display:flex; align-items:center; gap:0.5rem;">
-              <v-icon icon="mdi-robot-excited" color="primary" />
+            <h1 style="display:flex; align-items:center; gap:0.5rem; font-size:1.3rem;">
+              <v-icon icon="mdi-robot-excited" color="#daa520" size="22" />
               Dev · Agent Logs
             </h1>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin:2px 0 0 0;">
-              Ejecuciones de tools del agente IA — en tiempo real
+            <p style="font-size:0.78rem; color:var(--text-muted); margin:2px 0 0 0;">
+              Monitoreo de tools del agente IA en tiempo real
             </p>
           </div>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <v-select v-model="devLogsCompanyFilter"
-              :items="['Todas', 'healup', 'brada', 'estasconsuerte', 'estetikamedika', 'davila']"
-              variant="outlined" density="compact" hide-details style="min-width:180px;" label="Empresa" />
-            <v-select v-model="devLogsStatusFilter"
-              :items="['Todos', 'success', 'partial', 'error', 'running']"
-              variant="outlined" density="compact" hide-details style="min-width:140px;" label="Estado" />
-            <button class="btn-primary" @click="fetchDevLogs" style="padding:6px 14px;">
-              <v-icon icon="mdi-refresh" size="16" />
-              <span>Actualizar</span>
-            </button>
-          </div>
+          <button class="btn-primary" @click="fetchDevLogs" style="padding:8px 16px; min-height:44px;">
+            <v-icon icon="mdi-refresh" size="16" />
+            <span>Actualizar</span>
+          </button>
         </header>
 
         <div class="content-area">
 
-          <!-- KPIs -->
-          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:1.5rem;">
-            <div class="stat-card">
-              <div class="stat-title">Total Ejecuciones</div>
-              <div class="stat-value">{{ devLogs.length }}</div>
-              <div class="stat-subtitle">Historial completo</div>
-            </div>
-            <div class="stat-card" style="border-top:4px solid #22c55e;">
-              <div class="stat-title">Exitosas</div>
-              <div class="stat-value" style="color:#22c55e;">{{ devLogs.filter(l=>l.status==='success').length }}</div>
-              <div class="stat-subtitle">100% completadas</div>
-            </div>
-            <div class="stat-card" style="border-top:4px solid #f59e0b;">
-              <div class="stat-title">Parciales</div>
-              <div class="stat-value" style="color:#f59e0b;">{{ devLogs.filter(l=>l.status==='partial').length }}</div>
-              <div class="stat-subtitle">Algunos pasos fallaron</div>
-            </div>
-            <div class="stat-card" style="border-top:4px solid #ef4444;">
-              <div class="stat-title">Errores</div>
-              <div class="stat-value" style="color:#ef4444;">{{ devLogs.filter(l=>l.status==='error').length }}</div>
-              <div class="stat-subtitle">Fallaron completamente</div>
-            </div>
-            <div class="stat-card" style="border-top:4px solid #6366f1;">
-              <div class="stat-title">Hoy</div>
-              <div class="stat-value">{{ devLogsHoy.length }}</div>
-              <div class="stat-subtitle">Ejecuciones de hoy</div>
+          <!-- ── SELECTOR DE EMPRESA ── -->
+          <div style="margin-bottom:1.25rem;">
+            <div style="font-size:0.68rem; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.6rem;">Empresa</div>
+            <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none;">
+              <button
+                v-for="co in devCompanies" :key="co.id"
+                @click="devLogsSelectedCompany = co.id; devLogsSelectedTool = 'Todas'"
+                :style="devLogsSelectedCompany === co.id
+                  ? 'background:#daa520; color:#000; border-color:#daa520; box-shadow:0 0 12px rgba(218,165,32,0.35);'
+                  : 'background:transparent; color:#94a3b8; border-color:#1e293b;'"
+                style="display:flex; align-items:center; gap:6px; padding:0 14px; height:44px; border-radius:99px; border:1.5px solid; font-size:0.82rem; font-weight:600; white-space:nowrap; cursor:pointer; transition:all 0.18s ease; flex-shrink:0; outline:none;"
+                @mouseenter="(e) => { if(devLogsSelectedCompany !== co.id) (e.target as HTMLElement).style.borderColor='#daa520'; (e.target as HTMLElement).style.color='#daa520' }"
+                @mouseleave="(e) => { if(devLogsSelectedCompany !== co.id) { (e.target as HTMLElement).style.borderColor='#1e293b'; (e.target as HTMLElement).style.color='#94a3b8' } }"
+              >
+                <span style="width:7px; height:7px; border-radius:50%; flex-shrink:0;"
+                  :style="devLogsErrorByCompany[co.id] ? 'background:#ef4444;' : devLogsCountByCompany[co.id] > 0 ? 'background:#22c55e;' : 'background:#334155;'" />
+                <v-icon :icon="co.icon" size="14" style="opacity:0.8;" />
+                {{ co.label }}
+                <span v-if="devLogsCountByCompany[co.id]"
+                  style="background:rgba(255,255,255,0.15); border-radius:99px; padding:1px 6px; font-size:0.68rem; font-weight:700;">
+                  {{ devLogsCountByCompany[co.id] }}
+                </span>
+              </button>
             </div>
           </div>
 
-          <!-- Tabla principal -->
+          <!-- ── SELECTOR DE TOOL ── -->
+          <div style="margin-bottom:1.5rem;">
+            <div style="font-size:0.68rem; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.6rem;">Tool</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button
+                v-for="tool in devToolsForCompany" :key="tool"
+                @click="devLogsSelectedTool = tool"
+                :style="devLogsSelectedTool === tool
+                  ? 'background:rgba(218,165,32,0.15); color:#daa520; border-color:#daa520;'
+                  : 'background:transparent; color:#64748b; border-color:#1e293b;'"
+                style="padding:0 12px; height:34px; border-radius:99px; border:1.5px solid; font-size:0.78rem; font-weight:600; cursor:pointer; transition:all 0.15s ease; white-space:nowrap; outline:none;"
+              >
+                {{ tool }}
+              </button>
+
+              <!-- Badge de estado junto a los tools -->
+              <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+                <button v-for="st in ['Todos','success','partial','error']" :key="st"
+                  @click="devLogsStatusFilter = st"
+                  :style="devLogsStatusFilter === st
+                    ? st==='success' ? 'background:rgba(34,197,94,0.15); color:#22c55e; border-color:#22c55e;'
+                    : st==='partial' ? 'background:rgba(245,158,11,0.15); color:#f59e0b; border-color:#f59e0b;'
+                    : st==='error' ? 'background:rgba(239,68,68,0.15); color:#ef4444; border-color:#ef4444;'
+                    : 'background:rgba(218,165,32,0.1); color:#daa520; border-color:#daa520;'
+                    : 'background:transparent; color:#475569; border-color:#1e293b;'"
+                  style="padding:0 10px; height:34px; border-radius:99px; border:1.5px solid; font-size:0.72rem; font-weight:600; cursor:pointer; transition:all 0.15s ease; outline:none;">
+                  {{ st === 'Todos' ? 'Todos' : st }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- KPIs de la selección actual -->
+          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom:1.5rem;">
+            <div class="stat-card">
+              <div class="stat-title">Ejecuciones</div>
+              <div class="stat-value">{{ devLogsFiltrados.length }}</div>
+              <div class="stat-subtitle">{{ devLogsSelectedCompany === 'todas' ? 'Todas las empresas' : devLogsSelectedCompany }}</div>
+            </div>
+            <div class="stat-card" style="border-top:3px solid #22c55e;">
+              <div class="stat-title">Exitosas</div>
+              <div class="stat-value" style="color:#22c55e;">{{ devLogsFiltrados.filter(l=>l.status==='success').length }}</div>
+            </div>
+            <div class="stat-card" style="border-top:3px solid #f59e0b;">
+              <div class="stat-title">Parciales</div>
+              <div class="stat-value" style="color:#f59e0b;">{{ devLogsFiltrados.filter(l=>l.status==='partial').length }}</div>
+            </div>
+            <div class="stat-card" style="border-top:3px solid #ef4444;">
+              <div class="stat-title">Errores</div>
+              <div class="stat-value" style="color:#ef4444;">{{ devLogsFiltrados.filter(l=>l.status==='error').length }}</div>
+            </div>
+            <div class="stat-card" style="border-top:3px solid #6366f1;">
+              <div class="stat-title">Hoy</div>
+              <div class="stat-value">{{ devLogsFiltrados.filter(l=>l.created_at?.startsWith(new Date().toISOString().slice(0,10))).length }}</div>
+            </div>
+          </div>
+
+          <!-- Tabla -->
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Historial de Ejecuciones</span>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="table-title">Historial</span>
+                  <v-chip v-if="devLogsSelectedCompany !== 'todas'" size="x-small" color="primary" variant="tonal">{{ devLogsSelectedCompany }}</v-chip>
+                  <v-chip v-if="devLogsSelectedTool !== 'Todas'" size="x-small" color="warning" variant="tonal">{{ devLogsSelectedTool }}</v-chip>
+                </div>
                 <v-spacer />
                 <v-text-field v-model="devLogsSearch" append-inner-icon="mdi-magnify" label="Buscar..."
                   single-line hide-details density="compact" variant="outlined" class="search-field" />
               </v-card-title>
 
               <v-data-table :headers="headersDevLogs" :items="devLogsFiltrados" :search="devLogsSearch"
-                :loading="loadingDevLogs" class="elevation-0" no-data-text="Sin ejecuciones registradas aún."
+                :loading="loadingDevLogs" class="elevation-0" no-data-text="Sin ejecuciones para esta selección."
                 @click:row="(_, { item }) => openDevLogDetail(item)">
 
                 <template v-slot:item.created_at="{ item }">
-                  <span style="font-size:0.8rem; white-space:nowrap;">
-                    {{ item.created_at ? new Date(item.created_at).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—' }}
+                  <span style="font-size:0.78rem; white-space:nowrap; color:var(--text-muted);">
+                    {{ item.created_at ? new Date(item.created_at).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—' }}
                   </span>
                 </template>
 
                 <template v-slot:item.company_id="{ item }">
-                  <v-chip size="small" variant="tonal" color="primary">{{ item.company_id }}</v-chip>
+                  <v-chip size="x-small" variant="tonal" color="primary" style="font-weight:600;">{{ item.company_id }}</v-chip>
                 </template>
 
                 <template v-slot:item.tool_name="{ item }">
-                  <span style="font-weight:600;">{{ item.tool_name }}</span>
+                  <span style="font-weight:600; font-size:0.85rem;">{{ item.tool_name }}</span>
                 </template>
 
                 <template v-slot:item.status="{ item }">
-                  <v-chip
-                    :color="item.status==='success' ? 'success' : item.status==='partial' ? 'warning' : item.status==='error' ? 'error' : 'default'"
-                    size="small">
-                    <v-icon start size="12">
-                      {{ item.status==='success' ? 'mdi-check-circle' : item.status==='partial' ? 'mdi-alert-circle' : item.status==='error' ? 'mdi-close-circle' : 'mdi-loading' }}
-                    </v-icon>
+                  <v-chip :color="item.status==='success'?'success':item.status==='partial'?'warning':item.status==='error'?'error':'default'" size="small">
+                    <v-icon start size="11">{{ item.status==='success'?'mdi-check-circle':item.status==='partial'?'mdi-alert-circle':item.status==='error'?'mdi-close-circle':'mdi-clock-outline' }}</v-icon>
                     {{ item.status }}
                   </v-chip>
                 </template>
 
                 <template v-slot:item.duration_ms="{ item }">
-                  <span style="font-size:0.8rem; color:var(--text-muted);">
-                    {{ item.duration_ms ? (item.duration_ms / 1000).toFixed(1) + 's' : '—' }}
-                  </span>
+                  <span style="font-size:0.78rem; color:var(--text-muted);">{{ item.duration_ms ? (item.duration_ms/1000).toFixed(1)+'s' : '—' }}</span>
                 </template>
 
                 <template v-slot:item.cliente="{ item }">
-                  <span style="font-size:0.85rem;">{{ item.input_data?.nombre_completo ?? '—' }}</span>
+                  <span style="font-size:0.83rem;">{{ item.input_data?.nombre_completo ?? '—' }}</span>
                 </template>
 
                 <template v-slot:item.cita="{ item }">
-                  <span style="font-size:0.8rem; color:var(--text-muted);">
-                    {{ item.input_data?.inicio_cita ? new Date(item.input_data.inicio_cita).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—' }}
+                  <span style="font-size:0.78rem; color:var(--text-muted);">
+                    {{ item.input_data?.inicio_cita ? new Date(item.input_data.inicio_cita).toLocaleString('es-PE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—' }}
                   </span>
                 </template>
 
                 <template v-slot:item.pasos="{ item }">
-                  <div style="display:flex; gap:4px;">
-                    <v-chip size="x-small" :color="item.output_data?.calendario?.ok ? 'success' : 'default'" variant="tonal">📅 Cal</v-chip>
-                    <v-chip size="x-small" :color="item.output_data?.paciente?.ok ? 'success' : 'default'" variant="tonal">👤 Pac</v-chip>
-                    <v-chip size="x-small" :color="item.output_data?.boleta?.ok ? 'success' : 'default'" variant="tonal">📄 Bol</v-chip>
+                  <div style="display:flex; gap:3px;">
+                    <v-chip size="x-small" :color="item.output_data?.google_calendar?.ok?'success':item.output_data?.google_calendar?.ok===false?'error':'default'" variant="tonal">GCal</v-chip>
+                    <v-chip size="x-small" :color="item.output_data?.calendario?.ok?'success':item.output_data?.calendario?.ok===false?'error':'default'" variant="tonal">DB</v-chip>
+                    <v-chip size="x-small" :color="item.output_data?.paciente?.ok?'success':item.output_data?.paciente?.ok===false?'error':'default'" variant="tonal">Pac</v-chip>
+                    <v-chip size="x-small" :color="item.output_data?.boleta?.ok?'success':item.output_data?.boleta?.ok===false?'error':item.output_data?.boleta?.skipped?'default':'default'" variant="tonal">{{ item.output_data?.boleta?.skipped ? 'OFF' : 'Bol' }}</v-chip>
                   </div>
                 </template>
 
                 <template v-slot:item.error_message="{ item }">
-                  <span v-if="item.error_message" style="color:#ef4444; font-size:0.78rem; max-width:200px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                    {{ item.error_message }}
-                  </span>
+                  <span v-if="item.error_message" style="color:#ef4444; font-size:0.75rem; max-width:180px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ item.error_message }}</span>
                   <span v-else style="color:var(--text-muted);">—</span>
                 </template>
 
                 <template v-slot:item.acciones="{ item }">
-                  <v-btn icon size="small" variant="text" @click.stop="openDevLogDetail(item)">
-                    <v-icon>mdi-eye</v-icon>
+                  <v-btn icon size="small" variant="text" color="primary" @click.stop="openDevLogDetail(item)" style="min-width:44px; min-height:44px;">
+                    <v-icon size="18">mdi-eye</v-icon>
                   </v-btn>
                 </template>
-
               </v-data-table>
             </v-card>
           </div>
 
-          <!-- Info del endpoint -->
+          <!-- Info endpoints por empresa -->
           <v-card flat class="mt-4" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.25rem;">
-            <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">
-              🔌 Endpoint del agente IA
+            <div style="font-size:0.7rem; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.75rem;">
+              Endpoints activos
             </div>
-            <div style="display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
-              <div style="display:flex; gap:1rem; align-items:center;">
-                <span style="color:var(--text-muted); width:100px;">URL:</span>
-                <code style="background:var(--bg); padding:3px 8px; border-radius:4px; font-size:0.8rem;">POST https://dashboard.alef.company/api/healup/calendario</code>
-              </div>
-              <div style="display:flex; gap:1rem; align-items:center;">
-                <span style="color:var(--text-muted); width:100px;">API Key:</span>
-                <code style="background:var(--bg); padding:3px 8px; border-radius:4px; font-size:0.8rem;">healup-calendario-2026</code>
-              </div>
-              <div style="display:flex; gap:1rem; align-items:center;">
-                <span style="color:var(--text-muted); width:100px;">Campos:</span>
-                <code style="background:var(--bg); padding:3px 8px; border-radius:4px; font-size:0.8rem;">api_key · nombre_completo · inicio_cita · fin_cita · numerotelefono · DNI · ID · red_social · tratamiento(s)</code>
-              </div>
+            <div v-for="ep in devEndpoints" :key="ep.company" style="display:flex; gap:1rem; align-items:center; margin-bottom:0.5rem; font-size:0.82rem;">
+              <v-chip size="x-small" color="primary" variant="tonal" style="min-width:80px; justify-content:center;">{{ ep.company }}</v-chip>
+              <code style="background:var(--bg); padding:2px 8px; border-radius:4px; font-size:0.78rem; color:#94a3b8;">{{ ep.url }}</code>
             </div>
           </v-card>
         </div>
@@ -2446,27 +2478,80 @@ const deleteItem = async (item: any) => {
 const activeView = ref('dashboard')
 
 // ======================== DEV · AGENT LOGS ========================
-const devLogs              = ref<any[]>([])
-const loadingDevLogs       = ref(false)
-const devLogsSearch        = ref('')
-const devLogsCompanyFilter = ref('Todas')
-const devLogsStatusFilter  = ref('Todos')
-const devLogDetailDialog   = ref(false)
-const devLogSelected       = ref<any>(null)
+const devLogs                = ref<any[]>([])
+const loadingDevLogs         = ref(false)
+const devLogsSearch          = ref('')
+const devLogsStatusFilter    = ref('Todos')
+const devLogsSelectedCompany = ref('todas')
+const devLogsSelectedTool    = ref('Todas')
+const devLogDetailDialog     = ref(false)
+const devLogSelected         = ref<any>(null)
 
-const devLogsHoy = computed(() => {
-  const hoy = new Date().toISOString().slice(0, 10)
-  return devLogs.value.filter(l => l.created_at?.startsWith(hoy))
+const devCompanies = [
+  { id: 'todas',          label: 'Todas',      icon: 'mdi-view-grid' },
+  { id: 'healup',         label: 'Healup',      icon: 'mdi-medical-bag' },
+  { id: 'estasconsuerte', label: 'ECS',         icon: 'mdi-clover' },
+  { id: 'brada',          label: 'Brada',       icon: 'mdi-bottle-tonic' },
+  { id: 'estetikamedika', label: 'Estetika',    icon: 'mdi-spa' },
+  { id: 'davila',         label: 'M. Davila',   icon: 'mdi-doctor' },
+  { id: 'solari',         label: 'Solari',      icon: 'mdi-white-balance-sunny' },
+  { id: 'skip',           label: 'SKIP',        icon: 'mdi-water' },
+  { id: 'alegrated',      label: 'Alegrated',   icon: 'mdi-star' },
+  { id: 'origitec',       label: 'Origitec',    icon: 'mdi-alpha-o-circle' },
+  { id: 'gatwick',        label: 'Gatwick',     icon: 'mdi-elevator' },
+]
+
+const COMPANY_TOOLS: Record<string, string[]> = {
+  healup:         ['Todas', 'Calendario'],
+  estasconsuerte: ['Todas'],
+  brada:          ['Todas'],
+  estetikamedika: ['Todas'],
+  davila:         ['Todas'],
+  solari:         ['Todas'],
+  skip:           ['Todas'],
+  alegrated:      ['Todas'],
+  origitec:       ['Todas'],
+  gatwick:        ['Todas'],
+  todas:          ['Todas'],
+}
+
+const devToolsForCompany = computed(() =>
+  COMPANY_TOOLS[devLogsSelectedCompany.value] ?? ['Todas']
+)
+
+const devEndpoints = [
+  { company: 'healup', url: 'POST /api/healup/calendario  ·  api_key: healup-calendario-2026' },
+]
+
+const devLogsCountByCompany = computed(() => {
+  const map: Record<string, number> = {}
+  devLogs.value.forEach(l => { map[l.company_id] = (map[l.company_id] ?? 0) + 1 })
+  return map
+})
+
+const devLogsErrorByCompany = computed(() => {
+  const map: Record<string, boolean> = {}
+  const ayer = new Date(Date.now() - 86400000).toISOString()
+  devLogs.value.filter(l => l.status === 'error' && l.created_at > ayer)
+    .forEach(l => { map[l.company_id] = true })
+  return map
 })
 
 const devLogsErrorCount = computed(() =>
   devLogs.value.filter(l => l.status === 'error').length
 )
 
+const devLogsHoy = computed(() => {
+  const hoy = new Date().toISOString().slice(0, 10)
+  return devLogs.value.filter(l => l.created_at?.startsWith(hoy))
+})
+
 const devLogsFiltrados = computed(() => {
   let list = devLogs.value
-  if (devLogsCompanyFilter.value !== 'Todas')
-    list = list.filter(l => l.company_id === devLogsCompanyFilter.value)
+  if (devLogsSelectedCompany.value !== 'todas')
+    list = list.filter(l => l.company_id === devLogsSelectedCompany.value)
+  if (devLogsSelectedTool.value !== 'Todas')
+    list = list.filter(l => l.tool_name === devLogsSelectedTool.value)
   if (devLogsStatusFilter.value !== 'Todos')
     list = list.filter(l => l.status === devLogsStatusFilter.value)
   return list

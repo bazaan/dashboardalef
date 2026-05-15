@@ -1,8 +1,8 @@
 // Definición de Dashboards
 export const dashboards = [
+    { name: 'Alef Company', path: '/pruebas/AlefCompany', icon: 'mdi-domain', logo: 'aleflogo oscuro.png' },
     { name: 'Healup', path: '/pruebas/Healup', icon: 'mdi-medical-bag', logo: 'healupLOGO.png' },
     { name: 'Brada Perfumes', path: '/pruebas/BradaPerfumes', icon: 'mdi-bottle-tonic', logo: 'bradalogo.jpg' },
-    { name: 'Alef Company', path: '/pruebas/AlefCompany', icon: 'mdi-domain', logo: 'aleflogo oscuro.png' },
     { name: 'Origitec', path: '/pruebas/Origitec', icon: 'mdi-alpha-o-circle', logo: 'Logo_Origitec_Trans.png' },
     { name: 'Clinica Arroyo', path: '/pruebas/ClinicaArroyo', icon: 'mdi-hospital-building', logo: 'arroyoLOGO.jpg' },
     { name: 'Alegrated', path: '/pruebas/Alegrated', icon: 'mdi-star', logo: 'alegratedLOGO.jpg' },

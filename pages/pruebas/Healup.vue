@@ -1308,6 +1308,32 @@
       <!-- ==========  VISTA: CONTABILIDAD  ========== -->
       <div v-else-if="activeView === 'contabilidad'" class="view-container">
 
+        <!-- Banner de estado del boleteo automático (agente IA) -->
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:0.6rem 1rem; border-radius:10px; margin-bottom:1rem;"
+          :style="boleteoActivo ? 'background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3);' : 'background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);'">
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <v-icon :icon="boleteoActivo ? 'mdi-receipt-text-check' : 'mdi-receipt-text-remove'"
+              :color="boleteoActivo ? '#22c55e' : '#ef4444'" size="20" />
+            <div>
+              <div style="font-size:0.85rem; font-weight:600;" :style="boleteoActivo ? 'color:#22c55e' : 'color:#ef4444'">
+                Boleteo automático (Agente IA): {{ boleteoActivo ? 'ACTIVADO' : 'DESACTIVADO' }}
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted);">
+                {{ boleteoActivo ? 'El agente genera boleta S/50 automáticamente al agendar una cita' : 'El agente NO genera boleta al agendar — actívalo cuando estés listo' }}
+              </div>
+            </div>
+          </div>
+          <v-switch
+            v-model="boleteoActivo"
+            :color="boleteoActivo ? 'success' : 'error'"
+            hide-details
+            density="compact"
+            :loading="loadingBoleteoToggle"
+            @update:model-value="toggleBoleteo"
+            style="flex-shrink:0;"
+          />
+        </div>
+
         <!-- PSE Tabs -->
         <v-tabs
           v-model="facturacionTab"
@@ -6639,6 +6665,34 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig' | 'tiktok') => {
 const activeView = ref('dashboard')
 const facturacionTab = ref('cobro_atencion')
 
+// ── Boleteo automático (agente IA) ────────────────────────────────────────────
+const boleteoActivo        = ref(false)   // default OFF hasta que se active manualmente
+const loadingBoleteoToggle = ref(false)
+
+const fetchBoleteoStatus = async () => {
+  try {
+    const data = await $fetch<{ activo: boolean }>('/api/healup/boleteo')
+    boleteoActivo.value = data.activo
+  } catch { boleteoActivo.value = false }
+}
+
+const toggleBoleteo = async (nuevoValor: boolean) => {
+  loadingBoleteoToggle.value = true
+  try {
+    const data = await $fetch<{ activo: boolean }>('/api/healup/boleteo', {
+      method: 'POST',
+      body: { activo: nuevoValor }
+    })
+    boleteoActivo.value = data.activo
+  } catch (e) {
+    console.error('Error cambiando boleteo:', e)
+    // Revertir si falló
+    boleteoActivo.value = !nuevoValor
+  } finally {
+    loadingBoleteoToggle.value = false
+  }
+}
+
 const showUserMenu = ref(false)
 const showDashboardMenu = ref(false)
 
@@ -11065,6 +11119,7 @@ onMounted(() => {
 
 
   applyTheme()
+  fetchBoleteoStatus()
   fetchPacientesWpp()
   fetchPacientesFbIg()
   fetchPacientesTiktok()

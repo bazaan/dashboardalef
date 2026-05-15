@@ -254,26 +254,38 @@ export default defineEventHandler(async (event) => {
     results.paciente = { ok: false, error: e?.message ?? 'Error actualizando paciente' }
   }
 
-  // ── 8. Generar boleta de consulta ─────────────────────────────────────────
+  // ── 8. Generar boleta de consulta (solo si el boleteo está activado) ───────
   try {
-    const boletaResp = await $fetch<any>('/api/pse/boleta-consulta', {
-      method: 'POST',
-      body: {
-        api_key:        'boleta-consulta-alef-2026',
-        company_id:     'healup',
-        event_id:       results.calendario?.id ?? null,
-        client_name,
-        client_surname,
-        client_dni:     dniStr,
-        client_phone:   phone,
-      },
-    })
-    results.boleta = {
-      ok:          boletaResp?.success ?? boletaResp?.ok ?? false,
-      serie:       boletaResp?.serie,
-      numero:      boletaResp?.numero,
-      enlace_pdf:  boletaResp?.enlace_pdf ?? boletaResp?.enlace ?? null,
-      mensaje_wpp: boletaResp?.mensaje_wpp ?? null,
+    const { data: boleteoSetting } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'healup_boleteo_activo')
+      .maybeSingle()
+
+    const boleteoActivo = boleteoSetting?.value === 'true'
+
+    if (!boleteoActivo) {
+      results.boleta = { ok: false, skipped: true, motivo: 'Boleteo automático desactivado — actívalo desde Healup → Facturación' }
+    } else {
+      const boletaResp = await $fetch<any>('/api/pse/boleta-consulta', {
+        method: 'POST',
+        body: {
+          api_key:        'boleta-consulta-alef-2026',
+          company_id:     'healup',
+          event_id:       results.calendario?.id ?? null,
+          client_name,
+          client_surname,
+          client_dni:     dniStr,
+          client_phone:   phone,
+        },
+      })
+      results.boleta = {
+        ok:          boletaResp?.success ?? boletaResp?.ok ?? false,
+        serie:       boletaResp?.serie,
+        numero:      boletaResp?.numero,
+        enlace_pdf:  boletaResp?.enlace_pdf ?? boletaResp?.enlace ?? null,
+        mensaje_wpp: boletaResp?.mensaje_wpp ?? null,
+      }
     }
   } catch (e: any) {
     console.error('[calendario] Error generando boleta:', e?.message)

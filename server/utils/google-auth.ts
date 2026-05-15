@@ -166,7 +166,8 @@ export function getGoogleAuthUrl(redirectUri: string): string {
   const clientId = process.env.GOOGLE_CLIENT_ID
   if (!clientId) throw new Error('GOOGLE_CLIENT_ID no configurado')
 
-  const scope = encodeURIComponent('https://www.googleapis.com/auth/calendar.readonly')
+  // calendar.events permite leer Y crear/editar eventos (necesario para agendar citas)
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/calendar.events')
   const redirect = encodeURIComponent(redirectUri)
   const cid = encodeURIComponent(clientId)
 

@@ -1343,12 +1343,12 @@
           class="mb-4"
           style="border-bottom: 1px solid var(--border);"
         >
-          <v-tab value="cobro_atencion">🏥 Cobro de Atención</v-tab>
-          <v-tab value="gcal_sync">📅 Google Calendar</v-tab>
-          <v-tab value="boletas_pendientes">📋 Boletas Pendientes</v-tab>
+          <v-tab value="cobro_atencion">🏥 Cobro</v-tab>
+          <v-tab value="gcal_sync">📅 GCal</v-tab>
+          <v-tab value="boletas_pendientes">📋 Pendientes</v-tab>
           <v-tab value="resumen">Resumen</v-tab>
-          <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
-          <v-tab value="ir_catalogo" @click.prevent="activeView = 'procedimientos'">📦 Catálogo →</v-tab>
+          <v-tab value="factura_electronica">⚡ Facturas</v-tab>
+          <v-tab value="ir_catalogo" @click.prevent="activeView = 'procedimientos'">📦 Catálogo</v-tab>
         </v-tabs>
 
         <!-- Cobro de Atención: flujo guiado boleta consulta + procedimiento -->

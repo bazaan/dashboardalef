@@ -1345,10 +1345,7 @@
         >
           <v-tab value="cobro_atencion">🏥 Cobro de Atención</v-tab>
           <v-tab value="gcal_sync">📅 Google Calendar</v-tab>
-          <v-tab value="boletas_pendientes">
-            📋 Boletas Pendientes
-            <v-chip v-if="boletasPendientesCount > 0" size="x-small" color="warning" class="ml-1">{{ boletasPendientesCount }}</v-chip>
-          </v-tab>
+          <v-tab value="boletas_pendientes">📋 Boletas Pendientes</v-tab>
           <v-tab value="resumen">Resumen</v-tab>
           <v-tab value="factura_electronica">⚡ Factura Electrónica</v-tab>
           <v-tab value="ir_catalogo" @click.prevent="activeView = 'procedimientos'">📦 Catálogo →</v-tab>

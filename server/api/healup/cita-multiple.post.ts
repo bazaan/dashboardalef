@@ -91,7 +91,7 @@ export default defineEventHandler(async (event) => {
   let logId: number | null = null
   try {
     const { data: logRow } = await supabase.from('agent_tool_logs').insert({
-      company_id: 'healup', tool_name: 'CitaMultiple', input_data: body, status: 'running'
+      company_id: 'healup', tool_name: 'Cita Multiple', input_data: body, status: 'running'
     }).select('id').single()
     logId = logRow?.id ?? null
   } catch {}

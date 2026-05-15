@@ -2502,7 +2502,7 @@ const devCompanies = [
 ]
 
 const COMPANY_TOOLS: Record<string, string[]> = {
-  healup:         ['Todas', 'Calendario', 'CitaMultiple'],
+  healup:         ['Todas', 'Calendario', 'Cita Multiple'],
   estasconsuerte: ['Todas'],
   brada:          ['Todas'],
   estetikamedika: ['Todas'],

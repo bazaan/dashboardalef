@@ -244,7 +244,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 502, statusMessage: errMsg })
   }
 
-  // 7. Guardar en ecs_pagos_monnet para trazabilidad local
+  // 7a. Guardar en ecs_pagos_monnet para trazabilidad de pago
   try {
     await supabase.from('ecs_pagos_monnet').insert({
       operation_number,
@@ -268,8 +268,35 @@ export default defineEventHandler(async (event) => {
       payload_response:         ecsResponse,
     })
   } catch (e: any) {
-    console.error('[generar-link-monnet] Error guardando en BD:', e?.message)
+    console.error('[generar-link-monnet] Error guardando en ecs_pagos_monnet:', e?.message)
     // No bloquear: la suscripción ya está creada en ECS
+  }
+
+  // 7b. Registrar el suscriptor en SuscriptoresBDwppECS (estado: pendiente)
+  //     Al recibir el webhook de autorización/cobro se actualiza a 'activa'.
+  try {
+    const fullName = String(cliente_nombre || '').trim()
+    const partes   = fullName.split(/\s+/)
+    const nombre   = partes[0] || null
+    const apellido = partes.length > 1 ? partes.slice(1).join(' ') : null
+
+    await supabase.from('SuscriptoresBDwppECS').insert({
+      numero:                 phone,
+      nombre,
+      apellido,
+      dni:                    cliente_dni || null,
+      email:                  cliente_email || null,
+      plan_nombre:            planName || plan_nombre,
+      plan_key:               planKey,
+      monto:                  Number(monto) || 0,
+      metodo_pago:            'Yape',
+      ecs_subscription_id:    ecsSubscriptionId,
+      monnet_subscription_id: monnetSubscriptionId,
+      operation_number,
+      estado:                 'pendiente',
+    })
+  } catch (e: any) {
+    console.error('[generar-link-monnet] Error guardando en SuscriptoresBDwppECS:', e?.message)
   }
 
   // 8. Respuesta exitosa

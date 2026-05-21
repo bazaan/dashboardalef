@@ -4,27 +4,43 @@
  * ETAPA 3 del flujo Monnet/Yape: ejecuta el cobro real sobre una suscripción
  * ya autorizada por el cliente.
  *
- * Se llama desde:
- *   - El webhook `monnet-webhook` cuando detecta que una suscripción pasó a AUTHORIZED
- *   - Manualmente (debug / reintentos) con `internal_key`
- *
- * Pasos:
- *   1. Recibe operation_number (o subscription_id) del pago a cobrar
- *   2. Lee el registro de ecs_pagos_monnet
- *   3. Construye el payload de Monnet con subscription.chargeType=ON_DEMAND
- *   4. POST a /api-payin/v3/online-payments
- *   5. Actualiza el estado del pago según respuesta
+ * Diseñado para POLLING desde n8n: el bot llama este endpoint cada N segundos
+ * después de enviar el deepLink al cliente. Mientras la suscripción no esté
+ * autorizada en Yape, Monnet devuelve [0044] subscription is inactive — lo
+ * traducimos a `status: "esperando_autorizacion"` SIN marcar el pago como
+ * fallido. Cuando el cliente finalmente autoriza, el siguiente poll dispara
+ * el cobro real y devolvemos `status: "cobrando"` o `"pagado"`.
  *
  * Body:
  * {
- *   internal_key:      string,    — auth interna (no exponer públicamente)
- *   operation_number:  string,    — el operation_number guardado al crear la suscripción
+ *   api_key:           string,    — misma key que usa generar-link-monnet
+ *   operation_number:  string,    — el operation_number devuelto por generar-link-monnet
  * }
+ *
+ * Response (200):
+ * {
+ *   ok: true,
+ *   operation_number: "ECS-...",
+ *   status: "esperando_autorizacion" | "cobrando" | "pagado" | "fallido" | "expirado",
+ *   subscription_status: "PENDING" | "AUTHORIZED" | ...,
+ *   monnet_error_code?: "0044" | "0000" | ...,
+ *   message: "<texto orientativo para el bot>"
+ * }
+ *
+ * Patrón de uso desde n8n:
+ *   - Después de generar-link-monnet, esperar 30s
+ *   - Loop: llamar /api/ecs/cobrar-suscripcion → si status === "esperando_autorizacion" → wait 30s → repetir
+ *   - Salir del loop cuando status sea "pagado", "fallido" o "expirado"
+ *   - Máximo recomendado: 20 intentos (10 min total) — si pasa de ahí, marcar como expirado
+ *
+ * También se puede llamar desde otros endpoints internos pasando
+ * `internal_key` en lugar de `api_key`.
  */
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { createHash } from 'node:crypto'
 
+const API_KEY            = 'ecs-monnet-2026-link'
 const INTERNAL_KEY       = process.env.ECS_INTERNAL_KEY     || 'ecs-monnet-internal-2026'
 const MONNET_MERCHANT_ID = process.env.MONNET_MERCHANT_ID   || '1142'
 const MONNET_KEY         = process.env.MONNET_KEY           || ''
@@ -43,8 +59,9 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const supabase = serverSupabaseServiceRole(event)
 
-  if (body?.internal_key !== INTERNAL_KEY) {
-    throw createError({ statusCode: 401, statusMessage: 'Acceso no autorizado' })
+  // Auth: aceptar api_key (público para el bot) o internal_key (servidor a servidor)
+  if (body?.api_key !== API_KEY && body?.internal_key !== INTERNAL_KEY) {
+    throw createError({ statusCode: 401, statusMessage: 'API key inválida' })
   }
 
   const { operation_number } = body
@@ -63,15 +80,47 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Pago no encontrado' })
   }
 
-  if (!pago.subscription_id) {
-    throw createError({ statusCode: 400, statusMessage: 'El pago no tiene subscription_id — no se puede cobrar' })
-  }
-
+  // 2. Estados terminales → devolver tal cual sin reintentar
   if (pago.estado === 'pagado') {
-    return { ok: true, message: 'Pago ya estaba cobrado', operation_number }
+    return {
+      ok: true,
+      operation_number,
+      status: 'pagado',
+      subscription_status: pago.subscription_status,
+      message: 'El pago ya fue cobrado',
+    }
   }
 
-  // 2. Generar NUEVO operation_number para el cobro (Monnet exige unicidad por transacción)
+  if (pago.estado === 'expirado') {
+    return {
+      ok: false,
+      operation_number,
+      status: 'expirado',
+      subscription_status: pago.subscription_status,
+      message: 'La suscripción expiró sin que el cliente autorice',
+    }
+  }
+
+  if (pago.estado === 'fallido') {
+    return {
+      ok: false,
+      operation_number,
+      status: 'fallido',
+      subscription_status: pago.subscription_status,
+      monnet_error_code: pago.monnet_error_code,
+      message: pago.monnet_error_message ?? 'El cobro fue rechazado',
+    }
+  }
+
+  if (!pago.subscription_id) {
+    throw createError({ statusCode: 400, statusMessage: 'El pago no tiene subscription_id' })
+  }
+
+  // 3. Si ya está en estado "cobrando" (cobro enviado, esperando confirmación final)
+  //    igual reintentamos por si Monnet devolvió ya un estado final
+  //    (el bot podría preferir saber si terminó)
+
+  // 4. Generar NUEVO operation_number para este intento de cobro
   const cobroOpNumber = `${operation_number}-COBRO-${Date.now().toString().slice(-6)}`
   const amount        = Number(pago.monto).toFixed(2)
   const currency      = pago.moneda || 'PEN'
@@ -111,7 +160,7 @@ export default defineEventHandler(async (event) => {
     },
   }
 
-  // 3. Llamar a Monnet
+  // 5. Llamar a Monnet
   let monnetResponse: any
   try {
     monnetResponse = await $fetch<any>(MONNET_PAYIN_URL, {
@@ -123,40 +172,63 @@ export default defineEventHandler(async (event) => {
     const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
     const errMsg = `Monnet API error: ${JSON.stringify(detail)}`
     console.error('[cobrar-suscripcion]', errMsg)
-    await supabase.from('ecs_pagos_monnet').update({
-      monnet_error_message: errMsg,
-    }).eq('operation_number', operation_number)
     throw createError({ statusCode: 502, statusMessage: errMsg })
   }
 
-  // 4. Procesar respuesta
   const errorCode = monnetResponse?.payinErrorCode
-  const success   = !errorCode || errorCode === '0000'
 
-  const updateData: Record<string, any> = {
-    monnet_trx_operation: monnetResponse?.payinTrxOperation ?? null,
-    monnet_error_code:    errorCode ?? null,
-    monnet_error_message: monnetResponse?.payinErrorMessage ?? null,
-    payload_response:     monnetResponse,
+  // 6. CASO ESPECIAL: 0044 = suscripción inactiva (cliente todavía no autorizó en Yape)
+  //    Esto es lo NORMAL durante el polling — no marcamos como fallido.
+  if (errorCode === '0044') {
+    console.log(`[cobrar-suscripcion] ${operation_number} | suscripción no autorizada todavía (polling)`)
+    return {
+      ok: true,
+      operation_number,
+      status: 'esperando_autorizacion',
+      subscription_status: 'PENDING',
+      monnet_error_code: errorCode,
+      message: 'El cliente todavía no ha autorizado el pago en su app Yape. Reintentar en 30 segundos.',
+    }
   }
 
-  if (success) {
-    updateData.estado  = 'cobrando'   // En espera de confirmación por webhook
-    console.log(`[cobrar-suscripcion] ${operation_number} | cobro iniciado | trx=${monnetResponse?.payinTrxOperation}`)
-  } else {
-    updateData.estado = 'fallido'
+  // 7. Otros errores → marcar como fallido
+  if (errorCode && errorCode !== '0000') {
+    await supabase.from('ecs_pagos_monnet').update({
+      estado:               'fallido',
+      monnet_error_code:    errorCode,
+      monnet_error_message: monnetResponse?.payinErrorMessage,
+      payload_response:     monnetResponse,
+    }).eq('operation_number', operation_number)
+
     console.error(`[cobrar-suscripcion] ${operation_number} | Monnet rechazó: [${errorCode}] ${monnetResponse?.payinErrorMessage}`)
+
+    return {
+      ok: false,
+      operation_number,
+      status: 'fallido',
+      monnet_error_code: errorCode,
+      message: monnetResponse?.payinErrorMessage ?? 'Cobro rechazado por Monnet',
+    }
   }
 
-  await supabase.from('ecs_pagos_monnet')
-    .update(updateData)
-    .eq('operation_number', operation_number)
+  // 8. Éxito: cobro iniciado en Monnet (esperando confirmación final por webhook)
+  await supabase.from('ecs_pagos_monnet').update({
+    estado:               'cobrando',
+    subscription_status:  'AUTHORIZED',
+    monnet_trx_operation: monnetResponse?.payinTrxOperation ?? null,
+    monnet_error_code:    null,
+    monnet_error_message: null,
+    payload_response:     monnetResponse,
+  }).eq('operation_number', operation_number)
+
+  console.log(`[cobrar-suscripcion] ${operation_number} | ✅ cobro iniciado | trx=${monnetResponse?.payinTrxOperation}`)
 
   return {
-    ok: success,
+    ok: true,
     operation_number,
-    cobro_operation_number: cobroOpNumber,
-    subscription_id: pago.subscription_id,
-    monnet_response: monnetResponse,
+    status: 'cobrando',
+    subscription_status: 'AUTHORIZED',
+    monnet_trx_operation: monnetResponse?.payinTrxOperation,
+    message: 'Cobro iniciado en Monnet. El pago será confirmado por webhook de pago final en segundos.',
   }
 })

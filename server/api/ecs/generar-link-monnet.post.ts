@@ -20,6 +20,15 @@
  *   cliente_dni?:             string,
  *   plan_nombre:              string,
  *   monto:                    number,    — en soles, 2 decimales
+ *   metodo_pago?:             string,    — opcional. Default: 'Wallet' (Yape).
+ *                                          Valores válidos en Perú según Monnet:
+ *                                            'Wallet'        → Yape
+ *                                            'TCTD'          → Tarjeta crédito/débito
+ *                                            'TC'            → Solo tarjeta crédito
+ *                                            'TD'            → Solo tarjeta débito
+ *                                            'BankTransfer'  → Transferencia / banca por internet
+ *                                            'Cash'          → Pago en efectivo (agentes)
+ *                                            'QR'            → QR
  *   chatwoot_account_id?:     number,    — para enviar confirmación post-pago
  *   chatwoot_inbox_id?:       number,
  *   chatwoot_conversation_id?: number,
@@ -112,7 +121,7 @@ export default defineEventHandler(async (event) => {
   // 3. Validación
   const {
     cliente_nombre, cliente_email, cliente_telefono, cliente_dni,
-    plan_nombre, monto,
+    plan_nombre, monto, metodo_pago,
     chatwoot_account_id, chatwoot_inbox_id, chatwoot_conversation_id,
   } = body
 
@@ -121,6 +130,9 @@ export default defineEventHandler(async (event) => {
     await updateLog('error', null, msg)
     throw createError({ statusCode: 400, statusMessage: msg })
   }
+
+  const METODOS_VALIDOS = ['Wallet', 'TCTD', 'TC', 'TD', 'BankTransfer', 'Cash', 'QR']
+  const payinMethod = metodo_pago && METODOS_VALIDOS.includes(metodo_pago) ? metodo_pago : 'Wallet'
 
   // 4. Preparar datos para Monnet
   const operation_number = genOperationNumber()
@@ -137,7 +149,7 @@ export default defineEventHandler(async (event) => {
     payinMerchantOperationNumber:    operation_number,
     payinAmount:                     amount,               // string "9.90"
     payinCurrency:                   currency,
-    payinMethod:                     'ALL',                // muestra todos los métodos (Yape, tarjeta, etc.)
+    payinMethod:                     payinMethod,          // Wallet (Yape) por default; configurable desde body
     payinVerification:               firma,
     payinCustomerEmail:              cliente_email.slice(0, 50),
     payinCustomerPhone:              phone,
@@ -209,6 +221,7 @@ export default defineEventHandler(async (event) => {
     operation_number,
     monto: Number(amount),
     plan_nombre,
+    metodo_pago: payinMethod,
     message: `Link de pago generado:\n${linkPago}\n\nVálido por 30 minutos.`,
     log_id: logId,
   }

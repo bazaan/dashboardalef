@@ -1,0 +1,284 @@
+{
+  "name": "ECS — Cobro Monnet (Generar Link + Polling + Confirmación)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "cliente_nombre", "type": "string" },
+            { "name": "cliente_email", "type": "string" },
+            { "name": "cliente_telefono", "type": "string" },
+            { "name": "cliente_dni", "type": "string" },
+            { "name": "plan_nombre", "type": "string" },
+            { "name": "monto", "type": "number" },
+            { "name": "chatwoot_account_id", "type": "number" },
+            { "name": "chatwoot_inbox_id", "type": "number" },
+            { "name": "chatwoot_conversation_id", "type": "number" }
+          ]
+        }
+      },
+      "id": "trigger-node",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/ecs/generar-link-monnet",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"api_key\": \"ecs-monnet-2026-link\",\n  \"cliente_nombre\": \"{{ $json.cliente_nombre }}\",\n  \"cliente_email\": \"{{ $json.cliente_email }}\",\n  \"cliente_telefono\": \"{{ $json.cliente_telefono }}\",\n  \"cliente_dni\": \"{{ $json.cliente_dni }}\",\n  \"plan_nombre\": \"{{ $json.plan_nombre }}\",\n  \"monto\": {{ $json.monto }},\n  \"chatwoot_account_id\": {{ $json.chatwoot_account_id }},\n  \"chatwoot_inbox_id\": {{ $json.chatwoot_inbox_id }},\n  \"chatwoot_conversation_id\": {{ $json.chatwoot_conversation_id }}\n}",
+        "options": {}
+      },
+      "id": "generar-link-node",
+      "name": "Generar Link Monnet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://chats.alef.company/api/v1/accounts/{{ $('When Executed by Another Workflow').first().json.chatwoot_account_id }}/conversations/{{ $('When Executed by Another Workflow').first().json.chatwoot_conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "api_access_token", "value": "REEMPLAZA_CON_TU_CHATWOOT_TOKEN" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"🍀 *Estás Con Suerte*\\n\\nAquí está tu link de pago por Yape:\\n\\n{{ $json.link }}\\n\\nAbre el link en tu celular, autoriza el pago en tu app Yape y listo. Te confirmamos automáticamente en cuanto se procese.\",\n  \"message_type\": \"outgoing\",\n  \"content_type\": \"text\"\n}",
+        "options": {}
+      },
+      "id": "enviar-link-chatwoot",
+      "name": "Enviar Link al Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait-30s",
+      "name": "Esperar 30s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 400],
+      "webhookId": "wait-30s"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Polling al endpoint cobrar-suscripcion cada 20 segundos\n// hasta que la suscripción se active o se agoten los intentos.\n\nconst opNumber = $('Generar Link Monnet').first().json.operation_number;\nconst apiKey = 'ecs-monnet-2026-link';\nconst maxAttempts = 25;       // 25 intentos × 20s = ~8 min de espera total\nconst intervalMs = 20000;     // 20 segundos entre intentos\n\nlet ultimo;\n\nfor (let i = 1; i <= maxAttempts; i++) {\n  const res = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://dashboard.alef.company/api/ecs/cobrar-suscripcion',\n    headers: { 'Content-Type': 'application/json' },\n    body: { api_key: apiKey, operation_number: opNumber },\n    json: true,\n  });\n\n  ultimo = { ...res, attempts: i };\n\n  // Estado terminal → salir del loop\n  if (res.status !== 'esperando_autorizacion') {\n    break;\n  }\n\n  // Esperar y reintentar\n  await new Promise(r => setTimeout(r, intervalMs));\n}\n\n// Si llegamos al máximo sin éxito, marcar como expirado\nif (ultimo?.status === 'esperando_autorizacion') {\n  ultimo.status = 'expirado';\n  ultimo.message = 'El cliente no autorizó el pago en el tiempo límite';\n}\n\nreturn [{ json: ultimo }];"
+      },
+      "id": "polling-cobro",
+      "name": "Polling Cobrar Suscripción",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "cobrando",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cobrando"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "pagado",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pagado"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "fallido",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "fallido"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "expirado",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "expirado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-status",
+      "name": "Switch por Estado",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://chats.alef.company/api/v1/accounts/{{ $('When Executed by Another Workflow').first().json.chatwoot_account_id }}/conversations/{{ $('When Executed by Another Workflow').first().json.chatwoot_conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "api_access_token", "value": "REEMPLAZA_CON_TU_CHATWOOT_TOKEN" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"⏳ *Procesando tu pago...*\\n\\nYa recibimos tu autorización en Yape. En unos segundos te confirmamos por aquí.\",\n  \"message_type\": \"outgoing\",\n  \"content_type\": \"text\"\n}",
+        "options": {}
+      },
+      "id": "mensaje-cobrando",
+      "name": "Mensaje: Cobrando",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://chats.alef.company/api/v1/accounts/{{ $('When Executed by Another Workflow').first().json.chatwoot_account_id }}/conversations/{{ $('When Executed by Another Workflow').first().json.chatwoot_conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "api_access_token", "value": "REEMPLAZA_CON_TU_CHATWOOT_TOKEN" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"✅ *¡Pago confirmado!*\\n\\nGracias {{ $('When Executed by Another Workflow').first().json.cliente_nombre }}, recibimos tu pago de *S/ {{ $('When Executed by Another Workflow').first().json.monto }}* por *{{ $('When Executed by Another Workflow').first().json.plan_nombre }}*.\\n\\nTu suscripción ya está activa 🍀\\nPronto te llegará tu boleta electrónica al correo *{{ $('When Executed by Another Workflow').first().json.cliente_email }}*.\",\n  \"message_type\": \"outgoing\",\n  \"content_type\": \"text\"\n}",
+        "options": {}
+      },
+      "id": "mensaje-pagado",
+      "name": "Mensaje: Pagado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://chats.alef.company/api/v1/accounts/{{ $('When Executed by Another Workflow').first().json.chatwoot_account_id }}/conversations/{{ $('When Executed by Another Workflow').first().json.chatwoot_conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "api_access_token", "value": "REEMPLAZA_CON_TU_CHATWOOT_TOKEN" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"❌ *Pago rechazado*\\n\\nMonnet rechazó tu pago: {{ $json.message }}\\n\\nSi quieres intentar de nuevo, escribe *PAGAR* y te genero un nuevo link.\",\n  \"message_type\": \"outgoing\",\n  \"content_type\": \"text\"\n}",
+        "options": {}
+      },
+      "id": "mensaje-fallido",
+      "name": "Mensaje: Fallido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://chats.alef.company/api/v1/accounts/{{ $('When Executed by Another Workflow').first().json.chatwoot_account_id }}/conversations/{{ $('When Executed by Another Workflow').first().json.chatwoot_conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "api_access_token", "value": "REEMPLAZA_CON_TU_CHATWOOT_TOKEN" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"⌛ *Link expirado*\\n\\nNo recibimos tu autorización en Yape. El link expiró.\\n\\nSi todavía quieres pagar, escribe *PAGAR* y te genero un nuevo link.\",\n  \"message_type\": \"outgoing\",\n  \"content_type\": \"text\"\n}",
+        "options": {}
+      },
+      "id": "mensaje-expirado",
+      "name": "Mensaje: Expirado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 640]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[{ "node": "Generar Link Monnet", "type": "main", "index": 0 }]]
+    },
+    "Generar Link Monnet": {
+      "main": [[{ "node": "Enviar Link al Cliente", "type": "main", "index": 0 }]]
+    },
+    "Enviar Link al Cliente": {
+      "main": [[{ "node": "Esperar 30s", "type": "main", "index": 0 }]]
+    },
+    "Esperar 30s": {
+      "main": [[{ "node": "Polling Cobrar Suscripción", "type": "main", "index": 0 }]]
+    },
+    "Polling Cobrar Suscripción": {
+      "main": [[{ "node": "Switch por Estado", "type": "main", "index": 0 }]]
+    },
+    "Switch por Estado": {
+      "main": [
+        [{ "node": "Mensaje: Cobrando", "type": "main", "index": 0 }],
+        [{ "node": "Mensaje: Pagado", "type": "main", "index": 0 }],
+        [{ "node": "Mensaje: Fallido", "type": "main", "index": 0 }],
+        [{ "node": "Mensaje: Expirado", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}

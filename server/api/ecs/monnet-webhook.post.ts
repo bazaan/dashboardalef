@@ -1,35 +1,25 @@
 /**
  * POST /api/ecs/monnet-webhook
  *
- * Webhook que Monnet llama cuando el cliente completa (o falla) el pago.
- * Monnet envía un HTTP POST con los datos del pago + firma SHA512 de verificación.
+ * Webhook que Monnet llama en dos momentos del flujo:
+ *
+ *   A. SUSCRIPCIÓN: cuando el cliente autoriza/rechaza la suscripción Yape
+ *      Payload contiene: subscriptionId, status (AUTHORIZED|DENIED|CANCELLED|...)
+ *      → si AUTHORIZED, disparamos el cobro automáticamente
+ *
+ *   B. COBRO: cuando Monnet termina de procesar un cobro (estado final del pago)
+ *      Payload contiene: payinStateID, payinMerchantOperationNumber, ...
+ *      → actualizamos estado del pago + enviamos confirmación Chatwoot
  *
  * Lo configuras en el panel de Monnet apuntando a:
  *   https://dashboard.alef.company/api/ecs/monnet-webhook
  *
- * Flujo:
- *   1. Recibe el body de Monnet
- *   2. Verifica la firma SHA512 (autenticidad)
- *   3. Actualiza ecs_pagos_monnet con el resultado
- *   4. Si el pago fue exitoso → envía mensaje "✅ Pago recibido" al cliente
- *      vía Chatwoot (usando el conversation_id que guardamos al crear el link)
- *   5. Responde HTTP 200 a Monnet (lo que espera la API)
+ * Estados de Monnet (cobro):
+ *   1 = Pendiente, 2 = Autorizado entidad, 3 = Rechazado entidad,
+ *   4 = Expirado, 5 = Autorizado (PAGADO ✅), 6 = Devuelto
  *
- * Payload de Monnet (14 campos):
- * {
- *   payinStateID, payinState, payinMerchantOperationNumber,
- *   payinAmount, payinCurrency, payinMerchantID, payinMethod,
- *   payinVerification, payinStatusErrorCode, payinStatusErrorMessage,
- *   errorDetails, codeErrorTrx, messageErrorTrx, additionalInformation
- * }
- *
- * Estados de Monnet:
- *   1 = Pendiente
- *   2 = Autorizado por la entidad
- *   3 = Rechazado por entidad
- *   4 = Expirado
- *   5 = Autorizado (PAGADO ✅)
- *   6 = Devuelto
+ * Estados de Monnet (suscripción):
+ *   PENDING, AUTHORIZED, FAILED, CANCELLED, DENIED, EXPIRED
  */
 
 import { serverSupabaseServiceRole } from '#supabase/server'
@@ -37,6 +27,7 @@ import { createHash } from 'node:crypto'
 
 const MONNET_MERCHANT_ID = process.env.MONNET_MERCHANT_ID || '1142'
 const MONNET_KEY         = process.env.MONNET_KEY        || ''
+const INTERNAL_KEY       = process.env.ECS_INTERNAL_KEY   || 'ecs-monnet-internal-2026'
 const CHATWOOT_BASE      = 'https://chats.alef.company/api/v1'
 const CHATWOOT_TOKEN     = process.env.CHATWOOT_API_TOKEN || ''
 
@@ -45,9 +36,6 @@ function calcularFirmaMonnet(opNumber: string, amount: string, currency: string)
   return createHash('sha512').update(data).digest('hex')
 }
 
-/**
- * Envía un mensaje al chat de Chatwoot del cliente.
- */
 async function enviarMensajeChatwoot(
   accountId: number,
   conversationId: number,
@@ -95,6 +83,77 @@ export default defineEventHandler(async (event) => {
     } catch {}
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // CASO A: Webhook de SUSCRIPCIÓN (cliente autorizó/rechazó en Yape)
+  // ─────────────────────────────────────────────────────────────────────────
+  // Monnet manda: { subscriptionId, status, ... }
+  if (body?.subscriptionId && body?.status && !body?.payinMerchantOperationNumber) {
+    const subscriptionId = Number(body.subscriptionId)
+    const subStatus      = String(body.status).toUpperCase()
+
+    const { data: pago } = await supabase
+      .from('ecs_pagos_monnet')
+      .select('*')
+      .eq('subscription_id', subscriptionId)
+      .maybeSingle()
+
+    if (!pago) {
+      await updateLog('error', null, `Suscripción ${subscriptionId} no encontrada en BD`)
+      // Igual respondemos 200 a Monnet para que no reintente
+      return { ok: true, ignored: true, reason: 'subscription not found' }
+    }
+
+    await supabase.from('ecs_pagos_monnet').update({
+      subscription_status:    subStatus,
+      payload_webhook_sub:    body,
+    }).eq('subscription_id', subscriptionId)
+
+    // Si la suscripción quedó AUTORIZADA → disparar el cobro automáticamente
+    if (subStatus === 'AUTHORIZED' && pago.estado === 'pendiente_autorizacion') {
+      console.log(`[monnet-webhook] Suscripción ${subscriptionId} autorizada → disparando cobro`)
+
+      try {
+        const cobroResult: any = await $fetch('/api/ecs/cobrar-suscripcion', {
+          method: 'POST',
+          baseURL: process.env.NUXT_PUBLIC_BASE_URL || 'https://dashboard.alef.company',
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            internal_key:     INTERNAL_KEY,
+            operation_number: pago.operation_number,
+          },
+        })
+        await updateLog('success', { tipo: 'subscription_authorized', cobro: cobroResult })
+        return { ok: true, tipo: 'subscription_authorized', cobro: cobroResult }
+      } catch (e: any) {
+        const errMsg = e?.data?.statusMessage ?? e?.message ?? 'Error disparando cobro'
+        console.error('[monnet-webhook] Error disparando cobro:', errMsg)
+        await updateLog('error', null, errMsg)
+        return { ok: false, tipo: 'subscription_authorized', error: errMsg }
+      }
+    }
+
+    // Otros estados (DENIED, CANCELLED, EXPIRED, FAILED) → actualizar y notificar
+    if (['DENIED', 'CANCELLED', 'EXPIRED', 'FAILED'].includes(subStatus)) {
+      await supabase.from('ecs_pagos_monnet').update({
+        estado: subStatus === 'EXPIRED' ? 'expirado' : 'fallido',
+      }).eq('subscription_id', subscriptionId)
+
+      if (pago.chatwoot_account_id && pago.chatwoot_conversation_id) {
+        await enviarMensajeChatwoot(
+          pago.chatwoot_account_id,
+          pago.chatwoot_conversation_id,
+          `⚠️ No pudimos procesar tu pago de *S/ ${Number(pago.monto).toFixed(2)}* por *${pago.plan_nombre}*.\n\nSi quieres intentar de nuevo, escribe *PAGAR* y te genero un nuevo link.`,
+        )
+      }
+    }
+
+    await updateLog('success', { tipo: 'subscription_update', subStatus })
+    return { ok: true, tipo: 'subscription_update', subStatus }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CASO B: Webhook de COBRO (resultado final del payment)
+  // ─────────────────────────────────────────────────────────────────────────
   const {
     payinStateID, payinState, payinMerchantOperationNumber,
     payinAmount, payinCurrency, payinMethod, payinVerification,
@@ -102,11 +161,11 @@ export default defineEventHandler(async (event) => {
   } = body ?? {}
 
   if (!payinMerchantOperationNumber) {
-    await updateLog('error', null, 'Falta payinMerchantOperationNumber')
-    throw createError({ statusCode: 400, statusMessage: 'Falta payinMerchantOperationNumber' })
+    await updateLog('error', null, 'Webhook sin subscriptionId ni payinMerchantOperationNumber')
+    throw createError({ statusCode: 400, statusMessage: 'Payload de webhook no reconocido' })
   }
 
-  // 2. Verificar firma SHA512 (autenticidad del webhook)
+  // Verificar firma SHA512
   const amountStr  = Number(payinAmount).toFixed(2)
   const firmaCalculada = calcularFirmaMonnet(payinMerchantOperationNumber, amountStr, payinCurrency || 'PEN')
   const firmaOK = firmaCalculada.toLowerCase() === String(payinVerification ?? '').toLowerCase()
@@ -117,27 +176,28 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Firma inválida' })
   }
 
-  // 3. Buscar el pago en nuestra BD
+  // El operation_number del cobro tiene formato "ECS-...-COBRO-XXXXXX"
+  // Hay que extraer el operation_number original (sin el sufijo) para encontrar el pago
+  const baseOpNumber = String(payinMerchantOperationNumber).split('-COBRO-')[0]
+
   const { data: pago, error: fetchError } = await supabase
     .from('ecs_pagos_monnet')
     .select('*')
-    .eq('operation_number', payinMerchantOperationNumber)
+    .eq('operation_number', baseOpNumber)
     .maybeSingle()
 
   if (fetchError || !pago) {
-    await updateLog('error', null, `Pago no encontrado: ${payinMerchantOperationNumber}`)
+    await updateLog('error', null, `Pago no encontrado: ${baseOpNumber}`)
     throw createError({ statusCode: 404, statusMessage: 'Pago no encontrado' })
   }
 
-  // 4. Determinar nuevo estado según código Monnet
-  // payinStateID === 5 = Autorizado (pagado exitosamente)
+  // Determinar nuevo estado según código Monnet
   const stateId = Number(payinStateID)
   let nuevoEstado: 'pagado' | 'fallido' | 'expirado' | 'pendiente' = 'pendiente'
   if (stateId === 5 || stateId === 2) nuevoEstado = 'pagado'
   else if (stateId === 3 || stateId === 6) nuevoEstado = 'fallido'
   else if (stateId === 4) nuevoEstado = 'expirado'
 
-  // 5. Actualizar el pago en BD
   const updateData: Record<string, any> = {
     estado:               nuevoEstado,
     monnet_state_id:      stateId,
@@ -151,9 +211,9 @@ export default defineEventHandler(async (event) => {
 
   await supabase.from('ecs_pagos_monnet')
     .update(updateData)
-    .eq('operation_number', payinMerchantOperationNumber)
+    .eq('operation_number', baseOpNumber)
 
-  // 6. Si fue pagado → enviar confirmación al cliente vía Chatwoot
+  // Notificar al cliente vía Chatwoot
   let chatwootResult: any = { ok: false, skipped: true }
   if (nuevoEstado === 'pagado' && !pago.confirmacion_enviada && pago.chatwoot_account_id && pago.chatwoot_conversation_id) {
     const mensaje =
@@ -166,19 +226,20 @@ export default defineEventHandler(async (event) => {
     chatwootResult = await enviarMensajeChatwoot(
       pago.chatwoot_account_id,
       pago.chatwoot_conversation_id,
-      mensaje
+      mensaje,
     )
 
     if (chatwootResult.ok) {
       await supabase.from('ecs_pagos_monnet')
         .update({ confirmacion_enviada: true })
-        .eq('operation_number', payinMerchantOperationNumber)
+        .eq('operation_number', baseOpNumber)
     }
   }
 
   const output = {
     ok: true,
-    operation_number: payinMerchantOperationNumber,
+    tipo: 'payment_update',
+    operation_number: baseOpNumber,
     estado_anterior:  pago.estado,
     estado_nuevo:     nuevoEstado,
     monto:            Number(pago.monto),
@@ -188,10 +249,9 @@ export default defineEventHandler(async (event) => {
   await updateLog('success', output)
 
   console.log(
-    `[monnet-webhook] ${payinMerchantOperationNumber} | ${pago.estado} → ${nuevoEstado}`,
-    `| S/${pago.monto} | chatwoot:${chatwootResult.ok ? '✅' : chatwootResult.skipped ? 'SKIP' : '❌'}`
+    `[monnet-webhook] ${baseOpNumber} | ${pago.estado} → ${nuevoEstado}`,
+    `| S/${pago.monto} | chatwoot:${chatwootResult.ok ? '✅' : chatwootResult.skipped ? 'SKIP' : '❌'}`,
   )
 
-  // 7. Responder 200 a Monnet (lo que espera la API)
   return output
 })

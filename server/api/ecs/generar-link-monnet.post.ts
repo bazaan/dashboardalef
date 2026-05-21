@@ -1,13 +1,19 @@
 /**
  * POST /api/ecs/generar-link-monnet
  *
- * Tool del agente IA de ECS: genera un link de pago Monnet para el cliente.
+ * Tool del agente IA de ECS: genera un link de autorización Yape para el cliente.
  *
- * Replica el subflow n8n "generar_link_monnet" en un solo endpoint:
+ * Flujo Monnet/Yape (3 etapas):
+ *   ESTA ENDPOINT — Etapa 1: Crear suscripción Yape_on_file → devuelve deepLink al bot
+ *   Cliente abre deepLink → autoriza en su app Yape (etapa 2, off-platform)
+ *   Webhook → activa la suscripción → dispara cobro automático (etapa 3)
+ *
+ * Pasos del endpoint:
  *   1. Genera operation_number único
- *   2. Calcula firma SHA512 (payinMerchantID + opNumber + amount + currency + KEY)
- *   3. Llama API Monnet → recibe link de pago
- *   4. Guarda transacción en ecs_pagos_monnet (estado: 'pendiente')
+ *   2. Calcula firma SHA512 de autorización (merchantId + type + customerId + processorCode + KEY)
+ *   3. POST a https://subscriptions.payin.monnet.io/api/v1/subscription
+ *      → recibe subscriptionId + deepLink
+ *   4. Guarda transacción en ecs_pagos_monnet (estado: 'pendiente_autorizacion')
  *   5. Devuelve { link } al bot para que lo envíe al cliente por WhatsApp
  *   6. Log a agent_tool_logs (tool_name='Generar Link Monnet')
  *
@@ -15,21 +21,12 @@
  * {
  *   api_key:                  string,    — auth
  *   cliente_nombre:           string,
- *   cliente_email:            string,    — REQUERIDO por Monnet
- *   cliente_telefono:         string,    — 9 dígitos sin código de país
+ *   cliente_email:            string,
+ *   cliente_telefono:         string,    — 9 dígitos sin código de país (es el customerId Yape)
  *   cliente_dni?:             string,
  *   plan_nombre:              string,
  *   monto:                    number,    — en soles, 2 decimales
- *   metodo_pago?:             string,    — opcional. Default: 'Wallet' (Yape).
- *                                          Valores válidos en Perú según Monnet:
- *                                            'Wallet'        → Yape
- *                                            'TCTD'          → Tarjeta crédito/débito
- *                                            'TC'            → Solo tarjeta crédito
- *                                            'TD'            → Solo tarjeta débito
- *                                            'BankTransfer'  → Transferencia / banca por internet
- *                                            'Cash'          → Pago en efectivo (agentes)
- *                                            'QR'            → QR
- *   chatwoot_account_id?:     number,    — para enviar confirmación post-pago
+ *   chatwoot_account_id?:     number,
  *   chatwoot_inbox_id?:       number,
  *   chatwoot_conversation_id?: number,
  * }
@@ -37,22 +34,28 @@
  * Response:
  * {
  *   ok: true,
- *   link: "https://...",         — Link que se envía al cliente
+ *   link: "https://www.yape.com.pe/app/checkout/ocp/subscription?...",  — Link Yape para el cliente
+ *   subscription_id: 13211,
  *   operation_number: "ECS-...",
  *   log_id: number
  * }
+ *
+ * NOTA: Por ahora solo está habilitado Yape (Yape_on_file) en el merchant 1142 de ECS.
+ * Para activar tarjeta (TCTD) o transferencia (BankTransfer) hay que pedirle a Monnet
+ * que las habilite en la cuenta.
  */
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { createHash } from 'node:crypto'
 
-const API_KEY            = 'ecs-monnet-2026-link'
-const MONNET_MERCHANT_ID = process.env.MONNET_MERCHANT_ID || '1142'
-const MONNET_KEY         = process.env.MONNET_KEY        || ''
-const MONNET_BASE_URL    = process.env.MONNET_BASE_URL   || 'https://payin.api.monnetpayments.com/api-payin/v3/online-payments'
+const API_KEY                  = 'ecs-monnet-2026-link'
+const MONNET_MERCHANT_ID       = process.env.MONNET_MERCHANT_ID || '1142'
+const MONNET_KEY               = process.env.MONNET_KEY        || ''
+const MONNET_SUBSCRIPTIONS_URL = process.env.MONNET_SUBSCRIPTIONS_URL
+                                || 'https://subscriptions.payin.monnet.io/api/v1/subscription'
 
-const SUCCESS_URL = 'https://dashboard.alef.company/api/ecs/monnet-redirect?status=ok'
-const ERROR_URL   = 'https://dashboard.alef.company/api/ecs/monnet-redirect?status=error'
+const PROCESSOR_CODE = 'Yape_on_file'
+const SUBSCRIPTION_TYPE = 'ON_DEMAND'   // ON_DEMAND = cobramos cuando queramos; RECURRENT = cargo automático con periodicidad
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,7 +67,7 @@ function genOperationNumber(): string {
 }
 
 function normalizePhone(raw: string | number): string {
-  // Monnet exige 9 dígitos (sin prefijo 51)
+  // Yape exige 9 dígitos (sin prefijo 51)
   const str = String(raw ?? '').replace(/\D/g, '')
   if (str.length === 11 && str.startsWith('51')) return str.slice(2)
   if (str.length > 9) return str.slice(-9)
@@ -72,11 +75,11 @@ function normalizePhone(raw: string | number): string {
 }
 
 /**
- * SHA512 hash de: payinMerchantID + payinMerchantOperationNumber + payinAmount + payinCurrency + KEY
- * Es lo que exige Monnet para autenticar la creación de transacciones.
+ * SHA512 hash de: merchantId + type + customerId + processorCode + KEY
+ * Auth header (Bearer) que exige el endpoint de creación de suscripciones.
  */
-function calcularFirmaMonnet(opNumber: string, amount: string, currency: string): string {
-  const data = `${MONNET_MERCHANT_ID}${opNumber}${amount}${currency}${MONNET_KEY}`
+function calcularAuthSuscripcion(customerId: string): string {
+  const data = `${MONNET_MERCHANT_ID}${SUBSCRIPTION_TYPE}${customerId}${PROCESSOR_CODE}${MONNET_KEY}`
   return createHash('sha512').update(data).digest('hex')
 }
 
@@ -121,7 +124,7 @@ export default defineEventHandler(async (event) => {
   // 3. Validación
   const {
     cliente_nombre, cliente_email, cliente_telefono, cliente_dni,
-    plan_nombre, monto, metodo_pago,
+    plan_nombre, monto,
     chatwoot_account_id, chatwoot_inbox_id, chatwoot_conversation_id,
   } = body
 
@@ -131,42 +134,37 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: msg })
   }
 
-  const METODOS_VALIDOS = ['Wallet', 'TCTD', 'TC', 'TD', 'BankTransfer', 'Cash', 'QR']
-  const payinMethod = metodo_pago && METODOS_VALIDOS.includes(metodo_pago) ? metodo_pago : 'Wallet'
-
   // 4. Preparar datos para Monnet
   const operation_number = genOperationNumber()
-  const amount           = Number(monto).toFixed(2)        // 2 decimales exigidos
+  const amount           = Number(monto).toFixed(2)
   const currency         = 'PEN'
-  const phone            = normalizePhone(cliente_telefono)
-  const firma            = calcularFirmaMonnet(operation_number, amount, currency)
+  const phone            = normalizePhone(cliente_telefono)   // = customerId para Yape
+  const authHeader       = calcularAuthSuscripcion(phone)
 
-  // IMPORTANTE: Monnet exige que payinAmount viaje como STRING con 2 decimales ("9.90"),
-  // no como número. La firma se calcula sobre el mismo string — si se envía como número
-  // JSON elimina el cero final ("9.9") y Monnet devuelve [0010] Error in payinVerification.
-  const monnetPayload = {
-    payinMerchantID:                 String(MONNET_MERCHANT_ID),
-    payinMerchantOperationNumber:    operation_number,
-    payinAmount:                     amount,               // string "9.90"
-    payinCurrency:                   currency,
-    payinMethod:                     payinMethod,          // Wallet (Yape) por default; configurable desde body
-    payinVerification:               firma,
-    payinCustomerEmail:              cliente_email.slice(0, 50),
-    payinCustomerPhone:              phone,
-    payinExpirationTime:             '30',                 // 30 min para pagar
-    payinLanguage:                   'ES',
-    payinTransactionOKURL:           SUCCESS_URL,
-    payinTransactionErrorURL:        ERROR_URL,
-    payinDescription:                `Compra - ${plan_nombre}`.slice(0, 100),
+  const subscriptionPayload = {
+    merchantId: Number(MONNET_MERCHANT_ID),
+    subscriptionDetails: {
+      type:          SUBSCRIPTION_TYPE,
+      device:        'MOBILE',         // MOBILE devuelve deepLink que el cliente abre desde su celular
+      customerId:    phone,
+      processorCode: PROCESSOR_CODE,
+    },
+    metadata: [
+      { key: 'MerchantReference', value: operation_number.slice(0, 100) },
+      { key: 'Plan',              value: String(plan_nombre).slice(0, 100) },
+    ],
   }
 
-  // 5. Llamar a Monnet
+  // 5. Llamar a Monnet — Create Subscription
   let monnetResponse: any
   try {
-    monnetResponse = await $fetch<any>(MONNET_BASE_URL, {
+    monnetResponse = await $fetch<any>(MONNET_SUBSCRIPTIONS_URL, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    monnetPayload,
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${authHeader}`,
+      },
+      body:    subscriptionPayload,
     })
   } catch (err: any) {
     const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
@@ -175,16 +173,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 502, statusMessage: errMsg })
   }
 
-  // Validar respuesta de Monnet
-  if (monnetResponse?.payinErrorCode && monnetResponse.payinErrorCode !== '0000') {
-    const errMsg = `Monnet rechazó la transacción: [${monnetResponse.payinErrorCode}] ${monnetResponse.payinErrorMessage}`
+  // Validar respuesta — el endpoint devuelve errorCode si algo salió mal
+  if (monnetResponse?.errorCode) {
+    const errMsg = `Monnet rechazó la suscripción: [${monnetResponse.errorCode}] ${monnetResponse.errorMessage}`
     await updateLog('error', null, errMsg)
     throw createError({ statusCode: 502, statusMessage: errMsg })
   }
 
-  const linkPago = monnetResponse?.url
-  if (!linkPago) {
-    const errMsg = 'Monnet no devolvió un link de pago'
+  const subscriptionId = monnetResponse?.subscriptionId
+  const deepLink       = monnetResponse?.deepLink
+
+  if (!subscriptionId || !deepLink) {
+    const errMsg = 'Monnet no devolvió subscriptionId o deepLink'
     await updateLog('error', null, errMsg)
     throw createError({ statusCode: 502, statusMessage: errMsg })
   }
@@ -200,36 +200,40 @@ export default defineEventHandler(async (event) => {
       plan_nombre,
       monto:                    Number(amount),
       moneda:                   currency,
-      estado:                   'pendiente',
-      monnet_trx_operation:     monnetResponse?.payinTrxOperation ?? null,
-      link_pago:                linkPago,
+      estado:                   'pendiente_autorizacion',   // cliente todavía no ha autorizado en Yape
+      subscription_id:          subscriptionId,
+      subscription_status:      monnetResponse?.status ?? 'PENDING',
+      processor_code:           PROCESSOR_CODE,
+      deep_link:                deepLink,
+      link_pago:                deepLink,                   // legacy: mismo valor para compatibilidad
       chatwoot_account_id:      chatwoot_account_id ?? null,
       chatwoot_inbox_id:        chatwoot_inbox_id ?? null,
       chatwoot_conversation_id: chatwoot_conversation_id ?? null,
-      payload_request:          monnetPayload,
+      payload_request:          subscriptionPayload,
       payload_response:         monnetResponse,
     })
   } catch (e: any) {
     console.error('[generar-link-monnet] Error guardando pago:', e?.message)
-    // No throw: el link ya está generado en Monnet
+    // No throw: la suscripción ya está creada en Monnet
   }
 
   // 7. Respuesta exitosa
   const output = {
     ok: true,
-    link: linkPago,
+    link: deepLink,
+    subscription_id: subscriptionId,
     operation_number,
     monto: Number(amount),
     plan_nombre,
-    metodo_pago: payinMethod,
-    message: `Link de pago generado:\n${linkPago}\n\nVálido por 30 minutos.`,
+    metodo_pago: 'Yape',
+    message: `Link de pago generado:\n${deepLink}\n\nAbre el link en tu celular para autorizar el pago con Yape.`,
     log_id: logId,
   }
 
   await updateLog('success', output)
 
   console.log(
-    `[generar-link-monnet] ECS | ${operation_number} | S/${amount} | ${plan_nombre} → ${cliente_nombre} ✅`
+    `[generar-link-monnet] ECS | ${operation_number} | sub=${subscriptionId} | S/${amount} | ${plan_nombre} → ${cliente_nombre} ✅`
   )
 
   return output

@@ -129,17 +129,20 @@ export default defineEventHandler(async (event) => {
   const phone            = normalizePhone(cliente_telefono)
   const firma            = calcularFirmaMonnet(operation_number, amount, currency)
 
+  // IMPORTANTE: Monnet exige que payinAmount viaje como STRING con 2 decimales ("9.90"),
+  // no como número. La firma se calcula sobre el mismo string — si se envía como número
+  // JSON elimina el cero final ("9.9") y Monnet devuelve [0010] Error in payinVerification.
   const monnetPayload = {
-    payinMerchantID:                 Number(MONNET_MERCHANT_ID),
+    payinMerchantID:                 String(MONNET_MERCHANT_ID),
     payinMerchantOperationNumber:    operation_number,
-    payinAmount:                     Number(amount),
+    payinAmount:                     amount,               // string "9.90"
     payinCurrency:                   currency,
     payinMethod:                     'ALL',                // muestra todos los métodos (Yape, tarjeta, etc.)
     payinVerification:               firma,
     payinCustomerEmail:              cliente_email.slice(0, 50),
     payinCustomerPhone:              phone,
-    payinExpirationTime:             30,                   // 30 min para pagar
-    payinLanguage:                   'es',
+    payinExpirationTime:             '30',                 // 30 min para pagar
+    payinLanguage:                   'ES',
     payinTransactionOKURL:           SUCCESS_URL,
     payinTransactionErrorURL:        ERROR_URL,
     payinDescription:                `Compra - ${plan_nombre}`.slice(0, 100),

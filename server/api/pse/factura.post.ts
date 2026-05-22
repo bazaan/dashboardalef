@@ -52,13 +52,21 @@ const EMPRESAS: Record<string, EmpresaConfig> = {
 
 /**
  * Convierte `YYYY-MM-DD` → `DD-MM-YYYY` (formato que exige NubeFact).
- * Si ya viene en DD-MM-YYYY lo deja. Si viene vacío devuelve hoy.
+ * Si ya viene en DD-MM-YYYY lo deja. Si viene vacío devuelve hoy en hora Perú.
+ *
+ * IMPORTANTE: Vercel corre en UTC; entre 19:00–23:59 hora Lima `new Date()`
+ * ya está en el día siguiente, y SUNAT rechaza con
+ * "La fecha del documento debe ser la fecha de HOY". Por eso forzamos
+ * la zona horaria America/Lima cuando construimos la fecha de hoy.
  */
 function toFechaNubefact(v?: string): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
   if (!v) {
-    const d = new Date()
-    return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`
+    return new Intl.DateTimeFormat('es-PE', {
+      timeZone: 'America/Lima',
+      day:   '2-digit',
+      month: '2-digit',
+      year:  'numeric',
+    }).format(new Date()).replace(/\//g, '-')
   }
   // ISO YYYY-MM-DD
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)

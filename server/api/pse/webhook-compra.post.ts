@@ -53,11 +53,21 @@ async function proximoNumero(supabase: any): Promise<number> {
   return (data?.numero ?? 0) + 1
 }
 
-/** DD-MM-YYYY de hoy */
+/**
+ * Devuelve "DD-MM-YYYY" en hora Perú (UTC-5, sin DST).
+ *
+ * IMPORTANTE: Vercel ejecuta en UTC. Si usáramos `new Date().getDate()`
+ * entre 19:00 y 23:59 hora Lima nos daría el día siguiente, y PSE.PE
+ * rechazaría con "La fecha del documento debe ser la fecha de HOY".
+ * Por eso forzamos la zona horaria America/Lima.
+ */
 function hoy(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`
+  return new Intl.DateTimeFormat('es-PE', {
+    timeZone: 'America/Lima',
+    day:   '2-digit',
+    month: '2-digit',
+    year:  'numeric',
+  }).format(new Date()).replace(/\//g, '-')
 }
 
 export default defineEventHandler(async (event) => {

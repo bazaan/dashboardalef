@@ -201,11 +201,17 @@ export default defineEventHandler(async (event) => {
   }
   const numero = (lastBoleta?.numero || 0) + 1
 
-  // ── Fecha de emisión ──
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const fechaEmision = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${now.getFullYear()}`
-  const fechaISO = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  // ── Fecha de emisión en hora Perú (UTC-5) ──
+  // Vercel corre en UTC; usar new Date() directo entre 19:00–23:59 Lima daría
+  // el día siguiente y SUNAT rechaza con "fecha debe ser la de HOY".
+  const fechaEmision = new Intl.DateTimeFormat('es-PE', {
+    timeZone: 'America/Lima',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(new Date()).replace(/\//g, '-')
+  const fechaISO = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Lima',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(new Date())
 
   // ── Payload PSE.PE ──
   const facturaPayload = {

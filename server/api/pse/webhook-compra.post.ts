@@ -107,7 +107,61 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Token de autorización inválido' })
   }
 
-  // ── 2. Verificar si el boleteado está ACTIVADO desde el dashboard ───────
+  // ── 2. Sincronizar SuscriptoresBDwppECS (siempre, antes del boleteo) ────
+  //    Si ECS nos está mandando este webhook, significa que el cobro se
+  //    completó. Aprovechamos esto para marcar la suscripción como activa
+  //    en nuestra BD, aunque el toggle de boleteado esté apagado.
+  //
+  //    Estrategia: buscar el suscriptor por email + estado='pendiente'
+  //    (en orden de más reciente primero) y actualizarlo a 'activa'.
+  try {
+    const clienteEmailIn = body?.cliente?.email
+    const clienteDniIn   = body?.cliente?.numero_documento
+
+    let suscriptorQuery = supabase
+      .from('SuscriptoresBDwppECS')
+      .select('id, operation_number, estado')
+      .eq('estado', 'pendiente')
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (clienteEmailIn) {
+      suscriptorQuery = suscriptorQuery.eq('email', clienteEmailIn)
+    } else if (clienteDniIn) {
+      suscriptorQuery = suscriptorQuery.eq('dni', String(clienteDniIn))
+    }
+
+    if (clienteEmailIn || clienteDniIn) {
+      const { data: suscriptor } = await suscriptorQuery.maybeSingle()
+
+      if (suscriptor) {
+        const ahora   = new Date()
+        const proxima = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+        await supabase.from('SuscriptoresBDwppECS').update({
+          estado:                 'activa',
+          subscription_status:    'AUTHORIZED',
+          fecha_suscripcion:      ahora.toISOString(),
+          fecha_proxima_cobranza: proxima.toISOString(),
+        }).eq('id', suscriptor.id)
+
+        if (suscriptor.operation_number) {
+          await supabase.from('ecs_pagos_monnet').update({
+            estado:              'pagado',
+            subscription_status: 'AUTHORIZED',
+            paid_at:             ahora.toISOString(),
+          }).eq('operation_number', suscriptor.operation_number)
+        }
+
+        console.log(`[webhook-compra] ✅ Suscriptor ${clienteEmailIn ?? clienteDniIn} → activa (via webhook-compra)`)
+      }
+    }
+  } catch (e: any) {
+    console.error('[webhook-compra] Error sincronizando suscriptor:', e?.message)
+    // No bloquear: el webhook sigue su curso
+  }
+
+  // ── 3. Verificar si el boleteado está ACTIVADO desde el dashboard ───────
   //    Se controla con un switch en pages/pruebas/EstasConSuerte.vue y se
   //    guarda en app_settings(key='ecs_boleteo_activo'). Default OFF.
   //    Si está apagado, respondemos 200 OK pero saltamos la emisión —
@@ -121,15 +175,15 @@ export default defineEventHandler(async (event) => {
 
   if (!boleteoActivo) {
     await updateLog('skipped', { error_message: 'Boleteado ECS desactivado desde el dashboard' })
-    console.log('[webhook-compra] ECS boleteo DESACTIVADO — skip')
+    console.log('[webhook-compra] ECS boleteo DESACTIVADO — skip emisión (pero suscriptor ya quedó activa)')
     return {
       ok: true,
       skipped: true,
-      message: 'Boleteado automático de ECS desactivado. Actívalo desde el dashboard de Estás Con Suerte para emitir comprobantes.',
+      message: 'Boleteado automático de ECS desactivado. Suscriptor sincronizado igual.',
     }
   }
 
-  // ── 3. Validación mínima ───────────────────────────────────────────────
+  // ── 4. Validación mínima ───────────────────────────────────────────────
   const plan = body?.plan
   if (!plan?.nombre || !plan?.precio_final) {
     await updateLog('error', { error_message: 'Faltan plan.nombre o plan.precio_final' })

@@ -16,9 +16,10 @@
  *   5. Mostrar la suscripción en "Mi Cuenta" del cliente
  *
  * Pasos del endpoint:
- *   1. Login admin en ECS con credenciales del .env → obtiene JWT
- *   2. POST /subscriptions/create al sistema ECS con planKey + phoneNumber
- *   3. Guarda el registro en ecs_pagos_monnet para trazabilidad local
+ *   1. Registra al cliente en ECS via /auth/register/alef → recibe JWT del usuario
+ *   2. POST /subscriptions/create al sistema ECS usando ese token
+ *      (la suscripción queda asociada al cliente registrado, no a un admin)
+ *   3. Guarda el registro en ecs_pagos_monnet y SuscriptoresBDwppECS
  *   4. Devuelve el deepLink al bot para que lo envíe al cliente por WhatsApp
  *
  * Body esperado:
@@ -50,10 +51,8 @@
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 
-const API_KEY            = 'ecs-monnet-2026-link'
-const ECS_API_BASE       = process.env.ECS_API_BASE_URL || 'https://api.estasconsuerte.com.pe'
-const ECS_ADMIN_EMAIL    = process.env.ECS_ADMIN_EMAIL  || ''
-const ECS_ADMIN_PASSWORD = process.env.ECS_ADMIN_PASSWORD || ''
+const API_KEY      = 'ecs-monnet-2026-link'
+const ECS_API_BASE = process.env.ECS_API_BASE_URL || 'https://api.estasconsuerte.com.pe'
 
 // Mapeo plan_nombre (humano) → planKey (slug ECS). Se puede sobreescribir
 // pasando plan_key directamente en el body.
@@ -64,9 +63,6 @@ const PLAN_KEY_MAP: Record<string, string> = {
   'la suertuda':       'LA_SUERTUDA',
   // agregar acá conforme se conozcan más planes
 }
-
-// Cache simple del token admin (TTL 6 días, el JWT dura 7)
-let cachedToken: { value: string; expiresAt: number } | null = null
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,31 +88,49 @@ function resolverPlanKey(planNombre: string, planKeyExplicit?: string): string {
 }
 
 /**
- * Login en el sistema ECS y obtiene un JWT admin. Cachea el resultado por
- * 6 días (el JWT dura 7) para no loguear en cada request.
+ * Parsea el nombre completo en firstName / lastName.
+ * "Julio Cesar Zumaeta Perez" → { firstName: "Julio", lastName: "Cesar Zumaeta Perez" }
  */
-async function getEcsAdminToken(): Promise<string> {
-  if (!ECS_ADMIN_EMAIL || !ECS_ADMIN_PASSWORD) {
-    throw new Error('ECS_ADMIN_EMAIL y ECS_ADMIN_PASSWORD no configurados en .env')
+function parseNombre(fullName: string): { firstName: string; lastName: string } {
+  const partes = String(fullName || '').trim().split(/\s+/).filter(Boolean)
+  if (partes.length === 0) return { firstName: 'Cliente', lastName: '-' }
+  if (partes.length === 1) return { firstName: partes[0], lastName: '-' }
+  return { firstName: partes[0], lastName: partes.slice(1).join(' ') }
+}
+
+/**
+ * Registra al cliente en el sistema ECS via /auth/register/alef.
+ * Devuelve el token JWT del usuario recién creado, que se usa para crear
+ * la suscripción a su nombre (no del admin).
+ */
+async function registrarClienteECS(args: {
+  email: string
+  firstName: string
+  lastName: string
+  documentNumber: string
+  phoneNumber: string
+}): Promise<string> {
+  const registerPayload = {
+    email:            args.email,
+    documentType:     'DNI',
+    documentNumber:   args.documentNumber,
+    firstName:        args.firstName,
+    lastName:         args.lastName,
+    phoneCountryCode: '+51',
+    phoneNumber:      args.phoneNumber,
+    marketingOptIn:   true,                  // SIEMPRE true
   }
 
-  const now = Date.now()
-  if (cachedToken && cachedToken.expiresAt > now) {
-    return cachedToken.value
-  }
-
-  const loginRes: any = await $fetch(`${ECS_API_BASE}/auth/login`, {
-    method: 'POST',
+  const res: any = await $fetch(`${ECS_API_BASE}/auth/register/alef`, {
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: { email: ECS_ADMIN_EMAIL, password: ECS_ADMIN_PASSWORD },
+    body:    registerPayload,
   })
 
-  const token = loginRes?.token || loginRes?.access_token || loginRes?.accessToken
+  const token = res?.token || res?.access_token || res?.accessToken
   if (!token) {
-    throw new Error(`Login ECS no devolvió token. Response: ${JSON.stringify(loginRes)}`)
+    throw new Error(`Registro ECS no devolvió token. Response: ${JSON.stringify(res)}`)
   }
-
-  cachedToken = { value: token, expiresAt: now + 6 * 24 * 60 * 60 * 1000 } // 6 días
   return token
 }
 
@@ -161,8 +175,8 @@ export default defineEventHandler(async (event) => {
     chatwoot_account_id, chatwoot_inbox_id, chatwoot_conversation_id,
   } = body
 
-  if (!cliente_telefono || !plan_nombre) {
-    const msg = 'Faltan campos requeridos: cliente_telefono, plan_nombre'
+  if (!cliente_telefono || !plan_nombre || !cliente_email || !cliente_dni || !cliente_nombre) {
+    const msg = 'Faltan campos requeridos: cliente_nombre, cliente_email, cliente_telefono, cliente_dni, plan_nombre'
     await updateLog('error', null, msg)
     throw createError({ statusCode: 400, statusMessage: msg })
   }
@@ -170,18 +184,29 @@ export default defineEventHandler(async (event) => {
   const operation_number = genOperationNumber()
   const phone            = normalizePhone(cliente_telefono)
   const planKey          = resolverPlanKey(plan_nombre, plan_key)
+  const { firstName, lastName } = parseNombre(cliente_nombre)
 
-  // 4. Login admin en ECS
+  // 4. Registrar al cliente en ECS via /auth/register/alef
+  //    La respuesta incluye un token JWT del usuario nuevo (role: CLIENTE).
+  //    Ese token se usa para crear la suscripción a su nombre, así queda
+  //    asociada al cliente correcto (visible en "Mi Cuenta" de su perfil).
   let token: string
   try {
-    token = await getEcsAdminToken()
+    token = await registrarClienteECS({
+      email:          cliente_email,
+      firstName,
+      lastName,
+      documentNumber: String(cliente_dni),
+      phoneNumber:    phone,
+    })
   } catch (err: any) {
-    const errMsg = `Error logueando en ECS: ${err?.message ?? err}`
+    const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
+    const errMsg = `Error registrando cliente en ECS: ${JSON.stringify(detail)}`
     await updateLog('error', null, errMsg)
     throw createError({ statusCode: 502, statusMessage: errMsg })
   }
 
-  // 5. Crear suscripción en ECS
+  // 5. Crear suscripción en ECS con el token del cliente
   const ecsPayload = {
     planKey,
     device:      'MOBILE',
@@ -199,31 +224,10 @@ export default defineEventHandler(async (event) => {
       body: ecsPayload,
     })
   } catch (err: any) {
-    // Si el token expiró (401), invalidar cache y reintentar UNA vez
-    if (err?.statusCode === 401 || err?.response?.status === 401) {
-      cachedToken = null
-      try {
-        token = await getEcsAdminToken()
-        ecsResponse = await $fetch<any>(`${ECS_API_BASE}/subscriptions/create`, {
-          method:  'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: ecsPayload,
-        })
-      } catch (retryErr: any) {
-        const detail = retryErr?.data ?? retryErr?.response?._data ?? retryErr?.message ?? retryErr
-        const errMsg = `ECS API error (tras reintento): ${JSON.stringify(detail)}`
-        await updateLog('error', null, errMsg)
-        throw createError({ statusCode: 502, statusMessage: errMsg })
-      }
-    } else {
-      const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
-      const errMsg = `ECS API error: ${JSON.stringify(detail)}`
-      await updateLog('error', null, errMsg)
-      throw createError({ statusCode: 502, statusMessage: errMsg })
-    }
+    const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
+    const errMsg = `Error creando suscripción ECS: ${JSON.stringify(detail)}`
+    await updateLog('error', null, errMsg)
+    throw createError({ statusCode: 502, statusMessage: errMsg })
   }
 
   // 6. Validar respuesta de ECS

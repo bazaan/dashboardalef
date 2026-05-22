@@ -407,6 +407,33 @@
         </header>
 
         <div class="content-area">
+
+          <!-- Banner de estado del boleteado automático (PSE.PE) -->
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:0.6rem 1rem; border-radius:10px; margin-bottom:1rem;"
+            :style="boleteoActivo ? 'background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3);' : 'background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);'">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+              <v-icon :icon="boleteoActivo ? 'mdi-receipt-text-check' : 'mdi-receipt-text-remove'"
+                :color="boleteoActivo ? '#22c55e' : '#ef4444'" size="20" />
+              <div>
+                <div style="font-size:0.85rem; font-weight:600;" :style="boleteoActivo ? 'color:#22c55e' : 'color:#ef4444'">
+                  Boleteado automático (PSE.PE): {{ boleteoActivo ? 'ACTIVADO' : 'DESACTIVADO' }}
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-muted);">
+                  {{ boleteoActivo ? 'Se emite boleta SUNAT automáticamente cuando ECS notifica una compra' : 'No se emiten boletas — actívalo cuando estés listo para facturar' }}
+                </div>
+              </div>
+            </div>
+            <v-switch
+              v-model="boleteoActivo"
+              :color="boleteoActivo ? 'success' : 'error'"
+              hide-details
+              density="compact"
+              :loading="loadingBoleteoToggle"
+              @update:model-value="toggleBoleteo"
+              style="flex-shrink:0;"
+            />
+          </div>
+
           <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
             <div class="stat-card">
               <div class="stat-value">{{ compras.length }}</div>
@@ -1885,6 +1912,7 @@ onMounted(() => {
   fetchCompras()
   fetchReservas()
   fetchGlobalAccounting()
+  fetchBoleteoStatus()
 
   handleZoom('one_month')
   fetchEvents()
@@ -1947,6 +1975,35 @@ const toggleN8nWorkflow = async (turnOn: boolean) => {
     alert('Error al comunicarse con el servidor. Revisa la consola.')
   } finally {
     n8nLoading.value = false
+  }
+}
+
+// ── Boleteado automático (PSE.PE) ────────────────────────────────────────────
+// Controla si el endpoint /api/pse/webhook-compra emite boleta cuando ECS
+// notifica una compra. Default: OFF hasta que se active desde el dashboard.
+const boleteoActivo        = ref(false)
+const loadingBoleteoToggle = ref(false)
+
+const fetchBoleteoStatus = async () => {
+  try {
+    const data = await $fetch<{ activo: boolean }>('/api/ecs/boleteo')
+    boleteoActivo.value = data.activo
+  } catch { boleteoActivo.value = false }
+}
+
+const toggleBoleteo = async (nuevoValor: boolean) => {
+  loadingBoleteoToggle.value = true
+  try {
+    const data = await $fetch<{ activo: boolean }>('/api/ecs/boleteo', {
+      method: 'POST',
+      body: { activo: nuevoValor },
+    })
+    boleteoActivo.value = data.activo
+  } catch (e) {
+    console.error('Error cambiando boleteo ECS:', e)
+    boleteoActivo.value = !nuevoValor   // revertir UI si falla
+  } finally {
+    loadingBoleteoToggle.value = false
   }
 }
 

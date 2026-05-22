@@ -107,7 +107,29 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Token de autorización inválido' })
   }
 
-  // ── 2. Validación mínima ───────────────────────────────────────────────
+  // ── 2. Verificar si el boleteado está ACTIVADO desde el dashboard ───────
+  //    Se controla con un switch en pages/pruebas/EstasConSuerte.vue y se
+  //    guarda en app_settings(key='ecs_boleteo_activo'). Default OFF.
+  //    Si está apagado, respondemos 200 OK pero saltamos la emisión —
+  //    así el sistema de ECS no marca error en sus logs.
+  const { data: boletoFlag } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'ecs_boleteo_activo')
+    .maybeSingle()
+  const boleteoActivo = boletoFlag?.value === 'true'
+
+  if (!boleteoActivo) {
+    await updateLog('skipped', { error_message: 'Boleteado ECS desactivado desde el dashboard' })
+    console.log('[webhook-compra] ECS boleteo DESACTIVADO — skip')
+    return {
+      ok: true,
+      skipped: true,
+      message: 'Boleteado automático de ECS desactivado. Actívalo desde el dashboard de Estás Con Suerte para emitir comprobantes.',
+    }
+  }
+
+  // ── 3. Validación mínima ───────────────────────────────────────────────
   const plan = body?.plan
   if (!plan?.nombre || !plan?.precio_final) {
     await updateLog('error', { error_message: 'Faltan plan.nombre o plan.precio_final' })

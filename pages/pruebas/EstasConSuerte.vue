@@ -243,14 +243,28 @@
             </div>
             <v-card flat class="custom-data-table">
 
-              <!-- TABLE: VENTAS -->
+              <!-- TABLE: SUSCRIPCIONES -->
               <div v-if="activeTab === 'ventas'">
                 <v-card-title class="table-search-bar">
-                  <span class="table-title">Últimas Ventas</span>
+                  <span class="table-title">Últimos Suscriptores</span>
                 </v-card-title>
                 <v-data-table :headers="headersVentas" :items="compras.slice(0, 10)" class="elevation-0"
-                  no-data-text="No hay ventas recientes" :items-per-page="10">
-                  <template v-slot:bottom></template> <!-- Hide footer if desired -->
+                  no-data-text="No hay suscriptores todavía" :items-per-page="10">
+                  <template v-slot:item.estado="{ item }">
+                    <v-chip
+                      :color="item.estado === 'activa' ? 'success' :
+                              item.estado === 'pendiente' ? 'warning' :
+                              item.estado === 'cancelada' ? 'error' :
+                              item.estado === 'fallida' ? 'error' :
+                              item.estado === 'expirada' ? 'grey' : 'info'"
+                      size="small" class="font-weight-bold">
+                      {{ item.estado || 'desconocido' }}
+                    </v-chip>
+                  </template>
+                  <template v-slot:item.monto="{ item }">
+                    S/ {{ Number(item.monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                  </template>
+                  <template v-slot:bottom></template>
                 </v-data-table>
               </div>
 
@@ -380,27 +394,43 @@
       <!-- ==========  VISTA: VENTAS  ========== -->
       <div v-else-if="activeView === 'ventas'" class="view-container">
         <header class="top-header">
-          <h1>Ventas</h1>
+          <h1>Suscripciones</h1>
           <div style="display: flex; gap: 15px; align-items: center;">
-            <v-select v-model="tipoVentaSeleccionada"
-              :items="['Ventas Motorizado', 'Ventas Courier', 'Ventas Recojo en tienda']" variant="outlined"
-              density="compact" hide-details style="min-width: 250px;"></v-select>
-            <button class="btn-primary">
-              <v-icon icon="mdi-cart-plus" size="16" />
-              <span>Nueva Venta</span>
+            <v-select v-model="filtroEstadoSuscriptor"
+              :items="['Todas', 'Activas', 'Pendientes', 'Canceladas', 'Fallidas', 'Expiradas']" variant="outlined"
+              density="compact" hide-details style="min-width: 200px;"></v-select>
+            <button class="btn-primary" @click="fetchCompras">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
             </button>
           </div>
         </header>
 
         <div class="content-area">
-          <div class="stats-grid mini two-columns">
-            <div class="stat-card center-content">
+          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+            <div class="stat-card">
               <div class="stat-value">{{ compras.length }}</div>
-              <div class="stat-title">Total Histórico ({{ tipoVentaSeleccionada }})</div>
+              <div class="stat-title">Total Suscriptores</div>
+              <div class="stat-subtitle">Histórico completo</div>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #10b981;">
+              <div class="stat-value">{{ suscriptoresActivos.length }}</div>
+              <div class="stat-title">Suscriptores Activos</div>
+              <div class="stat-subtitle">Pagando recurrentemente</div>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #f59e0b;">
+              <div class="stat-value">{{ suscriptoresPendientes.length }}</div>
+              <div class="stat-title">Pendientes</div>
+              <div class="stat-subtitle">Esperando autorización Yape</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-title">Ingreso Mensual Recurrente</div>
+              <div class="stat-value">S/ {{ mrr.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}</div>
+              <div class="stat-subtitle">MRR de suscripciones activas</div>
             </div>
             <div class="stat-card">
               <div class="stat-value">{{ comprasMesActual.length }}</div>
-              <div class="stat-title">Ventas este Mes</div>
+              <div class="stat-title">Nuevos este Mes</div>
               <div class="stat-change" :class="growthPercentage >= 0 ? 'up' : 'down'">
                 {{ growthPercentage >= 0 ? '+' : '' }}{{ growthPercentage.toFixed(1) }}% vs mes anterior
               </div>
@@ -410,17 +440,29 @@
           <div class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">Lista de Ventas</span>
+                <span class="table-title">Lista de Suscriptores</span>
                 <v-spacer></v-spacer>
-                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(compras, headersVentas, 'ecs-ventas')">
+                <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(suscriptoresFiltrados, headersVentas, 'ecs-suscriptores')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
                 <v-text-field v-model="ventasSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersVentas" :items="compras" :search="ventasSearch" :loading="loading"
-                class="elevation-0" no-data-text="No hay datos de ventas">
+              <v-data-table :headers="headersVentas" :items="suscriptoresFiltrados" :search="ventasSearch" :loading="loading"
+                class="elevation-0" no-data-text="No hay suscriptores todavía">
+
+                <template v-slot:item.estado="{ item }">
+                  <v-chip
+                    :color="item.estado === 'activa' ? 'success' :
+                            item.estado === 'pendiente' ? 'warning' :
+                            item.estado === 'cancelada' ? 'error' :
+                            item.estado === 'fallida' ? 'error' :
+                            item.estado === 'expirada' ? 'grey' : 'info'"
+                    size="small" class="font-weight-bold">
+                    {{ item.estado || 'desconocido' }}
+                  </v-chip>
+                </template>
 
                 <template v-slot:item.metodo_pago="{ item }">
                   <v-chip :color="item.metodo_pago?.toLowerCase().includes('yape') ? '#743484' :
@@ -429,8 +471,16 @@
                         item.metodo_pago?.toLowerCase().includes('tarjeta') ? '#1976d2' : 'grey'"
                     :text-color="item.metodo_pago?.toLowerCase().includes('yape') ? 'white' : 'black'" size="small"
                     class="font-weight-bold">
-                    {{ item.metodo_pago || 'Desconocido' }}
+                    {{ item.metodo_pago || 'Yape' }}
                   </v-chip>
+                </template>
+
+                <template v-slot:item.monto="{ item }">
+                  S/ {{ Number(item.monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                </template>
+
+                <template v-slot:item.fecha_suscripcion="{ item }">
+                  {{ item.fecha_suscripcion ? new Date(item.fecha_suscripcion).toLocaleDateString('es-PE') : '—' }}
                 </template>
 
               </v-data-table>
@@ -798,22 +848,22 @@
             </div>
             <div class="chart-section" style="height: auto; max-height: 480px; overflow-y: auto;">
               <div class="chart-header mb-2">
-                <h2>Últimas Compras</h2>
+                <h2>Últimas Suscripciones</h2>
               </div>
               <v-list density="compact">
                 <v-list-item v-for="compra in compras.slice(0, 6)" :key="compra.id" lines="two"
                   style="border-bottom: 1px solid var(--border);">
                   <template v-slot:prepend>
                     <v-avatar color="primary" variant="tonal" size="36">
-                      <v-icon icon="mdi-cart" size="18"></v-icon>
+                      <v-icon icon="mdi-account" size="18"></v-icon>
                     </v-avatar>
                   </template>
-                  <v-list-item-title class="font-weight-bold">{{ compra.nombre }} {{ compra.apellidos
+                  <v-list-item-title class="font-weight-bold">{{ compra.nombre }} {{ compra.apellido
                   }}</v-list-item-title>
-                  <v-list-item-subtitle>{{ compra.productos_comprados }}</v-list-item-subtitle>
+                  <v-list-item-subtitle>{{ compra.plan_nombre || 'Sin plan' }}</v-list-item-subtitle>
                   <template v-slot:append>
                     <div class="text-right">
-                      <div class="font-weight-bold text-primary">{{ compra.precio }}</div>
+                      <div class="font-weight-bold text-primary">S/ {{ Number(compra.monto || 0).toFixed(2) }}</div>
                       <div class="text-caption text-medium-emphasis">{{ new Date(compra.created_at).toLocaleDateString()
                       }}</div>
                     </div>
@@ -1940,56 +1990,48 @@ const headersReservas = ref([
 ])
 
 const ventasSearch = ref('')
-const tipoVentaSeleccionada = ref('Ventas Motorizado')
+const filtroEstadoSuscriptor = ref('Todas')
 
-const headersVentas = computed(() => {
-  if (tipoVentaSeleccionada.value === 'Ventas Motorizado') {
-    return [
-      { title: 'Nombre Completo', key: 'nombre_completo', sortable: true },
-      { title: 'DNI', key: 'dni', sortable: true },
-      { title: 'Nº Celular', key: 'numero_celular', sortable: true },
-      { title: 'Correo', key: 'correo', sortable: true },
-      { title: 'Dirección Exacta', key: 'direccion_exacta', sortable: true },
-      { title: 'Producto', key: 'producto', sortable: true },
-      { title: 'Cantidad', key: 'cantidad', sortable: true },
-      { title: 'Precio', key: 'precio', sortable: true },
-      { title: 'Método Pago', key: 'metodo_pago', sortable: true },
-    ]
-  } else if (tipoVentaSeleccionada.value === 'Ventas Courier') {
-    return [
-      { title: 'Nombre Completo', key: 'nombre_completo', sortable: true },
-      { title: 'DNI', key: 'dni', sortable: true },
-      { title: 'Nº Celular', key: 'numero_celular', sortable: true },
-      { title: 'Correo', key: 'correo', sortable: true },
-      { title: 'Courier', key: 'courier', sortable: true },
-      { title: 'Agencia', key: 'nombre_agencia', sortable: true },
-      { title: 'Producto', key: 'producto', sortable: true },
-      { title: 'Cantidad', key: 'cantidad', sortable: true },
-      { title: 'Precio', key: 'precio', sortable: true },
-      { title: 'Método Pago', key: 'metodo_pago', sortable: true },
-    ]
-  } else {
-    // Recojo en tienda
-    return [
-      { title: 'Nombre Completo', key: 'nombre_completo', sortable: true },
-      { title: 'DNI', key: 'dni', sortable: true },
-      { title: 'Nº Celular', key: 'numero_celular', sortable: true },
-      { title: 'Correo', key: 'correo', sortable: true },
-      { title: 'Local Deseado', key: 'local_deseado', sortable: true },
-      { title: 'Fecha Reserva', key: 'fecha_reserva', sortable: true },
-      { title: 'Hora Reserva', key: 'hora_reserva', sortable: true },
-      { title: 'Producto', key: 'producto', sortable: true },
-      { title: 'Cantidad', key: 'cantidad', sortable: true },
-      { title: 'Precio', key: 'precio', sortable: true },
-      { title: 'Método Pago', key: 'metodo_pago', sortable: true },
-    ]
+// Headers de la tabla de Suscriptores (SuscriptoresBDwppECS)
+const headersVentas = ref([
+  { title: 'Nombre',     key: 'nombre',            sortable: true },
+  { title: 'Apellido',   key: 'apellido',          sortable: true },
+  { title: 'Nº Celular', key: 'numero',            sortable: true },
+  { title: 'DNI',        key: 'dni',               sortable: true },
+  { title: 'Correo',     key: 'email',             sortable: true },
+  { title: 'Plan',       key: 'plan_nombre',       sortable: true },
+  { title: 'Monto',      key: 'monto',             sortable: true },
+  { title: 'Método',     key: 'metodo_pago',       sortable: true },
+  { title: 'Estado',     key: 'estado',            sortable: true },
+  { title: 'Fecha Susc.',key: 'fecha_suscripcion', sortable: true },
+])
+
+// Filtrado por estado seleccionado en el dropdown
+const suscriptoresFiltrados = computed(() => {
+  const f = filtroEstadoSuscriptor.value
+  if (f === 'Todas') return compras.value
+  const mapa: Record<string, string> = {
+    'Activas':    'activa',
+    'Pendientes': 'pendiente',
+    'Canceladas': 'cancelada',
+    'Fallidas':   'fallida',
+    'Expiradas':  'expirada',
   }
+  const target = mapa[f]
+  return compras.value.filter(s => s.estado === target)
 })
 
-// React to dropdown changes by refetching data
-watch(tipoVentaSeleccionada, () => {
-  fetchCompras()
-})
+// Stats derivados
+const suscriptoresActivos = computed(() =>
+  compras.value.filter(s => s.estado === 'activa'),
+)
+const suscriptoresPendientes = computed(() =>
+  compras.value.filter(s => s.estado === 'pendiente'),
+)
+// MRR = suma de montos de suscripciones activas
+const mrr = computed(() =>
+  suscriptoresActivos.value.reduce((acc, s) => acc + (Number(s.monto) || 0), 0),
+)
 
 /* Headers de la tabla - ajusta según tu tabla 'ECS_contribuyentes' */
 const headers = ref([
@@ -2058,25 +2100,17 @@ const fetchStock = async () => {
 
 const fetchCompras = async () => {
   loading.value = true
-
-  let tableName = 'ECS_pago_completo_motorizado'
-  if (tipoVentaSeleccionada.value === 'Ventas Courier') {
-    tableName = 'ECS_pago_completo_courier'
-  } else if (tipoVentaSeleccionada.value === 'Ventas Recojo en tienda') {
-    tableName = 'ECS_pago_completo_recojo_tienda'
-  }
-
   try {
     const { data, error } = await client
-      .from(tableName)
+      .from('SuscriptoresBDwppECS')
       .select('*')
       .order('created_at', { ascending: false })
 
     if (error) throw error
 
-    compras.value = data as any[]
-  } catch (error) {
-    console.error('Error al cargar compras:', error)
+    compras.value = (data || []) as any[]
+  } catch (e) {
+    console.error('Error cargando suscriptores:', e)
   } finally {
     loading.value = false
   }
@@ -3170,7 +3204,7 @@ function logout() {
 const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
-  { icon: 'mdi-cart', label: 'Ventas', id: 'ventas' },
+  { icon: 'mdi-account-multiple', label: 'Suscripciones', id: 'ventas' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
   { icon: 'mdi-calendar-clock', label: 'Reservas', id: 'reservas' }
 ]
@@ -3268,7 +3302,7 @@ const stats = computed<Stat[]>(() => [
 /* ---------------- Tabs ---------------- */
 /* ---------------- Tabs ---------------- */
 const tabs: Tab[] = [
-  { label: 'Ventas', value: 'ventas' },
+  { label: 'Suscripciones', value: 'ventas' },
   { label: 'Leads', value: 'leads' },
   { label: 'Próximos Eventos', value: 'events' }
 ]

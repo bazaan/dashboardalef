@@ -2158,6 +2158,17 @@ const fetchStock = async () => {
 const fetchCompras = async () => {
   loading.value = true
   try {
+    // 1. Sincronizar pendientes contra ECS antes de mostrar
+    //    (consulta /admin/users de ECS y actualiza estados huérfanos).
+    //    Si el sincronizador falla por cualquier razón, igual mostramos
+    //    lo que tengamos en BD — no bloquea la UI.
+    try {
+      await $fetch('/api/ecs/sincronizar-pendientes', { method: 'POST' })
+    } catch (syncErr) {
+      console.warn('[fetchCompras] sincronizar-pendientes falló (no crítico):', syncErr)
+    }
+
+    // 2. Leer la BD ya sincronizada
     const { data, error } = await client
       .from('SuscriptoresBDwppECS')
       .select('*')

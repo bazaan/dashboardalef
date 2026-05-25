@@ -115,12 +115,16 @@ dashboard alef allin/
 │   │   ├── enviar-whatsapp.post.ts     # Envío de boleta por WhatsApp vía n8n webhook
 │   ├── gcal-events.get.ts          # Lee GCal via Google API + compara con Supabase
 │   ├── importar-gcal.post.ts       # Importa evento GCal a healup_calendar_events
-│   └── boleta-auto.post.ts         # Auto-genera boleta consulta S/50 (llamado por n8n al agendar)
+│   ├── boleta-auto.post.ts         # Auto-genera boleta consulta S/50 (llamado por n8n al agendar)
+│   ├── cron-agendamientos-diarios.get.ts        # Vercel Cron 19:00 Lima — POSTea pacientes agendados hoy a n8n
+│   ├── agendamientos-diarios-trigger.post.ts    # Disparo manual desde UI ("Probar envío ahora")
+│   └── agendamientos-diarios-logs.get.ts        # Lista paginada de logs para la UI
 │   └── n8n/toggle-workflow.post.ts
 │
 ├── server/utils/
 │   ├── logger.ts                       # logServerActivity() — log server-side a Supabase
-│   └── google-auth.ts                  # JWT auth con Google Service Account (crypto nativo, 0 deps)
+│   ├── google-auth.ts                  # JWT auth con Google Service Account (crypto nativo, 0 deps)
+│   └── healup-agendamientos.ts         # Lógica compartida del envío diario a n8n (cron + manual)
 │
 ├── middleware/
 │   └── auth-dashboard.ts               # Protección de rutas: lee cookie, verifica rol
@@ -269,6 +273,9 @@ Doble sistema para auditar acciones:
 | POST | `/api/healup/boleta-auto` | n8n (api_key auth). Auto-genera boleta consulta S/50 al confirmar cita. Retorna PDF + mensaje WhatsApp listo |
 | POST | `/api/healup/agent-chat` | Autenticados Healup. Proxy a Claude API (claude-sonnet-4-6) con 14 tools. Body: `{ messages }` |
 | POST | `/api/healup/transcribe` | Autenticados Healup. Transcripcion de audio via Whisper (OpenAI). FormData con campo `audio` |
+| GET  | `/api/healup/cron-agendamientos-diarios` | Llamado por la Netlify Scheduled Function (`netlify/functions/cron-healup-agendamientos.mts`, `0 0 * * *` = 19:00 Lima). Auth: `?api_key=<HEALUP_AGENDAMIENTO_CRON_KEY>`. Consulta los pacientes agendados HOY (Lima) en `PacientesBDwppHEALUP`, `PacientesBDfbigHEALUP` y `PacientesBDtiktokHEALUP`, POSTea el JSON a `N8N_WEBHOOK_HEALUP_AGENDAMIENTO_DIARIO`, registra log en `healup_agendamiento_diario_logs` |
+| POST | `/api/healup/agendamientos-diarios-trigger` | Autenticados Healup. Disparo manual del envío diario (botón "Probar envío ahora" del panel) |
+| GET  | `/api/healup/agendamientos-diarios-logs` | Autenticados Healup. Lista paginada de los logs. Query: `?limit=&offset=&status=success|error|empty` |
 | POST | `/api/remarketing/send` | Autenticados. Envio individual de mensaje WhatsApp via Chatwoot. Body: `{ company_id, lead_id, lead_tabla, lead_telefono, lead_nombre, template_id?, mensaje, canal? }` |
 
 ---
@@ -332,6 +339,34 @@ Las 16 boletas emitidas por HealUp tienen `aceptada_por_sunat: false` y CDR vac�
 - Endpoint: `POST /api/n8n/toggle-workflow` con `{ clientKey, active: boolean }`
 - Requiere env vars: `N8N_API_KEY`, `N8N_BASE_URL`, `N8N_ID_ALEGRATED`, `N8N_ID_BRADA`, `N8N_ID_HEALUP`
 
+### Envío Diario WhatsApp — Pacientes Agendados (Healup → n8n → Gerente)
+
+Herramienta nueva (sidebar Healup → **HERRAMIENTAS → Envío Diario WhatsApp**). Flujo end-to-end:
+
+1. **Netlify Scheduled Function** `netlify/functions/cron-healup-agendamientos.mts` se ejecuta todos los días a las `0 0 * * *` UTC (= 19:00 hora Lima, Lima es UTC-5 todo el año).
+2. La Scheduled Function hace un `GET` al endpoint del dashboard `/api/healup/cron-agendamientos-diarios?api_key=$HEALUP_AGENDAMIENTO_CRON_KEY`.
+3. El endpoint consulta los pacientes con `created_at >= 00:00 Lima del día actual` en las 3 tablas: `PacientesBDwppHEALUP`, `PacientesBDfbigHEALUP`, `PacientesBDtiktokHEALUP`.
+4. Construye un JSON estructurado (`evento: healup.agendamiento_diario`, `resumen`, `pacientes[]` con todas las columnas + `_canal` + `_origen_tabla`) y lo POSTea al webhook `N8N_WEBHOOK_HEALUP_AGENDAMIENTO_DIARIO`.
+5. n8n recibe el JSON y dispara su HTTP request existente para enviar el WhatsApp a la gerente.
+6. El endpoint guarda un log completo en `healup_agendamiento_diario_logs` (timestamp, payload enviado completo, respuesta n8n, http_status, error_message, duración).
+
+**Panel UI** (`components/HealupAgendamientoDiarioPanel.vue`): muestra estadísticas (total/éxitos/errores/vacíos), filtros, tabla de logs con expand para ver el JSON enviado + respuesta n8n + error, botón **"Probar envío ahora"** (disparo manual vía `POST /api/healup/agendamientos-diarios-trigger` — requiere sesión Healup).
+
+**Netlify Scheduled Function** (`netlify/functions/cron-healup-agendamientos.mts`): el schedule está declarado dentro del archivo con `export const config = { schedule: '0 0 * * *' }`. Netlify la detecta automáticamente (carpeta `functions = "netlify/functions"` en `netlify.toml`).
+
+**Env vars requeridas (Netlify → Site settings → Environment variables):**
+- `N8N_WEBHOOK_HEALUP_AGENDAMIENTO_DIARIO` — URL del webhook n8n destinatario
+- `HEALUP_AGENDAMIENTO_CRON_KEY` — clave (cualquier string largo aleatorio) que comparten la Scheduled Function y el endpoint Nuxt
+- (Netlify inyecta `URL` automáticamente con la URL del site)
+
+**Migración SQL:** correr una vez `sql/healup_agendamiento_diario_logs.sql` en Supabase.
+
+**Diagnóstico manual** (sin esperar al cron):
+```bash
+curl -s "https://<tu-site>.netlify.app/api/healup/cron-agendamientos-diarios?api_key=$HEALUP_AGENDAMIENTO_CRON_KEY"
+```
+También se puede disparar desde el dashboard con el botón "Probar envío ahora".
+
 ---
 
 ## Variables de Entorno (`.env`)
@@ -359,6 +394,9 @@ ANTHROPIC_API_KEY=              # Claude API para agent-chat
 OPENAI_API_KEY=                 # Whisper transcripcion de voz
 # Remarketing (Chatwoot WhatsApp)
 CHATWOOT_API_TOKEN=             # Token API Chatwoot para envio de mensajes remarketing
+# Envío Diario de pacientes agendados (Herramientas Healup → n8n → WhatsApp gerente)
+N8N_WEBHOOK_HEALUP_AGENDAMIENTO_DIARIO=   # URL del webhook n8n que recibe el JSON diario
+HEALUP_AGENDAMIENTO_CRON_KEY=             # Clave compartida entre la Netlify Scheduled Function y el endpoint Nuxt
 ```
 
 ---
@@ -393,6 +431,7 @@ CHATWOOT_API_TOKEN=             # Token API Chatwoot para envio de mensajes rema
 | `healup_stock_items` | Inventario de insumos. Campos: `nombre`, `categoria`, `unidad`, `cantidad_actual`, `umbral_minimo`, `costo_unitario` |
 | `healup_stock_movements` | Movimientos de stock (entrada/salida/ajuste). FK a `healup_stock_items` |
 | `healup_procedure_supplies` | Insumos por procedimiento (para descuento automatico de stock) |
+| `healup_agendamiento_diario_logs` | Logs de los envíos diarios a n8n con los pacientes agendados ese día. Campos: `fecha_lima`, `origen` (cron/manual), `triggered_by_email`, `status` (success/error/empty), `pacientes_count`, `pacientes_wpp_count`, `pacientes_fbig_count`, `pacientes_tiktok_count`, `webhook_url`, `payload_enviado` (JSONB), `respuesta_n8n` (JSONB), `http_status`, `error_message`, `duracion_ms`. Migración: `sql/healup_agendamiento_diario_logs.sql` |
 
 **Columnas de trazabilidad de cobro en `healup_calendar_events`** (agregadas en `sql/healup_cobro_atencion.sql`):
 

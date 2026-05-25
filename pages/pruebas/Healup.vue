@@ -87,6 +87,15 @@
             <span>Tickets</span>
           </button>
         </div>
+
+        <div class="nav-section">
+          <div class="nav-label">HERRAMIENTAS</div>
+          <button :class="['nav-item', { active: activeView === 'agendamiento_diario' }]"
+            @click="activeView = 'agendamiento_diario'">
+            <v-icon icon="mdi-whatsapp" size="18" />
+            <span>Envío Diario WhatsApp</span>
+          </button>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -4611,6 +4620,11 @@
       <!-- ==========  VISTA: TICKETS  ========== -->
       <div v-if="activeView === 'tickets'" class="view-container">
         <TicketPanel company-id="Heal up" empresa-nombre="Healup" :current-user="currentUser?.full_name" />
+      </div>
+
+      <!-- ==========  VISTA: ENVÍO DIARIO WHATSAPP (HERRAMIENTAS)  ========== -->
+      <div v-if="activeView === 'agendamiento_diario'" class="view-container">
+        <HealupAgendamientoDiarioPanel />
       </div>
 
     <!-- ==========  CONSENTIMIENTO INFORMADO · VIEWER DIALOG  ========== -->

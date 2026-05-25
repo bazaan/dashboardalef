@@ -51,8 +51,33 @@
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 
-const API_KEY      = 'ecs-monnet-2026-link'
-const ECS_API_BASE = process.env.ECS_API_BASE_URL || 'https://api.estasconsuerte.com.pe'
+const API_KEY            = 'ecs-monnet-2026-link'
+const ECS_API_BASE       = process.env.ECS_API_BASE_URL  || 'https://api.estasconsuerte.com.pe'
+const ECS_ADMIN_EMAIL    = process.env.ECS_ADMIN_EMAIL   || ''
+const ECS_ADMIN_PASSWORD = process.env.ECS_ADMIN_PASSWORD || ''
+
+// Cache del token admin (TTL 6 días, el JWT dura 7). Solo se usa para el
+// fallback cuando un usuario ya está registrado en ECS.
+let cachedAdminToken: { value: string; expiresAt: number } | null = null
+
+async function getAdminToken(): Promise<string | null> {
+  if (!ECS_ADMIN_EMAIL || !ECS_ADMIN_PASSWORD) return null
+  const now = Date.now()
+  if (cachedAdminToken && cachedAdminToken.expiresAt > now) {
+    return cachedAdminToken.value
+  }
+  try {
+    const res: any = await $fetch(`${ECS_API_BASE}/auth/login`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    { email: ECS_ADMIN_EMAIL, password: ECS_ADMIN_PASSWORD },
+    })
+    const token = res?.token || res?.access_token || res?.accessToken
+    if (!token) return null
+    cachedAdminToken = { value: token, expiresAt: now + 6 * 24 * 60 * 60 * 1000 }
+    return token
+  } catch { return null }
+}
 
 // Mapeo plan_nombre (humano) → planKey (slug ECS). Se puede sobreescribir
 // pasando plan_key directamente en el body.
@@ -201,7 +226,102 @@ export default defineEventHandler(async (event) => {
     })
   } catch (err: any) {
     const detail = err?.data ?? err?.response?._data ?? err?.message ?? err
-    const errMsg = `Error registrando cliente en ECS: ${JSON.stringify(detail)}`
+    const detailStr = typeof detail === 'object' ? JSON.stringify(detail) : String(detail)
+
+    // CASO ESPECIAL: cliente ya registrado en ECS. /auth/register/alef no es
+    // idempotente y rechaza si existe DNI o email previo. En lugar de fallar
+    // duro, intentamos detectar el estado actual del cliente y dar una
+    // respuesta útil al bot.
+    const yaRegistrado = /ya registrado|already (?:exists|registered)|duplicado|duplicate/i.test(detailStr)
+
+    if (yaRegistrado) {
+      console.log(`[generar-link-monnet] Cliente ${cliente_email} ya registrado en ECS — manejo gracioso`)
+
+      const adminToken = await getAdminToken()
+
+      // Si no hay admin token configurado, devolvemos mensaje claro pero genérico
+      if (!adminToken) {
+        const msg = 'Este cliente ya está registrado en ECS. Pídele que ingrese a estasconsuerte.com.pe y se suscriba desde su perfil.'
+        await updateLog('error', null, 'Cliente duplicado y sin ECS_ADMIN para fallback')
+        return {
+          ok: false,
+          ya_registrado: true,
+          message: msg,
+          log_id: logId,
+        }
+      }
+
+      // Buscar al cliente en /admin/users para ver su estado real
+      let user: any = null
+      try {
+        const usersRes: any = await $fetch(`${ECS_API_BASE}/admin/users`, {
+          headers: { Authorization: `Bearer ${adminToken}` },
+        })
+        const users = usersRes?.users || []
+        user = users.find((u: any) =>
+          String(u.email ?? '').toLowerCase() === String(cliente_email).toLowerCase() ||
+          String(u.documentNumber ?? '') === String(cliente_dni),
+        ) ?? null
+      } catch (lookupErr: any) {
+        console.error('[generar-link-monnet] Error buscando user en admin:', lookupErr?.message)
+      }
+
+      // Caso 1: el cliente ya tiene suscripción AUTHORIZED → avisar al bot
+      if (user?.subscriptionStatus === 'AUTHORIZED') {
+        await updateLog('skipped', { reason: 'cliente ya suscrito (AUTHORIZED)' })
+        return {
+          ok: false,
+          ya_suscrito: true,
+          plan_actual: user.subscriptionPlan ?? null,
+          message: `Ya tienes una suscripción activa al plan "${user.subscriptionPlan ?? 'ECS'}". No es necesario suscribirte de nuevo.`,
+          log_id: logId,
+        }
+      }
+
+      // Caso 2: tiene una suscripción PENDING — buscar nuestro link guardado y reusarlo
+      if (user?.subscriptionStatus === 'PENDING') {
+        const { data: pendiente } = await supabase
+          .from('SuscriptoresBDwppECS')
+          .select('id, operation_number, deep_link, ecs_subscription_id, monnet_subscription_id, plan_nombre')
+          .eq('email', cliente_email)
+          .eq('estado', 'pendiente')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (pendiente?.deep_link) {
+          await updateLog('success', { reused: true, operation_number: pendiente.operation_number })
+          return {
+            ok: true,
+            reused: true,
+            link: pendiente.deep_link,
+            ecs_subscription_id: pendiente.ecs_subscription_id,
+            monnet_subscription_id: pendiente.monnet_subscription_id,
+            operation_number: pendiente.operation_number,
+            plan_name: pendiente.plan_nombre,
+            monto: Number(monto) || 0,
+            metodo_pago: 'Yape',
+            message: `Tienes un link de pago pendiente:\n${pendiente.deep_link}\n\nÁbrelo desde tu celular para completar la afiliación con Yape.`,
+            log_id: logId,
+          }
+        }
+      }
+
+      // Caso 3: registrado pero sin suscripción (NULL, cancelada, expirada, etc.)
+      //    NO podemos crear una nueva a su nombre porque /auth/register/alef nos
+      //    rechazó. Devolvemos un mensaje claro pidiendo otra vía.
+      await updateLog('error', null, `Cliente ya registrado, status=${user?.subscriptionStatus ?? 'desconocido'}`)
+      return {
+        ok: false,
+        ya_registrado: true,
+        ecs_status: user?.subscriptionStatus ?? null,
+        message: 'Este cliente ya está registrado en ECS pero no tiene suscripción activa. Pídele que inicie sesión en estasconsuerte.com.pe y se suscriba desde ahí.',
+        log_id: logId,
+      }
+    }
+
+    // Otros errores: comportamiento original
+    const errMsg = `Error registrando cliente en ECS: ${detailStr}`
     await updateLog('error', null, errMsg)
     throw createError({ statusCode: 502, statusMessage: errMsg })
   }

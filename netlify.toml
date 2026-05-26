@@ -13,4 +13,9 @@
 #     → corre todos los días a las 00:00 UTC (= 19:00 Lima)
 #     → dispara el endpoint del dashboard /api/healup/cron-agendamientos-diarios
 #
-# El schedule está declarado dentro del archivo .mts con `export const config = { schedule: '...' }`.
+#   netlify/functions/cron-healup-citas-manana.mts
+#     → corre todos los días a las 00:00 UTC (= 19:00 Lima)
+#     → dispara el endpoint del dashboard /api/healup/cron-citas-manana
+#       (resumen de las citas del día siguiente: dashboard + Google Calendar)
+#
+# El schedule está declarado dentro de cada archivo .mts con `export const config = { schedule: '...' }`.

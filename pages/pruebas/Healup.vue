@@ -95,6 +95,11 @@
             <v-icon icon="mdi-whatsapp" size="18" />
             <span>Envío Diario WhatsApp</span>
           </button>
+          <button :class="['nav-item', { active: activeView === 'citas_manana' }]"
+            @click="activeView = 'citas_manana'">
+            <v-icon icon="mdi-calendar-clock" size="18" />
+            <span>Citas de Mañana</span>
+          </button>
         </div>
       </nav>
 
@@ -4625,6 +4630,11 @@
       <!-- ==========  VISTA: ENVÍO DIARIO WHATSAPP (HERRAMIENTAS)  ========== -->
       <div v-if="activeView === 'agendamiento_diario'" class="view-container">
         <HealupAgendamientoDiarioPanel />
+      </div>
+
+      <!-- ==========  VISTA: CITAS DE MAÑANA (HERRAMIENTAS)  ========== -->
+      <div v-if="activeView === 'citas_manana'" class="view-container">
+        <HealupCitasMananaPanel />
       </div>
 
     <!-- ==========  CONSENTIMIENTO INFORMADO · VIEWER DIALOG  ========== -->

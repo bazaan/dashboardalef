@@ -367,6 +367,63 @@ curl -s "https://<tu-site>.netlify.app/api/healup/cron-agendamientos-diarios?api
 ```
 También se puede disparar desde el dashboard con el botón "Probar envío ahora".
 
+### Citas de Mañana — Resumen Diario WhatsApp (Healup → n8n → WhatsApp)
+
+Herramienta nueva (sidebar Healup → **HERRAMIENTAS → Citas de Mañana**). Es "parecida" a la
+anterior pero distinta en el QUÉ envía: en vez de los pacientes *creados* hoy, envía un resumen de
+**todas las citas cuya fecha de agendamiento es MAÑANA** (día Lima + 1). Flujo end-to-end:
+
+1. **Netlify Scheduled Function** `netlify/functions/cron-healup-citas-manana.mts` corre `0 0 * * *` UTC (= 19:00 Lima).
+2. Hace `GET` a `/api/healup/cron-citas-manana?api_key=$HEALUP_AGENDAMIENTO_CRON_KEY` (reusa la misma clave del cron).
+3. El endpoint (lógica en `server/utils/healup-citas-manana.ts`) trae las citas de mañana de **dos fuentes**:
+   - **Dashboard:** tabla `healup_calendar_events` (matchea fecha en ambos formatos `YYYY-MM-DD` y `DD-MM-YYYY`).
+   - **Google Calendar:** API directa con el mismo service account que usa `/gcal-events`.
+4. **Deduplica:** dos citas se fusionan si ocurren en la **misma franja horaria** Y son la misma persona
+   (mismo DNI **o** mismo teléfono **o** mismo nombre normalizado, ej: "José Perez" ≈ "jose pérez").
+   Al fusionar conserva el **nombre más largo** y rellena DNI/teléfono/procedimiento faltantes.
+   (Citas de la misma persona a horas distintas NO se fusionan: son citas reales distintas.)
+5. Formatea cada cita con **fecha+hora amigable** (`formatFriendly` → `27/05/26 2:00pm`) y arma un
+   `mensaje_whatsapp` listo para enviar dentro del payload.
+6. POSTea el JSON a `N8N_WEBHOOK_HEALUP_CITAS_MANANA`. n8n recibe → Code node → HTTP Request → WhatsApp.
+7. Guarda log en `healup_citas_manana_logs` (payload completo, respuesta n8n, http_status, duración).
+
+**Panel UI:** `components/HealupCitasMananaPanel.vue` (stats, filtros, tabla de logs con preview del
+mensaje WhatsApp + JSON enviado + respuesta, botón "Probar envío ahora" vía `POST /api/healup/citas-manana-trigger`).
+
+**Endpoints:**
+- `GET /api/healup/cron-citas-manana` — disparado por la Scheduled Function (auth `?api_key=` o `CRON_SECRET`).
+- `POST /api/healup/citas-manana-trigger` — disparo manual (requiere sesión Healup).
+- `GET /api/healup/citas-manana-logs` — lista paginada de logs (`?limit=&offset=&status=`).
+
+**Env vars:**
+- `N8N_WEBHOOK_HEALUP_CITAS_MANANA` — URL del webhook n8n destinatario (NUEVA).
+- `HEALUP_AGENDAMIENTO_CRON_KEY` — reusa la clave existente.
+- `GOOGLE_SERVICE_ACCOUNT_JSON` / `GOOGLE_CALENDAR_ID_HEALUP` — ya configuradas para gcal-events.
+
+**Migración SQL:** correr una vez `sql/healup_citas_manana_logs.sql` en Supabase.
+
+**Payload enviado a n8n** (forma):
+```jsonc
+{
+  "evento": "healup.citas_dia_siguiente",
+  "empresa": "Healup",
+  "fecha_objetivo": "2026-05-27",
+  "fecha_objetivo_friendly": "27/05/26",
+  "resumen": { "total_citas": 3, "desde_dashboard": 2, "desde_google_calendar": 2, "duplicados_fusionados": 1 },
+  "mensaje_whatsapp": "📅 *Citas de mañana (27/05/26)* ...",   // ya armado, listo para enviar
+  "citas": [
+    { "fecha": "2026-05-27", "hora": "14:00", "fecha_hora_friendly": "27/05/26 2:00pm",
+      "nombre_completo": "José Pérez García", "dni": "70973677", "telefono": "936818130",
+      "procedimiento": "Botox", "cabina": "cabina1", "fuentes": ["dashboard","google_calendar"] }
+  ]
+}
+```
+
+**Diagnóstico manual:**
+```bash
+curl -s "https://<tu-site>.netlify.app/api/healup/cron-citas-manana?api_key=$HEALUP_AGENDAMIENTO_CRON_KEY"
+```
+
 ---
 
 ## Variables de Entorno (`.env`)
@@ -397,6 +454,8 @@ CHATWOOT_API_TOKEN=             # Token API Chatwoot para envio de mensajes rema
 # Envío Diario de pacientes agendados (Herramientas Healup → n8n → WhatsApp gerente)
 N8N_WEBHOOK_HEALUP_AGENDAMIENTO_DIARIO=   # URL del webhook n8n que recibe el JSON diario
 HEALUP_AGENDAMIENTO_CRON_KEY=             # Clave compartida entre la Netlify Scheduled Function y el endpoint Nuxt
+# Citas de Mañana (Herramientas Healup → n8n → WhatsApp). Reusa HEALUP_AGENDAMIENTO_CRON_KEY
+N8N_WEBHOOK_HEALUP_CITAS_MANANA=          # URL del webhook n8n que recibe el resumen de citas del día siguiente
 ```
 
 ---
@@ -432,6 +491,7 @@ HEALUP_AGENDAMIENTO_CRON_KEY=             # Clave compartida entre la Netlify Sc
 | `healup_stock_movements` | Movimientos de stock (entrada/salida/ajuste). FK a `healup_stock_items` |
 | `healup_procedure_supplies` | Insumos por procedimiento (para descuento automatico de stock) |
 | `healup_agendamiento_diario_logs` | Logs de los envíos diarios a n8n con los pacientes agendados ese día. Campos: `fecha_lima`, `origen` (cron/manual), `triggered_by_email`, `status` (success/error/empty), `pacientes_count`, `pacientes_wpp_count`, `pacientes_fbig_count`, `pacientes_tiktok_count`, `webhook_url`, `payload_enviado` (JSONB), `respuesta_n8n` (JSONB), `http_status`, `error_message`, `duracion_ms`. Migración: `sql/healup_agendamiento_diario_logs.sql` |
+| `healup_citas_manana_logs` | Logs del resumen diario de **citas del día siguiente** (dashboard + Google Calendar, deduplicado) enviado a n8n. Campos: `fecha_objetivo`, `origen`, `triggered_by_email`, `status`, `citas_count`, `citas_dashboard_count`, `citas_gcal_count`, `duplicados_fusionados`, `webhook_url`, `payload_enviado` (JSONB), `respuesta_n8n` (JSONB), `http_status`, `error_message`, `duracion_ms`. Migración: `sql/healup_citas_manana_logs.sql` |
 
 **Columnas de trazabilidad de cobro en `healup_calendar_events`** (agregadas en `sql/healup_cobro_atencion.sql`):
 

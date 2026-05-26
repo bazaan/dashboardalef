@@ -456,7 +456,21 @@ N8N_WEBHOOK_HEALUP_AGENDAMIENTO_DIARIO=   # URL del webhook n8n que recibe el JS
 HEALUP_AGENDAMIENTO_CRON_KEY=             # Clave compartida entre la Netlify Scheduled Function y el endpoint Nuxt
 # Citas de Mañana (Herramientas Healup → n8n → WhatsApp). Reusa HEALUP_AGENDAMIENTO_CRON_KEY
 N8N_WEBHOOK_HEALUP_CITAS_MANANA=          # URL del webhook n8n que recibe el resumen de citas del día siguiente
+# Tool "Calendario FB/IG" (agendar citas de Instagram/Facebook). Todas opcionales — tienen default.
+GOOGLE_SHEET_CITAS_HEALUP_ID=             # ID de la hoja "citas_healup" (default: 1C4qVEgymTANCne2xGQtwOi_ow4tDx1XvxIZ-pHOtCPE)
+GOOGLE_SHEET_CITAS_HEALUP_RANGE=          # Pestaña de la hoja (default: "citas")
+CHATWOOT_HEALUP_FBIG_TOKEN=               # api_access_token Chatwoot para avisar a la supervisora (default: el del subflow)
 ```
+
+> **Tool "Calendario FB/IG"** (`POST /api/healup/calendario-fbig`, api_key `healup-calendario-fbig-2026`):
+> versión Instagram/Facebook de la tool "Calendario" de WhatsApp. Reemplaza el subflow n8n
+> "ACTIVO agendar heal up fb ig". Hace lo mismo que la de WhatsApp (GCal + `healup_calendar_events` +
+> boleta gated + log en `agent_tool_logs` con `tool_name='Calendario FB/IG'`) y además, en vez de las
+> tablas/canales de WhatsApp: upsert en `PacientesBDfbigHEALUP`, marca `pasar_supervisor='si'` en
+> `pasar_supervisor_healup`, append a Google Sheets `citas_healup`, y avisa a la supervisora (LUCIA)
+> vía Chatwoot (cuenta 2, conversación 700). El `numerotelefono` que llega es un PSID de Messenger/IG,
+> no un teléfono real (se guarda tal cual). **Requiere re-autorizar Google** (GCal Sync → "Renovar
+> acceso Google") porque se agregó el scope `spreadsheets` para el append a la hoja.
 
 ---
 

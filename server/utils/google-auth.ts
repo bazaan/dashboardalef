@@ -166,8 +166,9 @@ export function getGoogleAuthUrl(redirectUri: string): string {
   const clientId = process.env.GOOGLE_CLIENT_ID
   if (!clientId) throw new Error('GOOGLE_CLIENT_ID no configurado')
 
-  // calendar.events permite leer Y crear/editar eventos (necesario para agendar citas)
-  const scope = encodeURIComponent('https://www.googleapis.com/auth/calendar.events')
+  // calendar.events: leer/crear/editar eventos (agendar citas)
+  // spreadsheets: append a la hoja citas_healup (tool "Calendario FB/IG")
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/spreadsheets')
   const redirect = encodeURIComponent(redirectUri)
   const cid = encodeURIComponent(clientId)
 

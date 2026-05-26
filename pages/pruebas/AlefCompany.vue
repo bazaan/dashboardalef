@@ -2510,7 +2510,7 @@ const devCompanies = [
 ]
 
 const COMPANY_TOOLS: Record<string, string[]> = {
-  healup:         ['Todas', 'Calendario', 'Cita Multiple', 'Envío Diario WhatsApp', 'Citas de Mañana'],
+  healup:         ['Todas', 'Calendario', 'Calendario FB/IG', 'Cita Multiple', 'Envío Diario WhatsApp', 'Citas de Mañana'],
   estasconsuerte: ['Todas', 'Generar Link Monnet', 'Webhook Monnet'],
   brada:          ['Todas'],
   estetikamedika: ['Todas'],
@@ -2536,7 +2536,8 @@ const devHealupPanel = computed<'agendamiento' | 'citas' | null>(() => {
 })
 
 const devEndpoints = [
-  { company: 'healup',         url: 'POST /api/healup/calendario           ·  api_key: healup-calendario-2026' },
+  { company: 'healup',         url: 'POST /api/healup/calendario           ·  api_key: healup-calendario-2026 (WhatsApp)' },
+  { company: 'healup',         url: 'POST /api/healup/calendario-fbig      ·  api_key: healup-calendario-fbig-2026 (Instagram/Facebook)' },
   { company: 'healup',         url: 'POST /api/healup/cita-multiple        ·  api_key: healup-cita-multiple-2026' },
   { company: 'healup',         url: 'GET  /api/healup/cron-agendamientos-diarios  ·  19:00 Lima → n8n → WhatsApp gerente' },
   { company: 'healup',         url: 'GET  /api/healup/cron-citas-manana     ·  19:00 Lima → n8n → WhatsApp (citas de mañana)' },

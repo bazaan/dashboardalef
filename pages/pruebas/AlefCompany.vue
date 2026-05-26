@@ -1825,7 +1825,7 @@
               </button>
 
               <!-- Badge de estado junto a los tools -->
-              <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+              <div v-if="!devHealupPanel" style="margin-left:auto; display:flex; gap:6px; align-items:center;">
                 <button v-for="st in ['Todos','success','partial','error']" :key="st"
                   @click="devLogsStatusFilter = st"
                   :style="devLogsStatusFilter === st
@@ -1841,8 +1841,16 @@
             </div>
           </div>
 
+          <!-- ── PANELES DE HERRAMIENTAS HEALUP (Envío Diario / Citas de Mañana) ── -->
+          <div v-if="devHealupPanel === 'agendamiento'" style="margin-bottom:1.5rem;">
+            <HealupAgendamientoDiarioPanel />
+          </div>
+          <div v-else-if="devHealupPanel === 'citas'" style="margin-bottom:1.5rem;">
+            <HealupCitasMananaPanel />
+          </div>
+
           <!-- KPIs de la selección actual -->
-          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom:1.5rem;">
+          <div v-if="!devHealupPanel" class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom:1.5rem;">
             <div class="stat-card">
               <div class="stat-title">Ejecuciones</div>
               <div class="stat-value">{{ devLogsFiltrados.length }}</div>
@@ -1867,7 +1875,7 @@
           </div>
 
           <!-- Tabla -->
-          <div class="table-section">
+          <div v-if="!devHealupPanel" class="table-section">
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -2502,7 +2510,7 @@ const devCompanies = [
 ]
 
 const COMPANY_TOOLS: Record<string, string[]> = {
-  healup:         ['Todas', 'Calendario', 'Cita Multiple'],
+  healup:         ['Todas', 'Calendario', 'Cita Multiple', 'Envío Diario WhatsApp', 'Citas de Mañana'],
   estasconsuerte: ['Todas', 'Generar Link Monnet', 'Webhook Monnet'],
   brada:          ['Todas'],
   estetikamedika: ['Todas'],
@@ -2519,9 +2527,19 @@ const devToolsForCompany = computed(() =>
   COMPANY_TOOLS[devLogsSelectedCompany.value] ?? ['Todas']
 )
 
+// Herramientas Healup que se renderizan como panel completo (no como tabla de logs genérica)
+const devHealupPanel = computed<'agendamiento' | 'citas' | null>(() => {
+  if (devLogsSelectedCompany.value !== 'healup') return null
+  if (devLogsSelectedTool.value === 'Envío Diario WhatsApp') return 'agendamiento'
+  if (devLogsSelectedTool.value === 'Citas de Mañana') return 'citas'
+  return null
+})
+
 const devEndpoints = [
   { company: 'healup',         url: 'POST /api/healup/calendario           ·  api_key: healup-calendario-2026' },
   { company: 'healup',         url: 'POST /api/healup/cita-multiple        ·  api_key: healup-cita-multiple-2026' },
+  { company: 'healup',         url: 'GET  /api/healup/cron-agendamientos-diarios  ·  19:00 Lima → n8n → WhatsApp gerente' },
+  { company: 'healup',         url: 'GET  /api/healup/cron-citas-manana     ·  19:00 Lima → n8n → WhatsApp (citas de mañana)' },
   { company: 'estasconsuerte', url: 'POST /api/ecs/generar-link-monnet     ·  api_key: ecs-monnet-2026-link' },
   { company: 'estasconsuerte', url: 'POST /api/ecs/monnet-webhook          ·  (público, valida firma SHA512)' },
 ]

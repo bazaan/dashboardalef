@@ -88,19 +88,6 @@
           </button>
         </div>
 
-        <div class="nav-section">
-          <div class="nav-label">HERRAMIENTAS</div>
-          <button :class="['nav-item', { active: activeView === 'agendamiento_diario' }]"
-            @click="activeView = 'agendamiento_diario'">
-            <v-icon icon="mdi-whatsapp" size="18" />
-            <span>Envío Diario WhatsApp</span>
-          </button>
-          <button :class="['nav-item', { active: activeView === 'citas_manana' }]"
-            @click="activeView = 'citas_manana'">
-            <v-icon icon="mdi-calendar-clock" size="18" />
-            <span>Citas de Mañana</span>
-          </button>
-        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -4625,16 +4612,6 @@
       <!-- ==========  VISTA: TICKETS  ========== -->
       <div v-if="activeView === 'tickets'" class="view-container">
         <TicketPanel company-id="Heal up" empresa-nombre="Healup" :current-user="currentUser?.full_name" />
-      </div>
-
-      <!-- ==========  VISTA: ENVÍO DIARIO WHATSAPP (HERRAMIENTAS)  ========== -->
-      <div v-if="activeView === 'agendamiento_diario'" class="view-container">
-        <HealupAgendamientoDiarioPanel />
-      </div>
-
-      <!-- ==========  VISTA: CITAS DE MAÑANA (HERRAMIENTAS)  ========== -->
-      <div v-if="activeView === 'citas_manana'" class="view-container">
-        <HealupCitasMananaPanel />
       </div>
 
     <!-- ==========  CONSENTIMIENTO INFORMADO · VIEWER DIALOG  ========== -->

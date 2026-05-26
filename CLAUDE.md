@@ -341,7 +341,7 @@ Las 16 boletas emitidas por HealUp tienen `aceptada_por_sunat: false` y CDR vac�
 
 ### Envío Diario WhatsApp — Pacientes Agendados (Healup → n8n → Gerente)
 
-Herramienta nueva (sidebar Healup → **HERRAMIENTAS → Envío Diario WhatsApp**). Flujo end-to-end:
+Herramienta interna (vive en **dashboard Alef → Dev · Agent Logs → Empresa: Healup → Tool: "Envío Diario WhatsApp"**). Se movió fuera del dashboard de Healup porque ese lo ven los doctores y el testeo va en el dashboard interno de Alef. Permisos de los endpoints ampliados a `alef`/`alef company` (además de healup y superadmin). Flujo end-to-end:
 
 1. **Netlify Scheduled Function** `netlify/functions/cron-healup-agendamientos.mts` se ejecuta todos los días a las `0 0 * * *` UTC (= 19:00 hora Lima, Lima es UTC-5 todo el año).
 2. La Scheduled Function hace un `GET` al endpoint del dashboard `/api/healup/cron-agendamientos-diarios?api_key=$HEALUP_AGENDAMIENTO_CRON_KEY`.
@@ -369,7 +369,7 @@ También se puede disparar desde el dashboard con el botón "Probar envío ahora
 
 ### Citas de Mañana — Resumen Diario WhatsApp (Healup → n8n → WhatsApp)
 
-Herramienta nueva (sidebar Healup → **HERRAMIENTAS → Citas de Mañana**). Es "parecida" a la
+Herramienta interna (vive en **dashboard Alef → Dev · Agent Logs → Empresa: Healup → Tool: "Citas de Mañana"**, igual que "Envío Diario WhatsApp"; se movió fuera del dashboard de Healup que ven los doctores). Es "parecida" a la
 anterior pero distinta en el QUÉ envía: en vez de los pacientes *creados* hoy, envía un resumen de
 **todas las citas cuya fecha de agendamiento es MAÑANA** (día Lima + 1). Flujo end-to-end:
 

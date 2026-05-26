@@ -11,7 +11,9 @@
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import { ejecutarEnvioCitasManana } from '~/server/utils/healup-citas-manana'
 
-const COMPANY_VARIANTS_HEALUP = ['healup', 'heal up']
+// Esta herramienta vive ahora en el dashboard de Alef (es interna/de testeo),
+// así que la pueden disparar usuarios de Alef y de Healup, además de superadmin.
+const COMPANY_VARIANTS_HEALUP = ['healup', 'heal up', 'alef', 'alef company']
 
 function normalizeCompany(s: any): string {
   return String(s || '').toLowerCase().trim()

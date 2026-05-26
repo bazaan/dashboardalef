@@ -13,7 +13,8 @@
 
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 
-const COMPANY_VARIANTS_HEALUP = ['healup', 'heal up']
+// Logs visibles desde el dashboard de Alef (herramienta interna) y de Healup.
+const COMPANY_VARIANTS_HEALUP = ['healup', 'heal up', 'alef', 'alef company']
 
 function normalizeCompany(s: any): string {
   return String(s || '').toLowerCase().trim()

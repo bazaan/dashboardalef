@@ -309,6 +309,16 @@
       </div>
 
 
+      <!-- ==========  VISTA: FORMULARIOS  ========== -->
+      <div v-else-if="activeView === 'formularios'" class="view-container">
+        <header class="top-header">
+          <h1>Formularios</h1>
+        </header>
+        <div class="content-area">
+          <FormsCompanyPanel company-id="healup" />
+        </div>
+      </div>
+
       <!-- ==========  VISTA: SETTINGS  ========== -->
       <SettingsView v-else-if="activeView === 'settings'" company-id="Heal up" :current-user-role="currentUser?.role" />
 
@@ -5906,6 +5916,7 @@ const { downloadExcel } = useExcelExport()
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessHealup, dashboards } from '@/utils/permissions'
 import SettingsView from '@/components/Settings/SettingsView.vue'
+import FormsCompanyPanel from '@/components/Forms/FormsCompanyPanel.vue'
 
 const formatFecha = (dateString: string | null | undefined) => {
   if (!dateString) return '-';
@@ -6859,7 +6870,8 @@ const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
   { icon: 'mdi-account-group', label: 'Pacientes', id: 'pacientes' },
-  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' }
+  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
+  { icon: 'mdi-form-select', label: 'Formularios', id: 'formularios' }
 ]
 
 const chatItems = [

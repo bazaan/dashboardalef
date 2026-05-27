@@ -668,6 +668,16 @@
         </div>
       </div>
 
+      <!-- ==========  VISTA: FORMULARIOS (solo superadmin)  ========== -->
+      <div v-else-if="activeView === 'formularios'" class="view-container">
+        <header class="top-header">
+          <h1>Formularios</h1>
+        </header>
+        <div class="content-area">
+          <FormsAdminPanel />
+        </div>
+      </div>
+
       <!-- ==========  VISTA: EGRESOS  ========== -->
       <div v-else-if="activeView === 'egresos'" class="view-container">
         <header class="top-header">
@@ -2374,6 +2384,7 @@ import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessAlef, dashboards } from '@/utils/permissions'
 
 import SettingsView from '@/components/Settings/SettingsView.vue'
+import FormsAdminPanel from '@/components/Forms/FormsAdminPanel.vue'
 
 definePageMeta({
   middleware: 'auth-dashboard'
@@ -2785,6 +2796,7 @@ const menuItems = [
   { icon: 'mdi-clipboard-list', label: 'Actividades', id: 'actividades' },
   { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'conversaciones', url: 'https://chats.alef.company/app/accounts/1/dashboard' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
+  { icon: 'mdi-form-select', label: 'Formularios', id: 'formularios' },
   { icon: 'mdi-bell-alert', label: 'Alertas CRM', id: 'alertas_crm' }
 ]
 

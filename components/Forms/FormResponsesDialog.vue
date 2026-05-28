@@ -35,6 +35,25 @@
           <template v-slot:item.submitted_at="{ item }">
             {{ new Date(item.submitted_at).toLocaleString('es-PE') }}
           </template>
+
+          <!-- Botón PDF SOLO para Gatwick (slug gtw-IT-001) -->
+          <template v-if="isGatwickInformeTecnico" v-slot:item._acciones="{ item }">
+            <v-tooltip text="Exportar este informe como PDF">
+              <template v-slot:activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  size="x-small"
+                  variant="tonal"
+                  color="error"
+                  prepend-icon="mdi-file-pdf-box"
+                  :loading="exportingId === item._raw.id"
+                  @click="exportRowAsPdf(item._raw)"
+                >
+                  PDF
+                </v-btn>
+              </template>
+            </v-tooltip>
+          </template>
         </v-data-table>
       </v-card-text>
 
@@ -99,25 +118,50 @@ watch(() => props.modelValue, async (open) => {
   }
 })
 
-// Headers: fecha + una columna por cada campo del form
+// Detecta si es el formulario de Gatwick (para mostrar botón PDF)
+const isGatwickInformeTecnico = computed(() => {
+  return form.value?.slug === 'gtw-IT-001' || form.value?.company_id === 'gatwick'
+})
+
+// Headers: fecha + (acciones si Gatwick) + una columna por cada campo
 const tableHeaders = computed(() => {
-  const base = [
+  const base: any[] = [
     { title: 'Fecha de envío', key: 'submitted_at', sortable: true },
   ]
+  if (isGatwickInformeTecnico.value) {
+    base.push({ title: 'PDF', key: '_acciones', sortable: false, width: 90 })
+  }
   if (!form.value?.fields) return base
   for (const f of form.value.fields) {
-    base.push({ title: f.label, key: f.id, sortable: false } as any)
+    base.push({ title: f.label, key: f.id, sortable: false })
   }
   return base
 })
 
-// Cada fila: { submitted_at, ...answers }
+// Cada fila: { submitted_at, _raw, ...answers }
 const tableRows = computed(() => {
   return responses.value.map(r => ({
     submitted_at: r.submitted_at,
+    _raw:         r,        // referencia al objeto completo para el botón PDF
     ...flattenAnswers(r.answers),
   }))
 })
+
+// Estado de exportación PDF
+const exportingId = ref<number | null>(null)
+
+async function exportRowAsPdf(rawResponse: any) {
+  if (!form.value || !rawResponse) return
+  exportingId.value = rawResponse.id
+  try {
+    const { exportGatwickPdf } = await import('./gatwickPdf')
+    await exportGatwickPdf(rawResponse, form.value)
+  } catch (e: any) {
+    alert(`Error generando PDF: ${e?.message ?? e}`)
+  } finally {
+    exportingId.value = null
+  }
+}
 
 function flattenAnswers(answers: any): Record<string, any> {
   const out: Record<string, any> = {}

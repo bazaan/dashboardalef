@@ -41,14 +41,12 @@ INSERT INTO public.forms (
       "placeholder":"Tus apellidos"
     },
     {
-      "id":"hora_entrada","type":"short",
-      "label":"Hora de entrada","required":true,
-      "placeholder":"Ej: 09:30"
+      "id":"hora_entrada","type":"time",
+      "label":"Hora de entrada","required":true
     },
     {
-      "id":"hora_salida","type":"short",
-      "label":"Hora de salida","required":true,
-      "placeholder":"Ej: 11:45"
+      "id":"hora_salida","type":"time",
+      "label":"Hora de salida","required":true
     },
     {
       "id":"cliente","type":"short",

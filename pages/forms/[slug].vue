@@ -63,6 +63,42 @@
             class="text-input"
           />
 
+          <!-- Hora (12h con AM/PM) -->
+          <div v-else-if="field.type === 'time'" class="time-picker">
+            <select
+              :value="timeParts[field.id]?.hour"
+              @change="onTimePartChange(field.id, 'hour', ($event.target as HTMLSelectElement).value)"
+              class="time-select"
+              :required="field.required"
+            >
+              <option value="" disabled>--</option>
+              <option v-for="h in 12" :key="h" :value="String(h).padStart(2,'0')">
+                {{ String(h).padStart(2,'0') }}
+              </option>
+            </select>
+            <span class="time-separator">:</span>
+            <select
+              :value="timeParts[field.id]?.minute"
+              @change="onTimePartChange(field.id, 'minute', ($event.target as HTMLSelectElement).value)"
+              class="time-select"
+              :required="field.required"
+            >
+              <option value="" disabled>--</option>
+              <option v-for="m in minutesList" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <select
+              :value="timeParts[field.id]?.period"
+              @change="onTimePartChange(field.id, 'period', ($event.target as HTMLSelectElement).value)"
+              class="time-select"
+              :required="field.required"
+            >
+              <option value="" disabled>--</option>
+              <option value="AM">AM</option>
+              <option value="PM">PM</option>
+            </select>
+            <span v-if="answers[field.id]" class="time-preview">{{ answers[field.id] }}</span>
+          </div>
+
           <!-- Radio (selección única) -->
           <div v-else-if="field.type === 'radio'" class="options-list">
             <label v-for="opt in field.options || []" :key="opt" class="option-item">
@@ -113,11 +149,17 @@ definePageMeta({
 
 interface Field {
   id: string
-  type: 'short' | 'long' | 'checkbox' | 'radio' | 'date' | 'email' | 'phone'
+  type: 'short' | 'long' | 'checkbox' | 'radio' | 'date' | 'time' | 'email' | 'phone'
   label: string
   required: boolean
   options?: string[]
   placeholder?: string
+}
+
+interface TimeParts {
+  hour: string    // "01"–"12"
+  minute: string  // "00", "05", ..., "55"
+  period: string  // "AM" | "PM"
 }
 
 interface PublicForm {
@@ -141,6 +183,22 @@ const answers      = reactive<Record<string, any>>({})
 const submitting   = ref(false)
 const submitted    = ref(false)
 const submitError  = ref<string | null>(null)
+const timeParts    = reactive<Record<string, TimeParts>>({})
+
+// Listado de minutos cada 5 (00, 05, 10, ..., 55)
+const minutesList = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))
+
+function onTimePartChange(fieldId: string, part: keyof TimeParts, value: string) {
+  if (!timeParts[fieldId]) timeParts[fieldId] = { hour: '', minute: '', period: '' }
+  timeParts[fieldId][part] = value
+  const { hour, minute, period } = timeParts[fieldId]
+  // Solo guardamos la respuesta cuando los 3 están completos
+  if (hour && minute && period) {
+    answers[fieldId] = `${hour}:${minute} ${period}`
+  } else {
+    answers[fieldId] = ''
+  }
+}
 
 useHead({
   title: computed(() => form.value?.title ? `${form.value.title} — Alef` : 'Formulario'),
@@ -150,10 +208,16 @@ onMounted(async () => {
   try {
     const data = await $fetch<PublicForm>(`/api/forms/public/${slug.value}`)
     form.value = data
-    // Inicializar checkboxes como array
+    // Inicializar valores por defecto
     for (const f of data.fields) {
-      if (f.type === 'checkbox') answers[f.id] = []
-      else answers[f.id] = ''
+      if (f.type === 'checkbox') {
+        answers[f.id] = []
+      } else if (f.type === 'time') {
+        timeParts[f.id] = { hour: '', minute: '', period: '' }
+        answers[f.id] = ''
+      } else {
+        answers[f.id] = ''
+      }
     }
   } catch (e: any) {
     const status = e?.statusCode || e?.response?.status
@@ -308,6 +372,57 @@ async function handleSubmit() {
 .textarea-input {
   resize: vertical;
   min-height: 90px;
+}
+
+.time-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.time-select {
+  background: var(--fp-card-soft);
+  border: 1px solid var(--fp-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--fp-text);
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  min-width: 70px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239aa0ac'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 16px;
+  padding-right: 28px;
+  transition: border-color 0.15s;
+}
+
+.time-select:focus {
+  outline: none;
+  border-color: var(--fp-primary);
+}
+
+.time-select option { background: var(--fp-card); color: var(--fp-text); }
+
+.time-separator {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--fp-text-muted);
+}
+
+.time-preview {
+  margin-left: 8px;
+  padding: 6px 12px;
+  background: rgba(218, 165, 32, 0.12);
+  border: 1px solid rgba(218, 165, 32, 0.35);
+  border-radius: 8px;
+  color: var(--fp-primary);
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
 .options-list {

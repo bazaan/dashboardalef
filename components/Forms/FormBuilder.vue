@@ -229,6 +229,7 @@ const fieldTypes = [
   { value: 'radio',    label: 'Selección única (radio)',  icon: 'mdi-radiobox-marked' },
   { value: 'checkbox', label: 'Selección múltiple (checkboxes)', icon: 'mdi-checkbox-marked' },
   { value: 'date',     label: 'Fecha',            icon: 'mdi-calendar' },
+  { value: 'time',     label: 'Hora (12h con AM/PM)', icon: 'mdi-clock-outline' },
   { value: 'email',    label: 'Email',            icon: 'mdi-email' },
   { value: 'phone',    label: 'Teléfono',         icon: 'mdi-phone' },
 ]

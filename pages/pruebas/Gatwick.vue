@@ -144,6 +144,16 @@
       <!-- ========== VISTA: SETTINGS ========== -->
       <SettingsView v-if="activeView === 'settings'" company-id="Gatwick" :current-user-role="currentUser?.role" />
 
+      <!-- ==========  VISTA: FORMULARIOS  ========== -->
+      <div v-else-if="activeView === 'formularios'" class="view-container">
+        <header class="top-header">
+          <h1>Formularios</h1>
+        </header>
+        <div class="content-area">
+          <FormsCompanyPanel company-id="gatwick" />
+        </div>
+      </div>
+
       <!-- ========== VISTA: FACTURACIÓN ========== -->
       <div v-else-if="activeView === 'facturacion'" class="view-container">
         <header class="top-header"><h1>Facturación Electrónica</h1></header>
@@ -1104,6 +1114,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { isSuperAdmin, dashboards } from '~/utils/permissions'
+import FormsCompanyPanel from '@/components/Forms/FormsCompanyPanel.vue'
 
 definePageMeta({ middleware: 'auth-dashboard' })
 
@@ -1120,10 +1131,11 @@ const showUserMenu = ref(false)
 const activeView = ref('dashboard')
 
 const menuItems = [
-  { id: 'dashboard',  label: 'Dashboard',  icon: 'mdi-view-dashboard' },
-  { id: 'calendario', label: 'Calendario', icon: 'mdi-calendar' },
-  { id: 'clientes',   label: 'Clientes',   icon: 'mdi-account-group' },
-  { id: 'leads',      label: 'Leads',      icon: 'mdi-account-search' },
+  { id: 'dashboard',    label: 'Dashboard',    icon: 'mdi-view-dashboard' },
+  { id: 'calendario',   label: 'Calendario',   icon: 'mdi-calendar' },
+  { id: 'clientes',     label: 'Clientes',     icon: 'mdi-account-group' },
+  { id: 'leads',        label: 'Leads',        icon: 'mdi-account-search' },
+  { id: 'formularios',  label: 'Formularios',  icon: 'mdi-form-select' },
 ]
 const chatItems = [
   { id: 'conversaciones', label: 'Conversaciones', icon: 'mdi-message-text', href: 'https://chats.alef.company/app/accounts/15/dashboard' },

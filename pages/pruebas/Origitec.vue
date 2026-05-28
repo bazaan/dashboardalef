@@ -298,6 +298,16 @@
       <SettingsView v-else-if="activeView === 'settings'" company-id="Origitec"
         :current-user-role="currentUser?.role" />
 
+      <!-- ==========  VISTA: FORMULARIOS  ========== -->
+      <div v-else-if="activeView === 'formularios'" class="view-container">
+        <header class="top-header">
+          <h1>Formularios</h1>
+        </header>
+        <div class="content-area">
+          <FormsCompanyPanel company-id="origitec" />
+        </div>
+      </div>
+
       <!-- ==========  VISTA: CALENDARIO  ========== -->
       <div v-else-if="activeView === 'calendario'" class="view-container">
         <header class="top-header">
@@ -1837,6 +1847,7 @@ import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessOrigitec, dashboards } from '@/utils/permissions'
 
 import SettingsView from '@/components/Settings/SettingsView.vue'
+import FormsCompanyPanel from '@/components/Forms/FormsCompanyPanel.vue'
 
 definePageMeta({
   middleware: 'auth-dashboard'
@@ -2966,6 +2977,7 @@ const menuItems = [
   { icon: 'mdi-calendar-blank', label: 'Calendario', id: 'calendario' },
   { icon: 'mdi-cart', label: 'Ventas', id: 'ventas' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
+  { icon: 'mdi-form-select', label: 'Formularios', id: 'formularios' },
   { icon: 'mdi-calendar-clock', label: 'Reservas', id: 'reservas' }
 ]
 

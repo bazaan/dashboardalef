@@ -1,0 +1,86 @@
+{
+  "name": "❗ Error Handler — Global",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/flows/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"api_key\": \"flow-log-2026\", \"kind\": \"error\", \"flow_name\": $json.workflow?.name || \"\", \"error_message\": $json.execution?.error?.message || \"Error desconocido\", \"node_name\": $json.execution?.error?.node?.name || null, \"n8n_execution_id\": $json.execution?.id || null, \"execution_url\": $json.execution?.url || null, \"input\": { \"stack\": $json.execution?.error?.stack || null } } }}",
+        "options": {}
+      },
+      "id": "http-dashboard",
+      "name": "Guardar error en Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        240
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://chats.alef.company/api/v1/accounts/ACCOUNT_ID/conversations/CONVERSATION_ID/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "TU_TOKEN_CHATWOOT"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"content\": \"🔴 *Error en flujo n8n*\\n*Flujo:* \" + ($json.workflow?.name || \"—\") + \"\\n*Nodo:* \" + ($json.execution?.error?.node?.name || \"—\") + \"\\n*Error:* \" + ($json.execution?.error?.message || \"Error desconocido\") + \"\\n*Ejecución:* \" + ($json.execution?.id || \"—\") + \"\\n🕒 \" + new Date().toLocaleString(\"es-PE\", { timeZone: \"America/Lima\" }), \"message_type\": \"outgoing\", \"content_type\": \"text\" } }}",
+        "options": {}
+      },
+      "id": "http-chatwoot",
+      "name": "Avisar por WhatsApp (Chatwoot)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        480
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Guardar error en Dashboard",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Avisar por WhatsApp (Chatwoot)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}

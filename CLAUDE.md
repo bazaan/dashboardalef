@@ -339,6 +339,20 @@ Las 16 boletas emitidas por HealUp tienen `aceptada_por_sunat: false` y CDR vac�
 - Endpoint: `POST /api/n8n/toggle-workflow` con `{ clientKey, active: boolean }`
 - Requiere env vars: `N8N_API_KEY`, `N8N_BASE_URL`, `N8N_ID_ALEGRATED`, `N8N_ID_BRADA`, `N8N_ID_HEALUP`
 
+### Registro de Errores + Reporte de Tokens (cualquier flujo n8n → Dashboard + WhatsApp)
+
+Logger genérico multi-empresa para que **cualquier** workflow de n8n reporte errores y consumo de tokens.
+
+- **Endpoint:** `POST /api/flows/log` — api_key `flow-log-2026` (env `FLOW_LOG_API_KEY`). Escribe en `agent_tool_logs`.
+- **Aparece solo en la UI:** el panel **Dev · Agent Logs** ya lee `agent_tool_logs`; basta con que las filas tengan el `company_id` y `tool_name` correctos. Se agregaron las tools `Registro de Errores` y `Reporte de Tokens` a `COMPANY_TOOLS` (todas las empresas) en `pages/pruebas/AlefCompany.vue`.
+- **Empresa automática:** si no se manda `company_id`, se deduce del `flow_name` por keywords (`resolveCompany()` en el endpoint: `heal up`→healup, `suerte`/`ecs`→estasconsuerte, etc.).
+- **Dos modos** (`kind`):
+  - `error` → `tool_name='Registro de Errores'`, `status='error'`. Lo llama un workflow **Error Handler** de n8n (nodo *Error Trigger*) asignado como *Error Workflow* en cada flujo.
+  - `execution` → `tool_name='Reporte de Tokens'`, `status='success'`, guarda `tokens` (JSONB) + `tokens_total`. Lo llama un nodo HTTP al final de cada flujo con IA.
+- **WhatsApp:** la respuesta del endpoint trae `whatsapp_message` ya formateado para encadenar a un nodo Chatwoot (`POST https://chats.alef.company/api/v1/accounts/<acct>/conversations/<conv>/messages`).
+- **Migración SQL:** correr una vez `sql/flow_logs_tokens.sql` (extiende `agent_tool_logs` con `flow_name`, `node_name`, `n8n_execution_id`, `tokens`, `tokens_total`).
+- **Guía paso a paso n8n:** `referencia/n8n/registro-errores-y-tokens.md`.
+
 ### Envío Diario WhatsApp — Pacientes Agendados (Healup → n8n → Gerente)
 
 Herramienta interna (vive en **dashboard Alef → Dev · Agent Logs → Empresa: Healup → Tool: "Envío Diario WhatsApp"**). Se movió fuera del dashboard de Healup porque ese lo ven los doctores y el testeo va en el dashboard interno de Alef. Permisos de los endpoints ampliados a `alef`/`alef company` (además de healup y superadmin). Flujo end-to-end:

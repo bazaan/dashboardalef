@@ -1923,12 +1923,17 @@
                   </v-chip>
                 </template>
 
+                <template v-slot:item.tokens_total="{ item }">
+                  <span v-if="item.tokens_total != null" style="font-size:0.78rem; font-weight:600; color:#a78bfa;">{{ item.tokens_total.toLocaleString('es-PE') }}</span>
+                  <span v-else style="color:var(--text-muted);">—</span>
+                </template>
+
                 <template v-slot:item.duration_ms="{ item }">
                   <span style="font-size:0.78rem; color:var(--text-muted);">{{ item.duration_ms ? (item.duration_ms/1000).toFixed(1)+'s' : '—' }}</span>
                 </template>
 
                 <template v-slot:item.cliente="{ item }">
-                  <span style="font-size:0.83rem;">{{ item.input_data?.nombre_completo ?? '—' }}</span>
+                  <span style="font-size:0.83rem;">{{ item.input_data?.nombre_completo ?? item.flow_name ?? item.input_data?.flow_name ?? '—' }}</span>
                 </template>
 
                 <template v-slot:item.cita="{ item }">
@@ -2010,6 +2015,31 @@
               <v-chip size="small" :color="devLogSelected.output_data?.boleta?.ok===true ? 'success' : devLogSelected.output_data?.boleta?.ok===false ? 'error' : 'default'" variant="tonal">
                 📄 Boleta {{ devLogSelected.output_data?.boleta?.ok===true ? '✅' : devLogSelected.output_data?.boleta?.ok===false ? '❌' : '—' }}
               </v-chip>
+            </div>
+
+            <!-- Info de flujo n8n (errores / reportes de tokens) -->
+            <div v-if="devLogSelected.flow_name || devLogSelected.tokens_total != null"
+              style="margin-bottom:1rem; background:#0d1117; border:1px solid #21262d; border-radius:8px; padding:0.75rem 1rem; display:flex; gap:1.5rem; flex-wrap:wrap; font-size:0.8rem;">
+              <div v-if="devLogSelected.flow_name">
+                <span style="color:#64748b;">Flujo:</span>
+                <span style="color:#e2e8f0; font-weight:600; margin-left:6px;">{{ devLogSelected.flow_name }}</span>
+              </div>
+              <div v-if="devLogSelected.node_name">
+                <span style="color:#64748b;">Nodo:</span>
+                <span style="color:#e2e8f0; margin-left:6px;">{{ devLogSelected.node_name }}</span>
+              </div>
+              <div v-if="devLogSelected.n8n_execution_id">
+                <span style="color:#64748b;">Ejecución:</span>
+                <span style="color:#e2e8f0; margin-left:6px;">{{ devLogSelected.n8n_execution_id }}</span>
+              </div>
+              <div v-if="devLogSelected.tokens_total != null">
+                <span style="color:#64748b;">Tokens:</span>
+                <span style="color:#a78bfa; font-weight:700; margin-left:6px;">{{ devLogSelected.tokens_total.toLocaleString('es-PE') }}</span>
+                <span v-if="devLogSelected.tokens?.prompt != null || devLogSelected.tokens?.completion != null" style="color:#64748b; margin-left:6px;">
+                  (prompt {{ devLogSelected.tokens?.prompt ?? '—' }} / completion {{ devLogSelected.tokens?.completion ?? '—' }})
+                </span>
+                <span v-if="devLogSelected.tokens?.model" style="color:#64748b; margin-left:6px;">· {{ devLogSelected.tokens.model }}</span>
+              </div>
             </div>
 
             <!-- Alerta si GCal falló -->
@@ -2520,18 +2550,22 @@ const devCompanies = [
   { id: 'gatwick',        label: 'Gatwick',     icon: 'mdi-elevator' },
 ]
 
+// Tools comunes a TODOS los flujos n8n (se alimentan vía POST /api/flows/log):
+//   - Registro de Errores: errores capturados por el workflow "Error Handler" de n8n
+//   - Reporte de Tokens:   consumo de tokens por ejecución
+const FLOW_TOOLS = ['Registro de Errores', 'Reporte de Tokens']
 const COMPANY_TOOLS: Record<string, string[]> = {
-  healup:         ['Todas', 'Calendario', 'Calendario FB/IG', 'Cita Multiple', 'Envío Diario WhatsApp', 'Citas de Mañana'],
-  estasconsuerte: ['Todas', 'Generar Link Monnet', 'Webhook Monnet'],
-  brada:          ['Todas'],
-  estetikamedika: ['Todas'],
-  davila:         ['Todas'],
-  solari:         ['Todas'],
-  skip:           ['Todas'],
-  alegrated:      ['Todas'],
-  origitec:       ['Todas'],
-  gatwick:        ['Todas'],
-  todas:          ['Todas'],
+  healup:         ['Todas', 'Calendario', 'Calendario FB/IG', 'Cita Multiple', 'Envío Diario WhatsApp', 'Citas de Mañana', ...FLOW_TOOLS],
+  estasconsuerte: ['Todas', 'Generar Link Monnet', 'Webhook Monnet', ...FLOW_TOOLS],
+  brada:          ['Todas', ...FLOW_TOOLS],
+  estetikamedika: ['Todas', ...FLOW_TOOLS],
+  davila:         ['Todas', ...FLOW_TOOLS],
+  solari:         ['Todas', ...FLOW_TOOLS],
+  skip:           ['Todas', ...FLOW_TOOLS],
+  alegrated:      ['Todas', ...FLOW_TOOLS],
+  origitec:       ['Todas', ...FLOW_TOOLS],
+  gatwick:        ['Todas', ...FLOW_TOOLS],
+  todas:          ['Todas', ...FLOW_TOOLS],
 }
 
 const devToolsForCompany = computed(() =>
@@ -2554,6 +2588,7 @@ const devEndpoints = [
   { company: 'healup',         url: 'GET  /api/healup/cron-citas-manana     ·  19:00 Lima → n8n → WhatsApp (citas de mañana)' },
   { company: 'estasconsuerte', url: 'POST /api/ecs/generar-link-monnet     ·  api_key: ecs-monnet-2026-link' },
   { company: 'estasconsuerte', url: 'POST /api/ecs/monnet-webhook          ·  (público, valida firma SHA512)' },
+  { company: 'todas',          url: 'POST /api/flows/log                   ·  api_key: flow-log-2026 (errores + tokens de cualquier flujo n8n)' },
 ]
 
 const devLogsCountByCompany = computed(() => {
@@ -2598,6 +2633,7 @@ const headersDevLogs = [
   { title: 'Pasos',       key: 'pasos',          sortable: false },
   { title: 'Cliente',     key: 'cliente',        sortable: false },
   { title: 'Cita',        key: 'cita',           sortable: false },
+  { title: 'Tokens',      key: 'tokens_total',   sortable: true  },
   { title: 'Duración',    key: 'duration_ms',    sortable: true  },
   { title: 'Error',       key: 'error_message',  sortable: false },
   { title: '',            key: 'acciones',       sortable: false },

@@ -40,6 +40,19 @@
         </div>
 
         <div class="nav-section">
+          <div class="nav-label">INVENTARIO</div>
+          <button v-for="item in inventarioItems" :key="item.id"
+            :class="['nav-item', { active: activeView === item.id }]"
+            @click="activeView = item.id">
+            <v-icon :icon="item.icon" size="18" />
+            <span>{{ item.label }}</span>
+            <span v-if="item.id === 'inventario' && componentesEnAlertaCount > 0" class="nav-badge-red">
+              {{ componentesEnAlertaCount }}
+            </span>
+          </button>
+        </div>
+
+        <div class="nav-section">
           <div class="nav-label">CHATS</div>
           <button v-for="item in chatItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
@@ -1101,6 +1114,574 @@
         </div>
       </div>
 
+      <!-- ========== VISTA: INVENTARIO (RESUMEN EJECUTIVO) ========== -->
+      <div v-else-if="activeView === 'inventario'" class="view-container">
+        <header class="top-header">
+          <h1>Inventario</h1>
+          <button class="btn-primary" @click="refreshInventario">
+            <v-icon icon="mdi-refresh" size="16" />
+            <span>Actualizar</span>
+          </button>
+        </header>
+        <div class="content-area">
+          <!-- KPIs -->
+          <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="stat-card">
+              <div class="stat-title">Componentes activos</div>
+              <div class="stat-value">{{ componentesActivos.length }}</div>
+              <div class="stat-description">En catálogo</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-title">Valor total inventario</div>
+              <div class="stat-value">{{ money(valorTotalInventario) }}</div>
+              <div class="stat-description">Stock × precio unit.</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-title">Componentes en alerta</div>
+              <div class="stat-value" :style="{ color: componentesEnAlertaCount > 0 ? '#E57373' : 'inherit' }">
+                {{ componentesEnAlertaCount }}
+              </div>
+              <div class="stat-description">Stock bajo / crítico</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-title">Costo prom. fabricación</div>
+              <div class="stat-value">{{ money(costoPromedioFabricacion) }}</div>
+              <div class="stat-description">Promedio de recetas</div>
+            </div>
+          </div>
+
+          <!-- Acceso rápido -->
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0;">
+            <button class="btn-primary" @click="irA('componentes'); nuevoComponente()">
+              <v-icon icon="mdi-plus" size="16" /><span>Agregar componente</span>
+            </button>
+            <button class="btn-secondary" @click="irA('recetas'); nuevaReceta()">
+              <v-icon icon="mdi-file-document-plus" size="16" /><span>Nueva receta</span>
+            </button>
+            <button class="btn-secondary" @click="irA('movimientos'); nuevoMovimiento()">
+              <v-icon icon="mdi-swap-vertical" size="16" /><span>Registrar movimiento</span>
+            </button>
+            <button class="btn-secondary" @click="irA('reportes')">
+              <v-icon icon="mdi-chart-box" size="16" /><span>Ver reportes</span>
+            </button>
+          </div>
+
+          <!-- Tabla alertas top 5 -->
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">Componentes en alerta</span>
+                <v-spacer />
+                <button class="btn-secondary" @click="irA('componentes'); filterAlerta = 'CRÍTICO'">
+                  <span>Ver todas las alertas</span>
+                </button>
+              </v-card-title>
+              <v-data-table :headers="[
+                  { title: 'Código', key: 'codigo' }, { title: 'Nombre', key: 'nombre' },
+                  { title: 'Stock', key: 'stock_actual' }, { title: 'Mínimo', key: 'stock_minimo' },
+                  { title: 'Nivel', key: 'nivel' }, { title: 'Faltante', key: 'faltante' },
+                  { title: '', key: 'actions', sortable: false } ]"
+                :items="componentesEnAlerta.slice(0,5)" class="elevation-0"
+                no-data-text="Sin alertas de stock ✓" :items-per-page="5">
+                <template v-slot:item.nivel="{ item }">
+                  <v-chip :color="alertaColor(nivelAlerta(item))" size="small">{{ nivelAlerta(item) }}</v-chip>
+                </template>
+                <template v-slot:item.faltante="{ item }">
+                  {{ Math.max(0, Number(item.stock_minimo) - Number(item.stock_actual)) }}
+                </template>
+                <template v-slot:item.actions="{ item }">
+                  <v-btn icon size="x-small" variant="text" @click="irA('componentes'); verComponente(item)">
+                    <v-icon icon="mdi-eye" size="16" />
+                  </v-btn>
+                </template>
+                <template v-slot:bottom></template>
+              </v-data-table>
+            </v-card>
+          </div>
+
+          <!-- Charts -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+            <div class="chart-section">
+              <div class="chart-header"><div class="chart-title-section"><h2>Valor por categoría</h2></div></div>
+              <div class="chart-area">
+                <client-only>
+                  <apexchart v-if="valorPorCategoriaSeries.length" type="donut" height="300"
+                    :options="invPieOptions" :series="valorPorCategoriaSeries" />
+                  <div v-else style="text-align:center;padding:40px;color:var(--text-secondary);">Sin datos</div>
+                </client-only>
+              </div>
+            </div>
+            <div class="chart-section">
+              <div class="chart-header"><div class="chart-title-section"><h2>Movimientos últimos 7 días</h2></div></div>
+              <div class="chart-area">
+                <client-only>
+                  <apexchart type="bar" height="300" :options="invBarOptions" :series="invBarSeries" />
+                </client-only>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== VISTA: COMPONENTES ========== -->
+      <div v-else-if="activeView === 'componentes'" class="view-container">
+        <header class="top-header">
+          <h1>Componentes</h1>
+          <div style="display:flex; gap:10px;">
+            <input ref="compFileInput" type="file" accept=".csv" style="display:none" @change="importarComponentesCsv" />
+            <button class="btn-secondary" @click="triggerCompCsv">
+              <v-icon icon="mdi-upload" size="16" /><span>Importar CSV</span>
+            </button>
+            <button class="btn-primary" @click="nuevoComponente">
+              <v-icon icon="mdi-plus" size="16" /><span>Agregar componente</span>
+            </button>
+          </div>
+        </header>
+        <div class="content-area">
+          <!-- Filtros -->
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+            <v-text-field v-model="searchComp" prepend-inner-icon="mdi-magnify" placeholder="Buscar código o nombre"
+              density="compact" hide-details style="max-width:240px;" />
+            <v-select v-model="filterCategoria" :items="CATEGORIAS_COMP" label="Categoría" density="compact"
+              hide-details clearable style="max-width:180px;" />
+            <v-select v-model="filterEstado" :items="[{title:'Activo',value:'activo'},{title:'Inactivo',value:'inactivo'}]"
+              label="Estado" density="compact" hide-details clearable style="max-width:150px;" />
+            <v-select v-model="filterAlerta" :items="['CRÍTICO','BAJO','NORMAL']" label="Nivel alerta" density="compact"
+              hide-details clearable style="max-width:160px;" />
+            <button class="btn-secondary" @click="limpiarFiltrosComp"><span>Limpiar filtros</span></button>
+          </div>
+
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar">
+                <span class="table-title">{{ componentesFiltrados.length }} componentes</span>
+              </v-card-title>
+              <v-data-table :headers="headersComponentes" :items="componentesFiltrados" class="elevation-0"
+                no-data-text="Sin componentes" :items-per-page="20" @click:row="(e, { item }) => verComponente(item)">
+                <template v-slot:item.stock_actual="{ item }">
+                  <v-chip :color="alertaColor(nivelAlerta(item))" size="small" variant="tonal">{{ item.stock_actual }}</v-chip>
+                </template>
+                <template v-slot:item.precio_unitario="{ item }">{{ money(item.precio_unitario) }}</template>
+                <template v-slot:item.valor_stock="{ item }">{{ money(valorStock(item)) }}</template>
+                <template v-slot:item.activo="{ item }">
+                  <v-chip :color="item.activo ? 'success' : 'grey'" size="small">{{ item.activo ? 'Activo' : 'Inactivo' }}</v-chip>
+                </template>
+                <template v-slot:item.actions="{ item }">
+                  <div style="display:flex; gap:2px;" @click.stop>
+                    <v-btn icon size="x-small" variant="text" @click="verComponente(item)"><v-icon icon="mdi-eye" size="16" /></v-btn>
+                    <v-btn icon size="x-small" variant="text" @click="editarComponente(item)"><v-icon icon="mdi-pencil" size="16" /></v-btn>
+                    <v-btn icon size="x-small" variant="text" color="error" @click="eliminarComponente(item)"><v-icon icon="mdi-delete" size="16" /></v-btn>
+                  </div>
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+
+        <!-- Dialog componente -->
+        <v-dialog v-model="showCompDialog" max-width="640" persistent>
+          <v-card>
+            <v-card-title>{{ editingComp ? (compReadonly ? 'Detalle del componente' : 'Editar componente') : 'Nuevo componente' }}</v-card-title>
+            <v-card-text>
+              <v-row dense>
+                <v-col cols="6"><v-text-field v-model="compForm.codigo" label="Código *" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="6"><v-text-field v-model="compForm.nombre" label="Nombre *" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="12"><v-textarea v-model="compForm.descripcion" label="Descripción" rows="2" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="6"><v-select v-model="compForm.categoria" :items="CATEGORIAS_COMP" label="Categoría *" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="6"><v-select v-model="compForm.unidad" :items="UNIDADES_COMP" label="Unidad *" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="4"><v-text-field v-model.number="compForm.precio_unitario" label="Precio unit. (S/) *" type="number" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="4"><v-text-field v-model.number="compForm.stock_actual" label="Stock actual *" type="number" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="4"><v-text-field v-model.number="compForm.stock_minimo" label="Stock mínimo *" type="number" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="4"><v-text-field v-model.number="compForm.stock_maximo" label="Stock máximo *" type="number" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="8"><v-text-field v-model="compForm.proveedor" label="Proveedor" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="6"><v-text-field v-model="compForm.fecha_ultima_compra" label="Última compra" type="date" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="6"><v-text-field v-model="compForm.ubicacion_almacen" label="Ubicación almacén" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="12"><v-textarea v-model="compForm.notas" label="Notas" rows="2" density="compact" :readonly="compReadonly" /></v-col>
+                <v-col cols="12"><v-checkbox v-model="compForm.activo" label="Activo" density="compact" :disabled="compReadonly" hide-details /></v-col>
+              </v-row>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn text @click="showCompDialog = false">{{ compReadonly ? 'Cerrar' : 'Cancelar' }}</v-btn>
+              <v-btn v-if="compReadonly && editingComp" color="primary" variant="text" @click="compReadonly = false">Editar</v-btn>
+              <v-btn v-if="!compReadonly" color="primary" @click="saveComponente" :loading="savingComp">Guardar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </div>
+
+      <!-- ========== VISTA: RECETAS ========== -->
+      <div v-else-if="activeView === 'recetas'" class="view-container">
+        <header class="top-header">
+          <h1>Recetas valorizadas</h1>
+          <div style="display:flex; gap:10px;">
+            <button class="btn-secondary" @click="descargarRecetario">
+              <v-icon icon="mdi-download" size="16" /><span>Descargar recetario</span>
+            </button>
+            <button class="btn-primary" @click="nuevaReceta">
+              <v-icon icon="mdi-plus" size="16" /><span>Nueva receta</span>
+            </button>
+          </div>
+        </header>
+        <div class="content-area">
+          <!-- Resumen -->
+          <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom:16px;">
+            <div class="stat-card"><div class="stat-title">Recetas activas</div><div class="stat-value">{{ resumenRecetas.total }}</div></div>
+            <div class="stat-card"><div class="stat-title">Costo promedio</div><div class="stat-value">{{ money(resumenRecetas.prom) }}</div></div>
+            <div class="stat-card"><div class="stat-title">Más cara</div><div class="stat-value">{{ money(resumenRecetas.maxC) }}</div><div class="stat-description">{{ resumenRecetas.maxR?.nombre || '—' }}</div></div>
+            <div class="stat-card"><div class="stat-title">Más barata</div><div class="stat-value">{{ money(resumenRecetas.minC) }}</div><div class="stat-description">{{ resumenRecetas.minR?.nombre || '—' }}</div></div>
+          </div>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+            <v-text-field v-model="searchReceta" prepend-inner-icon="mdi-magnify" placeholder="Buscar código o nombre"
+              density="compact" hide-details style="max-width:240px;" />
+            <v-select v-model="filterTipoReceta" :items="TIPOS_RECETA" label="Tipo" density="compact" hide-details clearable style="max-width:180px;" />
+            <v-select v-model="filterEstadoReceta" :items="[{title:'Activo',value:'activo'},{title:'Inactivo',value:'inactivo'}]"
+              label="Estado" density="compact" hide-details clearable style="max-width:150px;" />
+          </div>
+
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar"><span class="table-title">{{ recetasFiltradas.length }} recetas</span></v-card-title>
+              <v-data-table :headers="headersRecetas" :items="recetasFiltradas" class="elevation-0"
+                no-data-text="Sin recetas" :items-per-page="20" @click:row="(e, { item }) => abrirReceta(item)">
+                <template v-slot:item.n_comp="{ item }">{{ detallesDeReceta(item.id).length }}</template>
+                <template v-slot:item.costo="{ item }">{{ money(costoReceta(item.id)) }}</template>
+                <template v-slot:item.margen_sugerido="{ item }">{{ item.margen_sugerido }}%</template>
+                <template v-slot:item.p_venta="{ item }">{{ money(precioVentaReceta(item)) }}</template>
+                <template v-slot:item.activo="{ item }">
+                  <v-chip :color="item.activo ? 'success' : 'grey'" size="small">{{ item.activo ? 'Activa' : 'Inactiva' }}</v-chip>
+                </template>
+                <template v-slot:item.actions="{ item }">
+                  <div style="display:flex; gap:2px;" @click.stop>
+                    <v-btn icon size="x-small" variant="text" @click="abrirReceta(item)"><v-icon icon="mdi-eye" size="16" /></v-btn>
+                    <v-btn icon size="x-small" variant="text" @click="duplicarReceta(item)"><v-icon icon="mdi-content-copy" size="16" /></v-btn>
+                    <v-btn icon size="x-small" variant="text" color="error" @click="eliminarReceta(item)"><v-icon icon="mdi-delete" size="16" /></v-btn>
+                  </div>
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+
+        <!-- Dialog receta (vista detallada) -->
+        <v-dialog v-model="showRecetaDialog" max-width="820" persistent scrollable>
+          <v-card>
+            <v-card-title>{{ editingReceta ? 'Receta: ' + (recetaForm.codigo || '') : 'Nueva receta' }}</v-card-title>
+            <v-card-text style="max-height:70vh;">
+              <!-- Info receta -->
+              <v-row dense>
+                <v-col cols="4"><v-text-field v-model="recetaForm.codigo" label="Código *" density="compact" /></v-col>
+                <v-col cols="5"><v-text-field v-model="recetaForm.nombre" label="Nombre *" density="compact" /></v-col>
+                <v-col cols="3"><v-select v-model="recetaForm.tipo" :items="TIPOS_RECETA" label="Tipo *" density="compact" /></v-col>
+                <v-col cols="12"><v-textarea v-model="recetaForm.descripcion" label="Descripción" rows="2" density="compact" /></v-col>
+                <v-col cols="4"><v-text-field v-model.number="recetaForm.tiempo_fabricacion_minutos" label="Tiempo (min)" type="number" density="compact" /></v-col>
+                <v-col cols="4"><v-text-field v-model.number="recetaForm.margen_sugerido" label="Margen %" type="number" density="compact" /></v-col>
+                <v-col cols="4" class="d-flex align-center"><v-checkbox v-model="recetaForm.activo" label="Activa" density="compact" hide-details /></v-col>
+                <v-col cols="12"><v-textarea v-model="recetaForm.notas" label="Notas" rows="1" density="compact" /></v-col>
+              </v-row>
+
+              <div style="margin:8px 0; text-align:right;">
+                <v-btn color="primary" size="small" @click="saveReceta" :loading="savingReceta">
+                  {{ editingReceta ? 'Guardar cambios' : 'Crear receta' }}
+                </v-btn>
+              </div>
+
+              <template v-if="editingReceta?.id">
+                <v-divider class="my-3" />
+                <h3 style="margin-bottom:8px;">Componentes de la receta</h3>
+                <v-data-table :headers="[
+                    { title: 'Código', key: 'cod' }, { title: 'Componente', key: 'nom' },
+                    { title: 'Cant.', key: 'cantidad' }, { title: 'Unidad', key: 'uni' },
+                    { title: 'P. Unit.', key: 'pu' }, { title: 'Subtotal', key: 'sub' },
+                    { title: '', key: 'act', sortable: false } ]"
+                  :items="detallesDeReceta(editingReceta.id)" class="elevation-0" density="compact"
+                  no-data-text="Sin componentes — agrega abajo" :items-per-page="-1">
+                  <template v-slot:item.cod="{ item }">{{ item.componentes?.codigo }}</template>
+                  <template v-slot:item.nom="{ item }">{{ item.componentes?.nombre }}</template>
+                  <template v-slot:item.uni="{ item }">{{ item.componentes?.unidad }}</template>
+                  <template v-slot:item.pu="{ item }">{{ money(item.precio_unitario_en_receta) }}</template>
+                  <template v-slot:item.sub="{ item }">{{ money(item.costo_subtotal) }}</template>
+                  <template v-slot:item.act="{ item }">
+                    <v-btn icon size="x-small" variant="text" color="error" @click="quitarDetalleReceta(item.id)"><v-icon icon="mdi-close" size="16" /></v-btn>
+                  </template>
+                  <template v-slot:bottom></template>
+                </v-data-table>
+
+                <!-- Agregar componente -->
+                <v-row dense class="mt-2" align="center">
+                  <v-col cols="7">
+                    <v-select v-model="nuevoDetalle.componente_id" :items="componenteSelectItems" item-title="label" item-value="id"
+                      label="Seleccionar componente" density="compact" hide-details />
+                  </v-col>
+                  <v-col cols="3"><v-text-field v-model.number="nuevoDetalle.cantidad" label="Cantidad" type="number" density="compact" hide-details /></v-col>
+                  <v-col cols="2"><v-btn color="primary" variant="tonal" block @click="agregarComponenteAReceta">+ Agregar</v-btn></v-col>
+                </v-row>
+
+                <!-- Cálculo costo final -->
+                <div class="receta-costo-box">
+                  <div class="receta-costo-row"><span>Costo de materiales:</span><strong>{{ money(costoReceta(editingReceta.id)) }}</strong></div>
+                  <div class="receta-costo-row"><span>Margen ({{ recetaForm.margen_sugerido || 0 }}%):</span><strong>{{ money(precioVentaReceta(recetaForm) - costoReceta(editingReceta.id)) }}</strong></div>
+                  <v-divider class="my-1" />
+                  <div class="receta-costo-row receta-costo-total"><span>PRECIO VENTA SUGERIDO:</span><strong>{{ money(precioVentaReceta(recetaForm)) }}</strong></div>
+                </div>
+              </template>
+              <div v-else style="color:var(--text-secondary); font-size:0.85rem; margin-top:8px;">
+                Guarda la receta para poder agregarle componentes.
+              </div>
+            </v-card-text>
+            <v-card-actions>
+              <v-btn v-if="editingReceta" color="error" variant="text" @click="eliminarReceta()">Eliminar</v-btn>
+              <v-btn v-if="editingReceta" variant="text" @click="duplicarReceta()">Duplicar</v-btn>
+              <v-spacer />
+              <v-btn text @click="showRecetaDialog = false">Cerrar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </div>
+
+      <!-- ========== VISTA: MOVIMIENTOS ========== -->
+      <div v-else-if="activeView === 'movimientos'" class="view-container">
+        <header class="top-header">
+          <h1>Movimientos de inventario</h1>
+          <div style="display:flex; gap:10px;">
+            <button class="btn-secondary" @click="exportarMovimientos">
+              <v-icon icon="mdi-microsoft-excel" size="16" /><span>Descargar histórico</span>
+            </button>
+            <button class="btn-primary" @click="nuevoMovimiento()">
+              <v-icon icon="mdi-plus" size="16" /><span>Registrar movimiento</span>
+            </button>
+          </div>
+        </header>
+        <div class="content-area">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+            <v-text-field v-model="movFechaDesde" label="Desde" type="date" density="compact" hide-details style="max-width:160px;" />
+            <v-text-field v-model="movFechaHasta" label="Hasta" type="date" density="compact" hide-details style="max-width:160px;" />
+            <v-select v-model="filterTipoMov" :items="TIPOS_MOV" label="Tipo" density="compact" hide-details clearable style="max-width:150px;" />
+            <v-text-field v-model="searchMovComp" prepend-inner-icon="mdi-magnify" placeholder="Componente" density="compact" hide-details style="max-width:180px;" />
+            <v-text-field v-model="searchMotivo" placeholder="Motivo" density="compact" hide-details style="max-width:160px;" />
+            <v-select v-model="filterUsuarioMov" :items="usuariosMov" label="Usuario" density="compact" hide-details clearable style="max-width:180px;" />
+          </div>
+
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar"><span class="table-title">{{ movimientosFiltrados.length }} movimientos</span></v-card-title>
+              <v-data-table :headers="headersMovimientos" :items="movimientosFiltrados" class="elevation-0"
+                no-data-text="Sin movimientos" :items-per-page="30">
+                <template v-slot:item.fecha_movimiento="{ item }">{{ formatDateTime(item.fecha_movimiento) }}</template>
+                <template v-slot:item.componente="{ item }">{{ item.componentes?.codigo }} · {{ item.componentes?.nombre }}</template>
+                <template v-slot:item.tipo_movimiento="{ item }">
+                  <v-chip :color="movTipoColor(item.tipo_movimiento)" size="small">{{ item.tipo_movimiento }}</v-chip>
+                </template>
+                <template v-slot:item.costo_total="{ item }">{{ money(item.costo_total) }}</template>
+                <template v-slot:item.actions="{ item }">
+                  <v-btn icon size="x-small" variant="text" color="warning" @click="deshacerMovimiento(item)" title="Deshacer">
+                    <v-icon icon="mdi-undo" size="16" />
+                  </v-btn>
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+
+        <!-- Dialog registrar movimiento -->
+        <v-dialog v-model="showMovDialog" max-width="560" persistent>
+          <v-card>
+            <v-card-title>Registrar movimiento</v-card-title>
+            <v-card-text>
+              <v-row dense>
+                <v-col cols="12">
+                  <v-radio-group v-model="movForm.tipo_movimiento" inline density="compact" hide-details>
+                    <v-radio label="Entrada" value="entrada" />
+                    <v-radio label="Salida" value="salida" />
+                    <v-radio label="Ajuste" value="ajuste" />
+                    <v-radio label="Devolución" value="devolucion" />
+                  </v-radio-group>
+                </v-col>
+                <v-col cols="12">
+                  <v-select v-model="movForm.componente_id" :items="componenteSelectItems" item-title="label" item-value="id"
+                    label="Componente *" density="compact" />
+                </v-col>
+                <v-col cols="12" v-if="movSelComponente">
+                  <div class="mov-stock-info">
+                    Stock actual: <strong>{{ movSelComponente.stock_actual }}</strong> ·
+                    Mín: {{ movSelComponente.stock_minimo }} · Máx: {{ movSelComponente.stock_maximo }}
+                    <span v-if="movForm.tipo_movimiento === 'ajuste'" style="color:var(--text-secondary);"> · (Ajuste = nuevo stock absoluto)</span>
+                  </div>
+                </v-col>
+                <v-col cols="6"><v-text-field v-model.number="movForm.cantidad" label="Cantidad *" type="number" density="compact" /></v-col>
+                <v-col cols="6"><v-text-field v-model.number="movForm.costo_unitario" label="Costo unitario (S/)" type="number" density="compact" /></v-col>
+                <v-col cols="6"><v-text-field :model-value="money(movCostoTotal)" label="Costo total" readonly density="compact" /></v-col>
+                <v-col cols="6"><v-text-field v-model="movForm.motivo" label="Motivo" density="compact" /></v-col>
+                <v-col cols="6"><v-text-field v-model="movForm.numero_informe" label="N° informe (intervención)" density="compact" /></v-col>
+                <v-col cols="6"><v-text-field v-model="movForm.numero_receta" label="N° receta" density="compact" /></v-col>
+                <v-col cols="6"><v-text-field v-model="movForm.numero_compra" label="N° OC / Factura" density="compact" /></v-col>
+                <v-col cols="6"><v-text-field v-model="movForm.proveedor" label="Proveedor" density="compact" /></v-col>
+              </v-row>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn text @click="showMovDialog = false">Cancelar</v-btn>
+              <v-btn color="primary" @click="registrarMovimiento" :loading="savingMov">Registrar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </div>
+
+      <!-- ========== VISTA: COSTOS POR INTERVENCIÓN ========== -->
+      <div v-else-if="activeView === 'costos-intervenciones'" class="view-container">
+        <header class="top-header"><h1>Costo por intervención</h1></header>
+        <div class="content-area">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+            <v-text-field v-model="costoFechaDesde" label="Desde" type="date" density="compact" hide-details style="max-width:160px;" />
+            <v-text-field v-model="costoFechaHasta" label="Hasta" type="date" density="compact" hide-details style="max-width:160px;" />
+            <v-text-field v-model="searchInforme" prepend-inner-icon="mdi-magnify" placeholder="N° informe" density="compact" hide-details style="max-width:160px;" />
+            <v-text-field v-model="searchClienteCosto" placeholder="Cliente / edificio" density="compact" hide-details style="max-width:200px;" />
+          </div>
+
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <v-card-title class="table-search-bar"><span class="table-title">{{ costosIntervencion.length }} intervenciones</span></v-card-title>
+              <v-data-table :headers="headersCostos" :items="costosIntervencion" class="elevation-0"
+                no-data-text="Sin intervenciones" :items-per-page="20" @click:row="(e, { item }) => verCostoIntervencion(item)">
+                <template v-slot:item.fecha_inicio="{ item }">{{ formatDateTime(item.fecha_inicio || item.created_at) }}</template>
+                <template v-slot:item._costoMat="{ item }">{{ money(item._costoMat) }}</template>
+                <template v-slot:item._manoObra="{ item }">{{ money(item._manoObra) }}</template>
+                <template v-slot:item._costoTotal="{ item }">{{ money(item._costoTotal) }}</template>
+                <template v-slot:item._margen="{ item }">
+                  <span :style="{ color: item._margen >= 0 ? '#4DB6AC' : '#E57373', fontWeight: 600 }">{{ money(item._margen) }}</span>
+                </template>
+                <template v-slot:item.actions="{ item }">
+                  <v-btn icon size="x-small" variant="text" @click.stop="verCostoIntervencion(item)"><v-icon icon="mdi-eye" size="16" /></v-btn>
+                </template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+
+        <!-- Dialog detalle costo -->
+        <v-dialog v-model="showCostoDetalle" max-width="700" scrollable>
+          <v-card v-if="intervSeleccionada">
+            <v-card-title>Costo de intervención — N° {{ intervSeleccionada.id }}</v-card-title>
+            <v-card-text style="max-height:70vh;">
+              <div class="costo-header-grid">
+                <div><span class="costo-label">Cliente</span><div>{{ intervSeleccionada.empresa_cliente || '—' }}</div></div>
+                <div><span class="costo-label">Dirección</span><div>{{ intervSeleccionada.direccion || '—' }}</div></div>
+                <div><span class="costo-label">Tipo</span><div>{{ intervSeleccionada.tipo_intervencion || '—' }}</div></div>
+                <div><span class="costo-label">Fecha</span><div>{{ formatDateTime(intervSeleccionada.fecha_inicio || intervSeleccionada.created_at) }}</div></div>
+              </div>
+
+              <h3 style="margin:16px 0 8px;">Componentes usados</h3>
+              <v-data-table :headers="[
+                  { title: 'Código', key: 'cod' }, { title: 'Componente', key: 'nom' },
+                  { title: 'Cant.', key: 'cantidad_usada' }, { title: 'P. Unit.', key: 'pu' }, { title: 'Subtotal', key: 'sub' } ]"
+                :items="materialesDeInforme(intervSeleccionada.id)" class="elevation-0" density="compact"
+                no-data-text="No se registraron materiales para esta intervención" :items-per-page="-1">
+                <template v-slot:item.cod="{ item }">{{ item.componentes?.codigo }}</template>
+                <template v-slot:item.nom="{ item }">{{ item.componentes?.nombre }}</template>
+                <template v-slot:item.pu="{ item }">{{ money(item.precio_unitario) }}</template>
+                <template v-slot:item.sub="{ item }">{{ money(item.costo_total) }}</template>
+                <template v-slot:bottom></template>
+              </v-data-table>
+
+              <div class="receta-costo-box" style="margin-top:16px;">
+                <div class="receta-costo-row"><span>Costo de materiales:</span><strong>{{ money(intervSeleccionada._costoMat) }}</strong></div>
+                <div class="receta-costo-row"><span>Mano de obra:</span><strong>{{ money(intervSeleccionada._manoObra) }}</strong></div>
+                <v-divider class="my-1" />
+                <div class="receta-costo-row receta-costo-total"><span>COSTO TOTAL:</span><strong>{{ money(intervSeleccionada._costoTotal) }}</strong></div>
+                <div class="receta-costo-row"><span>Precio cobrado al cliente:</span><strong>{{ money(intervSeleccionada._cobrado) }}</strong></div>
+                <div class="receta-costo-row"><span>Margen:</span>
+                  <strong :style="{ color: intervSeleccionada._margen >= 0 ? '#4DB6AC' : '#E57373' }">{{ money(intervSeleccionada._margen) }}</strong>
+                </div>
+              </div>
+            </v-card-text>
+            <v-card-actions><v-spacer /><v-btn text @click="showCostoDetalle = false">Cerrar</v-btn></v-card-actions>
+          </v-card>
+        </v-dialog>
+      </div>
+
+      <!-- ========== VISTA: REPORTES ========== -->
+      <div v-else-if="activeView === 'reportes'" class="view-container">
+        <header class="top-header">
+          <h1>Reportes y analytics</h1>
+          <button class="btn-secondary" @click="exportarReporte">
+            <v-icon icon="mdi-download" size="16" /><span>Exportar</span>
+          </button>
+        </header>
+        <div class="content-area">
+          <!-- Selector tipo -->
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+            <button v-for="t in reporteTipos" :key="t.value"
+              :class="['btn-secondary', { 'btn-primary': reporteTipo === t.value }]" @click="reporteTipo = t.value">
+              <span>{{ t.label }}</span>
+            </button>
+          </div>
+
+          <!-- Chart (consumo) -->
+          <div v-if="['consumo_componente','consumo_categoria'].includes(reporteTipo) && reporteChartData.categories.length"
+            class="chart-section" style="margin-bottom:16px;">
+            <div class="chart-header"><div class="chart-title-section"><h2>{{ reporteTipos.find(t => t.value === reporteTipo)?.label }}</h2></div></div>
+            <div class="chart-area">
+              <client-only><apexchart type="bar" height="320" :options="reporteChartOptions" :series="reporteSeries" /></client-only>
+            </div>
+          </div>
+
+          <div class="table-section">
+            <v-card flat class="custom-data-table">
+              <!-- Consumo por componente -->
+              <v-data-table v-if="reporteTipo === 'consumo_componente'" :items="repConsumoComponente" class="elevation-0"
+                :headers="[ { title:'Componente', key:'nombre' }, { title:'Cant. consumida (30d)', key:'cantidad' },
+                  { title:'Costo total', key:'costo' }, { title:'Frecuencia', key:'freq' }, { title:'Proyección 60d', key:'proyeccion60' } ]"
+                no-data-text="Sin consumo en los últimos 30 días" :items-per-page="20">
+                <template v-slot:item.costo="{ item }">{{ money(item.costo) }}</template>
+              </v-data-table>
+
+              <!-- Consumo por categoría -->
+              <v-data-table v-else-if="reporteTipo === 'consumo_categoria'" :items="repConsumoCategoria" class="elevation-0"
+                :headers="[ { title:'Categoría', key:'categoria' }, { title:'Cantidad', key:'cantidad' }, { title:'Costo total', key:'costo' } ]"
+                no-data-text="Sin datos" :items-per-page="20">
+                <template v-slot:item.costo="{ item }">{{ money(item.costo) }}</template>
+              </v-data-table>
+
+              <!-- Rotación -->
+              <v-data-table v-else-if="reporteTipo === 'rotacion'" :items="repRotacion" class="elevation-0"
+                :headers="[ { title:'Componente', key:'nombre' }, { title:'Stock', key:'stock' }, { title:'Consumo 30d', key:'consumo' },
+                  { title:'Rotación', key:'rotacion' }, { title:'Interpretación', key:'interpretacion' } ]"
+                no-data-text="Sin datos" :items-per-page="20">
+                <template v-slot:item.rotacion="{ item }">{{ item.rotacion.toFixed(2) }}</template>
+                <template v-slot:item.interpretacion="{ item }">
+                  <v-chip size="small" :color="item.interpretacion === 'Alto' ? 'success' : item.interpretacion === 'Normal' ? 'info' : 'warning'">{{ item.interpretacion }}</v-chip>
+                </template>
+              </v-data-table>
+
+              <!-- Proyección de compras -->
+              <v-data-table v-else-if="reporteTipo === 'proyeccion'" :items="repProyeccion" class="elevation-0"
+                :headers="[ { title:'Componente', key:'nombre' }, { title:'Stock', key:'stock' }, { title:'Consumo diario', key:'diario' },
+                  { title:'Días hasta mínimo', key:'diasHastaMin' }, { title:'A comprar', key:'comprar' }, { title:'Costo estimado', key:'costo' } ]"
+                no-data-text="Sin compras proyectadas" :items-per-page="20">
+                <template v-slot:item.diario="{ item }">{{ item.diario.toFixed(2) }}</template>
+                <template v-slot:item.diasHastaMin="{ item }">
+                  <v-chip v-if="item.urgente" size="small" color="error">{{ item.diasHastaMin }} días</v-chip>
+                  <span v-else>{{ item.diasHastaMin }}</span>
+                </template>
+                <template v-slot:item.costo="{ item }">{{ money(item.costo) }}</template>
+              </v-data-table>
+
+              <!-- Costo promedio por intervención -->
+              <v-data-table v-else :items="repCostoIntervencion" class="elevation-0"
+                :headers="[ { title:'Tipo', key:'tipo' }, { title:'Intervenciones', key:'n' }, { title:'Prom. materiales', key:'promMat' },
+                  { title:'Prom. mano obra', key:'promMo' }, { title:'Prom. total', key:'promTotal' }, { title:'Prom. margen', key:'promMargen' } ]"
+                no-data-text="Sin datos" :items-per-page="20">
+                <template v-slot:item.promMat="{ item }">{{ money(item.promMat) }}</template>
+                <template v-slot:item.promMo="{ item }">{{ money(item.promMo) }}</template>
+                <template v-slot:item.promTotal="{ item }">{{ money(item.promTotal) }}</template>
+                <template v-slot:item.promMargen="{ item }">{{ money(item.promMargen) }}</template>
+              </v-data-table>
+            </v-card>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- Snackbar global -->
@@ -1136,6 +1717,14 @@ const menuItems = [
   { id: 'clientes',     label: 'Clientes',     icon: 'mdi-account-group' },
   { id: 'leads',        label: 'Leads',        icon: 'mdi-account-search' },
   { id: 'formularios',  label: 'Formularios',  icon: 'mdi-form-select' },
+]
+const inventarioItems = [
+  { id: 'inventario',           label: 'Inventario',           icon: 'mdi-warehouse' },
+  { id: 'componentes',          label: 'Componentes',          icon: 'mdi-package-variant-closed' },
+  { id: 'recetas',              label: 'Recetas',              icon: 'mdi-file-document-multiple' },
+  { id: 'movimientos',          label: 'Movimientos',          icon: 'mdi-swap-vertical-bold' },
+  { id: 'costos-intervenciones', label: 'Costos Intervención', icon: 'mdi-calculator-variant' },
+  { id: 'reportes',             label: 'Reportes',             icon: 'mdi-chart-box' },
 ]
 const chatItems = [
   { id: 'conversaciones', label: 'Conversaciones', icon: 'mdi-message-text', href: 'https://chats.alef.company/app/accounts/15/dashboard' },
@@ -1885,6 +2474,806 @@ async function fetchMeta() {
   }
 }
 
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  MVP INVENTARIO GATWICK — Componentes · Recetas · Movimientos · Costos     ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ── Catálogos / helpers compartidos ──────────────────────────────────────────
+const CATEGORIAS_COMP = ['Cable','Polea','Contacto','Sensor','Fluido','Motor','Tablero','Botonera','Guía','Cabina','Puerta','Otro']
+const UNIDADES_COMP = ['Metro','Pieza','Kg','Litro','Unidad','Rollo','Caja','Galón']
+const TIPOS_RECETA = ['fabricacion','reparacion','mantenimiento']
+const TIPOS_MOV = ['entrada','salida','ajuste','devolucion']
+
+function money(n) { return 'S/ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function nivelAlerta(c) {
+  const a = Number(c?.stock_actual || 0), m = Number(c?.stock_minimo || 0)
+  if (a <= m) return 'CRÍTICO'
+  if (a <= m * 1.5) return 'BAJO'
+  return 'NORMAL'
+}
+function alertaColor(nivel) { return { 'CRÍTICO': 'error', 'BAJO': 'warning', 'NORMAL': 'success' }[nivel] || 'default' }
+function valorStock(c) { return Number(c?.stock_actual || 0) * Number(c?.precio_unitario || 0) }
+function csvDownload(filename, rows) {
+  const csv = rows.map(r => r.map(v => {
+    const s = v == null ? '' : String(v)
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+  }).join(',')).join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── COMPONENTES ──────────────────────────────────────────────────────────────
+const componentes = ref([])
+const searchComp = ref('')
+const filterCategoria = ref(null)
+const filterEstado = ref(null)
+const filterAlerta = ref(null)
+const showCompDialog = ref(false)
+const compReadonly = ref(false)
+const editingComp = ref(null)
+const savingComp = ref(false)
+const compFileInput = ref(null)
+const compForm = ref({})
+
+function emptyComp() {
+  return {
+    codigo: '', nombre: '', descripcion: '', categoria: null, unidad: null,
+    precio_unitario: 0, stock_actual: 0, stock_minimo: 0, stock_maximo: 0,
+    proveedor: '', fecha_ultima_compra: '', ubicacion_almacen: '', activo: true, notas: '',
+  }
+}
+
+const componentesActivos = computed(() => componentes.value.filter(c => c.activo))
+const componentesEnAlerta = computed(() =>
+  componentesActivos.value.filter(c => nivelAlerta(c) !== 'NORMAL')
+    .sort((a, b) => Number(a.stock_actual) - Number(b.stock_actual))
+)
+const componentesEnAlertaCount = computed(() => componentesEnAlerta.value.length)
+const valorTotalInventario = computed(() => componentesActivos.value.reduce((s, c) => s + valorStock(c), 0))
+
+const componentesFiltrados = computed(() => {
+  let list = componentes.value
+  if (searchComp.value) {
+    const q = searchComp.value.toLowerCase()
+    list = list.filter(c => [c.codigo, c.nombre].some(v => v?.toLowerCase().includes(q)))
+  }
+  if (filterCategoria.value) list = list.filter(c => c.categoria === filterCategoria.value)
+  if (filterEstado.value === 'activo') list = list.filter(c => c.activo)
+  if (filterEstado.value === 'inactivo') list = list.filter(c => !c.activo)
+  if (filterAlerta.value) list = list.filter(c => nivelAlerta(c) === filterAlerta.value)
+  return list
+})
+
+const headersComponentes = [
+  { title: 'Código', key: 'codigo' },
+  { title: 'Nombre', key: 'nombre' },
+  { title: 'Categoría', key: 'categoria' },
+  { title: 'Stock', key: 'stock_actual' },
+  { title: 'Mínimo', key: 'stock_minimo' },
+  { title: 'Ubicación', key: 'ubicacion_almacen' },
+  { title: 'P. Unit.', key: 'precio_unitario' },
+  { title: 'Valor Stock', key: 'valor_stock' },
+  { title: 'Estado', key: 'activo' },
+  { title: '', key: 'actions', sortable: false },
+]
+
+function limpiarFiltrosComp() {
+  searchComp.value = ''; filterCategoria.value = null; filterEstado.value = null; filterAlerta.value = null
+}
+
+async function fetchComponentes() {
+  const { data } = await client.from('componentes').select('*').order('codigo')
+  componentes.value = data || []
+}
+
+function nuevoComponente() {
+  editingComp.value = null; compReadonly.value = false
+  compForm.value = emptyComp()
+  showCompDialog.value = true
+}
+function verComponente(item) {
+  editingComp.value = item; compReadonly.value = true
+  compForm.value = { ...item }
+  showCompDialog.value = true
+}
+function editarComponente(item) {
+  editingComp.value = item; compReadonly.value = false
+  compForm.value = { ...item }
+  showCompDialog.value = true
+}
+
+async function saveComponente() {
+  const f = compForm.value
+  if (!f.codigo || !f.nombre || !f.categoria || !f.unidad) return notify('Completa los campos requeridos (*)', 'warning')
+  if (Number(f.precio_unitario) <= 0) return notify('El precio unitario debe ser mayor a 0', 'warning')
+  if (Number(f.stock_minimo) >= Number(f.stock_maximo)) return notify('Stock mínimo debe ser menor que stock máximo', 'warning')
+  const dup = componentes.value.find(c => c.codigo?.toLowerCase() === f.codigo.toLowerCase() && c.id !== editingComp.value?.id)
+  if (dup) return notify('Ya existe un componente con ese código', 'warning')
+
+  savingComp.value = true
+  try {
+    const payload = {
+      codigo: f.codigo.trim(), nombre: f.nombre, descripcion: f.descripcion,
+      categoria: f.categoria, unidad: f.unidad,
+      precio_unitario: Number(f.precio_unitario), stock_actual: Number(f.stock_actual || 0),
+      stock_minimo: Number(f.stock_minimo), stock_maximo: Number(f.stock_maximo),
+      proveedor: f.proveedor, fecha_ultima_compra: f.fecha_ultima_compra || null,
+      ubicacion_almacen: f.ubicacion_almacen, activo: f.activo !== false, notas: f.notas,
+      updated_at: new Date().toISOString(),
+    }
+    if (editingComp.value) {
+      await client.from('componentes').update(payload).eq('id', editingComp.value.id)
+    } else {
+      await client.from('componentes').insert(payload)
+    }
+    await fetchComponentes()
+    showCompDialog.value = false; editingComp.value = null
+    notify('Componente guardado')
+  } catch (e) {
+    notify('Error al guardar: ' + (e?.message || ''), 'error')
+  } finally {
+    savingComp.value = false
+  }
+}
+
+async function eliminarComponente(item) {
+  if (!confirm(`¿Desactivar el componente "${item.nombre}"? (soft delete)`)) return
+  await client.from('componentes').update({ activo: false, updated_at: new Date().toISOString() }).eq('id', item.id)
+  await fetchComponentes()
+  notify('Componente desactivado')
+}
+
+function triggerCompCsv() { compFileInput.value?.click() }
+async function importarComponentesCsv(ev) {
+  const file = ev.target.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const lines = text.split(/\r?\n/).filter(l => l.trim())
+    const header = lines.shift().split(',').map(h => h.trim().toLowerCase())
+    const idx = (k) => header.indexOf(k)
+    const rows = lines.map(l => l.split(',')).map(cols => ({
+      codigo: cols[idx('codigo')]?.trim(),
+      nombre: cols[idx('nombre')]?.trim(),
+      categoria: cols[idx('categoria')]?.trim() || 'Otro',
+      unidad: cols[idx('unidad')]?.trim() || 'Unidad',
+      precio_unitario: Number(cols[idx('precio_unitario')] || 0),
+      stock_actual: Number(cols[idx('stock_actual')] || 0),
+      stock_minimo: Number(cols[idx('stock_minimo')] || 0),
+      stock_maximo: Number(cols[idx('stock_maximo')] || 1),
+    })).filter(r => r.codigo && r.nombre)
+    if (!rows.length) return notify('CSV vacío o sin filas válidas', 'warning')
+    const { error } = await client.from('componentes').upsert(rows, { onConflict: 'codigo' })
+    if (error) throw error
+    await fetchComponentes()
+    notify(`${rows.length} componentes importados`)
+  } catch (e) {
+    notify('Error importando CSV: ' + (e?.message || ''), 'error')
+  } finally {
+    ev.target.value = ''
+  }
+}
+
+// ── RECETAS ──────────────────────────────────────────────────────────────────
+const recetas = ref([])
+const recetasDetalle = ref([])
+const searchReceta = ref('')
+const filterTipoReceta = ref(null)
+const filterEstadoReceta = ref(null)
+const showRecetaDialog = ref(false)
+const editingReceta = ref(null)
+const savingReceta = ref(false)
+const recetaForm = ref({})
+const nuevoDetalle = ref({ componente_id: null, cantidad: 1 })
+
+function emptyReceta() {
+  return { codigo: '', nombre: '', descripcion: '', tipo: 'reparacion', tiempo_fabricacion_minutos: 0, margen_sugerido: 40, activo: true, notas: '' }
+}
+
+function detallesDeReceta(recetaId) {
+  return recetasDetalle.value.filter(d => d.receta_id === recetaId)
+}
+function costoReceta(recetaId) {
+  return detallesDeReceta(recetaId).reduce((s, d) => s + Number(d.costo_subtotal || 0), 0)
+}
+function precioVentaReceta(r) {
+  return costoReceta(r.id) * (1 + Number(r.margen_sugerido || 0) / 100)
+}
+
+const recetasFiltradas = computed(() => {
+  let list = recetas.value
+  if (searchReceta.value) {
+    const q = searchReceta.value.toLowerCase()
+    list = list.filter(r => [r.codigo, r.nombre].some(v => v?.toLowerCase().includes(q)))
+  }
+  if (filterTipoReceta.value) list = list.filter(r => r.tipo === filterTipoReceta.value)
+  if (filterEstadoReceta.value === 'activo') list = list.filter(r => r.activo)
+  if (filterEstadoReceta.value === 'inactivo') list = list.filter(r => !r.activo)
+  return list
+})
+
+const resumenRecetas = computed(() => {
+  const activas = recetas.value.filter(r => r.activo)
+  const costos = activas.map(r => costoReceta(r.id))
+  const total = activas.length
+  const prom = total ? costos.reduce((a, b) => a + b, 0) / total : 0
+  let maxR = null, minR = null, maxC = -1, minC = Infinity
+  activas.forEach(r => { const c = costoReceta(r.id); if (c > maxC) { maxC = c; maxR = r } if (c < minC) { minC = c; minR = r } })
+  return { total, prom, maxR, maxC: maxC < 0 ? 0 : maxC, minR, minC: minC === Infinity ? 0 : minC }
+})
+
+const headersRecetas = [
+  { title: 'Código', key: 'codigo' },
+  { title: 'Nombre', key: 'nombre' },
+  { title: 'Tipo', key: 'tipo' },
+  { title: 'Componentes', key: 'n_comp' },
+  { title: 'Costo Mat.', key: 'costo' },
+  { title: 'Margen', key: 'margen_sugerido' },
+  { title: 'P. Venta', key: 'p_venta' },
+  { title: 'Estado', key: 'activo' },
+  { title: '', key: 'actions', sortable: false },
+]
+
+const componenteSelectItems = computed(() =>
+  componentesActivos.value.map(c => ({ id: c.id, label: `${c.codigo} · ${c.nombre} (${money(c.precio_unitario)})`, raw: c }))
+)
+
+async function fetchRecetas() {
+  const [{ data: r }, { data: d }] = await Promise.all([
+    client.from('recetas').select('*').order('nombre'),
+    client.from('recetas_detalle').select('*, componentes(codigo,nombre,unidad,precio_unitario)').order('orden'),
+  ])
+  recetas.value = r || []
+  recetasDetalle.value = d || []
+}
+
+function nuevaReceta() {
+  editingReceta.value = null
+  recetaForm.value = emptyReceta()
+  nuevoDetalle.value = { componente_id: null, cantidad: 1 }
+  showRecetaDialog.value = true
+}
+function abrirReceta(r) {
+  editingReceta.value = r
+  recetaForm.value = { ...r }
+  nuevoDetalle.value = { componente_id: null, cantidad: 1 }
+  showRecetaDialog.value = true
+}
+
+async function saveReceta() {
+  const f = recetaForm.value
+  if (!f.codigo || !f.nombre || !f.tipo) return notify('Completa código, nombre y tipo', 'warning')
+  if (Number(f.margen_sugerido) < 0 || Number(f.margen_sugerido) > 100) return notify('Margen debe estar entre 0 y 100', 'warning')
+  const dup = recetas.value.find(r => r.codigo?.toLowerCase() === f.codigo.toLowerCase() && r.id !== editingReceta.value?.id)
+  if (dup) return notify('Ya existe una receta con ese código', 'warning')
+  savingReceta.value = true
+  try {
+    const payload = {
+      codigo: f.codigo.trim(), nombre: f.nombre, descripcion: f.descripcion, tipo: f.tipo,
+      tiempo_fabricacion_minutos: Number(f.tiempo_fabricacion_minutos || 0),
+      margen_sugerido: Number(f.margen_sugerido || 0), activo: f.activo !== false, notas: f.notas,
+      updated_at: new Date().toISOString(),
+    }
+    if (editingReceta.value) {
+      await client.from('recetas').update(payload).eq('id', editingReceta.value.id)
+    } else {
+      const { data } = await client.from('recetas').insert(payload).select().single()
+      editingReceta.value = data  // permite agregar componentes de inmediato
+    }
+    await fetchRecetas()
+    if (editingReceta.value) editingReceta.value = recetas.value.find(r => r.id === editingReceta.value.id) || editingReceta.value
+    notify('Receta guardada')
+  } catch (e) {
+    notify('Error al guardar: ' + (e?.message || ''), 'error')
+  } finally {
+    savingReceta.value = false
+  }
+}
+
+async function agregarComponenteAReceta() {
+  if (!editingReceta.value?.id) return notify('Primero guarda la receta', 'warning')
+  const nd = nuevoDetalle.value
+  if (!nd.componente_id || Number(nd.cantidad) <= 0) return notify('Selecciona componente y cantidad > 0', 'warning')
+  const comp = componentes.value.find(c => c.id === nd.componente_id)
+  try {
+    await client.from('recetas_detalle').insert({
+      receta_id: editingReceta.value.id,
+      componente_id: nd.componente_id,
+      cantidad: Number(nd.cantidad),
+      precio_unitario_en_receta: Number(comp?.precio_unitario || 0),
+      orden: detallesDeReceta(editingReceta.value.id).length + 1,
+    })
+    await fetchRecetas()
+    nuevoDetalle.value = { componente_id: null, cantidad: 1 }
+    notify('Componente agregado')
+  } catch (e) {
+    notify('Error: ' + (e?.message || ''), 'error')
+  }
+}
+
+async function quitarDetalleReceta(detalleId) {
+  await client.from('recetas_detalle').delete().eq('id', detalleId)
+  await fetchRecetas()
+  notify('Componente eliminado de la receta')
+}
+
+async function duplicarReceta(r) {
+  try {
+    const base = r || editingReceta.value
+    if (!base) return
+    let nuevoCodigo = base.codigo + '-COPIA'
+    let n = 2
+    while (recetas.value.some(x => x.codigo === nuevoCodigo)) { nuevoCodigo = base.codigo + '-COPIA' + n; n++ }
+    const { data: nueva } = await client.from('recetas').insert({
+      codigo: nuevoCodigo, nombre: base.nombre + ' (copia)', descripcion: base.descripcion,
+      tipo: base.tipo, tiempo_fabricacion_minutos: base.tiempo_fabricacion_minutos,
+      margen_sugerido: base.margen_sugerido, activo: true, notas: base.notas,
+    }).select().single()
+    const dets = detallesDeReceta(base.id)
+    if (dets.length) {
+      await client.from('recetas_detalle').insert(dets.map(d => ({
+        receta_id: nueva.id, componente_id: d.componente_id, cantidad: d.cantidad,
+        precio_unitario_en_receta: d.precio_unitario_en_receta, orden: d.orden,
+      })))
+    }
+    await fetchRecetas()
+    notify('Receta duplicada: ' + nuevoCodigo)
+  } catch (e) {
+    notify('Error al duplicar: ' + (e?.message || ''), 'error')
+  }
+}
+
+async function eliminarReceta(r) {
+  const base = r || editingReceta.value
+  if (!base) return
+  if (!confirm(`¿Eliminar la receta "${base.nombre}" y todos sus componentes?`)) return
+  await client.from('recetas').delete().eq('id', base.id)
+  await fetchRecetas()
+  showRecetaDialog.value = false
+  notify('Receta eliminada')
+}
+
+function descargarRecetario() {
+  const rows = []
+  recetas.value.filter(r => r.activo).forEach(r => {
+    rows.push(['RECETA', r.codigo, r.nombre, r.tipo, 'Margen ' + r.margen_sugerido + '%'])
+    detallesDeReceta(r.id).forEach(d => {
+      rows.push(['', d.componentes?.codigo || '', d.componentes?.nombre || '', d.cantidad + ' ' + (d.componentes?.unidad || ''), money(d.costo_subtotal)])
+    })
+    rows.push(['', '', '', 'Costo materiales', money(costoReceta(r.id))])
+    rows.push(['', '', '', 'Precio venta sugerido', money(precioVentaReceta(r))])
+    rows.push([])
+  })
+  csvDownload('recetario_gatwick.csv', rows)
+  notify('Recetario descargado')
+}
+
+// ── MOVIMIENTOS ──────────────────────────────────────────────────────────────
+const movimientos = ref([])
+const movFechaDesde = ref('')
+const movFechaHasta = ref('')
+const filterTipoMov = ref(null)
+const searchMovComp = ref('')
+const searchMotivo = ref('')
+const filterUsuarioMov = ref(null)
+const showMovDialog = ref(false)
+const savingMov = ref(false)
+const movForm = ref({})
+
+function emptyMov() {
+  return { componente_id: null, tipo_movimiento: 'entrada', cantidad: 1, motivo: '', costo_unitario: 0, numero_informe: '', numero_receta: '', numero_compra: '', proveedor: '' }
+}
+
+const movSelComponente = computed(() => componentes.value.find(c => c.id === movForm.value.componente_id) || null)
+const movCostoTotal = computed(() => Number(movForm.value.cantidad || 0) * Number(movForm.value.costo_unitario || 0))
+
+const usuariosMov = computed(() => [...new Set(movimientos.value.map(m => m.usuario_registra).filter(Boolean))])
+
+const movimientosFiltrados = computed(() => {
+  let list = movimientos.value
+  if (movFechaDesde.value) list = list.filter(m => (m.fecha_movimiento || '') >= movFechaDesde.value)
+  if (movFechaHasta.value) list = list.filter(m => (m.fecha_movimiento || '') <= movFechaHasta.value + 'T23:59:59')
+  if (filterTipoMov.value) list = list.filter(m => m.tipo_movimiento === filterTipoMov.value)
+  if (searchMovComp.value) {
+    const q = searchMovComp.value.toLowerCase()
+    list = list.filter(m => [m.componentes?.codigo, m.componentes?.nombre].some(v => v?.toLowerCase().includes(q)))
+  }
+  if (searchMotivo.value) {
+    const q = searchMotivo.value.toLowerCase()
+    list = list.filter(m => m.motivo?.toLowerCase().includes(q))
+  }
+  if (filterUsuarioMov.value) list = list.filter(m => m.usuario_registra === filterUsuarioMov.value)
+  return list
+})
+
+const headersMovimientos = [
+  { title: 'Fecha', key: 'fecha_movimiento' },
+  { title: 'Componente', key: 'componente' },
+  { title: 'Tipo', key: 'tipo_movimiento' },
+  { title: 'Cant.', key: 'cantidad' },
+  { title: 'Stock Ant.', key: 'stock_anterior' },
+  { title: 'Stock Nuevo', key: 'stock_nuevo' },
+  { title: 'Motivo', key: 'motivo' },
+  { title: 'Costo', key: 'costo_total' },
+  { title: 'Usuario', key: 'usuario_registra' },
+  { title: '', key: 'actions', sortable: false },
+]
+
+function movTipoColor(t) { return { entrada: 'success', salida: 'error', ajuste: 'warning', devolucion: 'info' }[t] || 'default' }
+
+function defaultRangoMov() {
+  const hoy = new Date()
+  const hace30 = new Date(); hace30.setDate(hoy.getDate() - 30)
+  movFechaDesde.value = formatDateISO(hace30)
+  movFechaHasta.value = formatDateISO(hoy)
+}
+
+async function fetchMovimientos() {
+  const { data } = await client.from('movimientos_inventario')
+    .select('*, componentes(codigo,nombre)')
+    .order('fecha_movimiento', { ascending: false })
+  movimientos.value = data || []
+}
+
+function nuevoMovimiento(preCompId = null) {
+  movForm.value = emptyMov()
+  if (preCompId) movForm.value.componente_id = preCompId
+  showMovDialog.value = true
+}
+
+function calcularStockNuevo(comp, tipo, cantidad) {
+  const ant = Number(comp?.stock_actual || 0)
+  const c = Number(cantidad || 0)
+  if (tipo === 'entrada' || tipo === 'devolucion') return ant + c
+  if (tipo === 'salida') return ant - c
+  if (tipo === 'ajuste') return c   // ajuste = stock absoluto corregido
+  return ant
+}
+
+async function registrarMovimiento() {
+  const f = movForm.value
+  const comp = movSelComponente.value
+  if (!comp) return notify('Selecciona un componente', 'warning')
+  if (Number(f.cantidad) <= 0) return notify('La cantidad debe ser mayor a 0', 'warning')
+  if (['salida'].includes(f.tipo_movimiento) && !f.motivo) return notify('El motivo es requerido para salidas', 'warning')
+  if (f.tipo_movimiento === 'entrada' && Number(f.costo_unitario) <= 0) return notify('Costo unitario requerido para entradas', 'warning')
+
+  const stockAnterior = Number(comp.stock_actual || 0)
+  const stockNuevo = calcularStockNuevo(comp, f.tipo_movimiento, f.cantidad)
+  if (stockNuevo < 0) return notify(`Stock insuficiente: hay ${stockAnterior}, intentas sacar ${f.cantidad}`, 'error')
+
+  savingMov.value = true
+  try {
+    const costoUnit = f.tipo_movimiento === 'salida' ? Number(comp.precio_unitario || 0) : Number(f.costo_unitario || 0)
+    await client.from('movimientos_inventario').insert({
+      componente_id: comp.id,
+      tipo_movimiento: f.tipo_movimiento,
+      cantidad: Number(f.cantidad),
+      stock_anterior: stockAnterior,
+      stock_nuevo: stockNuevo,
+      motivo: f.motivo,
+      costo_unitario: costoUnit,
+      costo_total: Number(f.cantidad) * costoUnit,
+      numero_informe: f.numero_informe || null,
+      numero_receta: f.numero_receta || null,
+      numero_compra: f.numero_compra || null,
+      proveedor: f.proveedor || null,
+      usuario_registra: currentUser.value?.email || 'sistema',
+      fecha_movimiento: new Date().toISOString(),
+    })
+    await client.from('componentes').update({ stock_actual: stockNuevo, updated_at: new Date().toISOString() }).eq('id', comp.id)
+    await Promise.all([fetchMovimientos(), fetchComponentes()])
+    showMovDialog.value = false
+    if (stockNuevo < Number(comp.stock_minimo)) notify(`Movimiento registrado · ⚠ ${comp.nombre} quedó BAJO mínimo (${stockNuevo}/${comp.stock_minimo})`, 'warning')
+    else notify('Movimiento registrado')
+  } catch (e) {
+    notify('Error: ' + (e?.message || ''), 'error')
+  } finally {
+    savingMov.value = false
+  }
+}
+
+async function deshacerMovimiento(m) {
+  if (!confirm('¿Deshacer este movimiento? Se creará un movimiento inverso que revierte el stock.')) return
+  const comp = componentes.value.find(c => c.id === m.componente_id)
+  if (!comp) return notify('Componente no encontrado', 'error')
+  const stockAnterior = Number(comp.stock_actual || 0)
+  const stockNuevo = Number(m.stock_anterior || 0)  // revertir al estado previo del mov original
+  const delta = Math.abs(stockNuevo - stockAnterior)
+  if (delta === 0) return notify('Nada que revertir', 'warning')
+  try {
+    await client.from('movimientos_inventario').insert({
+      componente_id: comp.id,
+      tipo_movimiento: 'ajuste',
+      cantidad: delta,
+      stock_anterior: stockAnterior,
+      stock_nuevo: stockNuevo,
+      motivo: `Deshacer movimiento de ${m.tipo_movimiento} (${formatDateTime(m.fecha_movimiento)})`,
+      costo_unitario: 0, costo_total: 0,
+      usuario_registra: currentUser.value?.email || 'sistema',
+      fecha_movimiento: new Date().toISOString(),
+    })
+    await client.from('componentes').update({ stock_actual: stockNuevo, updated_at: new Date().toISOString() }).eq('id', comp.id)
+    await Promise.all([fetchMovimientos(), fetchComponentes()])
+    notify('Movimiento deshecho')
+  } catch (e) {
+    notify('Error: ' + (e?.message || ''), 'error')
+  }
+}
+
+function exportarMovimientos() {
+  const rows = [['Fecha', 'Codigo', 'Componente', 'Tipo', 'Cantidad', 'Stock Ant.', 'Stock Nuevo', 'Motivo', 'Costo Total', 'Usuario']]
+  movimientosFiltrados.value.forEach(m => rows.push([
+    formatDateTime(m.fecha_movimiento), m.componentes?.codigo, m.componentes?.nombre, m.tipo_movimiento,
+    m.cantidad, m.stock_anterior, m.stock_nuevo, m.motivo, Number(m.costo_total || 0).toFixed(2), m.usuario_registra,
+  ]))
+  csvDownload('movimientos_gatwick.csv', rows)
+  notify('Histórico exportado')
+}
+
+// ── COSTOS POR INTERVENCIÓN (enlaza gatwick_intervenciones + informe_materiales)
+const informeMateriales = ref([])
+const costoFechaDesde = ref('')
+const costoFechaHasta = ref('')
+const searchInforme = ref('')
+const searchClienteCosto = ref('')
+const showCostoDetalle = ref(false)
+const intervSeleccionada = ref(null)
+
+async function fetchInformeMateriales() {
+  const { data } = await client.from('informe_materiales')
+    .select('*, componentes(codigo,nombre,unidad)')
+    .order('created_at', { ascending: false })
+  informeMateriales.value = data || []
+}
+
+function materialesDeInforme(numeroInforme) {
+  return informeMateriales.value.filter(im => String(im.numero_informe) === String(numeroInforme))
+}
+function costoMaterialesInforme(numeroInforme) {
+  return materialesDeInforme(numeroInforme).reduce((s, im) => s + Number(im.costo_total || 0), 0)
+}
+
+const costosIntervencion = computed(() => {
+  let list = intervenciones.value.map(i => {
+    const costoMat = costoMaterialesInforme(i.id)
+    const manoObra = Number(i.costo_mano_obra || 0)
+    const costoTotal = costoMat + manoObra
+    const cobrado = Number(i.costo_total || 0)
+    return {
+      ...i, _costoMat: costoMat, _manoObra: manoObra, _costoTotal: costoTotal,
+      _cobrado: cobrado, _margen: cobrado - costoTotal,
+    }
+  })
+  if (costoFechaDesde.value) list = list.filter(i => (i.fecha_inicio || i.created_at || '') >= costoFechaDesde.value)
+  if (costoFechaHasta.value) list = list.filter(i => (i.fecha_inicio || i.created_at || '') <= costoFechaHasta.value + 'T23:59:59')
+  if (searchInforme.value) list = list.filter(i => String(i.id).includes(searchInforme.value.trim()))
+  if (searchClienteCosto.value) {
+    const q = searchClienteCosto.value.toLowerCase()
+    list = list.filter(i => [i.empresa_cliente, i.direccion].some(v => v?.toLowerCase().includes(q)))
+  }
+  return list
+})
+
+const headersCostos = [
+  { title: 'N° Informe', key: 'id' },
+  { title: 'Fecha', key: 'fecha_inicio' },
+  { title: 'Cliente / Edificio', key: 'empresa_cliente' },
+  { title: 'Tipo', key: 'tipo_intervencion' },
+  { title: 'Materiales', key: '_costoMat' },
+  { title: 'Mano Obra', key: '_manoObra' },
+  { title: 'Costo Total', key: '_costoTotal' },
+  { title: 'Margen', key: '_margen' },
+  { title: '', key: 'actions', sortable: false },
+]
+
+function verCostoIntervencion(item) {
+  intervSeleccionada.value = item
+  showCostoDetalle.value = true
+}
+
+// ── REPORTES ─────────────────────────────────────────────────────────────────
+const reporteTipo = ref('consumo_componente')
+const reporteTipos = [
+  { value: 'consumo_componente', label: 'Consumo por componente' },
+  { value: 'consumo_categoria',  label: 'Consumo por categoría' },
+  { value: 'rotacion',           label: 'Rotación de inventario' },
+  { value: 'proyeccion',         label: 'Proyección de compras' },
+  { value: 'costo_intervencion', label: 'Costo promedio por intervención' },
+]
+
+const salidas30 = computed(() => {
+  const limite = new Date(); limite.setDate(limite.getDate() - 30)
+  const lim = limite.toISOString()
+  return movimientos.value.filter(m => m.tipo_movimiento === 'salida' && (m.fecha_movimiento || '') >= lim)
+})
+
+const repConsumoComponente = computed(() => {
+  const map = {}
+  salidas30.value.forEach(m => {
+    const c = componentes.value.find(x => x.id === m.componente_id)
+    if (!c) return
+    if (!map[c.id]) map[c.id] = { codigo: c.codigo, nombre: c.nombre, cantidad: 0, costo: 0, freq: 0 }
+    map[c.id].cantidad += Number(m.cantidad || 0)
+    map[c.id].costo += Number(m.costo_total || 0)
+    map[c.id].freq += 1
+  })
+  return Object.values(map).map(r => ({ ...r, proyeccion60: r.cantidad * 2 })).sort((a, b) => b.cantidad - a.cantidad)
+})
+
+const repConsumoCategoria = computed(() => {
+  const map = {}
+  salidas30.value.forEach(m => {
+    const c = componentes.value.find(x => x.id === m.componente_id)
+    if (!c) return
+    const cat = c.categoria || 'Otro'
+    if (!map[cat]) map[cat] = { categoria: cat, cantidad: 0, costo: 0 }
+    map[cat].cantidad += Number(m.cantidad || 0)
+    map[cat].costo += Number(m.costo_total || 0)
+  })
+  return Object.values(map).sort((a, b) => b.costo - a.costo)
+})
+
+const repRotacion = computed(() => {
+  const consumoPorComp = {}
+  salidas30.value.forEach(m => { consumoPorComp[m.componente_id] = (consumoPorComp[m.componente_id] || 0) + Number(m.cantidad || 0) })
+  return componentesActivos.value.map(c => {
+    const consumo = consumoPorComp[c.id] || 0
+    const stock = Number(c.stock_actual || 0)
+    const rot = stock > 0 ? consumo / stock : (consumo > 0 ? 99 : 0)
+    const interp = rot >= 1 ? 'Alto' : rot >= 0.3 ? 'Normal' : 'Lento'
+    return { codigo: c.codigo, nombre: c.nombre, stock, consumo, rotacion: rot, interpretacion: interp, valor: valorStock(c) }
+  }).sort((a, b) => b.rotacion - a.rotacion)
+})
+
+const repProyeccion = computed(() => {
+  const consumoPorComp = {}
+  salidas30.value.forEach(m => { consumoPorComp[m.componente_id] = (consumoPorComp[m.componente_id] || 0) + Number(m.cantidad || 0) })
+  return componentesActivos.value.map(c => {
+    const consumo = consumoPorComp[c.id] || 0
+    const diario = consumo / 30
+    const stock = Number(c.stock_actual || 0)
+    const diasHastaMin = diario > 0 ? Math.max(0, (stock - Number(c.stock_minimo || 0)) / diario) : Infinity
+    const comprar = Math.max(0, Number(c.stock_maximo || 0) - stock)
+    return {
+      codigo: c.codigo, nombre: c.nombre, stock, diario: diario,
+      diasHastaMin: diasHastaMin === Infinity ? '∞' : Math.round(diasHastaMin),
+      comprar, costo: comprar * Number(c.precio_unitario || 0),
+      urgente: diasHastaMin !== Infinity && diasHastaMin <= 14,
+    }
+  }).filter(r => r.comprar > 0).sort((a, b) => (a.diasHastaMin === '∞' ? 1 : b.diasHastaMin === '∞' ? -1 : a.diasHastaMin - b.diasHastaMin))
+})
+
+const repCostoIntervencion = computed(() => {
+  const map = {}
+  costosIntervencion.value.forEach(i => {
+    const tipo = i.tipo_intervencion || 'otro'
+    if (!map[tipo]) map[tipo] = { tipo, n: 0, mat: 0, mo: 0, total: 0, margen: 0 }
+    map[tipo].n += 1
+    map[tipo].mat += i._costoMat
+    map[tipo].mo += i._manoObra
+    map[tipo].total += i._costoTotal
+    map[tipo].margen += i._margen
+  })
+  return Object.values(map).map(r => ({
+    tipo: r.tipo, n: r.n,
+    promMat: r.n ? r.mat / r.n : 0, promMo: r.n ? r.mo / r.n : 0,
+    promTotal: r.n ? r.total / r.n : 0, promMargen: r.n ? r.margen / r.n : 0,
+  }))
+})
+
+const reporteChartOptions = computed(() => ({
+  chart: { type: 'bar', background: 'transparent', toolbar: { show: false } },
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  colors: ['#F4623A'],
+  plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+  xaxis: { categories: reporteChartData.value.categories, labels: { style: { colors: '#999' } } },
+  yaxis: { labels: { style: { colors: '#999' } } },
+  grid: { borderColor: 'rgba(255,255,255,0.06)' },
+  dataLabels: { enabled: false },
+}))
+const reporteChartData = computed(() => {
+  if (reporteTipo.value === 'consumo_componente') {
+    const top = repConsumoComponente.value.slice(0, 10)
+    return { categories: top.map(r => r.nombre), series: [{ name: 'Cantidad', data: top.map(r => r.cantidad) }] }
+  }
+  if (reporteTipo.value === 'consumo_categoria') {
+    return { categories: repConsumoCategoria.value.map(r => r.categoria), series: [{ name: 'Costo S/', data: repConsumoCategoria.value.map(r => Number(r.costo.toFixed(2))) }] }
+  }
+  return { categories: [], series: [{ name: '', data: [] }] }
+})
+const reporteSeries = computed(() => reporteChartData.value.series)
+
+function exportarReporte() {
+  let rows = []
+  if (reporteTipo.value === 'consumo_componente') {
+    rows = [['Componente', 'Cant. consumida (30d)', 'Costo total', 'Frecuencia', 'Proyección 60d']]
+    repConsumoComponente.value.forEach(r => rows.push([r.nombre, r.cantidad, r.costo.toFixed(2), r.freq, r.proyeccion60]))
+  } else if (reporteTipo.value === 'consumo_categoria') {
+    rows = [['Categoría', 'Cantidad', 'Costo total']]
+    repConsumoCategoria.value.forEach(r => rows.push([r.categoria, r.cantidad, r.costo.toFixed(2)]))
+  } else if (reporteTipo.value === 'rotacion') {
+    rows = [['Componente', 'Stock', 'Consumo 30d', 'Rotación', 'Interpretación']]
+    repRotacion.value.forEach(r => rows.push([r.nombre, r.stock, r.consumo, r.rotacion.toFixed(2), r.interpretacion]))
+  } else if (reporteTipo.value === 'proyeccion') {
+    rows = [['Componente', 'Stock', 'Consumo diario', 'Días hasta mínimo', 'A comprar', 'Costo estimado']]
+    repProyeccion.value.forEach(r => rows.push([r.nombre, r.stock, r.diario.toFixed(2), r.diasHastaMin, r.comprar, r.costo.toFixed(2)]))
+  } else {
+    rows = [['Tipo', 'Intervenciones', 'Prom. materiales', 'Prom. mano obra', 'Prom. total', 'Prom. margen']]
+    repCostoIntervencion.value.forEach(r => rows.push([r.tipo, r.n, r.promMat.toFixed(2), r.promMo.toFixed(2), r.promTotal.toFixed(2), r.promMargen.toFixed(2)]))
+  }
+  csvDownload('reporte_' + reporteTipo.value + '_gatwick.csv', rows)
+  notify('Reporte exportado')
+}
+
+// ── INVENTARIO (home) · charts ───────────────────────────────────────────────
+const valorPorCategoriaSeries = computed(() => {
+  const map = {}
+  componentesActivos.value.forEach(c => { map[c.categoria || 'Otro'] = (map[c.categoria || 'Otro'] || 0) + valorStock(c) })
+  return Object.values(map).map(v => Number(v.toFixed(2)))
+})
+const valorPorCategoriaLabels = computed(() => {
+  const map = {}
+  componentesActivos.value.forEach(c => { map[c.categoria || 'Otro'] = (map[c.categoria || 'Otro'] || 0) + valorStock(c) })
+  return Object.keys(map)
+})
+const invPieOptions = computed(() => ({
+  chart: { type: 'donut', background: 'transparent' },
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  labels: valorPorCategoriaLabels.value,
+  colors: ['#F4623A', '#FF8F70', '#FFB74D', '#FFD54F', '#4DB6AC', '#64B5F6', '#9575CD', '#A1887F', '#90A4AE', '#E57373'],
+  legend: { position: 'bottom', labels: { colors: '#aaa' } },
+  dataLabels: { enabled: true, formatter: (v) => v.toFixed(0) + '%' },
+  stroke: { width: 0 },
+}))
+
+const movimientos7d = computed(() => {
+  const dias = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i)
+    dias.push(formatDateISO(d))
+  }
+  const entradas = dias.map(() => 0), salidas = dias.map(() => 0)
+  movimientos.value.forEach(m => {
+    const dia = (m.fecha_movimiento || '').slice(0, 10)
+    const idx = dias.indexOf(dia)
+    if (idx === -1) return
+    if (m.tipo_movimiento === 'entrada' || m.tipo_movimiento === 'devolucion') entradas[idx] += Number(m.cantidad || 0)
+    else if (m.tipo_movimiento === 'salida') salidas[idx] += Number(m.cantidad || 0)
+  })
+  return { dias, entradas, salidas }
+})
+const invBarSeries = computed(() => [
+  { name: 'Entradas', data: movimientos7d.value.entradas },
+  { name: 'Salidas', data: movimientos7d.value.salidas },
+])
+const invBarOptions = computed(() => ({
+  chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, stacked: false },
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  colors: ['#4DB6AC', '#E57373'],
+  plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
+  xaxis: { categories: movimientos7d.value.dias.map(d => d.slice(5)), labels: { style: { colors: '#999' } } },
+  yaxis: { labels: { style: { colors: '#999' } } },
+  grid: { borderColor: 'rgba(255,255,255,0.06)' },
+  legend: { labels: { colors: '#aaa' } },
+  dataLabels: { enabled: false },
+}))
+
+const costoPromedioFabricacion = computed(() => {
+  const activas = recetas.value.filter(r => r.activo)
+  if (!activas.length) return 0
+  return activas.reduce((s, r) => s + costoReceta(r.id), 0) / activas.length
+})
+
+function irA(view) { activeView.value = view }
+async function refreshInventario() {
+  await Promise.all([fetchComponentes(), fetchRecetas(), fetchMovimientos(), fetchInformeMateriales()])
+  notify('Inventario actualizado')
+}
+
 // ── Tabs dashboard ─────────────────────────────────────────────────────────
 const activeTab = ref('clientes_dashboard')
 const tabs = [
@@ -1909,6 +3298,7 @@ async function refreshAll() {
 // ── Lifecycle ──────────────────────────────────────────────────────────────
 onMounted(async () => {
   await loadSession()
+  defaultRangoMov()
   await Promise.all([
     fetchClientesWpp(),
     fetchClientesFbIg(),
@@ -1921,6 +3311,10 @@ onMounted(async () => {
     fetchCobranzas(),
     fetchEgresos(),
     fetchMeta(),
+    fetchComponentes(),
+    fetchRecetas(),
+    fetchMovimientos(),
+    fetchInformeMateriales(),
   ])
   subscribeEmergencias()
 })

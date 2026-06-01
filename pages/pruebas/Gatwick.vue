@@ -735,7 +735,7 @@
       <div v-else-if="activeView === 'intervenciones'" class="view-container">
         <header class="top-header">
           <h1>Historial de Intervenciones</h1>
-          <button class="btn-primary" @click="showNuevaIntervencion = true">
+          <button class="btn-primary" @click="openNuevaIntervencion">
             <v-icon icon="mdi-plus" size="16" />
             <span>Nueva Intervención</span>
           </button>
@@ -833,6 +833,40 @@
                 <v-col cols="6">
                   <v-select v-model="intervForm.estado" :items="['en_proceso','completada','cancelada']"
                     label="Estado" density="compact" />
+                </v-col>
+
+                <!-- ===== Materiales utilizados (descuenta stock al completar) ===== -->
+                <v-col cols="12">
+                  <v-divider class="mb-2" />
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <strong style="font-size:0.9rem;">Materiales utilizados</strong>
+                    <span style="font-size:0.72rem; color:var(--text-secondary);">Descuenta stock al guardar como "completada"</span>
+                  </div>
+
+                  <!-- Ya descontados (read-only) -->
+                  <div v-if="intervMaterialesExistentes.length > 0" class="mov-stock-info" style="margin-bottom:8px;">
+                    <div style="font-weight:600; margin-bottom:4px;">✓ Stock ya descontado para este informe:</div>
+                    <div v-for="im in intervMaterialesExistentes" :key="im.id" style="font-size:0.82rem;">
+                      • {{ im.componentes?.codigo }} {{ im.componentes?.nombre }} — {{ im.cantidad_usada }} {{ im.componentes?.unidad || '' }} ({{ money(im.costo_total) }})
+                    </div>
+                  </div>
+
+                  <!-- Editor (solo si no se ha descontado todavía) -->
+                  <template v-else>
+                    <div v-for="(m, idx) in intervMateriales" :key="idx" style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+                      <v-select v-model="m.componente_id" :items="componenteSelectItems" item-title="label" item-value="id"
+                        label="Componente" density="compact" hide-details style="flex:1;" />
+                      <v-text-field v-model.number="m.cantidad" label="Cant." type="number" density="compact" hide-details style="max-width:90px;" />
+                      <v-btn icon size="x-small" variant="text" color="error" @click="quitarMaterialInterv(idx)"><v-icon icon="mdi-close" size="16" /></v-btn>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px;">
+                      <v-btn size="small" variant="tonal" prepend-icon="mdi-plus" @click="agregarMaterialInterv">Agregar material</v-btn>
+                      <span v-if="intervMateriales.length" style="font-size:0.85rem;">Subtotal: <strong>{{ money(intervMaterialesSubtotal) }}</strong></span>
+                    </div>
+                    <div v-if="intervMateriales.length && intervForm.estado !== 'completada'" style="font-size:0.72rem; color:#FFB74D; margin-top:4px;">
+                      ⚠ El stock se descuenta cuando el estado sea "completada".
+                    </div>
+                  </template>
                 </v-col>
               </v-row>
             </v-card-text>
@@ -2236,6 +2270,39 @@ const savingInterv = ref(false)
 const searchInterv = ref('')
 const intervForm = ref({})
 
+// Materiales utilizados (descuenta stock vía webhook n8n al completar)
+const intervMateriales = ref([])              // editor: [{ componente_id, cantidad }]
+const intervMaterialesExistentes = ref([])    // ya descontados (de informe_materiales)
+
+const intervMaterialesSubtotal = computed(() =>
+  intervMateriales.value.reduce((s, m) => {
+    const c = componentes.value.find(x => x.id === m.componente_id)
+    return s + (c ? Number(c.precio_unitario || 0) * Number(m.cantidad || 0) : 0)
+  }, 0)
+)
+
+function agregarMaterialInterv() { intervMateriales.value.push({ componente_id: null, cantidad: 1 }) }
+function quitarMaterialInterv(idx) { intervMateriales.value.splice(idx, 1) }
+
+async function cargarMaterialesInforme(numeroInforme) {
+  const { data } = await client.from('informe_materiales')
+    .select('*, componentes(codigo,nombre,unidad)')
+    .eq('numero_informe', String(numeroInforme))
+  intervMaterialesExistentes.value = data || []
+}
+
+async function descontarStock(numeroInforme, materiales) {
+  const payload = {
+    numero_informe: String(numeroInforme),
+    materiales: materiales
+      .filter(m => m.componente_id && Number(m.cantidad) > 0)
+      .map(m => ({ componente_id: m.componente_id, cantidad: Number(m.cantidad) })),
+    usuario: currentUser.value?.email || 'dashboard',
+  }
+  if (!payload.materiales.length) return null
+  return await $fetch('/api/gatwick/descontar-stock', { method: 'POST', body: payload })
+}
+
 const intervencionesMes = computed(() => {
   const ym = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`
   return intervenciones.value.filter(i => i.created_at?.startsWith(ym))
@@ -2265,10 +2332,21 @@ async function fetchIntervenciones() {
   intervenciones.value = data || []
 }
 
-function editarIntervencion(item) {
+function openNuevaIntervencion() {
+  editingInterv.value = null
+  intervForm.value = { tipo_intervencion: 'mantenimiento', estado: 'en_proceso', costo_mano_obra: 0, costo_repuestos: 0 }
+  intervMateriales.value = []
+  intervMaterialesExistentes.value = []
+  showNuevaIntervencion.value = true
+}
+
+async function editarIntervencion(item) {
   editingInterv.value = item
   intervForm.value = { ...item }
+  intervMateriales.value = []
+  intervMaterialesExistentes.value = []
   showNuevaIntervencion.value = true
+  await cargarMaterialesInforme(item.id)
 }
 
 async function saveIntervencion() {
@@ -2277,15 +2355,38 @@ async function saveIntervencion() {
     const payload = { ...intervForm.value }
     payload.costo_total = Number(payload.costo_mano_obra || 0) + Number(payload.costo_repuestos || 0)
     delete payload.id
+
+    let intervId = editingInterv.value?.id
     if (editingInterv.value) {
       await client.from('gatwick_intervenciones').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingInterv.value.id)
     } else {
-      await client.from('gatwick_intervenciones').insert(payload)
+      const { data } = await client.from('gatwick_intervenciones').insert(payload).select().single()
+      intervId = data?.id
     }
+
+    // Descuento de stock vía n8n: solo si está completada, hay materiales nuevos
+    // y aún no se descontaron (guardia anti-doble-descuento).
+    const hayMaterialesNuevos = intervMateriales.value.some(m => m.componente_id && Number(m.cantidad) > 0)
+    if (intervId && payload.estado === 'completada' && hayMaterialesNuevos && intervMaterialesExistentes.value.length === 0) {
+      try {
+        const r = await descontarStock(intervId, intervMateriales.value)
+        if (r?.success) {
+          const alertas = r?.n8n?.alertas_stock || []
+          notify('Intervención guardada · stock descontado' + (alertas.length ? ` · ⚠ ${alertas.length} alerta(s)` : ''))
+          await Promise.all([fetchComponentes(), fetchMovimientos(), fetchInformeMateriales()])
+        } else {
+          notify('Intervención guardada, pero el descuento de stock falló: ' + (r?.error || 'revisa el flujo n8n'), 'warning')
+        }
+      } catch (e) {
+        notify('Intervención guardada, pero no se pudo disparar el descuento (¿flujo n8n activo?)', 'warning')
+      }
+    } else {
+      notify('Intervención guardada')
+    }
+
     await fetchIntervenciones()
     showNuevaIntervencion.value = false
     editingInterv.value = null
-    notify('Intervención guardada')
   } catch {
     notify('Error al guardar', 'error')
   } finally {

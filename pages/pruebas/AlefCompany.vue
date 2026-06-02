@@ -2559,7 +2559,7 @@ const COMPANY_TOOLS: Record<string, string[]> = {
   estasconsuerte: ['Todas', 'Generar Link Monnet', 'Webhook Monnet', ...FLOW_TOOLS],
   brada:          ['Todas', ...FLOW_TOOLS],
   estetikamedika: ['Todas', ...FLOW_TOOLS],
-  davila:         ['Todas', ...FLOW_TOOLS],
+  davila:         ['Todas', 'Validar Pre-Reserva', 'Limpieza Pre-Reservas', ...FLOW_TOOLS],
   solari:         ['Todas', ...FLOW_TOOLS],
   skip:           ['Todas', ...FLOW_TOOLS],
   alegrated:      ['Todas', ...FLOW_TOOLS],

@@ -18,4 +18,9 @@
 #     → dispara el endpoint del dashboard /api/healup/cron-citas-manana
 #       (resumen de las citas del día siguiente: dashboard + Google Calendar)
 #
+#   netlify/functions/cron-davila-pre-reservas.mts
+#     → corre cada 15 minutos (*/15 * * * *)
+#     → dispara /api/davila/pre-reserva-cron
+#       (marca como expiradas las pre-reservas sin pagar tras 40 min y libera el horario en GCal)
+#
 # El schedule está declarado dentro de cada archivo .mts con `export const config = { schedule: '...' }`.

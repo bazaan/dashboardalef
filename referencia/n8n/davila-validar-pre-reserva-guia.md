@@ -82,18 +82,14 @@ no necesitas saber ni configurar ningún Calendar ID.
 ### Variables de entorno (Netlify)
 
 ```
-# Compartidas con Healup (ya deberían existir): el OAuth client de Google
-GOOGLE_CLIENT_ID     = ...
-GOOGLE_CLIENT_SECRET = ...
-
 # Davila — solo estas son nuevas:
 GOOGLE_CALENDAR_ID_DAVILA   = primary            # default; dejar así salvo calendario secundario
 DAVILA_PRE_RESERVA_CRON_KEY = davila-cron-2026-xK9
 ```
 
-> **Google Cloud Console:** agregar la URI de callback de Davila a las
-> "Authorized redirect URIs" del OAuth client:
-> `https://dashboard.alef.company/api/davila/gcal-callback`
+> **NO hace falta tocar Google Cloud Console.** Davila reutiliza el callback
+> OAuth de Healup (`/api/healup/gcal-callback`, ya registrado) con state='davila'.
+> Las credenciales `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` ya existen (las usa Healup).
 
 ## Paso 5 — SQL
 

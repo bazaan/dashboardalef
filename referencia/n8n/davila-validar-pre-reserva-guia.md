@@ -65,17 +65,35 @@ hoy apunta a un sub-workflow vacío. Cámbialo:
 | CONFIRMAR | `{ success: true, estado:"confirmado" }` | `{ success:false, error:"pre_reserva_no_encontrada" }` |
 | CANCELAR | `{ success: true, estado:"cancelado" }` | `{ success:false, error:"pre_reserva_no_encontrada" }` |
 
-## Paso 4 — Variables de entorno (Netlify)
+## Paso 4 — Conexión a Google Calendar (¡importante!)
+
+Davila tiene su PROPIA conexión a Google Calendar, separada de las demás empresas.
+
+1. Entra al dashboard de **Miguel Davila → Soporte → "Conexión a Google Calendar"**.
+2. Click en **"Conectar con Google Calendar"**.
+3. Inicia sesión con la cuenta de Google de Davila (la del calendario de citas)
+   y acepta los permisos.
+4. Vuelves al dashboard con "Calendario conectado ✅" y el email de la cuenta.
+
+Eso guarda el refresh token en `app_settings(key='google_refresh_token_davila')`.
+Las citas se crean en el calendario **principal** ("primary") de esa cuenta —
+no necesitas saber ni configurar ningún Calendar ID.
+
+### Variables de entorno (Netlify)
 
 ```
-GOOGLE_CALENDAR_ID_DAVILA   = <Calendar ID del calendario de Davila>
-DAVILA_PRE_RESERVA_CRON_KEY = davila-cron-2026-xK9   (o reusa HEALUP_AGENDAMIENTO_CRON_KEY)
+# Compartidas con Healup (ya deberían existir): el OAuth client de Google
+GOOGLE_CLIENT_ID     = ...
+GOOGLE_CLIENT_SECRET = ...
+
+# Davila — solo estas son nuevas:
+GOOGLE_CALENDAR_ID_DAVILA   = primary            # default; dejar así salvo calendario secundario
+DAVILA_PRE_RESERVA_CRON_KEY = davila-cron-2026-xK9
 ```
 
-> El endpoint reutiliza la misma autorización Google que Healup
-> (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` + refresh token en `app_settings`).
-> Si el calendario de Davila está en OTRA cuenta de Google, hay que autorizar
-> esa cuenta (avisar para agregar el flujo de re-autorización por empresa).
+> **Google Cloud Console:** agregar la URI de callback de Davila a las
+> "Authorized redirect URIs" del OAuth client:
+> `https://dashboard.alef.company/api/davila/gcal-callback`
 
 ## Paso 5 — SQL
 

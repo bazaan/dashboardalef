@@ -1,17 +1,25 @@
 /**
  * Helpers de Google Calendar para la tool validar_pre_reserva de Miguel Davila.
  *
- * Reutiliza la misma autorización OAuth2 de Google que usa Healup
- * (getGoogleAccessToken lee el refresh token de app_settings). Solo cambia
- * el Calendar ID, que se configura con GOOGLE_CALENDAR_ID_DAVILA.
+ * Usa la conexión de Google PROPIA de Davila (companyKey='davila'), totalmente
+ * independiente de Healup. El refresh token se guarda en app_settings bajo
+ * `google_refresh_token_davila` cuando el usuario se conecta desde el botón
+ * "Conexión a Google Calendar" en Soporte.
+ *
+ * Calendar ID: por defecto 'primary' = el calendario principal de la cuenta de
+ * Google que se conectó. Así NO hace falta saber ni configurar un Calendar ID:
+ * basta con loguearse con la cuenta correcta de Davila al conectar.
+ * (Se puede sobreescribir con GOOGLE_CALENDAR_ID_DAVILA si algún día quieren
+ *  apuntar a un calendario secundario específico.)
  */
 
 import { getGoogleAccessToken } from '~/server/utils/google-auth'
 
 const GCAL_API = 'https://www.googleapis.com/calendar/v3'
+const DAVILA_COMPANY_KEY = 'davila'
 
 export const DAVILA_CALENDAR_ID =
-  process.env.GOOGLE_CALENDAR_ID_DAVILA || 'migueldavila.citas@gmail.com'
+  process.env.GOOGLE_CALENDAR_ID_DAVILA || 'primary'
 
 export const DAVILA_TZ = 'America/Lima'
 
@@ -41,7 +49,7 @@ export function addMinutesISO(fecha: string, hora: string, minutes: number): str
 export async function slotEstaLibre(
   fecha: string, hora: string, duracionMin: number,
 ): Promise<{ libre: boolean; conflictos: number }> {
-  const accessToken = await getGoogleAccessToken()
+  const accessToken = await getGoogleAccessToken(DAVILA_COMPANY_KEY)
   const timeMin = buildLimaISO(fecha, hora)
   const timeMax = addMinutesISO(fecha, hora, duracionMin)
 
@@ -73,7 +81,7 @@ export async function crearEvento(args: {
   fecha: string; hora: string; duracionMin: number;
   summary: string; description?: string;
 }): Promise<string> {
-  const accessToken = await getGoogleAccessToken()
+  const accessToken = await getGoogleAccessToken(DAVILA_COMPANY_KEY)
   const calId = encodeURIComponent(DAVILA_CALENDAR_ID)
 
   const body = {
@@ -103,7 +111,7 @@ export async function crearEvento(args: {
 export async function eliminarEvento(eventId: string): Promise<boolean> {
   if (!eventId) return false
   try {
-    const accessToken = await getGoogleAccessToken()
+    const accessToken = await getGoogleAccessToken(DAVILA_COMPANY_KEY)
     const calId = encodeURIComponent(DAVILA_CALENDAR_ID)
     const res = await fetch(`${GCAL_API}/calendars/${calId}/events/${encodeURIComponent(eventId)}`, {
       method: 'DELETE',

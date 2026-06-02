@@ -86,6 +86,11 @@
             <v-icon icon="mdi-ticket-confirmation" size="18" />
             <span>Tickets</span>
           </button>
+          <button :class="['nav-item', { active: activeView === 'gcal' }]"
+            @click="activeView = 'gcal'">
+            <v-icon icon="mdi-calendar-sync" size="18" />
+            <span>Conexión a Google Calendar</span>
+          </button>
         </div>
       </nav>
 
@@ -2005,6 +2010,57 @@
       <!-- ==========  VISTA: TICKETS  ========== -->
       <div v-if="activeView === 'tickets'" class="view-container">
         <TicketPanel company-id="Davila" empresa-nombre="Miguel Davila" :current-user="currentUser?.full_name" />
+      </div>
+
+      <!-- ==========  VISTA: CONEXIÓN GOOGLE CALENDAR  ========== -->
+      <div v-if="activeView === 'gcal'" class="view-container">
+        <header class="top-header">
+          <h1>Conexión a Google Calendar</h1>
+        </header>
+        <div class="content-area">
+          <div class="gcal-card">
+            <div class="gcal-icon">
+              <v-icon :icon="gcalConnected ? 'mdi-calendar-check' : 'mdi-calendar-alert'"
+                :color="gcalConnected ? '#22c55e' : '#f59e0b'" size="48" />
+            </div>
+
+            <h2 v-if="gcalConnected" style="color:#22c55e">Calendario conectado ✅</h2>
+            <h2 v-else style="color:#f59e0b">Sin conectar</h2>
+
+            <p v-if="gcalConnected && gcalEmail" class="gcal-sub">
+              Cuenta conectada: <strong>{{ gcalEmail }}</strong>
+            </p>
+            <p v-else-if="gcalConnected" class="gcal-sub">
+              El agente ya puede crear y cancelar citas en este calendario.
+            </p>
+            <p v-else class="gcal-sub">
+              Conecta la cuenta de Google de Miguel Davila para que el agente pueda
+              agendar, verificar disponibilidad y cancelar citas automáticamente.
+              Las pre-reservas se crean en el calendario principal de la cuenta que conectes.
+            </p>
+
+            <div v-if="gcalMensaje" class="gcal-alert" :class="gcalMensajeTipo">
+              {{ gcalMensaje }}
+            </div>
+
+            <div class="gcal-actions">
+              <a href="/api/davila/gcal-auth" class="gcal-btn primary">
+                <v-icon icon="mdi-google" size="18" />
+                {{ gcalConnected ? 'Reconectar / cambiar de cuenta' : 'Conectar con Google Calendar' }}
+              </a>
+              <button class="gcal-btn ghost" @click="fetchGcalStatus" :disabled="gcalLoading">
+                <v-icon icon="mdi-refresh" size="18" />
+                {{ gcalLoading ? 'Verificando…' : 'Verificar estado' }}
+              </button>
+            </div>
+
+            <p class="gcal-hint">
+              ⚠️ Asegúrate de iniciar sesión con la cuenta de Google correcta de Davila
+              (la que tiene el calendario de citas). Esta conexión es independiente de
+              las demás empresas.
+            </p>
+          </div>
+        </div>
       </div>
   </div>
 </template>
@@ -4688,6 +4744,45 @@ const deleteEgreso = async (id: string) => {
   }
 }
 
+// ── Conexión Google Calendar (Davila) ─────────────────────────────────────
+const gcalConnected   = ref(false)
+const gcalEmail       = ref<string | null>(null)
+const gcalLoading     = ref(false)
+const gcalMensaje     = ref<string | null>(null)
+const gcalMensajeTipo = ref<'ok' | 'err'>('ok')
+
+const fetchGcalStatus = async () => {
+  gcalLoading.value = true
+  try {
+    const data = await $fetch<{ connected: boolean; email?: string }>('/api/davila/gcal-status')
+    gcalConnected.value = !!data.connected
+    gcalEmail.value = data.email ?? null
+  } catch {
+    gcalConnected.value = false
+  } finally {
+    gcalLoading.value = false
+  }
+}
+
+// Detectar el regreso del callback OAuth (?gcal_success / ?gcal_error)
+const checkGcalCallback = () => {
+  if (typeof window === 'undefined') return
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('gcal_success')) {
+    gcalMensaje.value = '¡Conectado correctamente con Google Calendar!'
+    gcalMensajeTipo.value = 'ok'
+    activeView.value = 'gcal'
+    // Limpiar el query de la URL
+    window.history.replaceState({}, '', window.location.pathname)
+    fetchGcalStatus()
+  } else if (params.get('gcal_error')) {
+    gcalMensaje.value = 'Error al conectar: ' + params.get('gcal_error')
+    gcalMensajeTipo.value = 'err'
+    activeView.value = 'gcal'
+    window.history.replaceState({}, '', window.location.pathname)
+  }
+}
+
 onMounted(() => {
   // Access Control
   // const userEmail = currentUser.value.email?.toLowerCase() // Deprecated
@@ -4711,5 +4806,67 @@ onMounted(() => {
   fetchMedicalHistory()
   fetchEgresos()
   setupRealtime()
+  fetchGcalStatus()
+  checkGcalCallback()
 })
 </script>
+
+<style scoped>
+.gcal-card {
+  max-width: 560px;
+  margin: 24px auto;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 36px 32px;
+  text-align: center;
+}
+.gcal-icon { margin-bottom: 12px; }
+.gcal-card h2 { margin: 0 0 8px; font-size: 22px; }
+.gcal-sub {
+  color: var(--text-muted, #9aa0ac);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0 auto 20px;
+  max-width: 440px;
+}
+.gcal-alert {
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.gcal-alert.ok  { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.35); color: #22c55e; }
+.gcal-alert.err { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); color: #f87171; }
+.gcal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.gcal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.gcal-btn.primary { background: #4285F4; color: #fff; }
+.gcal-btn.ghost   { background: transparent; border: 1px solid var(--border, #2a2d3a); color: var(--text, #e8eaed); }
+.gcal-btn:hover:not(:disabled) { opacity: 0.88; }
+.gcal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.gcal-hint {
+  font-size: 12px;
+  color: var(--text-muted, #9aa0ac);
+  margin: 0 auto;
+  max-width: 460px;
+  line-height: 1.5;
+}
+</style>

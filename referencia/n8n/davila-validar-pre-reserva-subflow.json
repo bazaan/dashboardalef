@@ -1,0 +1,53 @@
+{
+  "name": "validar_pre_reserva (Davila)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "operacion", "type": "string" },
+            { "name": "celular", "type": "string" },
+            { "name": "fecha", "type": "string" },
+            { "name": "hora", "type": "string" },
+            { "name": "nombre_completo", "type": "string" },
+            { "name": "tratamiento", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-prereserva",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [260, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/davila/pre-reserva",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"api_key\": \"davila-pre-reserva-2026\",\n  \"operacion\": \"{{ $json.operacion }}\",\n  \"celular\": \"{{ $json.celular }}\",\n  \"fecha\": \"{{ $json.fecha }}\",\n  \"hora\": \"{{ $json.hora }}\",\n  \"nombre_completo\": \"{{ $json.nombre_completo }}\",\n  \"tratamiento\": \"{{ $json.tratamiento }}\"\n}",
+        "options": {}
+      },
+      "id": "http-prereserva",
+      "name": "Llamar endpoint pre-reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[{ "node": "Llamar endpoint pre-reserva", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

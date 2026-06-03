@@ -44,34 +44,39 @@ export function addMinutesISO(fecha: string, hora: string, minutes: number): str
 /**
  * Verifica si un slot está LIBRE en Google Calendar.
  * Devuelve { libre: boolean, conflictos: number }.
- * Si Google falla, lanza error (el caller decide qué hacer).
+ *
+ * Usa events.list (no freeBusy) porque el scope `calendar.events` permite
+ * leer/crear eventos pero NO consultar freeBusy. events.list con timeMin/
+ * timeMax devuelve los eventos que se solapan con esa ventana.
  */
 export async function slotEstaLibre(
   fecha: string, hora: string, duracionMin: number,
 ): Promise<{ libre: boolean; conflictos: number }> {
   const accessToken = await getGoogleAccessToken(DAVILA_COMPANY_KEY)
+  const calId = encodeURIComponent(DAVILA_CALENDAR_ID)
   const timeMin = buildLimaISO(fecha, hora)
   const timeMax = addMinutesISO(fecha, hora, duracionMin)
 
-  const res = await fetch(`${GCAL_API}/freeBusy`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      timeMin,
-      timeMax,
-      timeZone: DAVILA_TZ,
-      items: [{ id: DAVILA_CALENDAR_ID }],
-    }),
+  const url = `${GCAL_API}/calendars/${calId}/events`
+    + `?timeMin=${encodeURIComponent(timeMin)}`
+    + `&timeMax=${encodeURIComponent(timeMax)}`
+    + `&singleEvents=true&maxResults=10`
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   if (!res.ok) {
     const t = await res.text()
-    throw new Error(`GCal freeBusy ${res.status}: ${t}`)
+    throw new Error(`GCal events.list ${res.status}: ${t}`)
   }
 
   const data = await res.json() as any
-  const busy = data?.calendars?.[DAVILA_CALENDAR_ID]?.busy ?? []
-  return { libre: busy.length === 0, conflictos: busy.length }
+  // Ignorar eventos cancelados o sin horario (all-day) que no bloquean el slot
+  const eventos = (data?.items ?? []).filter((e: any) =>
+    e.status !== 'cancelled' && e.start?.dateTime
+  )
+  return { libre: eventos.length === 0, conflictos: eventos.length }
 }
 
 /**

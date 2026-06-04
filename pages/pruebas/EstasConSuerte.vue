@@ -433,16 +433,32 @@
                 </div>
               </div>
             </div>
-            <v-switch
-              v-model="boleteoActivo"
-              :color="boleteoActivo ? 'success' : 'error'"
-              hide-details
-              density="compact"
-              :loading="loadingBoleteoToggle"
-              @update:model-value="toggleBoleteo"
-              style="flex-shrink:0;"
-            />
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-shrink:0;">
+              <v-btn
+                size="small"
+                variant="tonal"
+                color="primary"
+                :loading="loadingRefrescarSunat"
+                prepend-icon="mdi-cloud-sync"
+                @click="refrescarSunat"
+              >
+                Refrescar estado SUNAT
+              </v-btn>
+              <v-switch
+                v-model="boleteoActivo"
+                :color="boleteoActivo ? 'success' : 'error'"
+                hide-details
+                density="compact"
+                :loading="loadingBoleteoToggle"
+                @update:model-value="toggleBoleteo"
+              />
+            </div>
           </div>
+
+          <!-- Resultado de "Refrescar estado SUNAT" (reconciliación de comprobantes) -->
+          <v-snackbar v-model="refrescarSunatSnack" :timeout="6000" location="top" :color="refrescarSunatColor">
+            {{ refrescarSunatMsg }}
+          </v-snackbar>
 
           <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
             <div class="stat-card">
@@ -2015,6 +2031,36 @@ const toggleBoleteo = async (nuevoValor: boolean) => {
     boleteoActivo.value = !nuevoValor   // revertir UI si falla
   } finally {
     loadingBoleteoToggle.value = false
+  }
+}
+
+// ── Refrescar estado SUNAT (reconciliación de comprobantes ECS) ─────────
+// La aceptación de SUNAT es asíncrona: al emitir, PSE.PE devuelve aceptada=false
+// y luego SUNAT confirma. Este botón re-consulta PSE.PE para los comprobantes
+// que figuran como no aceptados y actualiza su estado real en la BD.
+// Llama POST /api/pse/reconciliar (scoped solo a ECS).
+const loadingRefrescarSunat = ref(false)
+const refrescarSunatSnack   = ref(false)
+const refrescarSunatMsg     = ref('')
+const refrescarSunatColor   = ref<'success' | 'error'>('success')
+
+const refrescarSunat = async () => {
+  loadingRefrescarSunat.value = true
+  try {
+    const r = await $fetch<{ revisados: number; corregidos: number; errores: number }>(
+      '/api/pse/reconciliar',
+      { method: 'POST', body: { company_id: 'estasconsuerte' } }
+    )
+    refrescarSunatColor.value = 'success'
+    refrescarSunatMsg.value = r.corregidos > 0
+      ? `✓ ${r.corregidos} comprobante(s) actualizados a "aceptado por SUNAT" (de ${r.revisados} revisados).`
+      : `Todo al día: ${r.revisados} revisados, ninguno pendiente.`
+  } catch (e: any) {
+    refrescarSunatColor.value = 'error'
+    refrescarSunatMsg.value = 'No se pudo refrescar: ' + (e?.data?.statusMessage || e?.message || 'error')
+  } finally {
+    refrescarSunatSnack.value = true
+    loadingRefrescarSunat.value = false
   }
 }
 

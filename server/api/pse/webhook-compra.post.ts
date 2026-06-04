@@ -295,6 +295,37 @@ export default defineEventHandler(async (event) => {
               '| aceptada_por_sunat:', response?.aceptada_por_sunat,
               '| total: S/', total)
 
+  // ── 7.5 Confirmar aceptación en SUNAT (es asíncrona) ───────────────────
+  // NubeFact suele devolver aceptada_por_sunat=false/null en el instante de
+  // emitir; SUNAT confirma unos segundos después. Re-consultamos hasta 3 veces
+  // para persistir el estado REAL y no guardar "false" en una boleta que SÍ
+  // fue aceptada. Si la consulta falla, se usa la respuesta original.
+  let estado: any = response
+  let aceptada = !!response?.aceptada_por_sunat
+  for (let intento = 0; intento < 3 && !aceptada; intento++) {
+    await new Promise((r) => setTimeout(r, 1500))
+    try {
+      const q = await $fetch<any>(ECS_PSE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json; charset=utf-8',
+          'Authorization': ECS_PSE_TOKEN,
+        },
+        body: {
+          operacion:           'consultar_comprobante',
+          tipo_de_comprobante: 2,
+          serie:               SERIE_BOLETA,
+          numero,
+        },
+      })
+      estado = { ...response, ...q }      // q (consulta) pisa el estado SUNAT
+      aceptada = !!q?.aceptada_por_sunat
+    } catch (e: any) {
+      console.warn('[webhook-compra] reintento consulta SUNAT falló:', e?.message)
+    }
+  }
+  console.log('[webhook-compra] estado SUNAT final', SERIE_BOLETA + '-' + numero, '→ aceptada:', aceptada)
+
   // ── 8. Guardar en Supabase ─────────────────────────────────────────────
   try {
     const toIso = (v: string) => {
@@ -328,15 +359,17 @@ export default defineEventHandler(async (event) => {
       medio_de_pago:               body?.medio_de_pago || null,
       observaciones:               payload.observaciones,
       formato_de_pdf:              'A4',
-      aceptada_por_sunat:          !!response?.aceptada_por_sunat,
-      sunat_description:           response?.sunat_description || null,
-      codigo_hash:                 response?.codigo_hash || null,
-      enlace_del_pdf:              response?.enlace_del_pdf || null,
-      enlace_del_xml:              response?.enlace_del_xml || null,
-      enlace_del_cdr:              response?.enlace_del_cdr || null,
+      aceptada_por_sunat:          !!estado?.aceptada_por_sunat,
+      sunat_description:           estado?.sunat_description || null,
+      sunat_note:                  estado?.sunat_note || null,
+      sunat_responsecode:          estado?.sunat_responsecode ? String(estado.sunat_responsecode) : null,
+      codigo_hash:                 estado?.codigo_hash || null,
+      enlace_del_pdf:              estado?.enlace_del_pdf || null,
+      enlace_del_xml:              estado?.enlace_del_xml || null,
+      enlace_del_cdr:              estado?.enlace_del_cdr || null,
       items:                       payload.items,
       payload_enviado:             payload,
-      respuesta_completa:          response,
+      respuesta_completa:          estado,
     }, { onConflict: 'company_id,tipo_de_comprobante,serie,numero' })
   } catch (dbErr: any) {
     console.error('[webhook-compra] Supabase error:', dbErr?.message)
@@ -355,8 +388,8 @@ export default defineEventHandler(async (event) => {
     ok:                  true,
     serie:               SERIE_BOLETA,
     numero,
-    aceptada_por_sunat:  !!response?.aceptada_por_sunat,
-    enlace_pdf:          response?.enlace_del_pdf || null,
-    codigo_hash:         response?.codigo_hash || null,
+    aceptada_por_sunat:  aceptada,
+    enlace_pdf:          estado?.enlace_del_pdf || null,
+    codigo_hash:         estado?.codigo_hash || null,
   }
 })

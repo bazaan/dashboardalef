@@ -2564,7 +2564,7 @@ const COMPANY_TOOLS: Record<string, string[]> = {
   skip:           ['Todas', ...FLOW_TOOLS],
   alegrated:      ['Todas', ...FLOW_TOOLS],
   origitec:       ['Todas', ...FLOW_TOOLS],
-  gatwick:        ['Todas', ...FLOW_TOOLS],
+  gatwick:        ['Todas', 'buscando_edificio', ...FLOW_TOOLS],
   todas:          ['Todas', ...FLOW_TOOLS],
 }
 

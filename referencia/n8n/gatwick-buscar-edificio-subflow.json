@@ -1,0 +1,50 @@
+{
+  "name": "buscar_edificio (Gatwick)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "direccion1", "type": "string" },
+            { "name": "direccion2", "type": "string" },
+            { "name": "direccion3", "type": "string" },
+            { "name": "direccion4", "type": "string" },
+            { "name": "direccion5", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-buscar-edificio",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [260, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/gatwick/buscar-edificio",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"api_key\": \"gatwick-edificio-2026\",\n  \"direccion1\": \"{{ $json.direccion1 }}\",\n  \"direccion2\": \"{{ $json.direccion2 }}\",\n  \"direccion3\": \"{{ $json.direccion3 }}\",\n  \"direccion4\": \"{{ $json.direccion4 }}\",\n  \"direccion5\": \"{{ $json.direccion5 }}\"\n}",
+        "options": {}
+      },
+      "id": "http-buscar-edificio",
+      "name": "Llamar endpoint buscar-edificio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[{ "node": "Llamar endpoint buscar-edificio", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

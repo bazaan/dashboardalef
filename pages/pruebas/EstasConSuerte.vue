@@ -943,7 +943,7 @@
         </v-tabs>
 
         <!-- ====== TAB: BOLETAS PENDIENTES ====== -->
-        <div v-if="facturacionTab === 'boletas_pendientes'" style="padding: 0 0 2rem 0;">
+        <div v-if="facturacionTab === 'boletas_pendientes'" class="content-area">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
             <div>
               <h2 style="font-size:1.1rem; font-weight:600; margin:0;">Boletas Pendientes de Emisión</h2>
@@ -1150,11 +1150,12 @@
                 <v-spacer />
                 <v-select v-model="boletasFiltroOrigen" :items="['Todas', 'Web (automáticas)', 'Manual']"
                   variant="outlined" density="compact" hide-details style="max-width: 200px; margin-right: 12px;" />
-                <button class="btn-primary" @click="fetchBoletasECS" style="margin-right: 12px; padding: 6px 14px;">
+                <v-text-field v-model="boletasSearch" append-inner-icon="mdi-magnify" label="Buscar"
+                  single-line hide-details density="compact" variant="outlined" class="search-field"
+                  style="margin-right: 12px;" />
+                <button class="btn-primary" @click="fetchBoletasECS" style="padding: 6px 14px;">
                   <v-icon icon="mdi-refresh" size="16" />
                 </button>
-                <v-text-field v-model="boletasSearch" append-inner-icon="mdi-magnify" label="Buscar"
-                  single-line hide-details density="compact" variant="outlined" class="search-field" />
               </v-card-title>
 
               <v-data-table :headers="headersBoletasECS" :items="boletasFiltradas" :search="boletasSearch"

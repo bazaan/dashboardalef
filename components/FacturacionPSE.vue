@@ -146,6 +146,9 @@
               </v-chip>
             </span>
             <v-spacer />
+            <v-text-field v-model="searchComprobantes" append-inner-icon="mdi-magnify"
+              label="Buscar" single-line hide-details density="compact"
+              variant="outlined" class="search-field" style="max-width:280px; margin-right:8px" />
             <v-btn
               icon
               size="small"
@@ -155,9 +158,6 @@
               <v-icon icon="mdi-refresh" size="20" />
               <v-tooltip activator="parent">Recargar historial</v-tooltip>
             </v-btn>
-            <v-text-field v-model="searchComprobantes" append-inner-icon="mdi-magnify"
-              label="Buscar" single-line hide-details density="compact"
-              variant="outlined" class="search-field" style="max-width:280px" />
           </v-card-title>
 
           <!-- Alerta de error de carga -->

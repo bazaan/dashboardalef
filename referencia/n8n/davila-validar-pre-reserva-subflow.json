@@ -8,9 +8,7 @@
             { "name": "operacion", "type": "string" },
             { "name": "celular", "type": "string" },
             { "name": "fecha", "type": "string" },
-            { "name": "hora", "type": "string" },
-            { "name": "nombre_completo", "type": "string" },
-            { "name": "tratamiento", "type": "string" }
+            { "name": "hora", "type": "string" }
           ]
         }
       },
@@ -26,13 +24,11 @@
         "url": "https://dashboard.alef.company/api/davila/pre-reserva",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
-          ]
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"api_key\": \"davila-pre-reserva-2026\",\n  \"operacion\": \"{{ $json.operacion }}\",\n  \"celular\": \"{{ $json.celular }}\",\n  \"fecha\": \"{{ $json.fecha }}\",\n  \"hora\": \"{{ $json.hora }}\",\n  \"nombre_completo\": \"{{ $json.nombre_completo }}\",\n  \"tratamiento\": \"{{ $json.tratamiento }}\"\n}",
+        "jsonBody": "={\n  \"api_key\": \"davila-pre-reserva-2026\",\n  \"operacion\": \"{{ $json.operacion }}\",\n  \"celular\": \"{{ $json.celular }}\",\n  \"fecha\": \"{{ $json.fecha }}\",\n  \"hora\": \"{{ $json.hora }}\"\n}",
         "options": {}
       },
       "id": "http-prereserva",

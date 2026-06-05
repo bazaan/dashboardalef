@@ -7,19 +7,23 @@
  * (company_id='davila', tool_name='Validar Pre-Reserva') → visible en el
  * dashboard de Alef → Dev · Agent Logs → Empresa: M. Davila.
  *
- * Body:
+ * Body (SOLO 4 parámetros — versión simplificada Junio 2026):
  * {
  *   api_key:   string,    — auth
  *   operacion: "CREATE" | "UPDATE_PAGO" | "CONFIRMAR" | "CANCELAR",
  *   celular:   string,    — identificador único del cliente (SIEMPRE presente)
  *
  *   // Solo en CREATE:
- *   fecha:        string,  — "YYYY-MM-DD"
- *   hora:         string,  — "HH:MM" (24h)
- *   duracion_min?: number, — default 60
- *   nombre_completo?: string,
- *   tratamiento?: string,
+ *   fecha:     string,    — "YYYY-MM-DD"
+ *   hora:      string,    — "HH:MM" (24h)
  * }
+ *
+ * NO recibe datos personales (nombre, tratamiento, DNI, edad, comprobante,
+ * monto, modalidad). María los valida manualmente fuera de la tool.
+ *
+ * Múltiples pre-reservas del mismo celular PUEDEN coexistir. UPDATE_PAGO /
+ * CONFIRMAR / CANCELAR siempre procesan la MÁS RECIENTE (ORDER BY created_at
+ * DESC LIMIT 1).
  *
  * Respuestas: ver cada operación. Siempre { success: boolean, ... }.
  *
@@ -37,6 +41,9 @@ type Operacion = typeof OPERACIONES_VALIDAS[number]
 
 // Ventana de vigencia de una pre-reserva sin pagar
 const EXPIRACION_MIN = 40
+
+// Duración fija del evento en Google Calendar (la tool ya no recibe duracion_min)
+const DURACION_MIN = 60
 
 // Reglas de negocio para CREATE (según especificación)
 // Días permitidos: martes (2) y jueves (4). Horario: 15:00 a 19:30.
@@ -125,7 +132,6 @@ export default defineEventHandler(async (event) => {
   if (operacion === 'CREATE') {
     const fecha = String(body?.fecha ?? '').trim()
     const hora = String(body?.hora ?? '').trim()
-    const duracionMin = Number(body?.duracion_min) || 60
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !/^\d{1,2}:\d{2}$/.test(hora)) {
       const msg = 'CREATE requiere fecha (YYYY-MM-DD) y hora (HH:MM) válidas'
@@ -152,26 +158,13 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // Limpiar cualquier pre-reserva ACTIVA previa del mismo celular (evita slots huérfanos)
-    try {
-      const { data: previas } = await supabase
-        .from('pre_reservas')
-        .select('id, calendar_event_id')
-        .eq('celular', celularNorm)
-        .eq('estado', 'pre_reservado')
-      for (const p of previas ?? []) {
-        if (p.calendar_event_id) await eliminarEvento(p.calendar_event_id)
-        await supabase.from('pre_reservas').update({
-          estado: 'cancelado', cancelado_en: new Date().toISOString(),
-        }).eq('id', p.id)
-      }
-    } catch (e: any) {
-      console.error('[pre-reserva CREATE] Error limpiando previas:', e?.message)
-    }
+    // NOTA: ya NO se cancelan pre-reservas previas del mismo celular.
+    // Múltiples pre-reservas pueden coexistir; UPDATE_PAGO/CONFIRMAR/CANCELAR
+    // procesan siempre la más reciente.
 
     // Verificar disponibilidad en Google Calendar
     try {
-      const { libre } = await slotEstaLibre(fecha, hora, duracionMin)
+      const { libre } = await slotEstaLibre(fecha, hora, DURACION_MIN)
       if (!libre) {
         const msg = 'Ese horario ya está ocupado'
         return await finish('error', { success: false, error: 'horario_ocupado', mensaje: msg }, msg)
@@ -181,15 +174,13 @@ export default defineEventHandler(async (event) => {
       return await finish('error', { success: false, error: 'error_calendar', mensaje: msg }, msg)
     }
 
-    // Crear evento en Google Calendar
+    // Crear evento en Google Calendar (sin datos personales — los maneja María)
     let calendarEventId: string
     try {
-      const nombre = String(body?.nombre_completo ?? 'Cliente').trim()
-      const tratamiento = String(body?.tratamiento ?? '').trim()
       calendarEventId = await crearEvento({
-        fecha, hora, duracionMin,
-        summary: `Cita: ${nombre}`,
-        description: `Cliente: ${nombre}\nCelular: ${celularNorm}${tratamiento ? `\nTratamiento: ${tratamiento}` : ''}\n(Pre-reserva — pendiente de pago)`,
+        fecha, hora, duracionMin: DURACION_MIN,
+        summary: `Pre-reserva ${celularNorm}`,
+        description: `Celular: ${celularNorm}\n(Pre-reserva — pendiente de pago)`,
       })
     } catch (e: any) {
       const msg = `Error creando evento en Google Calendar: ${e?.message}`
@@ -208,14 +199,9 @@ export default defineEventHandler(async (event) => {
         calendar_event_id: calendarEventId,
         fecha,
         hora,
-        duracion_min:      duracionMin,
         estado:            'pre_reservado',
         created_at:        now.toISOString(),
         expires_at:        expiresAt.toISOString(),
-        metadata: {
-          nombre_completo: body?.nombre_completo ?? null,
-          tratamiento:     body?.tratamiento ?? null,
-        },
       })
     } catch (e: any) {
       // Si falla el insert, intentamos limpiar el evento creado

@@ -28,7 +28,6 @@ CREATE TABLE IF NOT EXISTS public.pre_reservas (
   -- Datos de la cita
   fecha               DATE NOT NULL,
   hora                TEXT NOT NULL,          -- "16:00" (HH:MM 24h)
-  duracion_min        INTEGER DEFAULT 60,
 
   -- Estado del ciclo de vida
   estado              TEXT NOT NULL DEFAULT 'pre_reservado'
@@ -39,11 +38,11 @@ CREATE TABLE IF NOT EXISTS public.pre_reservas (
   expires_at          TIMESTAMPTZ NOT NULL,   -- created_at + 40 min
   pagado_en           TIMESTAMPTZ,
   confirmado_en       TIMESTAMPTZ,
-  cancelado_en        TIMESTAMPTZ,
-
-  -- Datos extra opcionales que el agente puede mandar (nombre, tratamiento, etc.)
-  metadata            JSONB
+  cancelado_en        TIMESTAMPTZ
 );
+-- NOTA (Junio 2026): la tool se simplificó a 4 parámetros. Ya no se guardan
+-- datos personales ni duracion_min/metadata. Si tu tabla ya existe con esas
+-- columnas, corré sql/davila_pre_reservas_simplificar.sql para eliminarlas.
 
 -- RLS — solo el servidor (service_role) opera sobre esta tabla
 ALTER TABLE public.pre_reservas ENABLE ROW LEVEL SECURITY;

@@ -32,15 +32,16 @@ hoy apunta a un sub-workflow vacío. Cámbialo:
 3. En **Workflow Inputs → mapping**, define estos campos (todos `string`) usando
    `$fromAI` para que el agente los complete:
 
-   | Campo            | Valor |
-   |------------------|-------|
-   | `operacion`      | `{{ $fromAI('operacion', 'CREATE, UPDATE_PAGO, CONFIRMAR o CANCELAR', 'string') }}` |
-   | `celular`        | `{{ $('Webhook').item.json.body.conversation.contact_inbox.source_id }}` |
-   | `fecha`          | `{{ $fromAI('fecha', 'fecha de la cita YYYY-MM-DD (solo CREATE)', 'string') }}` |
-   | `hora`           | `{{ $fromAI('hora', 'hora de la cita HH:MM 24h (solo CREATE)', 'string') }}` |
-   | `nombre_completo`| `{{ $fromAI('nombre_completo', 'nombre del cliente (solo CREATE)', 'string') }}` |
-   | `tratamiento`    | `{{ $fromAI('tratamiento', 'tratamiento de interés (solo CREATE)', 'string') }}` |
+   | Campo       | Valor |
+   |-------------|-------|
+   | `operacion` | `{{ $fromAI('operacion', 'CREATE, UPDATE_PAGO, CONFIRMAR o CANCELAR', 'string') }}` |
+   | `celular`   | `{{ $('Webhook').item.json.body.conversation.contact_inbox.source_id }}` |
+   | `fecha`     | `{{ $fromAI('fecha', 'fecha de la cita YYYY-MM-DD (solo CREATE)', 'string') }}` |
+   | `hora`      | `{{ $fromAI('hora', 'hora de la cita HH:MM 24h (solo CREATE)', 'string') }}` |
 
+   > **SOLO 4 parámetros** (Junio 2026). Se eliminaron nombre_completo, tratamiento,
+   > DNI, edad, modalidad, comprobante, monto — María valida los datos personales
+   > manualmente.
    > **Importante:** `celular` se toma del Webhook (igual que en la tool `Calendario`
    > existente), NO del agente. Es el identificador único del cliente.
 

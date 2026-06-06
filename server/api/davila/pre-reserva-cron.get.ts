@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   const ahora = new Date().toISOString()
   const { data: expiradas, error } = await supabase
     .from('pre_reservas')
-    .select('id, pre_reserva_id, celular, calendar_event_id')
+    .select('id, pre_reserva_id, celular, calendar_event_id, dashboard_event_id')
     .eq('estado', 'pre_reservado')
     .lte('expires_at', ahora)
 
@@ -51,6 +51,10 @@ export default defineEventHandler(async (event) => {
     if (r.calendar_event_id) {
       calOk = await eliminarEvento(r.calendar_event_id)
       if (calOk) eventosBorrados++
+    }
+    // Borrar también del calendario del dashboard
+    if (r.dashboard_event_id) {
+      try { await supabase.from('DAVILA_calendar_events').delete().eq('id', r.dashboard_event_id) } catch {}
     }
     await supabase.from('pre_reservas').update({ estado: 'expirado' }).eq('id', r.id)
     procesadas++

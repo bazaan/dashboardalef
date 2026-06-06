@@ -111,6 +111,39 @@ export async function crearEvento(args: {
 }
 
 /**
+ * Actualiza (enriquece) un evento existente de Google Calendar.
+ * Usado en calendario_agendar para convertir el evento "pre-reserva" en la
+ * cita final confirmada (con nombre, tratamiento, horario definitivo).
+ */
+export async function actualizarEvento(eventId: string, args: {
+  fecha: string; hora: string; duracionMin: number;
+  summary: string; description?: string;
+}): Promise<boolean> {
+  if (!eventId) return false
+  const accessToken = await getGoogleAccessToken(DAVILA_COMPANY_KEY)
+  const calId = encodeURIComponent(DAVILA_CALENDAR_ID)
+
+  const body = {
+    summary:     args.summary,
+    description: args.description ?? '',
+    start: { dateTime: buildLimaISO(args.fecha, args.hora), timeZone: DAVILA_TZ },
+    end:   { dateTime: addMinutesISO(args.fecha, args.hora, args.duracionMin), timeZone: DAVILA_TZ },
+  }
+
+  // PATCH = update parcial del evento
+  const res = await fetch(`${GCAL_API}/calendars/${calId}/events/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new Error(`GCal patch ${res.status}: ${t}`)
+  }
+  return true
+}
+
+/**
  * Elimina un evento de Google Calendar. No lanza si el evento ya no existe (404/410).
  */
 export async function eliminarEvento(eventId: string): Promise<boolean> {

@@ -1,0 +1,49 @@
+{
+  "name": "calendario_agendar (Davila)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "celular", "type": "string" },
+            { "name": "nombre_completo", "type": "string" },
+            { "name": "dni", "type": "string" },
+            { "name": "tratamiento", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-agendar",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [260, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/davila/calendario-agendar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"api_key\": \"davila-pre-reserva-2026\",\n  \"celular\": \"{{ $json.celular }}\",\n  \"nombre_completo\": \"{{ $json.nombre_completo }}\",\n  \"dni\": \"{{ $json.dni }}\",\n  \"tratamiento\": \"{{ $json.tratamiento }}\"\n}",
+        "options": {}
+      },
+      "id": "http-agendar",
+      "name": "Llamar endpoint calendario-agendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[{ "node": "Llamar endpoint calendario-agendar", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

@@ -179,33 +179,61 @@ export default defineEventHandler(async (event) => {
     try {
       calendarEventId = await crearEvento({
         fecha, hora, duracionMin: DURACION_MIN,
-        summary: `Pre-reserva ${celularNorm}`,
-        description: `Celular: ${celularNorm}\n(Pre-reserva — pendiente de pago)`,
+        summary: `PRE-RESERVA ${celularNorm}`,
+        description: `Celular: ${celularNorm}\n(Pre-reserva — pendiente de pago, expira en 40 min)`,
       })
     } catch (e: any) {
       const msg = `Error creando evento en Google Calendar: ${e?.message}`
       return await finish('error', { success: false, error: 'error_calendar', mensaje: msg }, msg)
     }
 
-    // Insertar en Supabase
     const preReservaId = genPreReservaId()
+
+    // Insertar también en el calendario del dashboard (DAVILA_calendar_events)
+    let dashboardEventId: number | null = null
+    try {
+      const { data: dashRow } = await supabase
+        .from('DAVILA_calendar_events')
+        .insert({
+          date:              fecha,
+          time:              hora,
+          subject:           'PRE-RESERVA (pend. pago)',
+          description:       `Pre-reserva pendiente de pago.\nCelular: ${celularNorm}`,
+          client_phone:      celularNorm,
+          pre_reserva_id:    preReservaId,
+          calendar_event_id: calendarEventId,
+          estado:            'pre_reservado',
+        })
+        .select('id')
+        .single()
+      dashboardEventId = dashRow?.id ?? null
+    } catch (e: any) {
+      console.error('[pre-reserva CREATE] Error insertando en DAVILA_calendar_events:', e?.message)
+      // No bloquear: la pre-reserva en GCal+pre_reservas igual se crea
+    }
+
+    // Insertar en pre_reservas
     const now = new Date()
     const expiresAt = new Date(now.getTime() + EXPIRACION_MIN * 60_000)
 
     try {
       await supabase.from('pre_reservas').insert({
-        celular:           celularNorm,
-        pre_reserva_id:    preReservaId,
-        calendar_event_id: calendarEventId,
+        celular:            celularNorm,
+        pre_reserva_id:     preReservaId,
+        calendar_event_id:  calendarEventId,
+        dashboard_event_id: dashboardEventId,
         fecha,
         hora,
-        estado:            'pre_reservado',
-        created_at:        now.toISOString(),
-        expires_at:        expiresAt.toISOString(),
+        estado:             'pre_reservado',
+        created_at:         now.toISOString(),
+        expires_at:         expiresAt.toISOString(),
       })
     } catch (e: any) {
-      // Si falla el insert, intentamos limpiar el evento creado
+      // Si falla el insert, intentamos limpiar el evento GCal y la fila del dashboard
       await eliminarEvento(calendarEventId)
+      if (dashboardEventId) {
+        try { await supabase.from('DAVILA_calendar_events').delete().eq('id', dashboardEventId) } catch {}
+      }
       const msg = `Error guardando pre-reserva: ${e?.message}`
       return await finish('error', { success: false, error: 'error_supabase', mensaje: msg }, msg)
     }
@@ -239,8 +267,11 @@ export default defineEventHandler(async (event) => {
 
     // Verificar vigencia
     if (new Date(reserva.expires_at) <= new Date()) {
-      // Marcar expirada + limpiar calendar
+      // Marcar expirada + limpiar GCal + dashboard
       if (reserva.calendar_event_id) await eliminarEvento(reserva.calendar_event_id)
+      if (reserva.dashboard_event_id) {
+        try { await supabase.from('DAVILA_calendar_events').delete().eq('id', reserva.dashboard_event_id) } catch {}
+      }
       await supabase.from('pre_reservas').update({ estado: 'expirado' }).eq('id', reserva.id)
       const msg = 'La pre-reserva expiró'
       return await finish('success', { success: false, error: 'expirado', mensaje: msg })
@@ -300,8 +331,11 @@ export default defineEventHandler(async (event) => {
       return await finish('error', { success: false, error: 'pre_reserva_no_encontrada', mensaje: msg }, msg)
     }
 
-    // Eliminar evento de Google Calendar
+    // Eliminar evento de Google Calendar + del calendario del dashboard
     if (reserva.calendar_event_id) await eliminarEvento(reserva.calendar_event_id)
+    if (reserva.dashboard_event_id) {
+      try { await supabase.from('DAVILA_calendar_events').delete().eq('id', reserva.dashboard_event_id) } catch {}
+    }
 
     await supabase.from('pre_reservas').update({
       estado: 'cancelado', cancelado_en: new Date().toISOString(),

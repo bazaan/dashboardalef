@@ -62,6 +62,16 @@ function normalizePem(pem: string): string {
     const wrapped = body.match(/.{1,64}/g)?.join('\n') ?? body
     return `-----BEGIN ${label}-----\n${wrapped}\n-----END ${label}-----\n`
   }
+
+  // Caso frecuente: pegaron SOLO el cuerpo base64, sin las líneas
+  // -----BEGIN/END PRIVATE KEY-----. Las keys de Vonage son PKCS#8, así que
+  // les ponemos el header/footer y reenvolvemos a 64 chars.
+  const compact = k.replace(/\s+/g, '')
+  if (compact.length > 600 && /^[A-Za-z0-9+/=]+$/.test(compact)) {
+    const wrapped = compact.match(/.{1,64}/g)?.join('\n') ?? compact
+    return `-----BEGIN PRIVATE KEY-----\n${wrapped}\n-----END PRIVATE KEY-----\n`
+  }
+
   return k
 }
 

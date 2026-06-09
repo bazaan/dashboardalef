@@ -67,7 +67,12 @@ Se llama a **todas** las filas `activo=true AND recibe_llamada=true`.
 ## Paso 1 — Importar el sub-workflow
 
 n8n → **Workflows → Import from File** → `gatwick-generar-llamada-subflow.json`
-(2 nodos: trigger sin inputs + HTTP Request). **Guardá.**
+(2 nodos: trigger + HTTP Request). **Guardá.**
+
+> El trigger usa **Input data mode = "Accept all data"** (no recibe campos: la
+> llamada no necesita parámetros). Si al abrir el trigger ves el aviso *"This
+> workflow isn't set to accept any input data"*, cambiá el dropdown **Input data
+> mode** a **"Accept all data"** y guardá. No es un error, solo un aviso.
 
 ## Paso 2 — Conectar el nodo tool
 

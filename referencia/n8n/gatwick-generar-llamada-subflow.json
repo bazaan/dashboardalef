@@ -3,9 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "workflowInputs": {
-          "values": []
-        }
+        "inputSource": "passthrough"
       },
       "id": "trigger-generar-llamada",
       "name": "When Executed by Another Workflow",

@@ -1,0 +1,53 @@
+{
+  "name": "sms_alerta_emergencia (Gatwick)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "tipo_caso", "type": "string" },
+            { "name": "edificio_nombre", "type": "string" },
+            { "name": "edificio_tipo", "type": "string" },
+            { "name": "edificio_direccion", "type": "string" },
+            { "name": "edificio_distrito", "type": "string" },
+            { "name": "personas_atrapadas", "type": "string" },
+            { "name": "descripcion_adicional", "type": "string" },
+            { "name": "telefono_contacto", "type": "string" }
+          ]
+        }
+      },
+      "id": "trigger-sms-alerta",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [260, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/gatwick/sms-alerta",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"api_key\": \"gatwick-sms-2026\",\n  \"tipo_caso\": \"{{ $json.tipo_caso }}\",\n  \"edificio_nombre\": \"{{ $json.edificio_nombre }}\",\n  \"edificio_tipo\": \"{{ $json.edificio_tipo }}\",\n  \"edificio_direccion\": \"{{ $json.edificio_direccion }}\",\n  \"edificio_distrito\": \"{{ $json.edificio_distrito }}\",\n  \"personas_atrapadas\": \"{{ $json.personas_atrapadas }}\",\n  \"descripcion_adicional\": \"{{ $json.descripcion_adicional }}\",\n  \"telefono_contacto\": \"{{ $json.telefono_contacto }}\"\n}",
+        "options": {}
+      },
+      "id": "http-sms-alerta",
+      "name": "Llamar endpoint sms-alerta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[{ "node": "Llamar endpoint sms-alerta", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

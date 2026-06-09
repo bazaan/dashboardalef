@@ -1,0 +1,44 @@
+{
+  "name": "generar_llamada (Gatwick)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": []
+        }
+      },
+      "id": "trigger-generar-llamada",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [260, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/gatwick/generar-llamada",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"api_key\": \"gatwick-llamada-2026\"\n}",
+        "options": {}
+      },
+      "id": "http-generar-llamada",
+      "name": "Llamar endpoint generar-llamada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[{ "node": "Llamar endpoint generar-llamada", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

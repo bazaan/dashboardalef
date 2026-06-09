@@ -277,6 +277,10 @@ Doble sistema para auditar acciones:
 | POST | `/api/healup/agendamientos-diarios-trigger` | Autenticados Healup. Disparo manual del envío diario (botón "Probar envío ahora" del panel) |
 | GET  | `/api/healup/agendamientos-diarios-logs` | Autenticados Healup. Lista paginada de los logs. Query: `?limit=&offset=&status=success|error|empty` |
 | POST | `/api/remarketing/send` | Autenticados. Envio individual de mensaje WhatsApp via Chatwoot. Body: `{ company_id, lead_id, lead_tabla, lead_telefono, lead_nombre, template_id?, mensaje, canal? }` |
+| POST | `/api/gatwick/buscar-edificio` | Agente Gatwick (api_key `gatwick-edificio-2026`). Busca en `gatwick_edificios`. Log `tool_name='buscando_edificio'` |
+| POST | `/api/gatwick/sms-alerta` | Agente Gatwick (api_key `gatwick-sms-2026`). SMS de alerta al técnico vía Telnyx. Log `tool_name='SMS Alerta Emergencia'` |
+| POST | `/api/gatwick/generar-llamada` | Agente Gatwick (api_key `gatwick-llamada-2026`). Llamada de voz al técnico vía Vonage. Log `tool_name='Generar Llamada'` |
+| GET/POST | `/api/vonage/handle-call` | Público (Vonage lo consulta). Devuelve el NCCO de la llamada de emergencia (talk ×3 + hangup) |
 
 ---
 
@@ -438,6 +442,37 @@ mensaje WhatsApp + JSON enviado + respuesta, botón "Probar envío ahora" vía `
 curl -s "https://<tu-site>.netlify.app/api/healup/cron-citas-manana?api_key=$HEALUP_AGENDAMIENTO_CRON_KEY"
 ```
 
+### Gatwick — Agente de Emergencias (tools del agente IA)
+
+El agente de emergencias de Gatwick (n8n) tiene tools que pegan a endpoints del
+dashboard. Todas loguean en `agent_tool_logs` → visibles en **dashboard Alef →
+Dev · Agent Logs → Empresa: Gatwick**.
+
+| Tool | Endpoint | api_key | Qué hace |
+|---|---|---|---|
+| `buscando_edificio` | `POST /api/gatwick/buscar-edificio` | `gatwick-edificio-2026` | Busca en `gatwick_edificios` (hasta 5 términos). `tool_name='buscando_edificio'` |
+| `sms_alerta_emergencia` | `POST /api/gatwick/sms-alerta` | `gatwick-sms-2026` | Envía SMS de alerta al técnico de turno vía **Telnyx**. `tool_name='SMS Alerta Emergencia'` |
+| `generar_llamada` | `POST /api/gatwick/generar-llamada` | `gatwick-llamada-2026` | Llama por voz al técnico de turno vía **Vonage**. `tool_name='Generar Llamada'` |
+
+- **SMS (Telnyx):** arma el mensaje con el template fijo (🚨 EMERGENCIA…), lo manda
+  a **todos** los técnicos `activo=true AND recibe_sms=true` de `gatwick_alerta_destinos`.
+  El `telefono_contacto` se enmascara antes de loguear. `TELNYX_API_KEY` es **requerida**
+  (secreta, solo por env var; no se hardcodea). `TELNYX_MESSAGING_PROFILE_ID` y
+  `TELNYX_SMS_FROM` son opcionales (tienen default).
+- **Llamada (Vonage):** reproduce *"Emergencia Gatwick. Revisa el WhatsApp"* 3 veces (NCCO
+  servido por el endpoint público `GET/POST /api/vonage/handle-call`). Llama a los técnicos
+  `recibe_llamada=true`. La Voice API **exige JWT RS256** firmado con la private key de una
+  *Vonage Application* (Voice) → env `VONAGE_APPLICATION_ID` + `VONAGE_PRIVATE_KEY`
+  (el `api_key`/`api_secret` de Vonage NO sirven para Voice). JWT generado en
+  `server/utils/vonage-auth.ts` (crypto nativo, 0 deps, igual que `google-auth.ts`).
+- **Destinos (técnicos de turno):** tabla `gatwick_alerta_destinos` (`nombre`, `telefono` E.164,
+  `recibe_sms`, `recibe_llamada`, `activo`, `orden`). Editable sin redeploy. Fallback de env:
+  `GATWICK_SMS_DESTINO_FALLBACK` / `GATWICK_LLAMADA_DESTINO_FALLBACK` (coma-separados).
+- **Migración SQL:** correr una vez `sql/gatwick_sms_llamada_tools.sql` (asegura `agent_tool_logs`
+  + crea/siembra `gatwick_alerta_destinos`).
+- **Guías n8n:** `referencia/n8n/gatwick-sms-alerta-guia.md` y `gatwick-generar-llamada-guia.md`
+  (+ sus `*-subflow.json`).
+
 ---
 
 ## Variables de Entorno (`.env`)
@@ -474,6 +509,18 @@ N8N_WEBHOOK_HEALUP_CITAS_MANANA=          # URL del webhook n8n que recibe el re
 GOOGLE_SHEET_CITAS_HEALUP_ID=             # ID de la hoja "citas_healup" (default: 1C4qVEgymTANCne2xGQtwOi_ow4tDx1XvxIZ-pHOtCPE)
 GOOGLE_SHEET_CITAS_HEALUP_RANGE=          # Pestaña de la hoja (default: "citas")
 CHATWOOT_HEALUP_FBIG_TOKEN=               # api_access_token Chatwoot para avisar a la supervisora (default: el del subflow)
+# Gatwick — Tool "SMS Alerta Emergencia" (Telnyx).
+TELNYX_API_KEY=                           # REQUERIDA — Bearer token de Telnyx (secreta, sin default)
+TELNYX_MESSAGING_PROFILE_ID=              # opcional. default: 40019e3c-6053-4325-b86a-c7ca1d277e82
+TELNYX_SMS_FROM=                          # remitente/sender ID (default: "Gatwick SMS")
+GATWICK_SMS_DESTINO_FALLBACK=             # número(s) destino si gatwick_alerta_destinos está vacía (coma-separados, E.164)
+# Gatwick — Tool "Generar Llamada" (Vonage Voice). APPLICATION_ID + PRIVATE_KEY son REQUERIDAS.
+VONAGE_APPLICATION_ID=                     # UUID de la Vonage Application (Voice) — crear en dashboard.vonage.com
+VONAGE_PRIVATE_KEY=                        # private key PEM de esa Application (los \n pueden ir escapados)
+VONAGE_FROM_NUMBER=                        # (opcional) número origen Vonage (default: 12015471160)
+VONAGE_ANSWER_URL=                         # (opcional) URL del NCCO (default: <dominio>/api/vonage/handle-call)
+VONAGE_NCCO_TEXT=                          # (opcional) texto de la llamada (default: "Emergencia Gatwick. Revisa el WhatsApp")
+GATWICK_LLAMADA_DESTINO_FALLBACK=          # número(s) destino si gatwick_alerta_destinos está vacía (coma-separados)
 ```
 
 > **Tool "Calendario FB/IG"** (`POST /api/healup/calendario-fbig`, api_key `healup-calendario-fbig-2026`):

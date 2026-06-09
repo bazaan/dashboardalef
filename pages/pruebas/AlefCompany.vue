@@ -2564,7 +2564,7 @@ const COMPANY_TOOLS: Record<string, string[]> = {
   skip:           ['Todas', ...FLOW_TOOLS],
   alegrated:      ['Todas', ...FLOW_TOOLS],
   origitec:       ['Todas', ...FLOW_TOOLS],
-  gatwick:        ['Todas', 'buscando_edificio', ...FLOW_TOOLS],
+  gatwick:        ['Todas', 'buscando_edificio', 'SMS Alerta Emergencia', 'Generar Llamada', ...FLOW_TOOLS],
   todas:          ['Todas', ...FLOW_TOOLS],
 }
 
@@ -2588,6 +2588,9 @@ const devEndpoints = [
   { company: 'healup',         url: 'GET  /api/healup/cron-citas-manana     ·  19:00 Lima → n8n → WhatsApp (citas de mañana)' },
   { company: 'estasconsuerte', url: 'POST /api/ecs/generar-link-monnet     ·  api_key: ecs-monnet-2026-link' },
   { company: 'estasconsuerte', url: 'POST /api/ecs/monnet-webhook          ·  (público, valida firma SHA512)' },
+  { company: 'gatwick',        url: 'POST /api/gatwick/buscar-edificio      ·  api_key: gatwick-edificio-2026' },
+  { company: 'gatwick',        url: 'POST /api/gatwick/sms-alerta           ·  api_key: gatwick-sms-2026 (SMS técnico vía Telnyx)' },
+  { company: 'gatwick',        url: 'POST /api/gatwick/generar-llamada      ·  api_key: gatwick-llamada-2026 (llamada técnico vía Vonage)' },
   { company: 'todas',          url: 'POST /api/flows/log                   ·  api_key: flow-log-2026 (errores + tokens de cualquier flujo n8n)' },
 ]
 

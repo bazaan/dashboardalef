@@ -34,14 +34,35 @@ function base64url(input: Buffer | string): string {
     .replace(/\//g, '_')
 }
 
-/** Normaliza la private key PEM (acepta "\n" escapados de las env vars). */
+/**
+ * Normaliza la private key PEM. Tolera los problemas típicos de pegar un PEM en
+ * un panel de env vars (Netlify, etc.):
+ *  - comillas envolventes
+ *  - "\n" / "\r\n" escapados en vez de saltos reales
+ *  - saltos de línea perdidos (todo el PEM en una sola línea o con espacios)
+ *
+ * Si detecta la estructura `-----BEGIN ...----- <base64> -----END ...-----`,
+ * reconstruye el PEM con el base64 reenvuelto a 64 chars, garantizando un
+ * formato que OpenSSL/Node sí puede decodificar.
+ */
 function normalizePem(pem: string): string {
   let k = pem.trim()
-  // Si vino con comillas envolventes (copy/paste de .env), las quita.
+  // Quitar comillas envolventes (copy/paste de .env)
   if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
-    k = k.slice(1, -1)
+    k = k.slice(1, -1).trim()
   }
-  return k.replace(/\\n/g, '\n')
+  // Saltos escapados → reales; quitar \r
+  k = k.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '')
+
+  // Reconstruir si encontramos el patrón PEM (cubre el caso "una sola línea").
+  const m = k.match(/-----BEGIN ([A-Z0-9 ]+?)-----([\s\S]*?)-----END \1-----/)
+  if (m) {
+    const label = m[1].trim()
+    const body = m[2].replace(/[^A-Za-z0-9+/=]/g, '')        // solo caracteres base64
+    const wrapped = body.match(/.{1,64}/g)?.join('\n') ?? body
+    return `-----BEGIN ${label}-----\n${wrapped}\n-----END ${label}-----\n`
+  }
+  return k
 }
 
 export interface VonageJwtResult {
@@ -82,8 +103,11 @@ export function generateVonageJwt(): VonageJwtResult {
   try {
     signature = createSign('RSA-SHA256').update(signingInput).sign(privateKey)
   } catch (e: any) {
+    // Diagnóstico SEGURO (solo metadatos, nunca el contenido de la key):
+    // permite saber si el valor desplegado es realmente un PEM o el viejo secret.
+    const diag = `[diag rawLen=${rawKey.length} begin=${rawKey.includes('BEGIN')} lineasNorm=${privateKey.split('\n').length}]`
     throw new Error(
-      `No se pudo firmar el JWT de Vonage (¿VONAGE_PRIVATE_KEY mal formateada?): ${e?.message || e}`
+      `No se pudo firmar el JWT de Vonage (¿VONAGE_PRIVATE_KEY mal formateada?): ${e?.message || e} ${diag}`
     )
   }
 

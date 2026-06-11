@@ -21,9 +21,12 @@
  * NO recibe datos personales (nombre, tratamiento, DNI, edad, comprobante,
  * monto, modalidad). María los valida manualmente fuera de la tool.
  *
- * Múltiples pre-reservas del mismo celular PUEDEN coexistir. UPDATE_PAGO /
- * CONFIRMAR / CANCELAR siempre procesan la MÁS RECIENTE (ORDER BY created_at
- * DESC LIMIT 1).
+ * REAGENDAR = llamar CREATE de nuevo con la nueva fecha/hora: si el celular ya
+ * tiene una pre-reserva ACTIVA sin pagar (estado='pre_reservado', no expirada),
+ * CREATE la cancela automáticamente (borra GCal + calendario del dashboard,
+ * estado='reagendado') antes de crear la nueva. Las pagadas/confirmadas no se
+ * tocan. UPDATE_PAGO / CONFIRMAR / CANCELAR siempre procesan la MÁS RECIENTE
+ * (ORDER BY created_at DESC LIMIT 1).
  *
  * Respuestas: ver cada operación. Siempre { success: boolean, ... }.
  *
@@ -158,9 +161,34 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // NOTA: ya NO se cancelan pre-reservas previas del mismo celular.
-    // Múltiples pre-reservas pueden coexistir; UPDATE_PAGO/CONFIRMAR/CANCELAR
-    // procesan siempre la más reciente.
+    // REAGENDAMIENTO ATÓMICO: si el mismo celular ya tiene pre-reservas ACTIVAS
+    // sin pagar (estado='pre_reservado', no expiradas), se cancelan acá mismo
+    // (se borra el evento de GCal + la fila del calendario del dashboard y se
+    // marcan 'reagendado') antes de crear la nueva. Así "cambiar el horario" es
+    // UNA sola llamada CREATE con la nueva fecha/hora, y nunca quedan eventos
+    // fantasma. Las pagadas/confirmadas NO se tocan (pueden ser otra cita real).
+    let reagendadaAnterior: { fecha: string; hora: string } | null = null
+    try {
+      const { data: previas } = await supabase
+        .from('pre_reservas')
+        .select('id, fecha, hora, calendar_event_id, dashboard_event_id')
+        .eq('celular', celularNorm)
+        .eq('estado', 'pre_reservado')
+        .gt('expires_at', new Date().toISOString())
+      for (const prev of previas ?? []) {
+        if (prev.calendar_event_id) await eliminarEvento(prev.calendar_event_id)
+        if (prev.dashboard_event_id) {
+          try { await supabase.from('DAVILA_calendar_events').delete().eq('id', prev.dashboard_event_id) } catch {}
+        }
+        await supabase.from('pre_reservas').update({
+          estado: 'reagendado', cancelado_en: new Date().toISOString(),
+        }).eq('id', prev.id)
+        reagendadaAnterior = { fecha: prev.fecha, hora: prev.hora }
+      }
+    } catch (e: any) {
+      console.error('[pre-reserva CREATE] Error cancelando pre-reservas previas:', e?.message)
+      // No bloquear el CREATE: peor escenario, la previa la limpia el cron al expirar
+    }
 
     // Verificar disponibilidad en Google Calendar
     try {
@@ -243,7 +271,11 @@ export default defineEventHandler(async (event) => {
       pre_reserva_id: preReservaId,
       calendar_event_id: calendarEventId,
       expires_at: expiresAt.toISOString(),
-      mensaje: 'Pre-reserva creada exitosamente',
+      reagendada: !!reagendadaAnterior,
+      anterior: reagendadaAnterior,
+      mensaje: reagendadaAnterior
+        ? `Pre-reserva creada exitosamente. Se canceló la anterior (${reagendadaAnterior.fecha} ${reagendadaAnterior.hora}).`
+        : 'Pre-reserva creada exitosamente',
     })
   }
 

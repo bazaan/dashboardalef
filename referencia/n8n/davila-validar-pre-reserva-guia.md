@@ -50,18 +50,24 @@ hoy apunta a un sub-workflow vacío. Cámbialo:
    ```
    Maneja todo el ciclo de pre-reserva de citas. Úsala con operacion:
    - CREATE: crear una pre-reserva nueva (requiere fecha y hora). Devuelve pre_reserva_id.
+     REAGENDAR/CAMBIAR horario antes de pagar = llamar CREATE otra vez con la NUEVA
+     fecha y hora: el sistema cancela automáticamente la pre-reserva anterior
+     pendiente (devuelve reagendada:true y los datos de la anterior).
    - UPDATE_PAGO: confirmar que el cliente pagó (solo tras validar el comprobante de S/300).
    - CONFIRMAR: confirmar la cita después de recibir los datos personales.
-   - CANCELAR: cancelar una pre-reserva antes de pagar.
+   - CANCELAR: cancelar una pre-reserva antes de pagar (sin crear otra).
    El celular se completa automáticamente. La tool valida disponibilidad,
    Google Calendar y los 40 minutos de vigencia.
+   REGLA OBLIGATORIA: NUNCA digas que reservaste, cambiaste o cancelaste un
+   horario sin haber llamado esta tool en ese mismo turno y haber recibido
+   success:true. Si no llamaste la tool, el cambio NO existe.
    ```
 
 ## Paso 3 — Respuestas que recibe el agente
 
 | Operación | Éxito | Error típico |
 |---|---|---|
-| CREATE | `{ success: true, pre_reserva_id, expires_at }` | `{ success:false, error:"horario_ocupado" }` |
+| CREATE | `{ success: true, pre_reserva_id, expires_at, reagendada, anterior }` | `{ success:false, error:"horario_ocupado" }` |
 | UPDATE_PAGO | `{ success: true, estado:"pagado" }` | `{ success:false, error:"expirado" }` |
 | CONFIRMAR | `{ success: true, estado:"confirmado" }` | `{ success:false, error:"pre_reserva_no_encontrada" }` |
 | CANCELAR | `{ success: true, estado:"cancelado" }` | `{ success:false, error:"pre_reserva_no_encontrada" }` |

@@ -24,9 +24,10 @@
  * REAGENDAR = llamar CREATE de nuevo con la nueva fecha/hora: si el celular ya
  * tiene una pre-reserva ACTIVA sin pagar (estado='pre_reservado', no expirada),
  * CREATE la cancela automáticamente (borra GCal + calendario del dashboard,
- * estado='reagendado') antes de crear la nueva. Las pagadas/confirmadas no se
- * tocan. UPDATE_PAGO / CONFIRMAR / CANCELAR siempre procesan la MÁS RECIENTE
- * (ORDER BY created_at DESC LIMIT 1).
+ * estado='cancelado') antes de crear la nueva, y responde reagendada:true +
+ * anterior:{fecha,hora}. Las pagadas/confirmadas no se tocan. UPDATE_PAGO /
+ * CONFIRMAR / CANCELAR siempre procesan la MÁS RECIENTE (ORDER BY created_at
+ * DESC LIMIT 1).
  *
  * Respuestas: ver cada operación. Siempre { success: boolean, ... }.
  *
@@ -180,9 +181,12 @@ export default defineEventHandler(async (event) => {
         if (prev.dashboard_event_id) {
           try { await supabase.from('DAVILA_calendar_events').delete().eq('id', prev.dashboard_event_id) } catch {}
         }
-        await supabase.from('pre_reservas').update({
-          estado: 'reagendado', cancelado_en: new Date().toISOString(),
+        // 'cancelado' (no un estado nuevo): la tabla tiene CHECK de estados y
+        // todos los queries del ciclo ya manejan 'cancelado'.
+        const { error: updErr } = await supabase.from('pre_reservas').update({
+          estado: 'cancelado', cancelado_en: new Date().toISOString(),
         }).eq('id', prev.id)
+        if (updErr) console.error('[pre-reserva CREATE] No se pudo marcar cancelada la previa:', updErr.message)
         reagendadaAnterior = { fecha: prev.fecha, hora: prev.hora }
       }
     } catch (e: any) {

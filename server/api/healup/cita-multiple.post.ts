@@ -30,6 +30,7 @@
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { getGoogleAccessToken } from '~/server/utils/google-auth'
+import { avisarNuevaCitaChatwoot } from '~/server/utils/healup-cita-aviso'
 
 const API_KEY     = 'healup-cita-multiple-2026'
 const GCAL_API    = 'https://www.googleapis.com/calendar/v3'
@@ -293,6 +294,23 @@ export default defineEventHandler(async (event) => {
     results.boletas = { ok: false, error: e?.message }
   }
 
+  // 8b. Aviso interno de nueva cita → Chatwoot (best-effort)
+  const avisoChatwoot = await avisarNuevaCitaChatwoot({
+    titulo:        'Nueva cita DOBLE agendada — HealUp',
+    nombre:        paciente_uno_nombre_completo,
+    dni:           dni1,
+    telefono:      phone1,
+    tratamiento:   tratamientos,
+    inicioCitaIso: inicio_cita,
+    canal:         red_social || 'WhatsApp',
+    lineasExtra: [
+      '',
+      `👥 *Paciente 2:* ${paciente_dos_nombre_completo}`,
+      ...(dni2 ? [`🪪 *DNI 2:* ${dni2}`] : []),
+      ...(phone2 ? [`📞 *Teléfono 2:* ${phone2}`] : []),
+    ],
+  })
+
   // 9. Respuesta final
   const fechaHuman = isoToHumanEs(inicio_cita)
   const pdf1 = results.boletas?.paciente_uno?.enlace_pdf
@@ -311,6 +329,7 @@ export default defineEventHandler(async (event) => {
     calendario:      results.calendario,
     pacientes:       results.pacientes,
     boletas:         results.boletas,
+    aviso_chatwoot:  avisoChatwoot,
     log_id:          logId,
   }
 

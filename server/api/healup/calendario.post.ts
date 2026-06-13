@@ -31,6 +31,7 @@
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { getGoogleAccessToken } from '~/server/utils/google-auth'
+import { avisarNuevaCitaChatwoot } from '~/server/utils/healup-cita-aviso'
 
 const GCAL_API    = 'https://www.googleapis.com/calendar/v3'
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID_HEALUP || 'healupaestheticlab@gmail.com'
@@ -292,6 +293,16 @@ export default defineEventHandler(async (event) => {
     results.boleta = { ok: false, error: e?.message ?? 'Error generando boleta' }
   }
 
+  // ── 8b. Aviso interno de nueva cita → Chatwoot (best-effort, no marca error) ─
+  const avisoChatwoot = await avisarNuevaCitaChatwoot({
+    nombre:        nombre_completo,
+    dni:           dniStr,
+    telefono:      phone,
+    tratamiento:   tratamientos,
+    inicioCitaIso: inicio_cita,
+    canal:         red_social || 'WhatsApp',
+  })
+
   // ── 9. Construir respuesta final ───────────────────────────────────────────
   const fechaHuman = isoToHumanEs(inicio_cita)
   const pdfLink    = results.boleta?.enlace_pdf ?? 'no disponible'
@@ -304,6 +315,7 @@ export default defineEventHandler(async (event) => {
     calendario:      results.calendario,
     paciente:        results.paciente,
     boleta:          results.boleta,
+    aviso_chatwoot:  avisoChatwoot,
     log_id:          logId,
   }
 
@@ -315,6 +327,7 @@ export default defineEventHandler(async (event) => {
     `| cal:${results.calendario?.ok ? '✅' : '❌'}`,
     `| pac:${results.paciente?.ok ? '✅' : '❌'}`,
     `| boleta:${results.boleta?.ok ? '✅' : '❌'}`,
+    `| aviso:${avisoChatwoot?.ok ? '✅' : '❌'}`,
   )
 
   return output

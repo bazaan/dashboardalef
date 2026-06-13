@@ -34,6 +34,7 @@
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { getGoogleAccessToken } from '~/server/utils/google-auth'
+import { avisarNuevaCitaChatwoot } from '~/server/utils/healup-cita-aviso'
 
 const GCAL_API     = 'https://www.googleapis.com/calendar/v3'
 const SHEETS_API   = 'https://sheets.googleapis.com/v4/spreadsheets'
@@ -337,6 +338,16 @@ export default defineEventHandler(async (event) => {
     results.boleta = { ok: false, error: e?.message ?? 'Error generando boleta' }
   }
 
+  // ── 10b. Aviso interno de nueva cita → Chatwoot (best-effort) ───────────────
+  const avisoChatwoot = await avisarNuevaCitaChatwoot({
+    nombre:        nombre_completo,
+    dni:           dniStr,
+    tratamiento:   tratamientos,
+    inicioCitaIso: inicio_cita,
+    canal:         redSocial,
+    lineasExtra:   igHandle && igHandle !== nombre_completo ? [`📸 *Usuario:* ${igHandle}`] : [],
+  })
+
   // ── 11. Construir respuesta final ──────────────────────────────────────────
   const fechaHuman = isoToHumanEs(inicio_cita)
   const pdfLink    = results.boleta?.enlace_pdf ?? 'no disponible'
@@ -354,6 +365,7 @@ export default defineEventHandler(async (event) => {
     google_sheets:    results.google_sheets,
     aviso_supervisor: results.aviso_supervisor,
     boleta:           results.boleta,
+    aviso_chatwoot:   avisoChatwoot,
     log_id:           logId,
   }
 

@@ -509,6 +509,9 @@ N8N_WEBHOOK_HEALUP_CITAS_MANANA=          # URL del webhook n8n que recibe el re
 GOOGLE_SHEET_CITAS_HEALUP_ID=             # ID de la hoja "citas_healup" (default: 1C4qVEgymTANCne2xGQtwOi_ow4tDx1XvxIZ-pHOtCPE)
 GOOGLE_SHEET_CITAS_HEALUP_RANGE=          # Pestaña de la hoja (default: "citas")
 CHATWOOT_HEALUP_FBIG_TOKEN=               # api_access_token Chatwoot para avisar a la supervisora (default: el del subflow)
+# Aviso interno "nueva cita agendada" Healup → Chatwoot (cuenta 2, conversación 1361). Opcionales.
+CHATWOOT_HEALUP_CITAS_URL=                # default: https://chats.alef.company/api/v1/accounts/2/conversations/1361/messages
+CHATWOOT_HEALUP_CITAS_TOKEN=              # default: reusa CHATWOOT_HEALUP_FBIG_TOKEN
 # Gatwick — Tool "SMS Alerta Emergencia" (Telnyx).
 TELNYX_API_KEY=                           # REQUERIDA — Bearer token de Telnyx (secreta, sin default)
 TELNYX_MESSAGING_PROFILE_ID=              # opcional. default: 40019e3c-6053-4325-b86a-c7ca1d277e82

@@ -29,6 +29,36 @@ import { actualizarEvento } from '~/server/utils/davila-calendar'
 const API_KEY = 'davila-pre-reserva-2026'
 const DURACION_MIN = 30   // las citas finales duran 30 min (según la guía)
 
+// Aviso interno de nueva cita → Chatwoot (cuenta 3, conversación 5 por defecto).
+// El token de remarketing tiene acceso multi-cuenta. Todo override-able por env.
+const CHATWOOT_CITAS_URL = process.env.CHATWOOT_DAVILA_CITAS_URL
+  || 'https://chats.alef.company/api/v1/accounts/3/conversations/5/messages'
+const CHATWOOT_CITAS_TOKEN = process.env.CHATWOOT_DAVILA_CITAS_TOKEN
+  || process.env.CHATWOOT_API_TOKEN
+  || 'xBsW4FE3FCZdZbgXgdjrHfUA'
+
+/** Envía el aviso de cita a Chatwoot. Nunca lanza: devuelve { ok, error? }. */
+async function avisarCitaChatwoot(p: { numero: string; nombre: string; tratamiento: string }): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const content =
+      `Se ha agendado una cita:\n` +
+      `Canal: Whatsapp\n` +
+      `Numero: ${p.numero}\n` +
+      `Nombre: ${p.nombre}\n` +
+      `Tratamiento: ${p.tratamiento}`
+    const res = await fetch(CHATWOOT_CITAS_URL, {
+      method:  'POST',
+      headers: { 'api_access_token': CHATWOOT_CITAS_TOKEN, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ content, message_type: 'outgoing', content_type: 'text' }),
+    })
+    if (!res.ok) throw new Error(`Chatwoot ${res.status}: ${await res.text()}`)
+    return { ok: true }
+  } catch (e: any) {
+    console.error('[calendario-agendar] Error avisando a Chatwoot:', e?.message)
+    return { ok: false, error: e?.message ?? 'Error enviando aviso a Chatwoot' }
+  }
+}
+
 function splitName(full: string): { name: string; surname: string } {
   const parts = String(full ?? '').trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return { name: '', surname: '' }
@@ -185,7 +215,15 @@ export default defineEventHandler(async (event) => {
     console.error('[calendario-agendar] update pre_reservas:', e?.message)
   }
 
-  const hayError = Object.values(resultados).some((r: any) => r?.ok === false)
+  // 9. Aviso interno de nueva cita → Chatwoot (best-effort, no marca error global)
+  resultados.aviso_chatwoot = await avisarCitaChatwoot({
+    numero:      celular,
+    nombre:      nombre_completo,
+    tratamiento: tratamiento,
+  })
+
+  const criticos = ['google_calendar', 'dashboard_calendar', 'paciente']
+  const hayError = criticos.some((k) => resultados[k]?.ok === false)
   const output = {
     success: true,
     estado: 'confirmado',
@@ -201,7 +239,8 @@ export default defineEventHandler(async (event) => {
     `[calendario-agendar] Davila | ${nombre_completo} | ${fecha} ${hora} | ` +
     `gcal:${resultados.google_calendar?.ok ? '✅' : '❌'} ` +
     `dash:${resultados.dashboard_calendar?.ok ? '✅' : '❌'} ` +
-    `pac:${resultados.paciente?.ok ? '✅' : '❌'}`
+    `pac:${resultados.paciente?.ok ? '✅' : '❌'} ` +
+    `aviso:${resultados.aviso_chatwoot?.ok ? '✅' : '❌'}`
   )
 
   return output

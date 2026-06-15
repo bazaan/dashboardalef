@@ -512,6 +512,9 @@ CHATWOOT_HEALUP_FBIG_TOKEN=               # api_access_token Chatwoot para avisa
 # Aviso interno "nueva cita agendada" Healup → Chatwoot (cuenta 2, conversación 1361). Opcionales.
 CHATWOOT_HEALUP_CITAS_URL=                # default: https://chats.alef.company/api/v1/accounts/2/conversations/1361/messages
 CHATWOOT_HEALUP_CITAS_TOKEN=              # default: reusa CHATWOOT_HEALUP_FBIG_TOKEN
+# Aviso interno "nueva cita agendada" Davila (tool calendario_agendar) → Chatwoot (cuenta 3, conversación 5). Opcionales.
+CHATWOOT_DAVILA_CITAS_URL=                # default: https://chats.alef.company/api/v1/accounts/3/conversations/5/messages
+CHATWOOT_DAVILA_CITAS_TOKEN=              # default: reusa CHATWOOT_API_TOKEN (token multi-cuenta del remarketing)
 # Gatwick — Tool "SMS Alerta Emergencia" (Telnyx).
 TELNYX_API_KEY=                           # REQUERIDA — Bearer token de Telnyx (secreta, sin default)
 TELNYX_MESSAGING_PROFILE_ID=              # opcional. default: 40019e3c-6053-4325-b86a-c7ca1d277e82

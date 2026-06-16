@@ -9637,28 +9637,17 @@ async function fetchProcedures() {
       }
     })
 
-    // Registrar nombres que ya existen en DB
-    const dbNames = new Set(dbProcs.map((p: any) => String(p.name || '').toLowerCase().trim()))
-
-    // Construir lista completa desde PROC_SHEET_LIST — fuente de verdad de los 73 procedimientos
-    let syntheticId = -1
-    const syntheticProcs: Procedure[] = []
-    for (const entry of PROC_SHEET_LIST) {
-      const nameKey = entry.name.toLowerCase().trim()
-      if (dbNames.has(nameKey)) continue
-      syntheticProcs.push({
-        id:       String(syntheticId--),
-        name:     entry.name,
-        color:    entry.color || '#3b82f6',
-        price:    entry.precioOrig,
-        discount: entry.descuento,
-        sku:      entry.sku,
-        grupo:    entry.grupo,
-        cabina:   getCabinaFromGrupo(entry.grupo),
-      } as Procedure)
-    }
-
-    procedures.value = [...dbProcs, ...syntheticProcs]
+    // La lista muestra SOLO los procedimientos que existen en la base de datos.
+    //
+    // Antes, por cada entrada de PROC_SHEET_LIST (el Excel estándar) que NO
+    // estuviera en la BD se agregaba una fila "sintética" con id negativo. Esas
+    // filas eran FANTASMAS: el equipo de Healup las veía en el catálogo pero no
+    // se podían editar ni borrar (no existen en la BD), generando confusión
+    // ("parece que está, pero no se puede tocar"). Se eliminó esa generación de
+    // filas sintéticas: la base de datos es la única fuente de verdad de qué
+    // procedimientos existen. PROC_SHEET_LIST se sigue usando como respaldo de
+    // costos/precios por nombre (getProcDefault, procMeta), pero ya NO crea filas.
+    procedures.value = dbProcs
 
     // Inicializar procMeta con datos de la hoja de cálculo para TODOS los procedimientos
     procedures.value.forEach((p: Procedure) => {

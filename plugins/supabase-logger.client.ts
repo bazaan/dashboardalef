@@ -16,6 +16,13 @@ export default defineNuxtPlugin(() => {
         // Execute the original request
         const response = await originalFetch(...args)
 
+        // IMPORTANTE: el registro de actividad es best-effort y NO debe bloquear
+        // NUNCA la respuesta de la petición real. Antes se hacía `await logActivity(...)`
+        // aquí mismo: si la escritura a `activity_logs` se ponía lenta o se colgaba
+        // (p. ej. bajo carga del servidor), congelaba TODO guardado/edición/borrado
+        // del dashboard — el dato real ya se había guardado (200/204), pero la UI
+        // quedaba esperando este log y no se actualizaba. Ahora se dispara en
+        // segundo plano (fire-and-forget) y la respuesta se devuelve de inmediato.
         try {
             // Check if this is a request to Supabase REST API (rest/v1/)
             const url = typeof resource === 'string' ? resource : resource instanceof Request ? resource.url : ''
@@ -35,10 +42,10 @@ export default defineNuxtPlugin(() => {
                 else if (method === 'PATCH' || method === 'PUT') action = 'Modificó un registro en'
                 else if (method === 'DELETE') action = 'Eliminó un registro de'
 
-                // We only care about mutations, not reads (GET)
+                // We only care about mutations, not reads (GET).
+                // Fire-and-forget: sin await, nunca bloquea la respuesta.
                 if (action && tableName !== 'activity_logs' && tableName !== 'dashboardlogin') {
-                    // Log the activity
-                    await logActivity(`${action} ${tableName}`)
+                    void logActivity(`${action} ${tableName}`).catch(() => {})
                 }
             }
         } catch (e) {

@@ -46,8 +46,10 @@ type Operacion = typeof OPERACIONES_VALIDAS[number]
 // Ventana de vigencia de una pre-reserva sin pagar
 const EXPIRACION_MIN = 40
 
-// Duración fija del evento en Google Calendar (la tool ya no recibe duracion_min)
-const DURACION_MIN = 60
+// Duración fija de la cita: 30 min (Google Calendar + chequeo de slot de
+// disponibilidad). Coincide con la cita final de calendario_agendar (también 30).
+// Antes era 60 → la pre-reserva aparecía como 1 hora (ej. 4:00–5:00) en GCal.
+const DURACION_MIN = 30
 
 // Reglas de negocio para CREATE (según especificación)
 // Días permitidos: martes (2) y jueves (4). Horario: 15:00 a 19:30.

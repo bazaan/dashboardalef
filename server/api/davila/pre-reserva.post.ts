@@ -355,17 +355,21 @@ export default defineEventHandler(async (event) => {
   // OPERACIÓN 4: CANCELAR
   // ════════════════════════════════════════════════════════════════════════
   if (operacion === 'CANCELAR') {
+    // Busca la cita ACTIVA más reciente del cliente SIN importar su etapa:
+    //   pre_reservado (sin pagar) · pagado (pagó, falta datos) · confirmado (cita final)
+    // Antes solo cancelaba 'pre_reservado', por eso una cita ya pagada/confirmada
+    // NO se borraba al pedir cancelación y seguía visible en el calendario.
     const { data: reserva } = await supabase
       .from('pre_reservas')
       .select('*')
       .eq('celular', celularNorm)
-      .eq('estado', 'pre_reservado')
+      .in('estado', ['pre_reservado', 'pagado', 'confirmado'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
     if (!reserva) {
-      const msg = 'No se encontró una pre-reserva activa para cancelar'
+      const msg = 'No se encontró una cita activa para cancelar'
       return await finish('error', { success: false, error: 'pre_reserva_no_encontrada', mensaje: msg }, msg)
     }
 
@@ -380,7 +384,8 @@ export default defineEventHandler(async (event) => {
     }).eq('id', reserva.id)
 
     return await finish('success', {
-      success: true, estado: 'cancelado', mensaje: 'Pre-reserva cancelada',
+      success: true, estado: 'cancelado',
+      mensaje: `Cita cancelada (${reserva.fecha} ${reserva.hora}). Horario liberado.`,
     })
   }
 

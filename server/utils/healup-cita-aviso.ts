@@ -35,10 +35,23 @@ export interface CitaAviso {
   lineasExtra?: string[]       // líneas adicionales al final (ej: 2do paciente)
 }
 
+/**
+ * Convierte el ISO de la cita a Date tratando una hora SIN zona horaria (naive,
+ * ej. "2026-07-15T11:00:00") como hora de Lima (UTC-5) — igual que el resto del
+ * flujo (el calendario guarda la hora tal cual y GCal le agrega -05:00).
+ * Sin esto, el servidor (que corre en UTC) interpretaba "11:00" como UTC y el
+ * mensaje al supervisor salía 5 horas antes (6:00am en vez de 11:00am).
+ */
+function toLimaDate(iso: string): Date {
+  const s = (iso || '').trim()
+  const conTZ = /[Zz]|[+-]\d{2}:\d{2}$/.test(s) ? s : `${s}-05:00`
+  return new Date(conTZ)
+}
+
 /** "2026-06-30T16:00:00" → "Martes 30 de junio" (es-PE, Lima) */
 function fechaHumanaEs(iso: string): string {
   try {
-    const s = new Date(iso).toLocaleDateString('es-PE', {
+    const s = toLimaDate(iso).toLocaleDateString('es-PE', {
       weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Lima',
     })
     return s.charAt(0).toUpperCase() + s.slice(1)
@@ -48,7 +61,7 @@ function fechaHumanaEs(iso: string): string {
 /** "2026-06-30T16:00:00" → "4:00 p. m." (es-PE, Lima) */
 function horaHumanaEs(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString('es-PE', {
+    return toLimaDate(iso).toLocaleTimeString('es-PE', {
       hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Lima',
     })
   } catch { return iso }

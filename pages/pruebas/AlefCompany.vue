@@ -2555,12 +2555,12 @@ const devCompanies = [
 //   - Reporte de Tokens:   consumo de tokens por ejecución
 const FLOW_TOOLS = ['Registro de Errores', 'Reporte de Tokens']
 const COMPANY_TOOLS: Record<string, string[]> = {
-  healup:         ['Todas', 'Calendario', 'Calendario FB/IG', 'Cita Multiple', 'Envío Diario WhatsApp', 'Citas de Mañana', ...FLOW_TOOLS],
+  healup:         ['Todas', 'Calendario', 'Calendario FB/IG', 'Cita Multiple', 'Cita Multiple FB/IG', 'Calendario TikTok', 'Cita Multiple TikTok', 'Envío Diario WhatsApp', 'Citas de Mañana', ...FLOW_TOOLS],
   estasconsuerte: ['Todas', 'Generar Link Monnet', 'Webhook Monnet', ...FLOW_TOOLS],
   brada:          ['Todas', ...FLOW_TOOLS],
   estetikamedika: ['Todas', ...FLOW_TOOLS],
   davila:         ['Todas', 'Validar Pre-Reserva', 'Calendario Agendar', 'Limpieza Pre-Reservas', ...FLOW_TOOLS],
-  solari:         ['Todas', ...FLOW_TOOLS],
+  solari:         ['Todas', 'Calendario', ...FLOW_TOOLS],
   skip:           ['Todas', ...FLOW_TOOLS],
   alegrated:      ['Todas', ...FLOW_TOOLS],
   origitec:       ['Todas', ...FLOW_TOOLS],

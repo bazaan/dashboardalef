@@ -38,8 +38,10 @@ export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
   const body = await readBody(event)
 
-  // 1. Autenticacion (header o body)
-  const key = getHeader(event, 'x-api-key') || getHeader(event, 'X-Api-Key') || body?.api_key
+  // 1. Autenticacion (header, query ?api_key= o body). El header sirve para la
+  //    Custom Function; el query es util para el Webhook post-call (no permite headers).
+  const key = getHeader(event, 'x-api-key') || getHeader(event, 'X-Api-Key')
+    || (getQuery(event) as any)?.api_key || body?.api_key
   if (key !== API_KEY) {
     throw createError({ statusCode: 401, statusMessage: 'API key invalida' })
   }

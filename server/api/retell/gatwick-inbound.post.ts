@@ -42,9 +42,12 @@ export default defineEventHandler(async (event) => {
 
   if (from) {
     try {
+      // Solo contexto de las ULTIMAS 24 HORAS (la emergencia caduca al dia)
+      const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
       const { data } = await (supabase.from(TABLE) as any)
         .select('resumen, transcripcion, creado_en')
         .eq('sesion_id', from)
+        .gte('creado_en', hace24h)
         .order('creado_en', { ascending: false })
         .limit(3)
       const arr = data ?? []

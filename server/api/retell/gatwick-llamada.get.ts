@@ -44,9 +44,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Falta el parametro sesion_id (numero) o id (call_id)' })
   }
 
-  // 3. Consulta (las 5 mas recientes)
+  // 3. Consulta (las 5 mas recientes, solo de las ULTIMAS 24 HORAS: el contexto de
+  //    emergencia caduca al dia)
+  const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   let query = (supabase.from(TABLE) as any)
     .select('id, sesion_id, transcripcion, resumen, estado, creado_en')
+    .gte('creado_en', hace24h)
     .order('creado_en', { ascending: false })
     .limit(5)
   query = id ? query.eq('id', id) : query.eq('sesion_id', sesion_id)

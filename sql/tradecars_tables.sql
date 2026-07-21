@@ -326,8 +326,21 @@ CREATE INDEX IF NOT EXISTS idx_tc_egresos_fecha ON public.tradecars_egresos (fec
 
 
 -- ══════════════════════════════════════════════════════════════════════════
--- 8. RLS — service_role acceso total, anon solo lectura
---    (el dashboard usa la key service_role, igual que el resto del proyecto)
+-- 8. RLS
+--
+--    IMPORTANTE: el dashboard escribe desde el NAVEGADOR con la key `anon`,
+--    así que anon necesita permiso FOR ALL (no solo SELECT). Si se deja
+--    "FOR SELECT TO anon", los DELETE/UPDATE del dashboard fallan EN SILENCIO
+--    (PostgREST devuelve 200 con 0 filas afectadas, sin error) y parece que
+--    el botón "no hace nada".
+--
+--    Se usa el mismo patrón que el resto del proyecto (ver gatwick_tables.sql):
+--      CREATE POLICY ... TO anon USING (true) WITH CHECK (true)   -- = FOR ALL
+--
+--    Nota de seguridad: esto deja las tablas abiertas a cualquiera que tenga
+--    la key anon (que es pública). Es la convención vigente en las 11 empresas
+--    del proyecto; endurecerlo requeriría migrar todos los dashboards a
+--    sesiones de Supabase Auth.
 -- ══════════════════════════════════════════════════════════════════════════
 
 DO $$
@@ -349,6 +362,7 @@ BEGIN
   FOREACH t IN ARRAY tablas LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
 
+    -- service_role: acceso total (lo usa el endpoint del formulario web)
     BEGIN
       EXECUTE format(
         'CREATE POLICY "service_all_%s" ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true)',
@@ -356,9 +370,13 @@ BEGIN
     EXCEPTION WHEN duplicate_object THEN NULL;
     END;
 
+    -- Limpia la política antigua de solo lectura si existía
+    EXECUTE format('DROP POLICY IF EXISTS "anon_select_%s" ON public.%I', t, t);
+
+    -- anon: acceso total (lo necesita el dashboard desde el navegador)
     BEGIN
       EXECUTE format(
-        'CREATE POLICY "anon_select_%s" ON public.%I FOR SELECT TO anon USING (true)',
+        'CREATE POLICY "anon_all_%s" ON public.%I TO anon USING (true) WITH CHECK (true)',
         t, t);
     EXCEPTION WHEN duplicate_object THEN NULL;
     END;

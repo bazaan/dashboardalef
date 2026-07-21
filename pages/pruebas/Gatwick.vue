@@ -236,16 +236,17 @@
 
               <div v-if="activeTab === 'clientes_dashboard'">
                 <v-card-title class="table-search-bar">
-                  <span class="table-title">Últimos 10 Clientes</span>
+                  <span class="table-title">Últimos 10 Edificios</span>
                 </v-card-title>
-                <v-data-table :headers="headersClientesWpp" :items="clientesWpp.slice(0,10)" class="elevation-0"
-                  no-data-text="No hay clientes recientes" :items-per-page="10">
-                  <template v-slot:item.lead_status="{ item }">
-                    <v-chip
-                      :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
-                      size="small">
-                      {{ item.lead_status || '—' }}
-                    </v-chip>
+                <v-data-table :headers="headersEdificiosMini" :items="edificios.slice(0,10)" class="elevation-0"
+                  no-data-text="No hay edificios" :items-per-page="10">
+                  <template v-slot:item.equipos="{ item }">
+                    <span>
+                      <v-chip v-for="a in (item.equipos||[])" :key="a.codigo" size="x-small" variant="tonal" class="mr-1">
+                        {{ a.codigo }}
+                      </v-chip>
+                      <span v-if="!(item.equipos||[]).length" style="opacity:.5;">—</span>
+                    </span>
                   </template>
                   <template v-slot:bottom></template>
                 </v-data-table>
@@ -418,49 +419,130 @@
         </v-dialog>
       </div>
 
-      <!-- ========== VISTA: CLIENTES ========== -->
+      <!-- ========== VISTA: CLIENTES (EDIFICIOS) ========== -->
       <div v-else-if="activeView === 'clientes'" class="view-container">
         <header class="top-header">
-          <h1>Clientes</h1>
-          <button class="btn-primary" @click="() => { fetchClientesWpp(); fetchClientesFbIg(); }">
-            <v-icon icon="mdi-refresh" size="16" />
-            <span>Actualizar</span>
-          </button>
+          <h1>Clientes · Edificios</h1>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn-primary" @click="nuevoEdificio">
+              <v-icon icon="mdi-plus" size="16" />
+              <span>Nuevo edificio</span>
+            </button>
+            <button class="btn-primary" @click="fetchEdificios">
+              <v-icon icon="mdi-refresh" size="16" />
+              <span>Actualizar</span>
+            </button>
+          </div>
         </header>
         <div class="content-area">
+          <v-alert v-if="ascensoresSinCodigo > 0" type="warning" variant="tonal" density="compact" class="mb-3">
+            Hay {{ ascensoresSinCodigo }} ascensor(es) sin código asignado.
+            <a href="#" style="font-weight:600; margin-left:6px;" @click.prevent="generarCodigosFaltantes">Generar códigos ahora</a>
+          </v-alert>
           <div class="table-section">
-            <div class="table-tabs">
-              <button :class="['tab', { active: clientesTab === 'wpp' }]" @click="clientesTab = 'wpp'">
-                WhatsApp ({{ clientesWpp.length }})
-              </button>
-              <button :class="['tab', { active: clientesTab === 'fbig' }]" @click="clientesTab = 'fbig'">
-                FB / IG ({{ clientesFbIg.length }})
-              </button>
-            </div>
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
-                <span class="table-title">
-                  {{ clientesTab === 'wpp' ? 'Clientes WhatsApp' : 'Clientes Facebook / Instagram' }}
-                </span>
+                <span class="table-title">Edificios ({{ edificios.length }})</span>
                 <v-spacer />
-                <v-text-field v-model="searchClientes" prepend-inner-icon="mdi-magnify"
-                  placeholder="Buscar..." density="compact" hide-details style="max-width: 220px;" />
+                <v-text-field v-model="searchEdificios" prepend-inner-icon="mdi-magnify"
+                  placeholder="Buscar por nombre, ELME, distrito, código…" density="compact" hide-details style="max-width: 320px;" />
               </v-card-title>
-              <v-data-table
-                :headers="clientesTab === 'wpp' ? headersClientesWpp : headersClientesFbIg"
-                :items="clientesTab === 'wpp' ? clientesWppFiltrados : clientesFbIgFiltrados"
-                class="elevation-0" no-data-text="No hay clientes" :items-per-page="20">
-                <template v-slot:item.lead_status="{ item }">
-                  <v-chip
-                    :color="item.lead_status?.toLowerCase().includes('caliente') ? 'error' : item.lead_status?.toLowerCase().includes('tibio') ? 'warning' : 'info'"
-                    size="small">
-                    {{ item.lead_status || '—' }}
+              <v-data-table :headers="headersEdificios" :items="edificiosFiltrados" :loading="loadingEdificios"
+                class="elevation-0" no-data-text="No hay edificios" :items-per-page="20">
+                <template v-slot:item.equipos="{ item }">
+                  <div style="display:flex; flex-wrap:wrap; gap:4px; padding:4px 0;">
+                    <v-chip v-for="a in (item.equipos||[])" :key="a.codigo" size="small" variant="tonal"
+                      :title="`${a.tipo || ''}${a.paradas ? ' · ' + a.paradas + ' paradas' : ''}${a.variante ? ' · ' + a.variante : ''}`">
+                      <strong>{{ a.codigo || '—' }}</strong>&nbsp;· {{ a.tipo }}
+                    </v-chip>
+                    <span v-if="!(item.equipos||[]).length" style="opacity:.5;">Sin ascensores</span>
+                  </div>
+                </template>
+                <template v-slot:item.activo="{ item }">
+                  <v-chip :color="item.activo ? 'success' : 'error'" size="small" variant="tonal">
+                    {{ item.activo ? 'Activo' : 'Inactivo' }}
                   </v-chip>
+                </template>
+                <template v-slot:item.acciones="{ item }">
+                  <v-btn icon="mdi-pencil" size="x-small" variant="text" @click="editarEdificio(item)" title="Editar" />
+                  <v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="confirmarEliminarEdificio(item)" title="Eliminar" />
                 </template>
               </v-data-table>
             </v-card>
           </div>
         </div>
+
+        <!-- Dialog: Crear / Editar edificio -->
+        <v-dialog v-model="showEdificioDialog" max-width="760" persistent>
+          <v-card v-if="edificioForm">
+            <v-card-title class="pt-4">{{ editingEdificio ? 'Editar edificio' : 'Nuevo edificio' }}</v-card-title>
+            <v-card-text>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <v-text-field v-model="edificioForm.nombre" label="Nombre *" density="compact" hide-details />
+                <v-text-field v-model="edificioForm.elme" label="ELME" density="compact" hide-details />
+                <v-text-field v-model="edificioForm.direccion" label="Dirección" density="compact" hide-details />
+                <v-text-field v-model="edificioForm.distrito" label="Distrito" density="compact" hide-details />
+                <v-switch v-model="edificioForm.activo" label="Activo" color="success" density="compact" hide-details inset />
+                <v-switch v-model="edificioForm.es_instalacion_critica" label="Instalación crítica" color="warning" density="compact" hide-details inset />
+              </div>
+
+              <div style="margin-top:18px;">
+                <div style="font-weight:600; margin-bottom:8px;">Ascensores</div>
+                <v-table v-if="edificioForm.equipos.length" density="compact">
+                  <thead>
+                    <tr><th>Código</th><th>Tipo</th><th style="width:90px;">Paradas</th><th>Variante</th><th style="width:40px;"></th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(a, idx) in edificioForm.equipos" :key="idx">
+                      <td><v-chip size="small" variant="tonal"><strong>{{ a.codigo || '—' }}</strong></v-chip></td>
+                      <td>
+                        <v-select v-model="a.tipo" :items="TIPOS_ASCENSOR.map(t => t.tipo)" density="compact" hide-details variant="plain" style="min-width:200px;" />
+                      </td>
+                      <td><v-text-field v-model.number="a.paradas" type="number" density="compact" hide-details variant="plain" /></td>
+                      <td><v-text-field v-model="a.variante" density="compact" hide-details variant="plain" placeholder="—" /></td>
+                      <td><v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="quitarAscensor(idx)" /></td>
+                    </tr>
+                  </tbody>
+                </v-table>
+                <div v-else style="opacity:.6; font-size:13px; padding:6px 0;">Sin ascensores todavía. Agrega el primero abajo.</div>
+
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px;">
+                  <v-select v-model="nuevoAscensor.tipo" :items="TIPOS_ASCENSOR.map(t => t.tipo)" label="Tipo" density="compact" hide-details style="min-width:230px;" />
+                  <v-text-field v-model.number="nuevoAscensor.paradas" type="number" label="Paradas" density="compact" hide-details style="max-width:110px;" />
+                  <v-text-field v-model="nuevoAscensor.variante" label="Variante (opcional)" density="compact" hide-details style="max-width:190px;" />
+                  <v-btn color="primary" variant="tonal" @click="agregarAscensor">
+                    <v-icon icon="mdi-plus" start /> Agregar
+                  </v-btn>
+                </div>
+                <div style="font-size:12px; opacity:.7; margin-top:6px;">
+                  Se asignará el código
+                  <strong>{{ siguienteCodigo(prefijoDeTipo(nuevoAscensor.tipo), edificioForm.equipos) }}</strong>
+                </div>
+              </div>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="showEdificioDialog = false">Cancelar</v-btn>
+              <v-btn color="primary" variant="flat" @click="guardarEdificio">Guardar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Dialog: Eliminar edificio -->
+        <v-dialog v-model="showDeleteEdificio" max-width="440">
+          <v-card>
+            <v-card-title class="pt-4">Eliminar edificio</v-card-title>
+            <v-card-text>
+              ¿Seguro que quieres eliminar <strong>{{ edificioAEliminar?.nombre }}</strong>?
+              Se borrarán también sus ascensores. Esta acción no se puede deshacer.
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="showDeleteEdificio = false">Cancelar</v-btn>
+              <v-btn color="error" variant="flat" @click="eliminarEdificio">Eliminar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
       </div>
 
       <!-- ========== VISTA: LEADS ========== -->
@@ -2041,48 +2123,196 @@ async function deleteEvent() {
   notify('Cita eliminada')
 }
 
-// ── Clientes ───────────────────────────────────────────────────────────────
-const clientesWpp = ref([])
-const clientesFbIg = ref([])
-const clientesTab = ref('wpp')
-const searchClientes = ref('')
+// ── Clientes · Edificios (gatwick_edificios) ─────────────────────────────────
+const edificios = ref([])
+const searchEdificios = ref('')
+const loadingEdificios = ref(false)
 
-const clientesWppFiltrados = computed(() => {
-  if (!searchClientes.value) return clientesWpp.value
-  const q = searchClientes.value.toLowerCase()
-  return clientesWpp.value.filter(c => [c.nombre, c.numero, c.empresa].some(v => v?.toLowerCase().includes(q)))
-})
-const clientesFbIgFiltrados = computed(() => {
-  if (!searchClientes.value) return clientesFbIg.value
-  const q = searchClientes.value.toLowerCase()
-  return clientesFbIg.value.filter(c => [c.nombre, c.instagram_handle, c.empresa].some(v => v?.toLowerCase().includes(q)))
-})
-
-async function fetchClientesWpp() {
-  const { data } = await client.from('ClientesBDwppGATWICK').select('*').order('created_at', { ascending: false })
-  clientesWpp.value = data || []
-}
-async function fetchClientesFbIg() {
-  const { data } = await client.from('ClientesBDfbigGATWICK').select('*').order('created_at', { ascending: false })
-  clientesFbIg.value = data || []
+// Tipos de ascensor y su prefijo de código (AP-0001, MV-0001, ...)
+const TIPOS_ASCENSOR = [
+  { tipo: 'Ascensor de Pasajeros',          prefijo: 'AP' },
+  { tipo: 'Montavehículo',                  prefijo: 'MV' },
+  { tipo: 'Plataforma para Discapacitados', prefijo: 'PD' },
+  { tipo: 'Montacargas',                    prefijo: 'MC' },
+  { tipo: 'Monta Platos',                   prefijo: 'MP' },
+]
+function prefijoDeTipo(tipo) {
+  return TIPOS_ASCENSOR.find(t => t.tipo === tipo)?.prefijo || 'AS'
 }
 
-const headersClientesWpp = [
+const headersEdificios = [
+  { title: 'ELME', key: 'elme', width: 90 },
   { title: 'Nombre', key: 'nombre' },
-  { title: 'Teléfono', key: 'numero' },
-  { title: 'Empresa', key: 'empresa' },
-  { title: 'Estado', key: 'lead_status' },
-  { title: 'Servicio', key: 'servicio_interes' },
-  { title: 'Agendado', key: 'fecha_agendamiento' },
+  { title: 'Dirección', key: 'direccion' },
+  { title: 'Distrito', key: 'distrito' },
+  { title: 'Ascensores', key: 'equipos', sortable: false },
+  { title: 'Activo', key: 'activo', width: 100 },
+  { title: '', key: 'acciones', sortable: false, width: 110 },
 ]
-const headersClientesFbIg = [
+const headersEdificiosMini = [
+  { title: 'ELME', key: 'elme' },
   { title: 'Nombre', key: 'nombre' },
-  { title: 'Instagram', key: 'instagram_handle' },
-  { title: 'Empresa', key: 'empresa' },
-  { title: 'Estado', key: 'lead_status' },
-  { title: 'Servicio', key: 'servicio_interes' },
-  { title: 'Agendado', key: 'fecha_agendamiento' },
+  { title: 'Distrito', key: 'distrito' },
+  { title: 'Ascensores', key: 'equipos', sortable: false },
 ]
+
+const edificiosFiltrados = computed(() => {
+  if (!searchEdificios.value) return edificios.value
+  const q = searchEdificios.value.toLowerCase()
+  return edificios.value.filter(e =>
+    [e.elme, e.nombre, e.direccion, e.distrito].some(v => String(v ?? '').toLowerCase().includes(q)) ||
+    (e.equipos || []).some(a => `${a?.codigo ?? ''} ${a?.tipo ?? ''}`.toLowerCase().includes(q))
+  )
+})
+
+const ascensoresSinCodigo = computed(() =>
+  edificios.value.reduce((n, e) => n + (e.equipos || []).filter(a => !a?.codigo).length, 0)
+)
+
+async function fetchEdificios() {
+  loadingEdificios.value = true
+  const { data, error } = await client
+    .from('gatwick_edificios')
+    .select('id, elme, nombre, direccion, distrito, equipos, activo')
+    .order('nombre', { ascending: true })
+  if (error) notify('Error cargando edificios: ' + error.message, 'error')
+  edificios.value = (data || []).map(e => ({ ...e, equipos: Array.isArray(e.equipos) ? e.equipos : [] }))
+  loadingEdificios.value = false
+}
+
+// Siguiente código libre para un prefijo (nunca reutiliza números ya usados)
+function siguienteCodigo(prefijo, extra = []) {
+  let max = 0
+  const re = new RegExp('^' + prefijo + '-(\\d+)$')
+  const scan = (arr) => {
+    for (const a of (arr || [])) {
+      const m = String(a?.codigo || '').match(re)
+      if (m) max = Math.max(max, parseInt(m[1], 10))
+    }
+  }
+  for (const e of edificios.value) scan(e.equipos)
+  scan(extra)
+  return `${prefijo}-${String(max + 1).padStart(4, '0')}`
+}
+
+// ── CRUD edificio ────────────────────────────────────────────────────────────
+const showEdificioDialog = ref(false)
+const editingEdificio = ref(false)
+const edificioForm = ref(null)
+const nuevoAscensor = ref({ tipo: 'Ascensor de Pasajeros', paradas: null, variante: '' })
+
+function nuevoEdificio() {
+  editingEdificio.value = false
+  edificioForm.value = { elme: '', nombre: '', direccion: '', distrito: '', activo: true, es_instalacion_critica: false, equipos: [] }
+  nuevoAscensor.value = { tipo: 'Ascensor de Pasajeros', paradas: null, variante: '' }
+  showEdificioDialog.value = true
+}
+function editarEdificio(e) {
+  editingEdificio.value = true
+  edificioForm.value = {
+    id: e.id, elme: e.elme || '', nombre: e.nombre || '', direccion: e.direccion || '',
+    distrito: e.distrito || '', activo: e.activo !== false, es_instalacion_critica: !!e.es_instalacion_critica,
+    equipos: (e.equipos || []).map(a => ({ ...a })),
+  }
+  nuevoAscensor.value = { tipo: 'Ascensor de Pasajeros', paradas: null, variante: '' }
+  showEdificioDialog.value = true
+}
+function agregarAscensor() {
+  if (!edificioForm.value) return
+  const tipo = nuevoAscensor.value.tipo
+  const codigo = siguienteCodigo(prefijoDeTipo(tipo), edificioForm.value.equipos)
+  edificioForm.value.equipos.push({
+    codigo, tipo,
+    paradas: nuevoAscensor.value.paradas ? Number(nuevoAscensor.value.paradas) : null,
+    variante: nuevoAscensor.value.variante?.trim() || null,
+  })
+  nuevoAscensor.value = { tipo: 'Ascensor de Pasajeros', paradas: null, variante: '' }
+}
+function quitarAscensor(idx) {
+  edificioForm.value?.equipos.splice(idx, 1)
+}
+
+async function guardarEdificio() {
+  const f = edificioForm.value
+  if (!f) return
+  if (!f.nombre?.trim()) { notify('El nombre es obligatorio', 'error'); return }
+  // Garantiza código coherente con el tipo y sin duplicados
+  const usados = new Set()
+  for (const a of f.equipos) {
+    const prefijo = prefijoDeTipo(a.tipo)
+    const okPrefix = new RegExp('^' + prefijo + '-\\d+$').test(a.codigo || '')
+    if (!a.codigo || !okPrefix || usados.has(a.codigo)) {
+      a.codigo = siguienteCodigo(prefijo, f.equipos.filter(x => x !== a))
+    }
+    a.paradas = a.paradas ? Number(a.paradas) : null
+    a.variante = a.variante ? String(a.variante).trim() : null
+    usados.add(a.codigo)
+  }
+  const payload = {
+    elme: f.elme?.trim() || null,
+    nombre: f.nombre.trim(),
+    direccion: f.direccion?.trim() || null,
+    distrito: f.distrito?.trim() || null,
+    activo: f.activo !== false,
+    es_instalacion_critica: !!f.es_instalacion_critica,
+    equipos: f.equipos,
+    updated_at: new Date().toISOString(),
+  }
+  let error
+  if (editingEdificio.value && f.id) {
+    ({ error } = await client.from('gatwick_edificios').update(payload).eq('id', f.id))
+  } else {
+    ({ error } = await client.from('gatwick_edificios').insert(payload))
+  }
+  if (error) { notify('Error guardando: ' + error.message, 'error'); return }
+  notify(editingEdificio.value ? 'Edificio actualizado' : 'Edificio creado')
+  showEdificioDialog.value = false
+  await fetchEdificios()
+}
+
+const showDeleteEdificio = ref(false)
+const edificioAEliminar = ref(null)
+function confirmarEliminarEdificio(e) { edificioAEliminar.value = e; showDeleteEdificio.value = true }
+async function eliminarEdificio() {
+  const e = edificioAEliminar.value
+  if (!e?.id) return
+  const { error } = await client.from('gatwick_edificios').delete().eq('id', e.id)
+  if (error) { notify('Error eliminando: ' + error.message, 'error'); return }
+  notify('Edificio eliminado')
+  showDeleteEdificio.value = false
+  edificioAEliminar.value = null
+  await fetchEdificios()
+}
+
+// Backfill: asigna código a los ascensores existentes que aún no lo tengan
+async function generarCodigosFaltantes() {
+  const contadores = {}
+  const reAny = /^([A-Z]{2})-(\d+)$/
+  for (const e of edificios.value) {
+    for (const a of (e.equipos || [])) {
+      const m = String(a?.codigo || '').match(reAny)
+      if (m) contadores[m[1]] = Math.max(contadores[m[1]] || 0, parseInt(m[2], 10))
+    }
+  }
+  const modificados = []
+  for (const e of edificios.value) {
+    let cambio = false
+    const equipos = (e.equipos || []).map(a => {
+      if (a?.codigo) return a
+      const prefijo = prefijoDeTipo(a?.tipo)
+      contadores[prefijo] = (contadores[prefijo] || 0) + 1
+      cambio = true
+      return { ...a, codigo: `${prefijo}-${String(contadores[prefijo]).padStart(4, '0')}` }
+    })
+    if (cambio) modificados.push({ id: e.id, equipos })
+  }
+  if (!modificados.length) { notify('Todos los ascensores ya tienen código'); return }
+  for (const m of modificados) {
+    await client.from('gatwick_edificios').update({ equipos: m.equipos, updated_at: new Date().toISOString() }).eq('id', m.id)
+  }
+  notify(`Códigos asignados en ${modificados.length} edificio(s)`)
+  await fetchEdificios()
+}
 
 // ── Leads ──────────────────────────────────────────────────────────────────
 const leadsWpp = ref([])
@@ -3386,8 +3616,7 @@ const tabs = [
 // ── Refresh all ────────────────────────────────────────────────────────────
 async function refreshAll() {
   await Promise.all([
-    fetchClientesWpp(),
-    fetchClientesFbIg(),
+    fetchEdificios(),
     fetchLeadsWpp(),
     fetchLeadsFbIg(),
     fetchEmergencias(),
@@ -3401,8 +3630,7 @@ onMounted(async () => {
   await loadSession()
   defaultRangoMov()
   await Promise.all([
-    fetchClientesWpp(),
-    fetchClientesFbIg(),
+    fetchEdificios(),
     fetchLeadsWpp(),
     fetchLeadsFbIg(),
     fetchEmergencias(),

@@ -57,6 +57,53 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // 2.b Resolver las preguntas de tipo 'firmante'.
+  // El navegador solo manda el id del firmante; nunca recibe ni envía la
+  // imagen de la firma. Acá se cambia ese id por una copia con nombre, cargo
+  // y firma, de modo que el informe quede con la firma vigente al momento de
+  // emitirse aunque el firmante la cambie después.
+  const firmanteFields = (Array.isArray(form.fields) ? form.fields : [])
+    .filter((f: any) => f?.type === 'firmante')
+
+  if (firmanteFields.length) {
+    const answers = body.answers as Record<string, any>
+    const ids = firmanteFields
+      .map((f: any) => Number(answers[f.id]))
+      .filter((n) => Number.isFinite(n) && n > 0)
+
+    if (ids.length) {
+      const { data: firmantes } = await supabase
+        .from('form_signatories')
+        .select('id, nombre, cargo, documento, firma, company_id')
+        .in('id', ids)
+        .eq('company_id', form.company_id)   // un form no puede firmar con gente de otra empresa
+        .eq('activo', true)
+
+      const porId = new Map((firmantes || []).map((f: any) => [Number(f.id), f]))
+
+      for (const f of firmanteFields) {
+        const elegido = porId.get(Number(answers[f.id]))
+        if (!elegido) {
+          if (f.required) {
+            throw createError({
+              statusCode: 400,
+              statusMessage: `Selecciona un firmante válido para "${f.label}"`,
+            })
+          }
+          answers[f.id] = null
+          continue
+        }
+        answers[f.id] = {
+          signatory_id: elegido.id,
+          nombre:       elegido.nombre,
+          cargo:        elegido.cargo,
+          documento:    elegido.documento,
+          firma:        elegido.firma,
+        }
+      }
+    }
+  }
+
   // 3. Identificar la tabla de respuestas según empresa
   const companyId = normalizeCompanyId(form.company_id)
   if (!companyId) {

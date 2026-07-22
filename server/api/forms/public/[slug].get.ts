@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
 
   const { data, error } = await supabase
     .from('forms')
-    .select('id, slug, title, description, fields, thanks_text, redirect_url, active')
+    .select('id, slug, title, description, fields, thanks_text, redirect_url, active, company_id')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -36,6 +36,25 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 410, statusMessage: 'Este formulario ya no está disponible' })
   }
 
+  // Si el form tiene alguna pregunta de tipo 'firmante', adjuntamos la lista
+  // de personas que pueden firmar. Se resuelve acá (service_role) y no desde
+  // el navegador para no exponer company_id ni, sobre todo, las firmas: solo
+  // viajan id, nombre y cargo.
+  const fields = Array.isArray(data.fields) ? data.fields : []
+  let signatories: Array<{ id: number; nombre: string; cargo: string | null }> = []
+
+  if (fields.some((f: any) => f?.type === 'firmante')) {
+    const { data: rows } = await supabase
+      .from('form_signatories')
+      .select('id, nombre, cargo')
+      .eq('company_id', data.company_id)
+      .eq('activo', true)
+      .order('orden', { ascending: true })
+      .order('nombre', { ascending: true })
+
+    signatories = rows || []
+  }
+
   // No retornamos company_id ni created_by por privacidad
   return {
     id:           data.id,
@@ -45,5 +64,6 @@ export default defineEventHandler(async (event) => {
     fields:       data.fields,
     thanks_text:  data.thanks_text,
     redirect_url: data.redirect_url,
+    signatories,
   }
 })

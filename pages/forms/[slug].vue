@@ -124,6 +124,30 @@
               <span>{{ opt }}</span>
             </label>
           </div>
+
+          <!-- Firmante: la firma vive en la BD, acá solo se elige quién firma -->
+          <div v-else-if="field.type === 'firmante'" class="options-list">
+            <select
+              v-model="answers[field.id]"
+              :required="field.required"
+              class="text-input"
+            >
+              <option value="">— Selecciona —</option>
+              <option v-for="s in signatories" :key="s.id" :value="s.id">
+                {{ s.nombre }}{{ s.cargo ? ` — ${s.cargo}` : '' }}
+              </option>
+            </select>
+            <p v-if="!signatories.length" class="field-hint">
+              No hay firmantes cargados para esta empresa.
+            </p>
+          </div>
+
+          <!-- Firma digital: se dibuja con el dedo -->
+          <div v-else-if="field.type === 'firma'" class="signature-field">
+            <ClientOnly>
+              <HealupSignaturePad v-model="answers[field.id]" :height="180" />
+            </ClientOnly>
+          </div>
         </div>
       </div>
 
@@ -149,7 +173,7 @@ definePageMeta({
 
 interface Field {
   id: string
-  type: 'short' | 'long' | 'checkbox' | 'radio' | 'date' | 'time' | 'email' | 'phone'
+  type: 'short' | 'long' | 'checkbox' | 'radio' | 'date' | 'time' | 'email' | 'phone' | 'firma' | 'firmante'
   label: string
   required: boolean
   options?: string[]
@@ -170,6 +194,13 @@ interface PublicForm {
   fields: Field[]
   thanks_text: string | null
   redirect_url: string | null
+  signatories?: Signatory[]
+}
+
+interface Signatory {
+  id: number
+  nombre: string
+  cargo: string | null
 }
 
 const route = useRoute()
@@ -183,6 +214,7 @@ const answers      = reactive<Record<string, any>>({})
 const submitting   = ref(false)
 const submitted    = ref(false)
 const submitError  = ref<string | null>(null)
+const signatories  = ref<Signatory[]>([])
 const timeParts    = reactive<Record<string, TimeParts>>({})
 
 // Listado de minutos cada 5 (00, 05, 10, ..., 55)
@@ -208,6 +240,7 @@ onMounted(async () => {
   try {
     const data = await $fetch<PublicForm>(`/api/forms/public/${slug.value}`)
     form.value = data
+    signatories.value = data.signatories || []
     // Inicializar valores por defecto
     for (const f of data.fields) {
       if (f.type === 'checkbox') {
@@ -215,6 +248,9 @@ onMounted(async () => {
       } else if (f.type === 'time') {
         timeParts[f.id] = { hour: '', minute: '', period: '' }
         answers[f.id] = ''
+      } else if (f.type === 'firma') {
+        // El pad emite null mientras no haya trazo
+        answers[f.id] = null
       } else {
         answers[f.id] = ''
       }
@@ -493,4 +529,15 @@ async function handleSubmit() {
   .form-card { padding: 28px 20px; }
   .form-header h1 { font-size: 22px; }
 }
+.signature-field {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  opacity: 0.7;
+}
+
 </style>

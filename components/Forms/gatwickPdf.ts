@@ -107,6 +107,26 @@ export interface FormDefinition {
   created_at?: string
 }
 
+/**
+ * Busca una respuesta primero por los ids esperados y, si el form fue armado
+ * con otros nombres, escanea todas las respuestas por la forma del valor.
+ * Así el PDF sigue encontrando las firmas aunque quien edite el formulario
+ * bautice las preguntas distinto.
+ */
+function findAnswer(
+  answers: Record<string, any>,
+  preferredIds: string[],
+  matches: (v: any) => boolean,
+): any {
+  for (const id of preferredIds) {
+    if (id in answers && matches(answers[id])) return answers[id]
+  }
+  for (const v of Object.values(answers)) {
+    if (matches(v)) return v
+  }
+  return null
+}
+
 export async function exportGatwickPdf(response: GatwickResponse, form: FormDefinition): Promise<void> {
   const jsPDF = await loadJsPDF()
   const logo = await loadLogo()
@@ -353,10 +373,39 @@ export async function exportGatwickPdf(response: GatwickResponse, form: FormDefi
   const leftMid = (leftSigX1 + leftSigX2) / 2
   const rightMid = (rightSigX1 + rightSigX2) / 2
 
-  // Nombre del técnico sobre la línea izquierda
-  const tecnicoNombre = `${a.tecnico_nombre ?? ''} ${a.tecnico_apellido ?? ''}`.trim()
+  /**
+   * Dibuja una firma (dataURL PNG) apoyada sobre su línea, centrada y
+   * escalada para no invadir la línea de al lado.
+   */
+  function drawSignature(dataUrl: string | null | undefined, midX: number, lineY: number, maxW: number) {
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) return
+    const maxH = 30
+    // El pad genera un lienzo apaisado (~3:1). Se ajusta al que sea más
+    // restrictivo de los dos límites para no deformarla.
+    const w = Math.min(maxW, maxH * 3)
+    const h = w / 3
+    try {
+      doc.addImage(dataUrl, 'PNG', midX - w / 2, lineY - h - 1, w, h, undefined, 'FAST')
+    } catch {
+      // Una firma corrupta no debe impedir que se emita el informe
+    }
+  }
+
+  // Firma del técnico: viene de la pregunta tipo 'firmante', que guarda una
+  // copia de la firma registrada en form_signatories.
+  const firmante = findAnswer(a, ['firmante', 'tecnico', 'firma_tecnico'], (v) => v && typeof v === 'object' && 'firma' in v)
+  const tecnicoNombre =
+    (firmante?.nombre as string) ||
+    `${a.tecnico_nombre ?? ''} ${a.tecnico_apellido ?? ''}`.trim()
+
+  drawSignature(firmante?.firma, leftMid, sigLineY, leftSigX2 - leftSigX1 - 8)
+
   setFont({ size: 9 })
-  if (tecnicoNombre) text(tecnicoNombre, leftMid, sigLineY - 3, { align: 'center' })
+  if (tecnicoNombre) text(tecnicoNombre, leftMid, sigLineY + 21, { align: 'center' })
+
+  // Firma del cliente: pregunta tipo 'firma' (pad con el dedo)
+  const firmaCliente = findAnswer(a, ['firma_cliente', 'firma'], (v) => typeof v === 'string' && v.startsWith('data:image'))
+  drawSignature(firmaCliente, rightMid, sigLineY, rightSigX2 - rightSigX1 - 8)
 
   stroke(BLACK)
   line(leftSigX1, sigLineY, leftSigX2, sigLineY)

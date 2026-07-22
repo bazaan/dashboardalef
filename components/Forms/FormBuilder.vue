@@ -173,7 +173,7 @@ import { ref, watch, computed } from 'vue'
 
 interface Field {
   id: string
-  type: 'short' | 'long' | 'checkbox' | 'radio' | 'date' | 'email' | 'phone'
+  type: 'short' | 'long' | 'checkbox' | 'radio' | 'date' | 'time' | 'email' | 'phone' | 'firma' | 'firmante'
   label: string
   required: boolean
   options?: string[]
@@ -232,6 +232,8 @@ const fieldTypes = [
   { value: 'time',     label: 'Hora (12h con AM/PM)', icon: 'mdi-clock-outline' },
   { value: 'email',    label: 'Email',            icon: 'mdi-email' },
   { value: 'phone',    label: 'Teléfono',         icon: 'mdi-phone' },
+  { value: 'firma',    label: 'Firma digital (pad)', icon: 'mdi-draw-pen' },
+  { value: 'firmante', label: 'Firmante (con firma guardada)', icon: 'mdi-account-check' },
 ]
 
 function getFieldIcon(type: string) {

@@ -213,6 +213,7 @@ watch(turns, () => {
   max-width: calc(100vw - 40px);
   height: 580px;
   max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   background: var(--surface-1, #1e1e1e);
   border: 1px solid var(--border, rgba(255,255,255,0.1));
   border-radius: 14px;
@@ -222,6 +223,19 @@ watch(turns, () => {
   z-index: 1000;
   overflow: hidden;
 }
+
+/* En movil el panel ocupa el ancho completo; 380px deja el chat muy angosto */
+@media (max-width: 768px) {
+  .agent-panel {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    max-width: none;
+    height: 75dvh;
+  }
+}
+
 .agent-slide-enter-active, .agent-slide-leave-active { transition: all 0.25s ease-out; }
 .agent-slide-enter-from, .agent-slide-leave-to { opacity: 0; transform: translateY(20px) scale(0.96); }
 

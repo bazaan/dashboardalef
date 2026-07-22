@@ -22,7 +22,7 @@ export default defineNuxtPlugin(() => {
   let overlay: HTMLDivElement | null = null
 
   function ensureHamburger() {
-    if (hamburgerBtn || !document.querySelector('.dashboard-container')) return
+    if (hamburgerBtn) return
 
     // Botón hamburguesa
     hamburgerBtn = document.createElement('button')
@@ -45,22 +45,26 @@ export default defineNuxtPlugin(() => {
     // Toggle handlers
     hamburgerBtn.addEventListener('click', toggleSidebar)
     overlay.addEventListener('click', closeSidebar)
+  }
 
-    // Cerrar al tocar cualquier nav-item (mejor UX en móvil)
-    document.addEventListener('click', (e) => {
-      if (!isMobile()) return
-      const target = e.target as HTMLElement
-      const navItem = target.closest('.nav-item, .footer-item')
-      if (navItem) {
-        // Pequeño delay para que el click navegue antes de cerrar
-        setTimeout(closeSidebar, 100)
-      }
-    })
+  /** Quita lo inyectado: fuera de un dashboard no hay sidebar que abrir. */
+  function removeHamburger() {
+    if (!hamburgerBtn && !overlay) return
+    closeSidebar()
+    hamburgerBtn?.remove()
+    overlay?.remove()
+    hamburgerBtn = null
+    overlay = null
+  }
 
-    // Cerrar al cambiar orientación / resize a desktop
-    window.addEventListener('resize', () => {
-      if (!isMobile()) closeSidebar()
-    })
+  /**
+   * Se ejecuta en cada cambio del DOM. Antes solo se inyectaba y nunca se
+   * limpiaba, así que al salir de un dashboard el botón y el overlay se
+   * quedaban flotando sobre el login y el admin hub.
+   */
+  function syncMobileChrome() {
+    if (document.querySelector('.dashboard-container')) ensureHamburger()
+    else removeHamburger()
   }
 
   function toggleSidebar() {
@@ -71,14 +75,28 @@ export default defineNuxtPlugin(() => {
     document.body.classList.remove('mobile-sidebar-open')
   }
 
-  // Inyectar al cargar y en cambios de ruta
-  const observer = new MutationObserver(() => ensureHamburger())
+  // Listeners globales: se registran una sola vez, no por cada inyección
+  document.addEventListener('click', (e) => {
+    if (!isMobile()) return
+    const target = e.target as HTMLElement
+    if (target.closest('.nav-item, .footer-item')) {
+      // Pequeño delay para que el click navegue antes de cerrar
+      setTimeout(closeSidebar, 100)
+    }
+  })
+
+  window.addEventListener('resize', () => {
+    if (!isMobile()) closeSidebar()
+  })
+
+  // Sincronizar al cargar y en cambios de ruta
+  const observer = new MutationObserver(() => syncMobileChrome())
   observer.observe(document.body, { childList: true, subtree: true })
 
   // Setup inicial
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', ensureHamburger)
+    document.addEventListener('DOMContentLoaded', syncMobileChrome)
   } else {
-    ensureHamburger()
+    syncMobileChrome()
   }
 })

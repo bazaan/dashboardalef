@@ -10,7 +10,7 @@
             </div>
 
             <div class="dashboard-selector">
-                <v-select v-model="selectedDashboard" :items="availableDashboardsWithLogos"
+                <v-select ref="selectRef" v-model="selectedDashboard" :items="availableDashboardsWithLogos"
                     label="Selecciona un Dashboard" variant="solo-filled" bg-color="#111" color="white"
                     item-title="name" item-value="path" :menu-props="{ theme: 'dark' }"
                     @update:model-value="navigateToDashboard" return-object flat rounded="xl" class="custom-select"
@@ -77,6 +77,13 @@ const availableDashboardsWithLogos = computed(() => {
 })
 
 const selectedDashboard = ref(null)
+const selectRef = ref<any>(null)
+
+// Es un selector, no un campo de texto: en movil no debe abrir el teclado.
+// Vuetify ya pone inputmode="none", pero varios teclados de Android lo ignoran.
+onMounted(() => {
+    selectRef.value?.$el?.querySelector('input')?.setAttribute('readonly', 'readonly')
+})
 
 function navigateToDashboard(dashboard: any) {
     if (dashboard && dashboard.path) {

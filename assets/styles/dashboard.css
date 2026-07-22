@@ -3053,19 +3053,12 @@ html.dark body {
   }
 }
 
-/* =====================================================================
-   TABLET / LAPTOP CHICA — Login
-   La columna de la imagen se oculta con .hidden-md-and-down, que en
-   Vuetify 3.12 corta en 1279.98px, pero .login-left seguía al 50%: el
-   formulario quedaba comprimido a la izquierda con medio fondo negro.
-   A partir de 1280px el layout de dos columnas queda intacto.
-   ===================================================================== */
+/* Tablet / laptop chica: .hidden-md-and-down oculta la imagen hasta
+   1279.98px, pero .login-left seguía al 50%. */
 @media (max-width: 1279.98px) {
   .login-left {
     width: 100%;
   }
-  /* El -5rem del desktop compensaba la altura de la card en un layout de
-     dos columnas; centrado a pantalla completa descuadra el formulario. */
   .login-form-wrapper {
     margin-top: -2rem !important;
   }
@@ -3073,32 +3066,21 @@ html.dark body {
 
 /* =====================================================================
    MOBILE — Login (pages/index.vue) y Admin Hub
-   Todo vive dentro de media queries: por encima de 1280px el login
-   queda exactamente igual que antes.
    ===================================================================== */
 @media (max-width: 768px) {
   /* Login */
-
-  /* 100vh en móvil mide el viewport CON la barra de URL desplegada, así
-     que el bloque queda más alto que lo visible y recorta el formulario.
-     dvh sigue al viewport real; el 100vh queda de fallback para
-     navegadores viejos que no soportan dvh. */
   .login-content {
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
   }
 
-  /* .login-container es position:fixed + overflow:hidden. Al abrir el
-     teclado el viewport se encoge y sin scroll el botón "INICIAR SESIÓN"
-     queda inalcanzable. */
+  /* Permite scroll cuando el teclado encoge el viewport */
   .login-container {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* env(safe-area-inset-*) requiere viewport-fit=cover, ya presente en
-     nuxt.config.ts. Evita el notch y la barra de gestos. */
   .login-left {
     width: 100% !important;
     padding-top: calc(1rem + env(safe-area-inset-top)) !important;
@@ -3119,20 +3101,29 @@ html.dark body {
     max-width: 180px !important;
   }
 
-  /* iOS Safari hace zoom automático al enfocar un input de menos de
-     16px y deja la página desencuadrada al salir del campo. */
+  /* Evita el zoom de iOS al enfocar (necesita >=16px) */
   .custom-input input,
   .custom-input .v-field__input {
     font-size: 16px !important;
   }
 
-  /* Admin Hub */
+  /* Admin Hub — pantalla fija, sin scroll */
+  /* VApp fuerza min-height:100vh en el wrapper, que en movil mide mas que
+     la pantalla visible. Se acota solo en esta pagina via :has(). */
+  .v-application__wrap:has(.admin-hub-container) {
+    min-height: 100dvh;
+  }
   .admin-hub-container {
     padding: 1rem !important;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0 !important;
+    overflow: hidden;
   }
   .content-wrapper {
     max-width: 100% !important;
     padding: 1.5rem 1rem !important;
+    gap: 2rem !important;
   }
   .profile-avatar {
     width: 90px !important;
@@ -3144,6 +3135,11 @@ html.dark body {
   .user-email {
     font-size: 0.85rem !important;
     word-break: break-all;
+  }
+  /* Evita el zoom de iOS al enfocar (necesita >=16px) */
+  .custom-select .v-field__input,
+  .custom-select input {
+    font-size: 16px !important;
   }
 }
 

@@ -12,12 +12,14 @@
             <VForm @submit.prevent="submit" class="login-form">
               <div class="mb-0">
                 <VTextField v-model="email" placeholder="Email" variant="outlined" bg-color="transparent"
-                  class="custom-input" hide-details="auto" :rules="[ruleRequired, ruleEmail]"></VTextField>
+                  class="custom-input" hide-details="auto" inputmode="email" autocapitalize="none" spellcheck="false"
+                  enterkeyhint="next" :rules="[ruleRequired, ruleEmail]"></VTextField>
               </div>
 
               <div class="mb-6">
                 <VTextField v-model="password" placeholder="Contraseña" type="password" variant="outlined"
-                  bg-color="transparent" class="custom-input" hide-details="auto" :rules="[ruleRequired, rulePassLen]">
+                  bg-color="transparent" class="custom-input" hide-details="auto" enterkeyhint="go"
+                  :rules="[ruleRequired, rulePassLen]">
                 </VTextField>
               </div>
 

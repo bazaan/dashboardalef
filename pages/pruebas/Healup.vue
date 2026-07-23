@@ -497,6 +497,11 @@
             <v-card flat class="custom-data-table" style="margin-bottom: 2rem;">
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de pacientes whatsapp ({{ pacientesWppFiltrados.length }})</span>
+                <v-btn v-if="isMobileView" size="small" variant="text" class="tabla-toggle"
+                  :append-icon="tablaVisible('pacWpp') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleTabla('pacWpp')">
+                  {{ tablaVisible('pacWpp') ? 'Ocultar' : 'Ver tabla' }}
+                </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesWppFiltrados, headersPacientesWpp, 'healup-pacientes-wpp')">
                   <v-icon>mdi-file-excel</v-icon>
@@ -505,7 +510,7 @@
                 <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
                   density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersPacientesWpp" :items="pacientesWppFiltrados" :search="search" :loading="loading"
+              <v-data-table v-show="tablaVisible('pacWpp')" :headers="headersPacientesWpp" :items="pacientesWppFiltrados" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de WhatsApp">
                 <template v-slot:item.booking_sku="{ item }">
                   <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
@@ -575,13 +580,18 @@
             <v-card flat class="custom-data-table">
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de pacientes Facebook e Instagram ({{ pacientesFbIgFiltrados.length }})</span>
+                <v-btn v-if="isMobileView" size="small" variant="text" class="tabla-toggle"
+                  :append-icon="tablaVisible('pacFbIg') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleTabla('pacFbIg')">
+                  {{ tablaVisible('pacFbIg') ? 'Ocultar' : 'Ver tabla' }}
+                </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(pacientesFbIgFiltrados, headersPacientesFbIg, 'healup-pacientes-fbig')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
               </v-card-title>
-              <v-data-table :headers="headersPacientesFbIg" :items="pacientesFbIgFiltrados" :search="search" :loading="loading"
+              <v-data-table v-show="tablaVisible('pacFbIg')" :headers="headersPacientesFbIg" :items="pacientesFbIgFiltrados" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de FB/IG">
                 <template v-slot:item.booking_sku="{ item }">
                   <v-chip v-if="item.booking_sku" color="primary" size="x-small" variant="tonal"
@@ -654,6 +664,11 @@
                   <v-icon icon="mdi-music-note" size="16" style="color:#ff0050; margin-right:4px;" />
                   Lista de pacientes TikTok ({{ pacientesTiktokFiltrados.length }})
                 </span>
+                <v-btn v-if="isMobileView" size="small" variant="text" class="tabla-toggle"
+                  :append-icon="tablaVisible('pacTiktok') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleTabla('pacTiktok')">
+                  {{ tablaVisible('pacTiktok') ? 'Ocultar' : 'Ver tabla' }}
+                </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(pacientesTiktokFiltrados, headersPacientesTiktok, 'healup-pacientes-tiktok')">
                   <v-icon>mdi-file-excel</v-icon>
@@ -662,7 +677,7 @@
                 <v-text-field v-model="search" append-inner-icon="mdi-magnify" label="Buscar" single-line hide-details
                   density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersPacientesTiktok" :items="pacientesTiktokFiltrados" :search="search" :loading="loading"
+              <v-data-table v-show="tablaVisible('pacTiktok')" :headers="headersPacientesTiktok" :items="pacientesTiktokFiltrados" :search="search" :loading="loading"
                 class="elevation-0" no-data-text="No hay pacientes de TikTok">
                 <template v-slot:item.tiktok_handle="{ item }">
                   <span v-if="item.tiktok_handle" style="color:#ff0050;">@{{ item.tiktok_handle }}</span>
@@ -865,6 +880,11 @@
             <v-card flat class="custom-data-table" style="margin-bottom: 2rem;">
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de leads whatsapp</span>
+                <v-btn v-if="isMobileView" size="small" variant="text" class="tabla-toggle"
+                  :append-icon="tablaVisible('leadsWpp') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleTabla('leadsWpp')">
+                  {{ tablaVisible('leadsWpp') ? 'Ocultar' : 'Ver tabla' }}
+                </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn icon size="small" variant="text" color="success" class="me-1" @click="downloadExcel(leadsWpp, headersLeadsWpp, 'healup-leads-wpp')">
                   <v-icon>mdi-file-excel</v-icon>
@@ -873,7 +893,7 @@
                 <v-text-field v-model="leadsSearch" append-inner-icon="mdi-magnify" label="Buscar" single-line
                   hide-details density="compact" variant="outlined" class="search-field"></v-text-field>
               </v-card-title>
-              <v-data-table :headers="headersLeadsWpp" :items="leadsWpp" :search="leadsSearch" :loading="loadingLeads"
+              <v-data-table v-show="tablaVisible('leadsWpp')" :headers="headersLeadsWpp" :items="leadsWpp" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de WhatsApp">
                 <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.nombre="{ item }">
@@ -903,13 +923,18 @@
             <v-card flat class="custom-data-table" style="margin-bottom: 2rem;">
               <v-card-title class="table-search-bar">
                 <span class="table-title">Lista de leads Facebook e Instagram</span>
+                <v-btn v-if="isMobileView" size="small" variant="text" class="tabla-toggle"
+                  :append-icon="tablaVisible('leadsFbIg') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleTabla('leadsFbIg')">
+                  {{ tablaVisible('leadsFbIg') ? 'Ocultar' : 'Ver tabla' }}
+                </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(leadsFbIg, headersLeadsFbIg, 'healup-leads-fbig')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
               </v-card-title>
-              <v-data-table :headers="headersLeadsFbIg" :items="leadsFbIg" :search="leadsSearch" :loading="loadingLeads"
+              <v-data-table v-show="tablaVisible('leadsFbIg')" :headers="headersLeadsFbIg" :items="leadsFbIg" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de FB/IG">
                 <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.lead_status="{ item }">
@@ -929,13 +954,18 @@
                   <v-icon icon="mdi-music-note" size="16" style="color:#ff0050; margin-right:4px;" />
                   Lista de leads TikTok ({{ leadsTiktok.length }})
                 </span>
+                <v-btn v-if="isMobileView" size="small" variant="text" class="tabla-toggle"
+                  :append-icon="tablaVisible('leadsTiktok') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleTabla('leadsTiktok')">
+                  {{ tablaVisible('leadsTiktok') ? 'Ocultar' : 'Ver tabla' }}
+                </v-btn>
                 <v-spacer></v-spacer>
                 <v-btn icon size="small" variant="text" color="success" @click="downloadExcel(leadsTiktok, headersLeadsTiktok, 'healup-leads-tiktok')">
                   <v-icon>mdi-file-excel</v-icon>
                   <v-tooltip activator="parent" location="top">Descargar Excel</v-tooltip>
                 </v-btn>
               </v-card-title>
-              <v-data-table :headers="headersLeadsTiktok" :items="leadsTiktok" :search="leadsSearch" :loading="loadingLeads"
+              <v-data-table v-show="tablaVisible('leadsTiktok')" :headers="headersLeadsTiktok" :items="leadsTiktok" :search="leadsSearch" :loading="loadingLeads"
                 class="elevation-0" no-data-text="No hay leads de TikTok">
                 <template v-slot:item.created_at="{ item }">{{ formatFecha(item.created_at) }}</template>
                 <template v-slot:item.nombre="{ item }">
@@ -1038,8 +1068,8 @@
 
         <div class="content-area">
           <!-- Viñeta meses + KPI compacto en una sola fila — sin huecos verticales -->
-          <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; padding: 4px 0 12px;">
-            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; flex:1; min-width:0;">
+          <div class="filtros-row" style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; padding: 4px 0 12px;">
+            <div class="filtros-chips" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; flex:1; min-width:0;">
               <v-icon icon="mdi-calendar-month" size="18" style="opacity:0.6;" />
               <v-chip
                 :color="egresosMesSel === '' ? 'grey-darken-2' : 'default'"
@@ -1279,7 +1309,7 @@
                 <h2>Ventas por Procedimiento</h2>
               </div>
               <client-only>
-                <apexchart type="bar" height="350" :options="categoryChartOptions" :series="salesByCategorySeries" />
+                <apexchart type="bar" :height="categoryChartHeight" :options="categoryChartOptions" :series="salesByCategorySeries" />
               </client-only>
             </div>
             <div class="chart-section" style="height: auto; max-height: 480px; overflow-y: auto;">
@@ -5918,6 +5948,15 @@ import { isSuperAdmin, canAccessHealup, dashboards } from '@/utils/permissions'
 import SettingsView from '@/components/Settings/SettingsView.vue'
 import FormsCompanyPanel from '@/components/Forms/FormsCompanyPanel.vue'
 
+// ── Movil ────────────────────────────────────────────────────────────────
+const isMobileView = ref(false)
+const updateIsMobileView = () => { isMobileView.value = window.innerWidth <= 768 }
+
+// Las tablas arrancan plegadas en movil; en desktop siempre se ven.
+const tablasAbiertas = ref<Record<string, boolean>>({})
+const toggleTabla = (key: string) => { tablasAbiertas.value[key] = !tablasAbiertas.value[key] }
+const tablaVisible = (key: string) => !isMobileView.value || !!tablasAbiertas.value[key]
+
 const formatFecha = (dateString: string | null | undefined) => {
   if (!dateString) return '-';
   const date = new Date(dateString);
@@ -7387,18 +7426,38 @@ const salesByCategorySeries = computed(() => {
   return [{ name: 'Ventas Totales', data: Object.values(categories) }]
 })
 
-const categoryChartOptions = computed<ApexOptions>(() => ({
-  chart: { type: 'bar', height: 350, fontFamily: 'inherit', toolbar: { show: false }, background: 'transparent' },
-  plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '50%' } },
+const categoryChartOptions = computed<ApexOptions>(() => {
+  const categorias = Object.keys(pacientesMesActual.value.reduce((acc, p) => {
+    const cat = p.procedimiento || 'Sin Procedimiento'
+    acc[cat] = (acc[cat] || 0) + parseCurrency(p.precio)
+    return acc
+  }, {} as Record<string, number>))
+
+  // En movil el alto fijo de 350px apretaba todas las barras sin importar
+  // cuantos procedimientos hubiera, y los nombres se encimaban.
+  const alto = isMobileView.value
+    ? Math.max(260, categorias.length * 38 + 60)
+    : 350
+
+  return {
+  chart: { type: 'bar', height: alto, fontFamily: 'inherit', toolbar: { show: false }, background: 'transparent' },
+  plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: isMobileView.value ? '65%' : '50%' } },
   xaxis: {
-    categories: Object.keys(pacientesMesActual.value.reduce((acc, p) => {
-      const cat = p.procedimiento || 'Sin Procedimiento'
-      acc[cat] = (acc[cat] || 0) + parseCurrency(p.precio)
-      return acc
-    }, {} as Record<string, number>)),
-    labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' }, formatter: (val) => `S/ ${Number(val).toFixed(0)}` }
+    categories: categorias,
+    labels: {
+      style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46', fontSize: isMobileView.value ? '10px' : '12px' },
+      formatter: (val) => `S/ ${Number(val).toFixed(0)}`,
+      rotate: 0,
+      hideOverlappingLabels: true
+    },
+    tickAmount: isMobileView.value ? 3 : undefined
   },
-  yaxis: { labels: { style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46' } } },
+  yaxis: {
+    labels: {
+      style: { colors: isDark.value ? '#a1a1aa' : '#3f3f46', fontSize: isMobileView.value ? '10px' : '12px' },
+      maxWidth: isMobileView.value ? 110 : 160
+    }
+  },
   colors: ['#3b82f6'],
   grid: { borderColor: isDark.value ? '#3f3f46' : '#e5e7eb', strokeDashArray: 4 },
   states: {
@@ -7406,7 +7465,15 @@ const categoryChartOptions = computed<ApexOptions>(() => ({
     active: { filter: { type: 'none' } }
   },
   theme: { mode: isDark.value ? 'dark' : 'light' }
-}))
+  }
+})
+
+// Alto que se le pasa al componente: su prop `height` gana sobre chart.height
+const categoryChartHeight = computed(() => {
+  if (!isMobileView.value) return 350
+  const n = salesByCategorySeries.value?.[0]?.data?.length || 0
+  return Math.max(260, n * 38 + 60)
+})
 
 
 // Computeds para Leads
@@ -10209,6 +10276,8 @@ function exitTabletMode() {
 // Cargar el flag al montar (SSR-safe)
 onMounted(() => {
   if (typeof window === 'undefined') return
+  updateIsMobileView()
+  window.addEventListener('resize', updateIsMobileView)
   try {
     const flag = localStorage.getItem(TABLET_MODE_KEY)
     if (flag === '1') {

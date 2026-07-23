@@ -947,9 +947,8 @@ html.dark body {
     border-right: none;
   }
 
-  .sidebar-nav {
-    display: none;
-  }
+  /* Aqui vivia `.sidebar-nav { display: none }`, de cuando en movil no habia
+     drawer. Ocultaba toda la navegacion y solo dejaba ver el footer. */
 
   .top-header {
     padding: 0 1rem;
@@ -2793,6 +2792,18 @@ html.dark body {
     border-radius: 0;
     border-right: 1px solid var(--sidebar-border);
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+    /* El drawer scrollea entero. Si solo scrollea .sidebar-nav, el header, el
+       footer y el perfil se comen el alto fijo y las secciones de abajo
+       (FINANZAS, DOCUMENTS, Configuracion) quedan fuera de vista. */
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Sin altura propia ni scroll interno: crece con su contenido */
+  .sidebar-header,
+  .sidebar-footer,
+  .sidebar .user-profile {
+    flex-shrink: 0;
   }
 
   body.mobile-sidebar-open .sidebar {
@@ -2804,7 +2815,16 @@ html.dark body {
     opacity: 1;
   }
 
-  /* Botón hamburguesa visible en móvil */
+  /* Los menus que viven dentro de la sidebar (selector de dashboard, menu de
+     usuario) se teletransportan a <body> con un z-index inline que Vuetify
+     arranca en 2000, muy por debajo del 9998 del drawer: quedaban detras de
+     el, invisibles y sin poder seleccionarse. */
+  body.mobile-sidebar-open .v-overlay {
+    z-index: 10000 !important;
+  }
+
+  /* Boton hamburguesa visible en movil. El plugin solo lo inyecta en paginas
+     con .dashboard-container y lo quita al salir de ellas. */
   #mobile-menu-toggle {
     display: flex;
   }
@@ -2824,36 +2844,75 @@ html.dark body {
     padding: 0 !important;
   }
 
+  /* .content-area sumaba 1.5rem sobre el padding de .main-content, asi que las
+     tarjetas quedaban 24px mas adentro que el titulo y los botones. Su
+     overflow-y propio ademas anidaba un segundo scroll dentro del de
+     .main-content. El padding inferior deja pasar el boton flotante del agente. */
+  .content-area {
+    padding: 0 0 80px 0 !important;
+    overflow-y: visible;
+  }
+
   /* ───── Header de cada vista ───── */
+  /* Titulo y botones en la misma linea; si no entran, el grupo de botones
+     baja entero en vez de apilarse uno por fila. */
   .top-header {
-    flex-direction: column;
-    align-items: stretch !important;
-    gap: 12px;
+    flex-direction: row;
+    align-items: center !important;
+    flex-wrap: wrap;
+    gap: 8px;
     padding: 0.5rem 0 1rem 0;
     margin-bottom: 1rem;
   }
 
   .top-header h1 {
-    font-size: 1.25rem !important;
+    font-size: 1.15rem !important;
     line-height: 1.2;
+    flex: 0 0 auto;
+    margin-right: auto;
   }
 
   .top-header > div {
+    flex: 0 1 auto;
+    width: auto;
     flex-wrap: wrap !important;
     gap: 8px !important;
-    justify-content: flex-start !important;
+    justify-content: flex-end !important;
   }
 
   .header-actions {
-    width: 100%;
+    width: auto;
     flex-wrap: wrap;
     gap: 8px;
   }
 
+  /* Compactos para que el titulo y los botones quepan en la misma linea */
   .btn-primary, .btn-secondary {
-    padding: 10px 14px;
-    font-size: 0.85rem;
-    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    min-height: 36px;
+    white-space: nowrap;
+  }
+
+  /* Subtitulo bajo el h1 (ej. Estructura de Precios): en var(--text-muted) a
+     0.82rem se perdia contra el fondo oscuro. */
+  .top-header p {
+    font-size: 0.8rem !important;
+    line-height: 1.35;
+    color: var(--text-secondary, #bbb) !important;
+    margin-top: 0.35rem !important;
+  }
+
+  /* Filtros de Egresos: el KPI de total tiene min-width 200px y no encoge, asi
+     que dejaba a las viñetas de meses una columna de ~130px y caia una por
+     linea. Cada bloque ocupa ahora su propia fila completa. */
+  .filtros-chips {
+    flex: 1 1 100% !important;
+  }
+  .filtros-row > .stat-card {
+    width: 100%;
+    min-width: 0 !important;
+    max-width: none !important;
   }
 
   /* ───── Stats grid → 1 columna ───── */
@@ -2906,10 +2965,34 @@ html.dark body {
     white-space: nowrap;
   }
 
+  /* Los encabezados si envuelven: con nowrap quedaban recortados y no se
+     alcanzaba a leer de que columna se trataba. */
+  .v-data-table th,
+  .v-data-table th .v-data-table-header__content {
+    white-space: normal !important;
+    word-break: break-word;
+    line-height: 1.15;
+    vertical-align: bottom;
+  }
+
   .table-search-bar {
     flex-wrap: wrap !important;
     gap: 8px !important;
     padding: 12px !important;
+  }
+
+  /* Boton "Ver tabla" — solo existe en movil (v-if="isMobileView") */
+  .tabla-toggle {
+    font-size: 0.72rem !important;
+    letter-spacing: 0;
+    min-width: 0 !important;
+    padding: 0 8px !important;
+    color: var(--primary, #daa520) !important;
+  }
+
+  .table-title {
+    font-size: 0.85rem !important;
+    line-height: 1.25;
   }
 
   .search-field {
@@ -2991,6 +3074,8 @@ html.dark body {
   /* ───── Sidebar interior ───── */
   .sidebar-nav {
     padding: 0.5rem;
+    flex: none;
+    overflow-y: visible;
   }
 
   .nav-item {
@@ -3005,6 +3090,16 @@ html.dark body {
   /* ───── Modales de gran tamaño ───── */
   .v-overlay__content {
     width: 96vw !important;
+    max-width: 96vw !important;
+  }
+
+  /* El 96vw de arriba esta pensado para dialogos, pero .v-overlay__content es
+     tambien el contenedor de los menus (v-menu, v-select, autocomplete), que
+     deben conservar el ancho de su activador. Estirados a 96vw y anclados al
+     logo de la sidebar se salian de la pantalla y no se podia elegir nada
+     (ej. el selector de dashboard del superadmin). */
+  .v-overlay.v-menu .v-overlay__content {
+    width: auto !important;
     max-width: 96vw !important;
   }
 
@@ -3053,14 +3148,40 @@ html.dark body {
   }
 }
 
+/* Tablet / laptop chica: .hidden-md-and-down oculta la imagen hasta
+   1279.98px, pero .login-left seguía al 50%. */
+@media (max-width: 1279.98px) {
+  .login-left {
+    width: 100%;
+  }
+  .login-form-wrapper {
+    margin-top: -2rem !important;
+  }
+}
+
 /* =====================================================================
    MOBILE — Login (pages/index.vue) y Admin Hub
    ===================================================================== */
 @media (max-width: 768px) {
   /* Login */
+  .login-content {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* Permite scroll cuando el teclado encoge el viewport */
+  .login-container {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .login-left {
     width: 100% !important;
-    padding: 1rem !important;
+    padding-top: calc(1rem + env(safe-area-inset-top)) !important;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
+    padding-left: calc(1rem + env(safe-area-inset-left)) !important;
+    padding-right: calc(1rem + env(safe-area-inset-right)) !important;
   }
   .login-form-wrapper {
     max-width: 100% !important;
@@ -3075,13 +3196,29 @@ html.dark body {
     max-width: 180px !important;
   }
 
-  /* Admin Hub */
+  /* Evita el zoom de iOS al enfocar (necesita >=16px) */
+  .custom-input input,
+  .custom-input .v-field__input {
+    font-size: 16px !important;
+  }
+
+  /* Admin Hub — pantalla fija, sin scroll */
+  /* VApp fuerza min-height:100vh en el wrapper, que en movil mide mas que
+     la pantalla visible. Se acota solo en esta pagina via :has(). */
+  .v-application__wrap:has(.admin-hub-container) {
+    min-height: 100dvh;
+  }
   .admin-hub-container {
     padding: 1rem !important;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0 !important;
+    overflow: hidden;
   }
   .content-wrapper {
     max-width: 100% !important;
     padding: 1.5rem 1rem !important;
+    gap: 2rem !important;
   }
   .profile-avatar {
     width: 90px !important;
@@ -3093,6 +3230,11 @@ html.dark body {
   .user-email {
     font-size: 0.85rem !important;
     word-break: break-all;
+  }
+  /* Evita el zoom de iOS al enfocar (necesita >=16px) */
+  .custom-select .v-field__input,
+  .custom-select input {
+    font-size: 16px !important;
   }
 }
 

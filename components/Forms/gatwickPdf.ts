@@ -377,13 +377,24 @@ export async function exportGatwickPdf(response: GatwickResponse, form: FormDefi
    * Dibuja una firma (dataURL PNG) apoyada sobre su línea, centrada y
    * escalada para no invadir la línea de al lado.
    */
-  function drawSignature(dataUrl: string | null | undefined, midX: number, lineY: number, maxW: number) {
+  async function drawSignature(dataUrl: string | null | undefined, midX: number, lineY: number, maxW: number) {
     if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) return
-    const maxH = 30
-    // El pad genera un lienzo apaisado (~3:1). Se ajusta al que sea más
-    // restrictivo de los dos límites para no deformarla.
-    const w = Math.min(maxW, maxH * 3)
-    const h = w / 3
+    const maxH = 32
+
+    // La proporción se lee de la imagen: el pad da un lienzo apaisado, pero
+    // una firma subida como foto puede tener cualquier forma y se deformaría
+    // si asumiéramos una relación fija.
+    const ratio = await new Promise<number>((resolve) => {
+      const im = new Image()
+      im.onload = () => resolve(im.naturalWidth && im.naturalHeight ? im.naturalWidth / im.naturalHeight : 3)
+      im.onerror = () => resolve(3)
+      im.src = dataUrl
+    })
+
+    let w = maxW
+    let h = w / ratio
+    if (h > maxH) { h = maxH; w = h * ratio }
+
     try {
       doc.addImage(dataUrl, 'PNG', midX - w / 2, lineY - h - 1, w, h, undefined, 'FAST')
     } catch {
@@ -398,14 +409,14 @@ export async function exportGatwickPdf(response: GatwickResponse, form: FormDefi
     (firmante?.nombre as string) ||
     `${a.tecnico_nombre ?? ''} ${a.tecnico_apellido ?? ''}`.trim()
 
-  drawSignature(firmante?.firma, leftMid, sigLineY, leftSigX2 - leftSigX1 - 8)
+  await drawSignature(firmante?.firma, leftMid, sigLineY, leftSigX2 - leftSigX1 - 8)
 
   setFont({ size: 9 })
   if (tecnicoNombre) text(tecnicoNombre, leftMid, sigLineY + 21, { align: 'center' })
 
   // Firma del cliente: pregunta tipo 'firma' (pad con el dedo)
   const firmaCliente = findAnswer(a, ['firma_cliente', 'firma'], (v) => typeof v === 'string' && v.startsWith('data:image'))
-  drawSignature(firmaCliente, rightMid, sigLineY, rightSigX2 - rightSigX1 - 8)
+  await drawSignature(firmaCliente, rightMid, sigLineY, rightSigX2 - rightSigX1 - 8)
 
   stroke(BLACK)
   line(leftSigX1, sigLineY, leftSigX2, sigLineY)

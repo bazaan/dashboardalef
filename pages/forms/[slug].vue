@@ -142,10 +142,10 @@
             </p>
           </div>
 
-          <!-- Firma digital: se dibuja con el dedo -->
+          <!-- Firma digital: dibujar con el dedo o subir una imagen -->
           <div v-else-if="field.type === 'firma'" class="signature-field">
             <ClientOnly>
-              <HealupSignaturePad v-model="answers[field.id]" :height="180" />
+              <SignatureField v-model="answers[field.id]" />
             </ClientOnly>
           </div>
         </div>
@@ -165,6 +165,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
 import { useRoute } from 'vue-router'
+import SignatureField from '~/components/Forms/SignatureField.vue'
 
 definePageMeta({
   layout: 'forms-public',

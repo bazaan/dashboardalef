@@ -2549,6 +2549,7 @@ const devCompanies = [
   { id: 'origitec',       label: 'Origitec',    icon: 'mdi-alpha-o-circle' },
   { id: 'gatwick',        label: 'Gatwick',     icon: 'mdi-elevator' },
   { id: 'tradecars',      label: 'Trade Cars',  icon: 'mdi-car-multiple' },
+  { id: 'sgs',            label: 'SGS',         icon: 'mdi-scale-balance' },
 ]
 
 // Tools comunes a TODOS los flujos n8n (se alimentan vía POST /api/flows/log):
@@ -2567,6 +2568,7 @@ const COMPANY_TOOLS: Record<string, string[]> = {
   origitec:       ['Todas', ...FLOW_TOOLS],
   gatwick:        ['Todas', 'buscando_edificio', 'SMS Alerta Emergencia', 'Generar Llamada', 'Retell Llamada', ...FLOW_TOOLS],
   tradecars:      ['Todas', 'Formulario Web Venta', 'Formulario Web Compra', ...FLOW_TOOLS],
+  sgs:            ['Todas', 'Ingreso Ticket', 'Tick TAT', 'Resultado', ...FLOW_TOOLS],
   todas:          ['Todas', ...FLOW_TOOLS],
 }
 

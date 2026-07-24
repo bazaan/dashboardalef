@@ -13,7 +13,8 @@ export const dashboards = [
     { name: 'Miguel Davila', path: '/pruebas/MiguelDavila', icon: 'mdi-doctor', logo: 'miguel-davila-logo.png' },
     { name: 'FitMain', path: '/pruebas/FitMain', icon: 'mdi-dumbbell', logo: '' },
     { name: 'Gatwick', path: '/pruebas/Gatwick', icon: 'mdi-elevator', logo: 'gatwickLOGO.png' },
-    { name: 'Trade Cars', path: '/pruebas/TradeCars', icon: 'mdi-car-multiple', logo: 'tradecarsLOGO.png' }
+    { name: 'Trade Cars', path: '/pruebas/TradeCars', icon: 'mdi-car-multiple', logo: 'tradecarsLOGO.png' },
+    { name: 'SGS', path: '/pruebas/SGS', icon: 'mdi-scale-balance', logo: 'sgsLOGO.png' }
 ]
 
 // Tipos para la sesión de usuario
@@ -173,6 +174,15 @@ export function canAccessTradeCars(session: UserSession | null): boolean {
     return cid.includes('tradecars')
 }
 
+export function canAccessSGS(session: UserSession | null): boolean {
+    if (!session) return false
+    if (isSuperAdmin(session)) return true
+
+    const cid = normalize(session.company_id).replace(/\s+/g, '')
+    // El equipo interno de Alef también opera el tablero SGS
+    return cid.includes('sgs') || cid.includes('alef')
+}
+
 export function getDashboardPathByCompanyId(companyId: string | undefined | null): string {
     if (!companyId) return '/'
 
@@ -192,6 +202,7 @@ export function getDashboardPathByCompanyId(companyId: string | undefined | null
     if (normalizedId === 'davila' || normalizedId === 'miguel davila' || normalizedId.includes('davila')) return '/pruebas/MiguelDavila'
     if (normalizedId === 'gatwick' || normalizedId === 'gatwick ascensores' || normalizedId.includes('gatwick')) return '/pruebas/Gatwick'
     if (normalizedId.replace(/\s+/g, '').includes('tradecars')) return '/pruebas/TradeCars'
+    if (normalizedId.replace(/\s+/g, '') === 'sgs' || normalizedId.replace(/\s+/g, '').includes('sgs')) return '/pruebas/SGS'
 
     return '/'
 }

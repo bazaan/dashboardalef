@@ -260,15 +260,19 @@
         </header>
         <div class="content-area">
           <v-card flat class="custom-data-table">
-            <v-card-title class="table-search-bar" style="flex-wrap:wrap; gap:10px;">
+            <v-card-title class="table-search-bar">
               <span class="table-title">Tickets catalogados ({{ ticketsFiltrados.length }})</span>
-              <v-spacer />
-              <v-select v-model="fSede" :items="['todas','Matarani','Pisco']" density="compact" hide-details style="max-width:130px;" label="Sede" />
-              <v-select v-model="fTat" :items="['todos','en_plazo','por_vencer','vencido','sin_fecha']" density="compact" hide-details style="max-width:140px;" label="TAT" />
-              <v-select v-model="fRes" :items="['todos','no_esta','listo','leido']" density="compact" hide-details style="max-width:130px;" label="Resultado" />
-              <v-text-field v-model="fSearch" prepend-inner-icon="mdi-magnify" placeholder="Orden, ticket, placa…"
-                density="compact" hide-details style="max-width:220px;" />
             </v-card-title>
+            <div class="filtros-bar">
+              <v-select v-model="fSede" :items="['todas','Matarani','Pisco']" density="compact" hide-details
+                variant="outlined" label="Sede" class="filtro" />
+              <v-select v-model="fTat" :items="['todos','en_plazo','por_vencer','vencido','sin_fecha']" density="compact" hide-details
+                variant="outlined" label="TAT" class="filtro" />
+              <v-select v-model="fRes" :items="['todos','no_esta','listo','leido']" density="compact" hide-details
+                variant="outlined" label="Resultado" class="filtro" />
+              <v-text-field v-model="fSearch" prepend-inner-icon="mdi-magnify" placeholder="Orden, ticket, placa…"
+                density="compact" hide-details variant="outlined" clearable class="filtro filtro-buscar" />
+            </div>
             <v-data-table :headers="headersTickets" :items="ticketsFiltrados" :loading="loadingTickets"
               class="elevation-0" no-data-text="No hay tickets" :items-per-page="20" @click:row="(_: any, r: any) => abrirDetalle(r.item)">
               <template v-slot:item.tat_estado="{ item }"><span class="sem-chip" :class="'tat-' + item.tat_estado">{{ semTat(item.tat_estado) }}</span></template>
@@ -782,6 +786,38 @@ onMounted(async () => {
   font-size: 12.5px;
   opacity: .65;
   margin: 6px 0 0;
+}
+
+/* Barra de filtros de Recepción: fila propia, con aire, que envuelve limpio */
+.filtros-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 16px 14px;
+}
+
+.filtros-bar .filtro {
+  flex: 1 1 150px;
+  min-width: 140px;
+  max-width: 210px;
+}
+
+.filtros-bar .filtro-buscar {
+  flex: 2 1 230px;
+  max-width: 340px;
+}
+
+@media (max-width: 700px) {
+  .filtros-bar .filtro {
+    flex: 1 1 46%;
+    max-width: none;
+  }
+
+  .filtros-bar .filtro-buscar {
+    flex: 1 1 100%;
+    max-width: none;
+  }
 }
 
 /* Drill-down */

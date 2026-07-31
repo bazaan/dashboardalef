@@ -666,13 +666,33 @@
                     color="error" class="mr-1" :loading="iniciandoSeg === emerg.id" @click="abrirComenzar(emerg)">
                     <v-icon icon="mdi-play" size="14" start /> Comenzar
                   </v-btn>
-                  <v-btn icon size="x-small" variant="text" @click="editarEmergencia(emerg)">
-                    <v-icon icon="mdi-pencil" size="16" />
-                  </v-btn>
-                  <v-btn v-if="emerg.estado !== 'resuelta'" icon size="x-small" variant="text" color="success"
-                    @click="marcarResuelta(emerg)">
-                    <v-icon icon="mdi-check" size="16" />
-                  </v-btn>
+
+                  <!-- Gestión: solo admin / superadmin -->
+                  <template v-if="puedeGestionar">
+                    <v-btn v-if="seguimientoDe(emerg.id)" icon size="x-small" variant="text" color="warning"
+                      title="Cancelar seguimiento GPS" @click="pedirCancelarSeg(emerg)">
+                      <v-icon icon="mdi-stop-circle-outline" size="16" />
+                    </v-btn>
+                    <v-btn icon size="x-small" variant="text" title="Editar" @click="editarEmergencia(emerg)">
+                      <v-icon icon="mdi-pencil" size="16" />
+                    </v-btn>
+                    <v-btn v-if="emerg.estado !== 'resuelta'" icon size="x-small" variant="text" color="success"
+                      title="Marcar resuelta" @click="marcarResuelta(emerg)">
+                      <v-icon icon="mdi-check" size="16" />
+                    </v-btn>
+                    <v-btn v-else icon size="x-small" variant="text" title="Reabrir" @click="reabrirEmergencia(emerg)">
+                      <v-icon icon="mdi-restore" size="16" />
+                    </v-btn>
+                    <v-btn icon size="x-small" variant="text" color="error" title="Eliminar"
+                      @click="pedirEliminar(emerg)">
+                      <v-icon icon="mdi-delete" size="16" />
+                    </v-btn>
+                  </template>
+                  <v-tooltip v-else text="Solo un administrador puede gestionar emergencias" location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-icon v-bind="props" icon="mdi-lock-outline" size="15" style="opacity:.35; margin-left:4px;" />
+                    </template>
+                  </v-tooltip>
                 </div>
               </div>
             </div>
@@ -750,6 +770,45 @@
             <v-card-actions>
               <v-spacer />
               <v-btn variant="text" @click="showSegCreado = false">Ahora no</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Dialog: eliminar emergencia (solo admin) -->
+        <v-dialog v-model="showEliminarEmerg" max-width="460">
+          <v-card v-if="emergAEliminar">
+            <v-card-title class="pt-4">Eliminar emergencia</v-card-title>
+            <v-card-text>
+              ¿Seguro que quieres eliminar <strong>#{{ emergAEliminar.id }} — {{ emergAEliminar.titulo }}</strong>?
+              Se borrará también su seguimiento GPS y el recorrido. Esta acción no se puede deshacer.
+              <v-checkbox v-if="seguimientoDe(emergAEliminar.id)" v-model="forzarEliminar" color="error"
+                density="compact" hide-details class="mt-2"
+                label="Tiene un seguimiento GPS activo — eliminar de todas formas" />
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="showEliminarEmerg = false">Cancelar</v-btn>
+              <v-btn color="error" variant="flat" :loading="gestionando" @click="eliminarEmergencia">Eliminar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Dialog: cancelar seguimiento GPS (solo admin) -->
+        <v-dialog v-model="showCancelarSeg" max-width="480">
+          <v-card v-if="emergCancelarSeg">
+            <v-card-title class="pt-4">Cancelar seguimiento GPS</v-card-title>
+            <v-card-text>
+              Se detendrá el rastreo de <strong>{{ seguimientoDe(emergCancelarSeg.id)?.tecnico_nombre }}</strong>
+              y se avisará a los supervisores. La emergencia queda abierta.
+              <v-text-field v-model="motivoCancelar" label="Motivo (opcional)" density="compact"
+                hide-details class="mt-3" placeholder="Ej: se reasignó a otro técnico" />
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="showCancelarSeg = false">Volver</v-btn>
+              <v-btn color="warning" variant="flat" :loading="gestionando" @click="cancelarSeguimiento">
+                Cancelar seguimiento
+              </v-btn>
             </v-card-actions>
           </v-card>
         </v-dialog>
@@ -2487,10 +2546,74 @@ function editarEmergencia(emerg) {
   showNuevaEmergencia.value = true
 }
 
+/* ── Gestión de emergencias — SOLO admin / superadmin ──────────────────────
+   Los botones se ocultan para los demás, pero la protección real está en
+   /api/gatwick/emergencia-gestion, que re-verifica el rol en el servidor. */
+const puedeGestionar = computed(() => {
+  const r = String(currentUser.value?.role || '').toLowerCase().trim()
+  return r === 'admin' || r === 'superadmin'
+})
+
+const gestionando = ref(false)
+const showEliminarEmerg = ref(false)
+const showCancelarSeg = ref(false)
+const emergAEliminar = ref(null)
+const emergCancelarSeg = ref(null)
+const forzarEliminar = ref(false)
+const motivoCancelar = ref('')
+
+async function gestionar(accion, payload = {}) {
+  gestionando.value = true
+  try {
+    const res = await $fetch('/api/gatwick/emergencia-gestion', {
+      method: 'POST',
+      body: { accion, ...payload },
+    })
+    await fetchEmergencias()
+    return res
+  } catch (e) {
+    notify(e?.data?.statusMessage || 'No se pudo completar la acción', 'error')
+    throw e
+  } finally {
+    gestionando.value = false
+  }
+}
+
 async function marcarResuelta(emerg) {
-  await client.from('gatwick_emergencias').update({ estado: 'resuelta', resuelto_en: new Date().toISOString() }).eq('id', emerg.id)
-  await fetchEmergencias()
-  notify('Emergencia resuelta')
+  try { await gestionar('resolver', { id: emerg.id }); notify('Emergencia resuelta') } catch {}
+}
+
+async function reabrirEmergencia(emerg) {
+  try { await gestionar('reabrir', { id: emerg.id }); notify('Emergencia reabierta') } catch {}
+}
+
+function pedirEliminar(emerg) {
+  emergAEliminar.value = emerg
+  forzarEliminar.value = false
+  showEliminarEmerg.value = true
+}
+async function eliminarEmergencia() {
+  try {
+    await gestionar('eliminar', { id: emergAEliminar.value.id, forzar: forzarEliminar.value })
+    showEliminarEmerg.value = false
+    notify('Emergencia eliminada')
+  } catch {}
+}
+
+function pedirCancelarSeg(emerg) {
+  emergCancelarSeg.value = emerg
+  motivoCancelar.value = ''
+  showCancelarSeg.value = true
+}
+async function cancelarSeguimiento() {
+  try {
+    const r = await gestionar('cancelar_seguimiento', {
+      id: emergCancelarSeg.value.id,
+      motivo: motivoCancelar.value.trim() || undefined,
+    })
+    showCancelarSeg.value = false
+    notify(`Seguimiento cancelado · supervisores avisados (${r?.aviso?.enviados ?? 0})`)
+  } catch {}
 }
 
 async function fetchEmergencias() {
@@ -2581,17 +2704,24 @@ async function saveEmergencia() {
   try {
     const payload = { ...emergForm.value }
     delete payload.id
+    // Pasa por el endpoint: editar exige admin/superadmin (verificado en servidor)
     if (editingEmerg.value) {
-      await client.from('gatwick_emergencias').update(payload).eq('id', editingEmerg.value.id)
+      await $fetch('/api/gatwick/emergencia-gestion', {
+        method: 'POST',
+        body: { accion: 'editar', id: editingEmerg.value.id, datos: payload },
+      })
     } else {
-      await client.from('gatwick_emergencias').insert(payload)
+      await $fetch('/api/gatwick/emergencia-gestion', {
+        method: 'POST',
+        body: { accion: 'crear', datos: payload },
+      })
     }
     await fetchEmergencias()
     showNuevaEmergencia.value = false
     editingEmerg.value = null
     notify('Emergencia guardada')
-  } catch {
-    notify('Error al guardar', 'error')
+  } catch (e) {
+    notify(e?.data?.statusMessage || 'Error al guardar', 'error')
   } finally {
     savingEmerg.value = false
   }

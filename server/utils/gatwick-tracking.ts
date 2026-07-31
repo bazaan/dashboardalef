@@ -236,6 +236,43 @@ export async function verificarSesionGatwick(event: any, supabase: any): Promise
   return { email: perfil.email }
 }
 
+/**
+ * Igual que verificarSesionGatwick, pero además exige rol ADMIN o SUPERADMIN.
+ * Se usa para gestionar emergencias (editar, eliminar, resolver, cancelar):
+ * un agente/técnico puede atender y cerrar SU seguimiento, pero no administrar
+ * las emergencias del monitor.
+ */
+export async function verificarAdminGatwick(event: any, supabase: any): Promise<{ email: string; role: string }> {
+  let email: string | null = null
+  const cookie = getCookie(event, 'dashboard_session')
+  if (cookie) {
+    try {
+      const s = typeof cookie === 'string' ? JSON.parse(cookie) : cookie
+      if (s?.email) email = String(s.email)
+    } catch { /* cookie ilegible */ }
+  }
+  if (!email) throw createError({ statusCode: 401, statusMessage: 'No hay sesión' })
+
+  const { data: perfil } = await supabase
+    .from('dashboardlogin').select('email, role, company_id').eq('email', email).single()
+  if (!perfil) throw createError({ statusCode: 403, statusMessage: 'Perfil no encontrado' })
+
+  const rol = String(perfil.role ?? '').toLowerCase().trim()
+  const cid = String(perfil.company_id ?? '').toLowerCase().replace(/\s+/g, '')
+
+  if (rol !== 'superadmin' && rol !== 'admin') {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Solo un administrador puede gestionar las emergencias.',
+    })
+  }
+  // Un admin solo administra las emergencias de SU empresa
+  if (rol !== 'superadmin' && !cid.includes('gatwick') && !cid.includes('alef')) {
+    throw createError({ statusCode: 403, statusMessage: 'Sin permiso para Gatwick' })
+  }
+  return { email: perfil.email, role: rol }
+}
+
 /** URL base pública del dashboard (para armar los links de los mensajes). */
 export function baseUrl(event: any): string {
   const env = process.env.PUBLIC_BASE_URL || process.env.URL

@@ -205,6 +205,37 @@ export function mensajeParaEstado(estado: string, ctx: MensajeCtx): string {
   return `Actualización de la emergencia #${e.id}: ${estado}`
 }
 
+/* ══════════════════ Autenticación ══════════════════ */
+
+/**
+ * Verifica que quien inicia un seguimiento tenga sesión válida en el dashboard.
+ * Sin esto, cualquiera con la URL del endpoint podría crear seguimientos falsos
+ * y disparar WhatsApp a los supervisores de Gatwick.
+ * El servidor NO confía en la cookie: re-verifica el perfil en dashboardlogin.
+ */
+export async function verificarSesionGatwick(event: any, supabase: any): Promise<{ email: string }> {
+  let email: string | null = null
+  const cookie = getCookie(event, 'dashboard_session')
+  if (cookie) {
+    try {
+      const s = typeof cookie === 'string' ? JSON.parse(cookie) : cookie
+      if (s?.email) email = String(s.email)
+    } catch { /* cookie ilegible */ }
+  }
+  if (!email) throw createError({ statusCode: 401, statusMessage: 'No hay sesión' })
+
+  const { data: perfil } = await supabase
+    .from('dashboardlogin').select('email, role, company_id').eq('email', email).single()
+  if (!perfil) throw createError({ statusCode: 403, statusMessage: 'Perfil no encontrado' })
+
+  const rol = String(perfil.role ?? '').toLowerCase()
+  const cid = String(perfil.company_id ?? '').toLowerCase().replace(/\s+/g, '')
+  if (rol !== 'superadmin' && !cid.includes('gatwick') && !cid.includes('alef')) {
+    throw createError({ statusCode: 403, statusMessage: 'Sin permiso para Gatwick' })
+  }
+  return { email: perfil.email }
+}
+
 /** URL base pública del dashboard (para armar los links de los mensajes). */
 export function baseUrl(event: any): string {
   const env = process.env.PUBLIC_BASE_URL || process.env.URL

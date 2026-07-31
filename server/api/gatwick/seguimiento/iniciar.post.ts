@@ -13,10 +13,13 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { randomBytes } from 'node:crypto'
-import { avisarSupervisores, mensajeParaEstado, geocodificar, baseUrl } from '../../../utils/gatwick-tracking'
+import { avisarSupervisores, mensajeParaEstado, geocodificar, baseUrl, verificarSesionGatwick } from '../../../utils/gatwick-tracking'
 
 export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
+  // Solo alguien con sesión del dashboard puede iniciar un seguimiento: si no,
+  // cualquiera podría disparar avisos de emergencia falsos a los supervisores.
+  const sesion = await verificarSesionGatwick(event, supabase)
   const body = await readBody(event)
 
   const emergenciaId = Number(body?.emergencia_id)
@@ -111,7 +114,7 @@ export default defineEventHandler(async (event) => {
     destino_direccion: direccionDestino || null,
     destino_lat: destinoLat, destino_lng: destinoLng,
     snapshot: emergFinal,
-    creado_por: String(body?.creado_por || '') || null,
+    creado_por: sesion.email,
   }
   const { data: seg, error: sErr } = await (supabase.from('gatwick_seguimientos') as any)
     .insert(fila).select('*').single()

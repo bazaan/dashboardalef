@@ -30,6 +30,7 @@ Los `company_id` en la BD tienen variaciones de capitalización y espacios. `get
 | `estasconsuerte` / `estás con suerte` / `ecs` | Estás Con Suerte | `/pruebas/EstasConSuerte` |
 | `estetikamedika` / `estetika medika` | Estetika Medika | `/pruebas/EstetikaMedika` |
 | `davila` / `miguel davila` | Miguel Davila | `/pruebas/MiguelDavila` |
+| `piola` / `Piola` | Piola (agencia de marketing) | `/pruebas/Piola` |
 
 ---
 
@@ -713,3 +714,123 @@ isEncrypted(val)     // True si el valor tiene chars no numéricos y longitud > 
 | `egresos_DAVILA` | Egresos/gastos |
 | `metricas_DAVILA` | Métricas adicionales (pendiente de integrar en UI) |
 | `pacientesbdDAVILA` | Tabla adicional de pacientes (pendiente de integrar en UI) |
+
+---
+
+## Piola — Dashboard / CRM (`pages/pruebas/Piola.vue`)
+
+Agencia de marketing peruana (video, piezas gráficas, branding, fotografía, eventos).
+A diferencia del resto de dashboards, **no es un tablero de leads sino un ERP ligero**:
+CRM + contabilidad + facturación + producción + RR. HH.
+
+- **company_id en BD:** `piola`
+- **Permiso:** `canAccessPiola` en `utils/permissions.ts`
+- **Migración SQL:** correr una vez `sql/piola_tables.sql`
+- **Moneda única:** PEN. **Zona horaria:** America/Lima. **UI:** español.
+
+### Roles y permisos — distinto al resto del proyecto
+
+Los demás dashboards usan los roles globales (`superadmin`/`admin`/`agente`). Piola agrega
+**roles propios por módulo**, editables desde la UI:
+
+- `piola_roles` + `piola_role_permissions` (módulo × ver/crear/editar/eliminar)
+- `piola_colaboradores` — ficha del colaborador (rol, contrato, antigüedad, AFP, % comisión).
+  El **login sigue en `dashboardlogin`**; se enlazan por email.
+- Módulos: `home`, `mi_espacio`, `crm`, `contabilidad`, `facturacion`, `produccion`, `rrhh`,
+  `reportes`, `configuracion`. `home` y `mi_espacio` los ve todo el mundo.
+- Superadmin de Alef y admins sin ficha entran como Administrador de Piola.
+- `piolaCan(permisos, modulo, accion)` en `utils/permissions.ts` arma el menú (solo cosmético);
+  `exigirModulo()` / `exigirAdmin()` en `server/utils/piola.ts` son los que realmente protegen.
+
+### Componentes
+
+| Componente | Módulo |
+|---|---|
+| `Piola/PiolaHome.vue` | KPIs + widgets personales (vacaciones, antigüedad, contrato) |
+| `Piola/PiolaMiEspacio.vue` | Marcación de jornada/breaks, historial, vacaciones y boletas propias |
+| `Piola/PiolaCRM.vue` | Kanban + tabla de leads, historial de interacciones, conversión a cliente |
+| `Piola/PiolaContabilidad.vue` | Ingresos/egresos, flujo de caja, **CRUD de categorías jerárquicas**, comisiones |
+| `Piola/PiolaFacturacion.vue` | Emisión con detracción, histórico, cobro → flujo de caja |
+| `Piola/PiolaProduccion.vue` | Entregables por marca, aprobación de Dirección, cumplimiento mensual |
+| `Piola/PiolaRRHH.vue` | Tareo en vivo, reporte mensual, vacaciones, boletas y AFP |
+| `Piola/PiolaReportes.vue` | Reportes programados + configuración de alertas |
+| `Piola/PiolaConfiguracion.vue` | Colaboradores, roles/permisos, etapas del CRM, métodos de pago |
+
+Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplanado de categorías).
+
+### Endpoints
+
+| Método | Ruta | Notas |
+|---|---|---|
+| GET | `/api/piola/perfil` | Permisos por módulo + widgets del colaborador |
+| POST | `/api/piola/tareo` | Marcación. `{ accion: check_in\|break_start\|break_end\|check_out }`. **Timestamp del servidor** |
+| GET | `/api/piola/tareo` | `?vista=mi\|tablero\|mes` |
+| POST | `/api/piola/tareo-correccion` | Corrección manual (RR.HH./Admin) → auditada en `piola_attendance_audit` |
+| GET/POST | `/api/piola/vacaciones` | Saldos + solicitar/aprobar/rechazar/ajustar |
+| GET/POST | `/api/piola/boletas` | **Solo Administrador** (o `?vista=mias` para las propias) |
+| GET/POST | `/api/piola/afp` | **Solo Administrador** |
+| GET/POST | `/api/piola/comisiones` | Contabilidad/Admin; un colaborador solo ve las suyas |
+| POST | `/api/piola/factura` | Emitir / marcar pagada / anular / enviar |
+| GET | `/api/piola/alertas` | `?run=1` corre el motor; `?api_key=` para el cron |
+| GET | `/api/piola/reportes` | `?run=1` ejecuta; `?preview=1&tipo=` vista previa |
+
+### Reglas que NO son obvias
+
+- **El tareo usa la hora del servidor**, nunca la del cliente (§7.1 de la spec): si el navegador
+  mandara horas, cualquiera maquillaría su jornada. `tareo-correccion` recibe `HH:MM` hora Lima
+  y convierte a UTC (Lima es UTC-5 todo el año).
+- **Vacaciones: 15 días/año = 1.25 por mes, solo `tipo_contrato='planilla'`.** Los de recibo por
+  honorarios no devengan. El saldo se calcula siempre al vuelo desde `fecha_ingreso`; no se guarda.
+- **`piola_payslips`, `piola_afp_reports` y `piola_commissions` NO tienen policy para `anon`**
+  (a diferencia del resto del proyecto). Solo se leen por endpoint con verificación de rol.
+- **Detracción activada por defecto** al facturar: el ~98 % de las facturas de Piola la llevan.
+  Marcar pagada crea el ingreso por el **neto** (total − detracción), no por el total.
+- **Categorías de gasto jerárquicas** (`parent_id` auto-referencial, n niveles) con CRUD en la UI:
+  requisito explícito del cliente para no depender de desarrollo por cada gasto nuevo.
+- **Días de anticipación de alertas parametrizables** en `piola_alert_settings` (7 es solo el seed).
+- **Syscon no se reemplaza**: la contabilidad formal/tributaria sigue ahí; aquí va el flujo de caja.
+- **Documentos en HTML, no PDF**: el proyecto no tiene librería de PDF. Boletas, AFP y facturas se
+  generan como HTML con branding, se suben al bucket `piola-docs` y se imprimen a PDF desde el
+  navegador. Por correo viajan como HTML.
+
+### Crons (Netlify Scheduled Functions)
+
+| Función | Horario | Qué hace |
+|---|---|---|
+| `netlify/functions/cron-piola-alertas.mts` | `0 13 * * *` (08:00 Lima) | Facturas/contratos por vencer, leads sin seguimiento… → WhatsApp |
+| `netlify/functions/cron-piola-reportes.mts` | `0 14 * * *` (09:00 Lima) | Ejecuta los reportes que tocan según su frecuencia |
+
+### Variables de entorno
+
+```
+PIOLA_CRON_KEY=                  # clave compartida entre las Scheduled Functions y los endpoints
+N8N_WEBHOOK_PIOLA_ALERTAS=       # webhook n8n que reenvía las alertas por WhatsApp
+RESEND_FROM_PIOLA=               # remitente de boletas/facturas/reportes (default: Piola <no-reply@alef.company>)
+PIOLA_PSE_URL=                   # endpoint PSE.PE de Piola (mientras no exista, las facturas quedan en borrador)
+PIOLA_PSE_TOKEN=                 # JWT de esa empresa en PSE.PE
+PIOLA_RAZON_SOCIAL=              # branding de los documentos
+PIOLA_RUC=
+PIOLA_DIRECCION=
+PIOLA_LOGO_URL=
+PIOLA_COLOR=                     # default #111111
+PIOLA_COLOR_ACENTO=              # default #e2564a
+PIOLA_CUENTA_DETRACCION=         # cuenta del Banco de la Nación, se imprime en la factura
+```
+
+### Pendientes del cliente (bloquean cierre, no desarrollo)
+
+**Cuenta de Chatwoot:** la sección "Chats" del sidebar lee `remarketing_config.chatwoot_account_id`
+para `company_id='piola'`. Mientras esa fila no exista, el enlace lleva al selector de cuentas de
+Chatwoot en vez de a un inbox equivocado. Al asignarle cuenta a Piola, insertar la fila y listo.
+
+Lista de gastos operativos con su jerarquía · fórmula exacta de comisiones de Héctor ·
+modelos reales de boleta y formato AFP · lista de usuarios (nombre + correo + rol) ·
+catálogo completo de servicios · antigüedad de cada colaborador · reunión con José
+(Traffic Manager) para conectar Meta Ads / WhatsApp / Instagram.
+
+Todo lo que dependía de esos datos quedó **parametrizable**, no hardcodeado: tasas de planilla
+en `TASAS` (`server/utils/piola-planilla.ts`), comisión en `calcularComision()`
+(`server/utils/piola.ts`), y catálogos como tablas editables desde la UI.
+
+**Fuera de alcance v1:** TikTok Ads, multi-moneda, reemplazar Syscon, Dropbox, múltiples cuentas
+publicitarias. La tabla `piola_meta_metrics` está creada esperando la conexión con Meta.

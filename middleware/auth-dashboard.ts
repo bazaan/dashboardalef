@@ -10,7 +10,7 @@ interface UserSession {
 
 export default defineNuxtRouteMiddleware((to, from) => {
     // Leemos la cookie que creamos en el login
-    const userSession = useCookie<UserSession>('dashboard_session');
+    const userSession = useCookie<UserSession>(SESSION_COOKIE, sessionCookieOptions());
 
     // Si no existe la cookie, mandamos al login
     if (!userSession.value) {

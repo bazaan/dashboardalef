@@ -427,7 +427,7 @@ definePageMeta({ middleware: 'auth-dashboard' })
 
 /* ── Sesión ── */
 interface UserSession { id: string; email: string; full_name: string; role: string; company_id?: string }
-const userSession = useCookie<UserSession | null>('dashboard_session')
+const userSession = useCookie<UserSession | null>(SESSION_COOKIE, sessionCookieOptions())
 const currentUser = computed(() => userSession.value || { full_name: 'Usuario Invitado', email: '', id: '', role: '', company_id: '' })
 
 const client = useSupabaseClient()
@@ -435,7 +435,7 @@ const logoUrl = '/sgs-logo.png'
 const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)
 const activeView = useVistaPersistente('sgs')
-const dashTab = ref('recientes')
+const dashTab = usePersistente('sgs:dashTab', 'recientes')
 
 const snackbar = ref({ show: false, text: '', color: 'success' })
 function notify(text: string, color = 'success') { snackbar.value = { show: true, text, color } }
@@ -456,7 +456,7 @@ watch(isDark, applyTheme, { immediate: true })
 
 function logout() {
   logActivity('Cerró sesión')
-  const session = useCookie('dashboard_session'); session.value = null
+  const session = useCookie(SESSION_COOKIE, sessionCookieOptions()); session.value = null
   return navigateTo('/')
 }
 
@@ -494,7 +494,7 @@ function fechaHora(v: any) {
 /* ══════════ TICKETS (lectura directa: anon SELECT) ══════════ */
 const tickets = ref<any[]>([])
 const loadingTickets = ref(false)
-const fSede = ref('todas'); const fTat = ref('todos'); const fRes = ref('todos'); const fSearch = ref('')
+const fSede = usePersistente('sgs:fSede', 'todas'); const fTat = usePersistente('sgs:fTat', 'todos'); const fRes = usePersistente('sgs:fRes', 'todos'); const fSearch = usePersistente('sgs:fSearch', '')
 
 async function fetchTickets() {
   loadingTickets.value = true

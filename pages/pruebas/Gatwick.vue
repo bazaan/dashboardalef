@@ -1993,7 +1993,7 @@ function notify(text, color = 'success') {
 // ── Auth / Session ─────────────────────────────────────────────────────────
 async function loadSession() {
   try {
-    const cookie = useCookie('dashboard_session')
+    const cookie = useCookie(SESSION_COOKIE, sessionCookieOptions())
     if (cookie.value) {
       currentUser.value = typeof cookie.value === 'string' ? JSON.parse(cookie.value) : cookie.value
     }
@@ -2002,7 +2002,7 @@ async function loadSession() {
 
 async function logout() {
   await client.auth.signOut()
-  const cookie = useCookie('dashboard_session')
+  const cookie = useCookie(SESSION_COOKIE, sessionCookieOptions())
   cookie.value = null
   router.push('/')
 }
@@ -2428,7 +2428,7 @@ async function generarCodigosFaltantes() {
 // ── Leads ──────────────────────────────────────────────────────────────────
 const leadsWpp = ref([])
 const leadsFbIg = ref([])
-const leadsTab = ref('wpp')
+const leadsTab = usePersistente('gatwick:leadsTab', 'wpp')
 const searchLeads = ref('')
 
 const leadsWppFiltrados = computed(() => {
@@ -2469,7 +2469,7 @@ const headersLeadsFbIg = [
 // ── Emergencias ────────────────────────────────────────────────────────────
 const emergencias = ref([])
 const loadingEmergencias = ref(false)
-const filtroEmerg = ref('todas')
+const filtroEmerg = usePersistente('gatwick:filtroEmerg', 'todas')
 const showNuevaEmergencia = ref(false)
 const editingEmerg = ref(null)
 const savingEmerg = ref(false)
@@ -3862,7 +3862,7 @@ async function refreshInventario() {
 }
 
 // ── Tabs dashboard ─────────────────────────────────────────────────────────
-const activeTab = ref('clientes_dashboard')
+const activeTab = usePersistente('gatwick:activeTab', 'clientes_dashboard')
 const tabs = [
   { value: 'clientes_dashboard', label: 'Clientes' },
   { value: 'leads_tab', label: 'Leads' },

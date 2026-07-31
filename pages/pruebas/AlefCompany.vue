@@ -2433,7 +2433,7 @@ interface UserSession {
 
 /* ---------------- LÓGICA DE SESIÓN ---------------- */
 // Le decimos a useCookie que lo que guarda es de tipo UserSession o null
-const userSession = useCookie<UserSession | null>('dashboard_session')
+const userSession = useCookie<UserSession | null>(SESSION_COOKIE, sessionCookieOptions())
 
 // Ahora el computed sabe exactamente qué devolver
 const currentUser = computed(() => {
@@ -2673,8 +2673,8 @@ const openDevLogDetail = (log: any) => {
 watch(activeView, (v) => {
   if (v === 'dev_logs' && devLogs.value.length === 0) fetchDevLogs()
 })
-const facturacionTab = ref('resumen')
-const activeTab = ref('outline')
+const facturacionTab = usePersistente('alefcompany:facturacionTab', 'resumen')
+const activeTab = usePersistente('alefcompany:activeTab', 'outline')
 const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)
 
@@ -2825,7 +2825,7 @@ onMounted(() => {
 function logout() {
   logActivity('Cerró sesión')
   // 1. Borrar la cookie que mantiene la sesión abierta
-  const session = useCookie('dashboard_session')
+  const session = useCookie(SESSION_COOKIE, sessionCookieOptions())
   session.value = null
 
   // 2. Redirigir al usuario a la pantalla de login (index.vue)

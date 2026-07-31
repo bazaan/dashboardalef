@@ -4,7 +4,7 @@ export const useActivityLogger = () => {
     const logActivity = async (activity: string) => {
         try {
             // Get current user session info
-            const sessionCookie = useCookie('dashboard_session')
+            const sessionCookie = useCookie(SESSION_COOKIE, sessionCookieOptions())
             const session = sessionCookie.value as any
 
             if (!session || !session.email) {

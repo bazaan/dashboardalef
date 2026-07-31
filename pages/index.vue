@@ -8,7 +8,14 @@
             <v-img src="@/assets/img/logoinv.png" max-width="250" class="mt-1" />
           </div>
 
-          <div class="login-card">
+          <!-- Sesión anterior vigente: se entra directo, sin mostrar el formulario -->
+          <div v-if="restaurando" class="login-card d-flex flex-column align-center justify-center"
+            style="min-height: 190px; gap: 14px;">
+            <VProgressCircular indeterminate color="primary" size="36" />
+            <span style="opacity:.75; font-size:.92rem;">Restaurando tu sesión…</span>
+          </div>
+
+          <div v-else class="login-card">
             <VForm @submit.prevent="submit" class="login-form">
               <div class="mb-0">
                 <VTextField v-model="email" placeholder="Email" variant="outlined" bg-color="transparent"
@@ -43,7 +50,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { isSuperAdmin, getDashboardPathByCompanyId } from '@/utils/permissions';
 const client = useSupabaseClient();
 const router = useRouter();
@@ -54,6 +61,27 @@ const email = ref("");
 const password = ref("");
 const loading = ref(false);
 const errorMsg = ref("");
+const restaurando = ref(false);
+
+/**
+ * Si la sesión anterior sigue vigente, se entra directo sin pedir credenciales.
+ * La cookie dura 30 días (ver utils/sessionCookie.ts); para cambiar de cuenta
+ * basta con cerrar sesión desde el dashboard.
+ */
+onMounted(() => {
+  const sesion = useCookie(SESSION_COOKIE, sessionCookieOptions()).value;
+  if (!sesion?.email) return;
+
+  const rol = String(sesion.role || '').toLowerCase();
+  const destino = rol === 'superadmin'
+    ? '/admin-hub'
+    : getDashboardPathByCompanyId(sesion.company_id);
+
+  if (destino && destino !== '/') {
+    restaurando.value = true;
+    router.push(destino);
+  }
+});
 
 // ... existing rules ...
 const ruleRequired = (v) => !!v || 'Requerido';
@@ -179,8 +207,9 @@ const submit = async () => {
         }
       }
 
-      // Login exitoso
-      const userSession = useCookie('dashboard_session');
+      // Login exitoso. La cookie lleva maxAge para que la sesión sobreviva al
+      // cierre del navegador: al volver, entra directo con la última cuenta.
+      const userSession = useCookie(SESSION_COOKIE, sessionCookieOptions());
       userSession.value = finalSession;
       
       // Registrar la actividad de inicio de sesión

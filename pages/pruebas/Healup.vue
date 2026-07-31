@@ -6010,7 +6010,7 @@ interface UserSession {
 
 /* ---------------- LÓGICA DE SESIÓN ---------------- */
 // Le decimos a useCookie que lo que guarda es de tipo UserSession o null
-const userSession = useCookie<UserSession | null>('dashboard_session')
+const userSession = useCookie<UserSession | null>(SESSION_COOKIE, sessionCookieOptions())
 
 // Ahora el computed sabe exactamente qué devolver
 const currentUser = computed(() => {
@@ -6790,7 +6790,7 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig' | 'tiktok') => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = useVistaPersistente('healup')
-const facturacionTab = ref('cobro_atencion')
+const facturacionTab = usePersistente('healup:facturacionTab', 'cobro_atencion')
 
 /* ---------------- Boletas Pendientes ---------------- */
 const boletasPendientes = ref<any[]>([])
@@ -6896,7 +6896,7 @@ watch(isDark, applyTheme, { immediate: true })
 function logout() {
   logActivity('Cerró sesión')
   // 1. Borrar la cookie que mantiene la sesión abierta
-  const session = useCookie('dashboard_session')
+  const session = useCookie(SESSION_COOKIE, sessionCookieOptions())
   session.value = null
 
   // 2. Redirigir al usuario a la pantalla de login (index.vue)
@@ -8179,7 +8179,7 @@ const tabs = ref<Tab[]>([
   { label: 'Próximos Eventos', value: 'events' }
 ])
 
-const activeTab = ref('pacientes_dashboard') // Changed default to pacientes_dashboard from outline
+const activeTab = usePersistente('healup:activeTab', 'pacientes_dashboard') // Changed default to pacientes_dashboard from outline
 
 const headersDashboardWpp = computed(() => {
   return headersPacientesWpp.value.filter(h => h.key !== 'actions')
@@ -8935,7 +8935,7 @@ async function descontarInsumosEvento(event: CalendarEvent) {
 
   descontandoStock.value = true
   try {
-    const sessionCookie = useCookie('dashboard_session')
+    const sessionCookie = useCookie(SESSION_COOKIE, sessionCookieOptions())
     const usuario = (sessionCookie.value as any)?.email || 'agente'
 
     const { error } = await (client.rpc as any)(
@@ -9959,7 +9959,7 @@ interface ProcedureSupply {
 const stockItems = ref<StockItem[]>([])
 const stockMovements = ref<StockMovement[]>([])
 const procedureSupplies = ref<ProcedureSupply[]>([])
-const stockTab = ref('items')
+const stockTab = usePersistente('healup:stockTab', 'items')
 const stockSearch = ref('')
 
 // Dialogs

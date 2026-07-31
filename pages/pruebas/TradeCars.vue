@@ -842,7 +842,7 @@ definePageMeta({ middleware: 'auth-dashboard' })
 
 /* ---------------- Sesión ---------------- */
 interface UserSession { id: string; email: string; full_name: string; role: string; company_id?: string }
-const userSession = useCookie<UserSession | null>('dashboard_session')
+const userSession = useCookie<UserSession | null>(SESSION_COOKIE, sessionCookieOptions())
 const currentUser = computed(() => userSession.value || {
   full_name: 'Usuario Invitado', email: '', id: '', role: '', company_id: ''
 })
@@ -856,7 +856,7 @@ const logoUrl = '/tradecars-logo.png'
 const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)
 const activeView = useVistaPersistente('tradecars')
-const dashTab = ref('solicitudes')
+const dashTab = usePersistente('tradecars:dashTab', 'solicitudes')
 
 const snackbar = ref({ show: false, text: '', color: 'success' })
 function notify(text: string, color = 'success') { snackbar.value = { show: true, text, color } }
@@ -877,7 +877,7 @@ watch(isDark, applyTheme, { immediate: true })
 
 function logout() {
   logActivity('Cerró sesión')
-  const session = useCookie('dashboard_session')
+  const session = useCookie(SESSION_COOKIE, sessionCookieOptions())
   session.value = null
   return navigateTo('/')
 }
@@ -1173,7 +1173,7 @@ async function eliminarCliente(c: any) {
 const vehiculos = ref<any[]>([])
 const loadingVehiculos = ref(false)
 const searchVehiculos = ref('')
-const filtroEstadoVeh = ref('todos')
+const filtroEstadoVeh = usePersistente('tradecars:filtroEstadoVeh', 'todos')
 const showVehiculoDialog = ref(false)
 const vehiculoForm = ref<any>(null)
 
@@ -1461,7 +1461,7 @@ async function fetchLeads() {
    ══════════════════════════════════════════════════════════════════════════ */
 const citas = ref<any[]>([])
 const loadingCitas = ref(false)
-const filtroTipoCita = ref('todos')
+const filtroTipoCita = usePersistente('tradecars:filtroTipoCita', 'todos')
 const showCitaDialog = ref(false)
 const citaForm = ref<any>(null)
 

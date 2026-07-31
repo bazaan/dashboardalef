@@ -14,7 +14,7 @@ interface AuditEntry {
 
 export const useHealupAudit = () => {
   const supabase = useSupabaseClient()
-  const sessionCookie = useCookie<any>('dashboard_session')
+  const sessionCookie = useCookie<any>(SESSION_COOKIE, sessionCookieOptions())
 
   const log = async (entry: AuditEntry) => {
     try {

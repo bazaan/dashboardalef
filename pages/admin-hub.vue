@@ -55,7 +55,7 @@ interface UserSession {
     role: string
 }
 
-const userSession = useCookie<UserSession | null>('dashboard_session')
+const userSession = useCookie<UserSession | null>(SESSION_COOKIE, sessionCookieOptions())
 const router = useRouter()
 
 const userName = computed(() => userSession.value?.full_name || 'Admin')

@@ -1895,7 +1895,7 @@ interface UserSession {
 
 /* ---------------- LÓGICA DE SESIÓN ---------------- */
 // Le decimos a useCookie que lo que guarda es de tipo UserSession o null
-const userSession = useCookie<UserSession | null>('dashboard_session')
+const userSession = useCookie<UserSession | null>(SESSION_COOKIE, sessionCookieOptions())
 
 // Ahora el computed sabe exactamente qué devolver
 const currentUser = computed(() => {
@@ -2292,8 +2292,8 @@ const deleteItem = async (item: any) => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = useVistaPersistente('origitec')
-const facturacionTab = ref('resumen')
-const activeTab = ref('ventas')
+const facturacionTab = usePersistente('origitec:facturacionTab', 'resumen')
+const activeTab = usePersistente('origitec:activeTab', 'ventas')
 const showUserMenu = ref(false)
 const stockMenuOpen = ref(false)
 
@@ -2964,7 +2964,7 @@ async function runDiagnostics() {
 function logout() {
   logActivity('Cerró sesión')
   // 1. Borrar la cookie que mantiene la sesión abierta
-  const session = useCookie('dashboard_session')
+  const session = useCookie(SESSION_COOKIE, sessionCookieOptions())
   session.value = null
 
   // 2. Redirigir al usuario a la pantalla de login (index.vue)

@@ -2096,7 +2096,7 @@ interface UserSession {
 
 /* ---------------- LÓGICA DE SESIÓN ---------------- */
 // Le decimos a useCookie que lo que guarda es de tipo UserSession o null
-const userSession = useCookie<UserSession | null>('dashboard_session')
+const userSession = useCookie<UserSession | null>(SESSION_COOKIE, sessionCookieOptions())
 
 // Ahora el computed sabe exactamente qué devolver
 const currentUser = computed(() => {
@@ -2651,7 +2651,7 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
 
 /* ---------------- Estado General ---------------- */
 const activeView = useVistaPersistente('estetikamedika')
-const facturacionTab = ref('resumen')
+const facturacionTab = usePersistente('estetikamedika:facturacionTab', 'resumen')
 
 const showUserMenu = ref(false)
 const showDashboardMenu = ref(false)
@@ -2684,7 +2684,7 @@ watch(isDark, applyTheme, { immediate: true })
 function logout() {
   logActivity('Cerró sesión')
   // 1. Borrar la cookie que mantiene la sesión abierta
-  const session = useCookie('dashboard_session')
+  const session = useCookie(SESSION_COOKIE, sessionCookieOptions())
   session.value = null
 
   // 2. Redirigir al usuario a la pantalla de login (index.vue)
@@ -3357,7 +3357,7 @@ const tabs = ref<Tab[]>([
   { label: 'Próximos Eventos', value: 'events' }
 ])
 
-const activeTab = ref('pacientes_dashboard') // Changed default to pacientes_dashboard from outline
+const activeTab = usePersistente('estetikamedika:activeTab', 'pacientes_dashboard') // Changed default to pacientes_dashboard from outline
 
 const headersDashboardWpp = computed(() => [
   { title: 'Nombre', key: 'nombre', sortable: true },

@@ -18,7 +18,19 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionSGS } from '../../utils/sgs'
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-sonnet-4-6'
+
+// Modelos a intentar, en orden. Si el primero no existe o no está habilitado
+// en la cuenta, se prueba el siguiente en vez de fallar de una.
+// Se puede forzar uno con la env var SGS_OCR_MODEL.
+const MODELOS = [
+  process.env.SGS_OCR_MODEL,
+  'claude-sonnet-5',
+  'claude-opus-5',
+  'claude-haiku-4-5-20251001',
+].filter(Boolean) as string[]
+
+/** Límite de la API de Anthropic por imagen (5 MB ya en base64). */
+const MAX_BASE64 = 5 * 1024 * 1024
 
 const PROMPT = `Eres un extractor de datos de TICKETS DE BALANZA de recepción de mineral en Perú.
 Recibes la foto de un ticket (formatos: Ferrobamba térmico, MSCON de concentrados, TISUR de puerto).
@@ -85,40 +97,72 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (base64.length > MAX_BASE64) {
+    throw createError({
+      statusCode: 413,
+      statusMessage: 'La foto es demasiado pesada. Tómala de nuevo con menos zoom o menor resolución.',
+    })
+  }
+
   const inicio = Date.now()
   let campos: any = null
-  try {
-    const resp = await $fetch<any>(ANTHROPIC_API, {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: {
-        model: MODEL,
-        max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: PROMPT },
-          ],
-        }],
-      },
-      timeout: 60000,
-    })
-    const texto = (resp?.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
-    const json = texto.match(/\{[\s\S]*\}/)
-    if (!json) throw new Error('la IA no devolvió JSON')
-    campos = JSON.parse(json[0])
-  } catch (e: any) {
-    console.error('[sgs/ocr-ticket] Error:', e?.message)
+  let modeloUsado = ''
+  const fallos: string[] = []
+
+  /** Extrae el motivo real del 400 de Anthropic (viene en el body, no en el status). */
+  const detalle = (e: any): string => {
+    const d = e?.data ?? e?.response?._data
+    return d?.error?.message || d?.message || e?.message || 'error desconocido'
+  }
+
+  for (const modelo of MODELOS) {
+    try {
+      const resp = await $fetch<any>(ANTHROPIC_API, {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: {
+          model: modelo,
+          max_tokens: 1500,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+              { type: 'text', text: PROMPT },
+            ],
+          }],
+        },
+        timeout: 60000,
+      })
+      const texto = (resp?.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
+      const json = texto.match(/\{[\s\S]*\}/)
+      if (!json) throw new Error('la IA no devolvió JSON')
+      campos = JSON.parse(json[0])
+      modeloUsado = modelo
+      break
+    } catch (e: any) {
+      const motivo = detalle(e)
+      fallos.push(`${modelo}: ${motivo}`)
+      console.error(`[sgs/ocr-ticket] ${modelo} falló -> ${motivo}`)
+      // Si el modelo no existe o no está habilitado, se prueba el siguiente.
+      // Cualquier otro error (imagen inválida, sin crédito) no se reintenta.
+      const esModeloInvalido = /model/i.test(motivo) && /(not_found|not found|invalid|does not exist|unsupported)/i.test(motivo)
+      if (!esModeloInvalido) break
+    }
+  }
+
+  if (!campos) {
     try {
       await supabase.from('agent_tool_logs').insert({
         company_id: 'sgs', tool_name: 'OCR Ticket',
-        input_data: { por: email }, status: 'error',
-        error_message: e?.message ?? 'error leyendo el ticket',
+        input_data: { por: email, modelos_intentados: MODELOS },
+        status: 'error', error_message: fallos.join(' | ').slice(0, 900),
         duration_ms: Date.now() - inicio,
       })
     } catch {}
-    throw createError({ statusCode: 502, statusMessage: `No se pudo leer el ticket: ${e?.message}. Puedes llenarlo a mano.` })
+    throw createError({
+      statusCode: 502,
+      statusMessage: `No se pudo leer el ticket — ${fallos[0] || 'error desconocido'}. Puedes llenarlo a mano.`,
+    })
   }
 
   // ── Normalización y coherencia ──
@@ -168,12 +212,12 @@ export default defineEventHandler(async (event) => {
     await supabase.from('agent_tool_logs').insert({
       company_id: 'sgs', tool_name: 'OCR Ticket',
       input_data: { por: email },
-      output_data: { ...salida, confianza: campos.confianza ?? null, avisos },
+      output_data: { ...salida, confianza: campos.confianza ?? null, avisos, modelo: modeloUsado },
       status: faltantes.length ? 'warning' : 'success',
       duration_ms: Date.now() - inicio,
     })
   } catch {}
 
-  console.log(`[sgs/ocr-ticket] ${salida.numero_ticket ?? '?'} | ${salida.placa ?? '?'} | ${Date.now() - inicio}ms | por ${email}`)
-  return { ok: true, campos: salida, avisos, confianza: campos.confianza ?? 'media' }
+  console.log(`[sgs/ocr-ticket] ${salida.numero_ticket ?? '?'} | ${salida.placa ?? '?'} | ${modeloUsado} | ${Date.now() - inicio}ms | por ${email}`)
+  return { ok: true, campos: salida, avisos, confianza: campos.confianza ?? 'media', modelo: modeloUsado }
 })

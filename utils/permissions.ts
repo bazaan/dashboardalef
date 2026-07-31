@@ -14,8 +14,18 @@ export const dashboards = [
     { name: 'FitMain', path: '/pruebas/FitMain', icon: 'mdi-dumbbell', logo: '' },
     { name: 'Gatwick', path: '/pruebas/Gatwick', icon: 'mdi-elevator', logo: 'gatwickLOGO.png' },
     { name: 'Trade Cars', path: '/pruebas/TradeCars', icon: 'mdi-car-multiple', logo: 'tradecarsLOGO.png' },
-    { name: 'SGS', path: '/pruebas/SGS', icon: 'mdi-scale-balance', logo: 'sgsLOGO.png' }
+    { name: 'SGS', path: '/pruebas/SGS', icon: 'mdi-scale-balance', logo: 'sgsLOGO.png' },
+    { name: 'Piola', path: '/pruebas/Piola', icon: 'mdi-palette-swatch', logo: '' }
 ]
+
+// Módulos del dashboard Piola (§2 de la especificación). El acceso a cada uno
+// se resuelve contra piola_role_permissions; 'home' y 'mi_espacio' son de todos.
+export const PIOLA_MODULES = [
+    'home', 'crm', 'contabilidad', 'facturacion', 'produccion',
+    'rrhh', 'reportes', 'configuracion', 'mi_espacio'
+] as const
+
+export type PiolaModule = typeof PIOLA_MODULES[number]
 
 // Tipos para la sesión de usuario
 export interface UserSession {
@@ -183,6 +193,33 @@ export function canAccessSGS(session: UserSession | null): boolean {
     return cid.includes('sgs') || cid.includes('alef')
 }
 
+export function canAccessPiola(session: UserSession | null): boolean {
+    if (!session) return false
+    if (isSuperAdmin(session)) return true
+
+    const cid = normalize(session.company_id).replace(/\s+/g, '')
+    return cid.includes('piola')
+}
+
+/**
+ * ¿El usuario puede ver/operar un módulo del dashboard Piola?
+ *
+ * `permisos` es el mapa que devuelve GET /api/piola/perfil (leído de
+ * piola_role_permissions). Se usa solo para pintar el menú: cada endpoint
+ * sensible del servidor vuelve a verificar el rol real por su cuenta.
+ */
+export function piolaCan(
+    permisos: Record<string, any> | null | undefined,
+    module: PiolaModule,
+    accion: 'view' | 'create' | 'edit' | 'delete' = 'view'
+): boolean {
+    if (!permisos) return false
+    if (permisos.__admin === true) return true
+    const p = permisos[module]
+    if (!p) return false
+    return p[`can_${accion}`] === true
+}
+
 export function getDashboardPathByCompanyId(companyId: string | undefined | null): string {
     if (!companyId) return '/'
 
@@ -203,6 +240,7 @@ export function getDashboardPathByCompanyId(companyId: string | undefined | null
     if (normalizedId === 'gatwick' || normalizedId === 'gatwick ascensores' || normalizedId.includes('gatwick')) return '/pruebas/Gatwick'
     if (normalizedId.replace(/\s+/g, '').includes('tradecars')) return '/pruebas/TradeCars'
     if (normalizedId.replace(/\s+/g, '') === 'sgs' || normalizedId.replace(/\s+/g, '').includes('sgs')) return '/pruebas/SGS'
+    if (normalizedId.replace(/\s+/g, '').includes('piola')) return '/pruebas/Piola'
 
     return '/'
 }

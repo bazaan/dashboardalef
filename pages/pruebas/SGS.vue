@@ -158,6 +158,34 @@
         </header>
         <div class="content-area">
           <v-card flat class="custom-data-table" style="padding: 22px;">
+            <!-- Escaneo del ticket: la IA propone, el humano confirma (Regla §4.2) -->
+            <div class="ocr-box">
+              <div class="ocr-head">
+                <v-icon icon="mdi-text-recognition" size="20" />
+                <div>
+                  <strong>Leer el ticket automáticamente</strong>
+                  <small>Sube la foto y se llenan los campos solos. Luego los revisas antes de guardar.</small>
+                </div>
+              </div>
+              <input ref="fotoInput" type="file" accept="image/png,image/jpeg,image/webp" style="display:none" @change="onFoto" />
+              <div class="ocr-acciones">
+                <v-btn variant="tonal" color="primary" @click="(fotoInput as any)?.click()">
+                  <v-icon icon="mdi-camera" start /> {{ form.imagen_base64 ? 'Cambiar foto' : 'Adjuntar foto del ticket' }}
+                </v-btn>
+                <v-btn v-if="form.imagen_base64" color="primary" variant="flat" :loading="escaneando" @click="escanearTicket">
+                  <v-icon icon="mdi-auto-fix" start /> {{ escaneando ? 'Leyendo…' : 'Leer ticket' }}
+                </v-btn>
+                <v-btn v-if="form.imagen_base64" variant="text" color="error" @click="form.imagen_base64 = null">Quitar</v-btn>
+                <img v-if="form.imagen_base64" :src="form.imagen_base64" alt="Ticket" class="ocr-thumb" @click="verFoto = true" />
+              </div>
+              <v-alert v-if="ocrAvisos.length" type="warning" variant="tonal" density="compact" class="mt-3">
+                <div v-for="(a, i) in ocrAvisos" :key="i" style="font-size:13px;">• {{ a }}</div>
+              </v-alert>
+              <v-alert v-else-if="ocrOk" type="success" variant="tonal" density="compact" class="mt-3">
+                Ticket leído ({{ ocrConfianza }} confianza). <strong>Revisa los campos contra la foto</strong> antes de catalogar.
+              </v-alert>
+            </div>
+
             <div class="form-section-title">Identificación (la llave del sistema)</div>
             <div class="form-grid-3">
               <v-text-field v-model="form.n_orden" label="N° de Orden (OLxxxxxx-xx) *" density="compact"
@@ -207,16 +235,6 @@
               <v-text-field v-model.number="form.tat_dias" type="number" label="TAT contractual (días)" density="compact" hide-details />
             </div>
 
-            <div class="form-section-title" style="margin-top:18px;">Foto del ticket</div>
-            <input ref="fotoInput" type="file" accept="image/png,image/jpeg,image/webp" style="display:none" @change="onFoto" />
-            <div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
-              <v-btn variant="tonal" color="primary" @click="(fotoInput as any)?.click()">
-                <v-icon icon="mdi-camera" start /> {{ form.imagen_base64 ? 'Cambiar foto' : 'Adjuntar foto' }}
-              </v-btn>
-              <v-btn v-if="form.imagen_base64" variant="text" color="error" @click="form.imagen_base64 = null">Quitar</v-btn>
-              <img v-if="form.imagen_base64" :src="form.imagen_base64" alt="Ticket" style="max-height:130px; border-radius:10px; border:1px solid rgba(128,128,128,.3);" />
-            </div>
-
             <v-divider class="my-5" />
             <v-checkbox v-model="form.verificado_humano" color="success" density="compact" hide-details
               label="Verifiqué los datos contra el ticket físico (verificación humana obligatoria — Regla §4.2)" />
@@ -228,6 +246,17 @@
               <span v-if="!form.verificado_humano" class="field-hint">Marca la verificación humana para habilitar el guardado.</span>
             </div>
           </v-card>
+
+          <!-- Foto ampliada, para cotejar los datos contra el ticket -->
+          <v-dialog v-model="verFoto" max-width="900">
+            <v-card>
+              <v-card-title class="pt-4" style="font-size:15px;">Foto del ticket</v-card-title>
+              <v-card-text>
+                <img v-if="form.imagen_base64" :src="form.imagen_base64" alt="Ticket" style="width:100%; border-radius:8px;" />
+              </v-card-text>
+              <v-card-actions><v-spacer /><v-btn variant="text" @click="verFoto = false">Cerrar</v-btn></v-card-actions>
+            </v-card>
+          </v-dialog>
 
           <!-- Resultado del catalogado -->
           <v-card v-if="resultadoIngreso" flat class="custom-data-table mt-4" style="padding: 18px;">
@@ -571,6 +600,54 @@ const netoDescuadre = computed(() => {
   return Math.abs(netoSugerido.value - Number(form.peso_neto)) > Math.max(50, netoSugerido.value * 0.02)
 })
 
+/* ── Lectura automática del ticket (la IA propone, el humano confirma §4.2) ── */
+const escaneando = ref(false)
+const ocrAvisos = ref<string[]>([])
+const ocrOk = ref(false)
+const ocrConfianza = ref('media')
+const verFoto = ref(false)
+
+async function escanearTicket() {
+  if (!form.imagen_base64) return
+  escaneando.value = true
+  ocrAvisos.value = []
+  ocrOk.value = false
+  try {
+    const r = await $fetch<any>('/api/sgs/ocr-ticket', {
+      method: 'POST',
+      body: { imagen_base64: form.imagen_base64 },
+    })
+    const c = r.campos || {}
+    // Solo se rellenan los campos que la IA logró leer: lo que ya escribiste
+    // a mano no se pisa con un null.
+    if (c.numero_ticket) form.n_ticket = String(c.numero_ticket).toUpperCase()
+    if (c.placa) form.placa = c.placa
+    if (c.peso_bruto != null) form.peso_bruto = c.peso_bruto
+    if (c.tara != null) form.tara = c.tara
+    if (c.peso_neto != null) form.peso_neto = c.peso_neto
+    if (c.fecha) form.fecha = c.fecha
+    if (c.calidad_material) form.calidad_material = c.calidad_material
+    if (c.cliente) form.cliente = c.cliente
+    if (c.sede && ['Matarani', 'Pisco'].includes(c.sede)) form.sede = c.sede
+    if (c.segunda_balanza?.nombre) {
+      form.balanza2 = {
+        nombre: c.segunda_balanza.nombre,
+        bruto: c.segunda_balanza.bruto ?? null,
+        tara: c.segunda_balanza.tara ?? null,
+        neto: c.segunda_balanza.neto ?? null,
+      }
+    }
+    ocrAvisos.value = r.avisos || []
+    ocrConfianza.value = r.confianza || 'media'
+    ocrOk.value = true
+    notify(ocrAvisos.value.length ? 'Ticket leído con observaciones — revísalas' : 'Ticket leído ✔ Revisa los campos')
+  } catch (e: any) {
+    notify(e?.data?.statusMessage || 'No se pudo leer el ticket. Llena los campos a mano.', 'error')
+  } finally {
+    escaneando.value = false
+  }
+}
+
 function onFoto(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
@@ -578,14 +655,18 @@ function onFoto(e: Event) {
   reader.onload = () => {
     const img = new Image()
     img.onload = () => {
-      const escala = Math.min(1, 1600 / img.width)
+      // Resolución alta: la letra de un ticket térmico es chica y si se
+      // comprime de más, la lectura automática empieza a equivocarse.
+      const escala = Math.min(1, 2200 / Math.max(img.width, img.height))
       const w = Math.round(img.width * escala), h = Math.round(img.height * escala)
       const canvas = document.createElement('canvas')
       canvas.width = w; canvas.height = h
       const ctx = canvas.getContext('2d')
       if (!ctx) return
       ctx.drawImage(img, 0, 0, w, h)
-      form.imagen_base64 = canvas.toDataURL('image/jpeg', 0.82)
+      form.imagen_base64 = canvas.toDataURL('image/jpeg', 0.92)
+      ocrOk.value = false
+      ocrAvisos.value = []
     }
     img.src = String(reader.result)
   }
@@ -613,6 +694,7 @@ async function guardarTicket() {
     form.n_ticket = ''; form.placa = ''; form.fecha = ''
     form.peso_bruto = null; form.tara = null; form.peso_neto = null
     form.imagen_base64 = null; form.verificado_humano = false
+    ocrOk.value = false; ocrAvisos.value = []
     form.balanza2 = { nombre: '', bruto: null, tara: null, neto: null }
     await fetchTickets()
   } catch (e: any) {
@@ -786,6 +868,39 @@ onMounted(async () => {
   font-size: 12.5px;
   opacity: .65;
   margin: 6px 0 0;
+}
+
+/* Bloque de lectura automática del ticket */
+.ocr-box {
+  border: 1px dashed rgba(120, 160, 220, .45);
+  background: rgba(80, 130, 200, .07);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 22px;
+}
+
+.ocr-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ocr-head strong { display: block; font-size: 14.5px; }
+.ocr-head small { font-size: 12.5px; opacity: .7; }
+
+.ocr-acciones {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ocr-thumb {
+  max-height: 76px;
+  border-radius: 8px;
+  border: 1px solid rgba(128, 128, 128, .3);
+  cursor: zoom-in;
 }
 
 /* Barra de filtros de Recepción: fila propia, con aire, que envuelve limpio */

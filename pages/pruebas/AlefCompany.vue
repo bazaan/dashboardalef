@@ -2568,7 +2568,7 @@ const COMPANY_TOOLS: Record<string, string[]> = {
   origitec:       ['Todas', ...FLOW_TOOLS],
   gatwick:        ['Todas', 'buscando_edificio', 'SMS Alerta Emergencia', 'Generar Llamada', 'Retell Llamada', 'Seguimiento Emergencia', 'Gestion Emergencia', ...FLOW_TOOLS],
   tradecars:      ['Todas', 'Formulario Web Venta', 'Formulario Web Compra', ...FLOW_TOOLS],
-  sgs:            ['Todas', 'Ingreso Ticket', 'Tick TAT', 'Resultado', ...FLOW_TOOLS],
+  sgs:            ['Todas', 'OCR Ticket', 'Ingreso Ticket', 'Tick TAT', 'Resultado', ...FLOW_TOOLS],
   todas:          ['Todas', ...FLOW_TOOLS],
 }
 

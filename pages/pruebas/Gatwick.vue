@@ -642,14 +642,30 @@
                 </div>
                 <div class="emerg-info">
                   <v-icon icon="mdi-elevator" size="14" style="margin-top: 2px; flex-shrink: 0;" />
+                  <template v-if="emerg.codigo_ascensor"><strong>{{ emerg.codigo_ascensor }}</strong>&nbsp;·&nbsp;</template>
                   {{ emerg.tipo_equipo || 'Ascensor' }} {{ emerg.numero_equipo ? '· ' + emerg.numero_equipo : '' }}
                 </div>
                 <div v-if="emerg.descripcion" class="emerg-desc">{{ emerg.descripcion }}</div>
                 <div class="emerg-time">{{ formatDateTime(emerg.created_at) }}</div>
+
+                <!-- Seguimiento GPS -->
+                <div v-if="seguimientoDe(emerg.id)" class="emerg-seg">
+                  <span class="seg-chip" :class="'seg-' + seguimientoDe(emerg.id).estado">
+                    {{ ESTADO_SEG[seguimientoDe(emerg.id).estado] || seguimientoDe(emerg.id).estado }}
+                  </span>
+                  <span class="seg-tec">{{ seguimientoDe(emerg.id).tecnico_nombre }}</span>
+                  <a :href="`/gatwick/seguimiento/${seguimientoDe(emerg.id).token}`" target="_blank" class="seg-link">
+                    <v-icon icon="mdi-map-marker-radius" size="13" /> Ver en mapa
+                  </a>
+                </div>
               </div>
               <div class="emerg-footer">
                 <span :class="['estado-chip', 'estado-' + emerg.estado]">{{ emerg.estado }}</span>
                 <div class="emerg-actions">
+                  <v-btn v-if="!seguimientoDe(emerg.id) && emerg.estado !== 'resuelta'" size="x-small" variant="flat"
+                    color="error" class="mr-1" :loading="iniciandoSeg === emerg.id" @click="abrirComenzar(emerg)">
+                    <v-icon icon="mdi-play" size="14" start /> Comenzar
+                  </v-btn>
                   <v-btn icon size="x-small" variant="text" @click="editarEmergencia(emerg)">
                     <v-icon icon="mdi-pencil" size="16" />
                   </v-btn>
@@ -662,6 +678,92 @@
             </div>
           </div>
         </div>
+
+        <!-- Dialog: Comenzar emergencia (asignar técnico) -->
+        <v-dialog v-model="showComenzar" max-width="520" persistent>
+          <v-card v-if="emergComenzar">
+            <v-card-title class="pt-4">Comenzar emergencia #{{ emergComenzar.id }}</v-card-title>
+            <v-card-text>
+              <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+                Se creará el seguimiento GPS, se avisará a los supervisores por WhatsApp y se generará
+                el link privado para el técnico.
+              </v-alert>
+
+              <v-text-field v-model="comenzarForm.codigo_ascensor" label="Código del ascensor (AP-0001…)"
+                density="compact" hide-details class="mb-3"
+                hint="Con este código se resuelve el edificio, dirección y distrito" persistent-hint />
+
+              <v-select v-model="comenzarForm.tecnico_id" :items="tecnicosSelect" item-title="label" item-value="id"
+                label="Técnico asignado *" density="compact" hide-details class="mb-3" />
+
+              <div v-if="!comenzarForm.tecnico_id" class="text-caption" style="opacity:.7;">
+                O escribe los datos manualmente:
+              </div>
+              <div v-if="!comenzarForm.tecnico_id" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px;">
+                <v-text-field v-model="comenzarForm.tecnico_nombre" label="Nombre del técnico" density="compact" hide-details />
+                <v-text-field v-model="comenzarForm.tecnico_telefono" label="Teléfono" density="compact" hide-details />
+              </div>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="showComenzar = false">Cancelar</v-btn>
+              <v-btn color="error" variant="flat" :loading="iniciandoSeg === emergComenzar.id" @click="comenzarEmergencia">
+                <v-icon icon="mdi-play" start /> Comenzar y avisar
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Dialog: seguimiento creado (links) -->
+        <v-dialog v-model="showSegCreado" max-width="580">
+          <v-card v-if="segCreado">
+            <v-card-title class="pt-4" style="color:#4ade80;">
+              <v-icon icon="mdi-check-circle" start /> Seguimiento iniciado
+            </v-card-title>
+            <v-card-text>
+              <div class="seg-info-grid">
+                <div v-if="segCreado.emergencia?.edificio_nombre"><span>Edificio</span><strong>{{ segCreado.emergencia.edificio_nombre }}</strong></div>
+                <div v-if="segCreado.emergencia?.codigo_ascensor"><span>Ascensor</span><strong>{{ segCreado.emergencia.codigo_ascensor }}</strong></div>
+                <div v-if="segCreado.emergencia?.direccion"><span>Dirección</span><strong>{{ segCreado.emergencia.direccion }}<template v-if="segCreado.emergencia.distrito">, {{ segCreado.emergencia.distrito }}</template></strong></div>
+                <div><span>Técnico</span><strong>{{ segCreado.seguimiento?.tecnico_nombre }}</strong></div>
+              </div>
+
+              <v-alert :type="segCreado.destino_ubicado ? 'success' : 'warning'" variant="tonal" density="compact" class="my-3">
+                <template v-if="segCreado.destino_ubicado">Destino ubicado en el mapa — el técnico verá la ruta y el ETA.</template>
+                <template v-else>No se pudo ubicar la dirección en el mapa: el seguimiento funciona igual, pero sin ruta ni geofence.</template>
+              </v-alert>
+
+              <div class="link-box">
+                <div class="link-label">🔗 Link del TÉCNICO (envíaselo por WhatsApp)</div>
+                <div class="link-row">
+                  <input :value="segCreado.link_tecnico" readonly class="link-input" @focus="(e: any) => e.target.select()" />
+                  <v-btn size="small" variant="tonal" @click="copiar(segCreado.link_tecnico)">Copiar</v-btn>
+                  <v-btn size="small" variant="tonal" color="success" :href="waTecnico" target="_blank">
+                    <v-icon icon="mdi-whatsapp" />
+                  </v-btn>
+                </div>
+              </div>
+
+              <div class="link-box">
+                <div class="link-label">🗺️ Link de MONITOREO (ya enviado a los supervisores)</div>
+                <div class="link-row">
+                  <input :value="segCreado.link_supervisor" readonly class="link-input" @focus="(e: any) => e.target.select()" />
+                  <v-btn size="small" variant="tonal" @click="copiar(segCreado.link_supervisor)">Copiar</v-btn>
+                  <v-btn size="small" variant="tonal" color="primary" :href="segCreado.link_supervisor" target="_blank">Abrir</v-btn>
+                </div>
+              </div>
+
+              <v-alert v-if="segCreado.aviso" :type="segCreado.aviso.fallidos ? 'warning' : 'success'"
+                variant="tonal" density="compact" class="mt-3">
+                WhatsApp a supervisores: {{ segCreado.aviso.enviados }} enviado(s)<template v-if="segCreado.aviso.fallidos">, {{ segCreado.aviso.fallidos }} fallido(s)</template>
+              </v-alert>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="flat" color="primary" @click="showSegCreado = false">Listo</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
 
         <!-- Dialog: Nueva / Editar Emergencia -->
         <v-dialog v-model="showNuevaEmergencia" max-width="560" persistent>
@@ -693,7 +795,8 @@
                   <v-text-field v-model="emergForm.direccion" label="Dirección" density="compact" />
                 </v-col>
                 <v-col cols="6">
-                  <v-text-field v-model="emergForm.tipo_equipo" label="Tipo de equipo" density="compact" />
+                  <v-text-field v-model="emergForm.codigo_ascensor" label="Código ascensor (AP-0001…)" density="compact"
+                    hint="Con él se resuelve el edificio automáticamente" persistent-hint />
                 </v-col>
                 <v-col cols="6">
                   <v-text-field v-model="emergForm.numero_equipo" label="N° equipo" density="compact" />
@@ -2406,6 +2509,98 @@ async function fetchEmergencias() {
   const { data } = await client.from('gatwick_emergencias').select('*').order('created_at', { ascending: false })
   emergencias.value = data || []
   loadingEmergencias.value = false
+  fetchSeguimientos()
+}
+
+/* ── Seguimiento GPS de técnicos ───────────────────────────────────────────
+   El técnico toca "Comenzar": se crea el seguimiento, se avisa a los
+   supervisores por WhatsApp y se devuelven los dos links (técnico y monitoreo). */
+const seguimientos = ref([])
+const showComenzar = ref(false)
+const showSegCreado = ref(false)
+const emergComenzar = ref(null)
+const segCreado = ref(null)
+const iniciandoSeg = ref(null)
+const comenzarForm = ref({ codigo_ascensor: '', tecnico_id: null, tecnico_nombre: '', tecnico_telefono: '' })
+
+const ESTADO_SEG = {
+  iniciado: 'Asignada', en_camino: 'En camino', atendiendo: 'En sitio',
+  finalizada: 'Finalizada', cancelada: 'Cancelada',
+}
+
+const tecnicosSelect = computed(() => tecnicos.value.map(t => ({
+  id: t.id, label: `${[t.nombre, t.apellido].filter(Boolean).join(' ')}${t.zona ? ' · ' + t.zona : ''}${t.estado === 'en_servicio' ? ' (en servicio)' : ''}`,
+})))
+
+/** Seguimiento ACTIVO de una emergencia (o null). */
+function seguimientoDe(emergenciaId) {
+  return seguimientos.value.find(s => s.emergencia_id === emergenciaId
+    && ['iniciado', 'en_camino', 'atendiendo'].includes(s.estado)) || null
+}
+
+async function fetchSeguimientos() {
+  const { data } = await client.from('gatwick_seguimientos')
+    .select('id, emergencia_id, token, estado, tecnico_nombre, distancia_destino_m, eta_segundos, ultimo_ping')
+    .order('created_at', { ascending: false }).limit(200)
+  seguimientos.value = data || []
+}
+
+function abrirComenzar(emerg) {
+  emergComenzar.value = emerg
+  comenzarForm.value = {
+    codigo_ascensor: emerg.codigo_ascensor || '',
+    tecnico_id: emerg.tecnico_id || null,
+    tecnico_nombre: '', tecnico_telefono: '',
+  }
+  showComenzar.value = true
+}
+
+async function comenzarEmergencia() {
+  const emerg = emergComenzar.value
+  if (!emerg) return
+  const f = comenzarForm.value
+  if (!f.tecnico_id && !f.tecnico_nombre.trim()) {
+    notify('Selecciona un técnico o escribe su nombre', 'error'); return
+  }
+  iniciandoSeg.value = emerg.id
+  try {
+    const res = await $fetch('/api/gatwick/seguimiento/iniciar', {
+      method: 'POST',
+      body: {
+        emergencia_id: emerg.id,
+        codigo_ascensor: f.codigo_ascensor?.trim().toUpperCase() || undefined,
+        tecnico_id: f.tecnico_id || undefined,
+        tecnico_nombre: f.tecnico_nombre?.trim() || undefined,
+        tecnico_telefono: f.tecnico_telefono?.trim() || undefined,
+        creado_por: currentUser.value?.email || '',
+      },
+    })
+    segCreado.value = res
+    showComenzar.value = false
+    showSegCreado.value = true
+    notify(res.ya_existia ? 'Esta emergencia ya tenía un seguimiento activo' : 'Seguimiento iniciado · supervisores avisados')
+    await Promise.all([fetchEmergencias(), fetchTecnicos()])
+  } catch (e) {
+    notify(e?.data?.statusMessage || 'No se pudo iniciar el seguimiento', 'error')
+  } finally {
+    iniciandoSeg.value = null
+  }
+}
+
+/** Link listo para mandarle el seguimiento al técnico por WhatsApp. */
+const waTecnico = computed(() => {
+  const s = segCreado.value
+  if (!s) return '#'
+  const tel = String(s.seguimiento?.tecnico_telefono || '').replace(/\D/g, '')
+  const num = tel.length === 9 ? `51${tel}` : tel
+  const e = s.emergencia || {}
+  const msg = `🚨 EMERGENCIA #${e.id}\n${e.edificio_nombre || e.empresa_cliente || ''}\n${e.direccion || ''}${e.codigo_ascensor ? `\nAscensor: ${e.codigo_ascensor}` : ''}\n\nAbre este link para iniciar el seguimiento:\n${s.link_tecnico}`
+  return num ? `https://wa.me/${num}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
+})
+
+async function copiar(txt) {
+  try { await navigator.clipboard.writeText(txt); notify('Link copiado') }
+  catch { notify('No se pudo copiar', 'error') }
 }
 
 async function saveEmergencia() {
@@ -3652,3 +3847,84 @@ onUnmounted(() => {
   if (realtimeChannel) client.removeChannel(realtimeChannel)
 })
 </script>
+
+<style scoped>
+/* ── Seguimiento GPS en las tarjetas de emergencia ── */
+.emerg-seg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(128, 128, 128, .25);
+}
+
+.seg-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.seg-iniciado   { background: rgba(234, 179, 8, .18);  color: #facc15; }
+.seg-en_camino  { background: rgba(37, 99, 235, .2);   color: #60a5fa; }
+.seg-atendiendo { background: rgba(234, 88, 12, .2);   color: #fb923c; }
+
+.seg-tec {
+  font-size: 11.5px;
+  opacity: .75;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seg-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #60a5fa;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* ── Diálogo de seguimiento creado ── */
+.seg-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.seg-info-grid div { display: flex; flex-direction: column; }
+.seg-info-grid span { font-size: 10.5px; opacity: .6; text-transform: uppercase; letter-spacing: .4px; }
+.seg-info-grid strong { font-size: 13.5px; }
+
+.link-box {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: rgba(128, 128, 128, .09);
+  border: 1px solid rgba(128, 128, 128, .2);
+}
+
+.link-label { font-size: 12px; font-weight: 600; margin-bottom: 7px; opacity: .85; }
+
+.link-row { display: flex; gap: 7px; align-items: center; }
+
+.link-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(128, 128, 128, .3);
+  background: rgba(0, 0, 0, .22);
+  color: inherit;
+  font-size: 12px;
+  font-family: monospace;
+}
+</style>

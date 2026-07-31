@@ -11,26 +11,27 @@
  * Formatos soportados (los 3 validados con SGS): Ferrobamba (térmico),
  * MSCON (concentrados, doble columna mina/puerto) y TISUR (puerto).
  *
+ * Motor: OpenAI GPT-4o (visión), con la misma OPENAI_API_KEY que ya usa el
+ * transcriptor de Healup. Se puede fijar otro modelo con SGS_OCR_MODEL.
+ *
  * Body: { imagen_base64 }   → dataURL (image/jpeg|png|webp)
  * Resp: { ok, campos: {...}, avisos: [...], confianza }
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionSGS } from '../../utils/sgs'
 
-const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
+const OPENAI_API = 'https://api.openai.com/v1/chat/completions'
 
-// Modelos a intentar, en orden. Si el primero no existe o no está habilitado
-// en la cuenta, se prueba el siguiente en vez de fallar de una.
-// Se puede forzar uno con la env var SGS_OCR_MODEL.
+// Modelos de visión a intentar, en orden. Si el primero no está habilitado en
+// la cuenta, se prueba el siguiente. Se puede forzar uno con SGS_OCR_MODEL.
 const MODELOS = [
   process.env.SGS_OCR_MODEL,
-  'claude-sonnet-5',
-  'claude-opus-5',
-  'claude-haiku-4-5-20251001',
+  'gpt-4o',        // mejor lectura de tickets térmicos
+  'gpt-4o-mini',   // respaldo más barato
 ].filter(Boolean) as string[]
 
-/** Límite de la API de Anthropic por imagen (5 MB ya en base64). */
-const MAX_BASE64 = 5 * 1024 * 1024
+/** Tope de la imagen en base64 (la API acepta ~20 MB; se corta antes por sano). */
+const MAX_BASE64 = 8 * 1024 * 1024
 
 const PROMPT = `Eres un extractor de datos de TICKETS DE BALANZA de recepción de mineral en Perú.
 Recibes la foto de un ticket (formatos: Ferrobamba térmico, MSCON de concentrados, TISUR de puerto).
@@ -89,11 +90,11 @@ export default defineEventHandler(async (event) => {
   const mediaType = m[1] === 'image/jpg' ? 'image/jpeg' : m[1]
   const base64 = m[3]
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     throw createError({
       statusCode: 503,
-      statusMessage: 'La lectura automática no está configurada (falta ANTHROPIC_API_KEY). Llena los campos a mano.',
+      statusMessage: 'La lectura automática no está configurada (falta OPENAI_API_KEY). Llena los campos a mano.',
     })
   }
 
@@ -109,7 +110,7 @@ export default defineEventHandler(async (event) => {
   let modeloUsado = ''
   const fallos: string[] = []
 
-  /** Extrae el motivo real del 400 de Anthropic (viene en el body, no en el status). */
+  /** El motivo real viene en el cuerpo de la respuesta, no en el status. */
   const detalle = (e: any): string => {
     const d = e?.data ?? e?.response?._data
     return d?.error?.message || d?.message || e?.message || 'error desconocido'
@@ -117,23 +118,29 @@ export default defineEventHandler(async (event) => {
 
   for (const modelo of MODELOS) {
     try {
-      const resp = await $fetch<any>(ANTHROPIC_API, {
+      const resp = await $fetch<any>(OPENAI_API, {
         method: 'POST',
-        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: {
           model: modelo,
           max_tokens: 1500,
+          // Garantiza JSON válido de salida (el prompt ya lo pide explícitamente)
+          response_format: { type: 'json_object' },
           messages: [{
             role: 'user',
             content: [
-              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
               { type: 'text', text: PROMPT },
+              {
+                type: 'image_url',
+                // 'high' es necesario: en 'low' la letra chica del ticket se pierde
+                image_url: { url: `data:${mediaType};base64,${base64}`, detail: 'high' },
+              },
             ],
           }],
         },
         timeout: 60000,
       })
-      const texto = (resp?.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
+      const texto = resp?.choices?.[0]?.message?.content || ''
       const json = texto.match(/\{[\s\S]*\}/)
       if (!json) throw new Error('la IA no devolvió JSON')
       campos = JSON.parse(json[0])
@@ -143,9 +150,10 @@ export default defineEventHandler(async (event) => {
       const motivo = detalle(e)
       fallos.push(`${modelo}: ${motivo}`)
       console.error(`[sgs/ocr-ticket] ${modelo} falló -> ${motivo}`)
-      // Si el modelo no existe o no está habilitado, se prueba el siguiente.
-      // Cualquier otro error (imagen inválida, sin crédito) no se reintenta.
-      const esModeloInvalido = /model/i.test(motivo) && /(not_found|not found|invalid|does not exist|unsupported)/i.test(motivo)
+      // Solo se prueba el siguiente modelo si el fallo es por el modelo en sí.
+      // Otros errores (sin saldo, imagen inválida) no se reintentan en vano.
+      const esModeloInvalido = /model/i.test(motivo)
+        && /(not_found|not found|invalid|does not exist|unsupported|do not have access)/i.test(motivo)
       if (!esModeloInvalido) break
     }
   }

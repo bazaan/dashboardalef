@@ -30,20 +30,36 @@ export function distanciaM(lat1: number, lng1: number, lat2: number, lng2: numbe
  * Gratis y sin API key. Devuelve null si no encuentra nada.
  */
 export async function geocodificar(direccion: string, distrito?: string): Promise<{ lat: number; lng: number } | null> {
-  const q = [direccion, distrito, 'Lima', 'Perú'].filter(Boolean).join(', ')
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=pe&q=${encodeURIComponent(q)}`
-    const res: any = await $fetch(url, {
-      headers: { 'User-Agent': 'AlefDashboard/1.0 (gatwick-tracking)' },
-      timeout: 8000,
-    })
-    const hit = Array.isArray(res) ? res[0] : null
-    if (!hit?.lat || !hit?.lon) return null
-    return { lat: parseFloat(hit.lat), lng: parseFloat(hit.lon) }
-  } catch (e: any) {
-    console.error('[gatwick-tracking] geocodificar falló:', e?.message)
-    return null
+  const dir = String(direccion || '').trim()
+  if (!dir) return null
+
+  // Se prueba de lo más preciso a lo más laxo: si la numeración exacta no está
+  // mapeada en OSM, al menos ubicamos la calle (sirve para la ruta y el ETA).
+  const sinNumero = dir.replace(/\s*(n[°º]?\s*)?\d+[a-z]?\s*$/i, '').trim()
+  const intentos = [
+    [dir, distrito, 'Lima', 'Perú'],
+    sinNumero && sinNumero !== dir ? [sinNumero, distrito, 'Lima', 'Perú'] : null,
+    distrito ? [distrito, 'Lima', 'Perú'] : null,
+  ].filter(Boolean) as (string | undefined)[][]
+
+  for (const partes of intentos) {
+    const q = partes.filter(Boolean).join(', ')
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=pe&q=${encodeURIComponent(q)}`
+      const res: any = await $fetch(url, {
+        headers: { 'User-Agent': 'AlefDashboard/1.0 (gatwick-tracking)' },
+        timeout: 8000,
+      })
+      const hit = Array.isArray(res) ? res[0] : null
+      if (hit?.lat && hit?.lon) {
+        return { lat: parseFloat(hit.lat), lng: parseFloat(hit.lon) }
+      }
+    } catch (e: any) {
+      console.error(`[gatwick-tracking] geocodificar "${q}" falló:`, e?.message)
+    }
   }
+  console.warn(`[gatwick-tracking] sin coordenadas para: ${dir} (${distrito ?? '—'})`)
+  return null
 }
 
 /* ══════════════════ Chatwoot ══════════════════ */

@@ -734,46 +734,6 @@
           </v-card>
         </v-dialog>
 
-        <!-- Dialog: seguimiento creado (links) -->
-        <v-dialog v-model="showSegCreado" max-width="580">
-          <v-card v-if="segCreado">
-            <v-card-title class="pt-4" style="color:#4ade80;">
-              <v-icon icon="mdi-check-circle" start /> Seguimiento iniciado
-            </v-card-title>
-            <v-card-text>
-              <div class="seg-info-grid">
-                <div v-if="segCreado.emergencia?.edificio_nombre"><span>Edificio</span><strong>{{ segCreado.emergencia.edificio_nombre }}</strong></div>
-                <div v-if="segCreado.emergencia?.codigo_ascensor"><span>Ascensor</span><strong>{{ segCreado.emergencia.codigo_ascensor }}</strong></div>
-                <div v-if="segCreado.emergencia?.direccion"><span>Dirección</span><strong>{{ segCreado.emergencia.direccion }}<template v-if="segCreado.emergencia.distrito">, {{ segCreado.emergencia.distrito }}</template></strong></div>
-                <div><span>Técnico</span><strong>{{ segCreado.seguimiento?.tecnico_nombre }}</strong></div>
-              </div>
-
-              <v-alert v-if="!segCreado.destino_ubicado" type="warning" variant="tonal" density="compact" class="my-3">
-                No se pudo ubicar la dirección en el mapa: el seguimiento funciona igual, pero sin ruta ni ETA.
-              </v-alert>
-
-              <v-alert v-if="segCreado.aviso" :type="segCreado.aviso.fallidos ? 'warning' : 'success'"
-                variant="tonal" density="compact" class="my-3">
-                Supervisores avisados por WhatsApp ({{ segCreado.aviso.enviados }})<template v-if="segCreado.aviso.fallidos">, {{ segCreado.aviso.fallidos }} fallido(s)</template>.
-                Ellos ya pueden verte en el mapa.
-              </v-alert>
-
-              <!-- El técnico entra directo a su seguimiento: un botón, sin links que copiar -->
-              <a :href="segCreado.link_tecnico" class="btn-seguimiento">
-                <v-icon icon="mdi-map-marker-radius" size="22" />
-                <span>Iniciar mi seguimiento GPS</span>
-                <small>Se activará tu ubicación en vivo</small>
-              </a>
-
-              <p class="seg-pie">Al entrar podrás marcar “En camino”, “Atendiendo” y cerrar la emergencia.</p>
-            </v-card-text>
-            <v-card-actions>
-              <v-spacer />
-              <v-btn variant="text" @click="showSegCreado = false">Ahora no</v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-dialog>
-
         <!-- Dialog: eliminar emergencia (solo admin) -->
         <v-dialog v-model="showEliminarEmerg" max-width="460">
           <v-card v-if="emergAEliminar">
@@ -2629,9 +2589,7 @@ async function fetchEmergencias() {
    supervisores por WhatsApp y se devuelven los dos links (técnico y monitoreo). */
 const seguimientos = ref([])
 const showComenzar = ref(false)
-const showSegCreado = ref(false)
 const emergComenzar = ref(null)
-const segCreado = ref(null)
 const iniciandoSeg = ref(null)
 const comenzarForm = ref({ codigo_ascensor: '', tecnico_id: null, tecnico_nombre: '', tecnico_telefono: '' })
 
@@ -2687,11 +2645,11 @@ async function comenzarEmergencia() {
         creado_por: currentUser.value?.email || '',
       },
     })
-    segCreado.value = res
     showComenzar.value = false
-    showSegCreado.value = true
     notify(res.ya_existia ? 'Esta emergencia ya tenía un seguimiento activo' : 'Seguimiento iniciado · supervisores avisados')
-    await Promise.all([fetchEmergencias(), fetchTecnicos()])
+    // El técnico entra DIRECTO a su pantalla de seguimiento GPS: ahí marca
+    // "En camino", "Atendiendo" y cierra la emergencia.
+    window.location.href = res.link_tecnico
   } catch (e) {
     notify(e?.data?.statusMessage || 'No se pudo iniciar el seguimiento', 'error')
   } finally {
@@ -3997,50 +3955,5 @@ onUnmounted(() => {
 }
 
 /* ── Diálogo de seguimiento creado ── */
-.seg-info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-}
 
-.seg-info-grid div { display: flex; flex-direction: column; }
-.seg-info-grid span { font-size: 10.5px; opacity: .6; text-transform: uppercase; letter-spacing: .4px; }
-.seg-info-grid strong { font-size: 13.5px; }
-
-/* Botón con el que el técnico entra directo a su seguimiento GPS */
-.btn-seguimiento {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  margin-top: 6px;
-  padding: 16px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #1d4ed8, #2563eb);
-  color: #fff;
-  text-decoration: none;
-  text-align: center;
-  font-weight: 700;
-  font-size: 15.5px;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, .35);
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-
-.btn-seguimiento:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(37, 99, 235, .45);
-}
-
-.btn-seguimiento small {
-  font-weight: 400;
-  font-size: 11.5px;
-  opacity: .85;
-}
-
-.seg-pie {
-  margin: 10px 0 0;
-  text-align: center;
-  font-size: 12px;
-  opacity: .6;
-}
 </style>

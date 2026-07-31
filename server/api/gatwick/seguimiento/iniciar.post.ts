@@ -60,24 +60,41 @@ export default defineEventHandler(async (event) => {
       Array.isArray(ed.equipos) && ed.equipos.some((a: any) => String(a?.codigo || '').toUpperCase() === codigo))
 
     if (edificio) {
+      // gatwick_edificios es la FUENTE DE VERDAD: sus datos pisan lo que se
+      // haya escrito a mano en la emergencia (si no, un tipeo del operador
+      // manda al técnico a una dirección equivocada).
       const asc = (edificio.equipos || []).find((a: any) => String(a?.codigo || '').toUpperCase() === codigo)
       patch.codigo_ascensor = codigo
       patch.edificio_id     = edificio.id
       patch.edificio_nombre = edificio.nombre
       patch.distrito        = edificio.distrito
       patch.elme            = edificio.elme
-      if (!emerg.direccion) patch.direccion = edificio.direccion
-      if (!emerg.empresa_cliente) patch.empresa_cliente = edificio.nombre
-      if (asc?.tipo && !emerg.tipo_equipo) patch.tipo_equipo = asc.tipo
+      patch.direccion       = edificio.direccion || emerg.direccion
+      patch.empresa_cliente = edificio.nombre || emerg.empresa_cliente
+      if (asc?.tipo) patch.tipo_equipo = asc.tipo
+      // La dirección cambió respecto de la guardada → hay que re-geocodificar
+      if (edificio.direccion && edificio.direccion !== emerg.direccion) {
+        patch.destino_lat = null
+        patch.destino_lng = null
+      }
+    } else {
+      // El código no existe en el catálogo: se avisa en vez de seguir a ciegas
+      throw createError({
+        statusCode: 404,
+        statusMessage: `El código de ascensor "${codigo}" no existe en Clientes. Verifícalo antes de comenzar.`,
+      })
     }
   }
 
-  // ── 4. Geocodificar el destino (si aún no tiene coordenadas) ──
-  const direccionDestino = patch.direccion || emerg.direccion || edificio?.direccion || ''
-  let destinoLat = emerg.destino_lat as number | null
-  let destinoLng = emerg.destino_lng as number | null
+  // ── 4. Geocodificar el destino ──
+  // Si la dirección del edificio cambió, el paso 3 puso destino_lat en null
+  // a propósito para forzar el recálculo (no se reusan coordenadas viejas).
+  const direccionDestino = edificio?.direccion || patch.direccion || emerg.direccion || ''
+  const distritoDestino = edificio?.distrito || patch.distrito || emerg.distrito
+  let destinoLat = ('destino_lat' in patch) ? patch.destino_lat : (emerg.destino_lat as number | null)
+  let destinoLng = ('destino_lng' in patch) ? patch.destino_lng : (emerg.destino_lng as number | null)
   if ((destinoLat == null || destinoLng == null) && direccionDestino) {
-    const geo = await geocodificar(direccionDestino, patch.distrito || emerg.distrito)
+    const geo = await geocodificar(direccionDestino, distritoDestino)
     if (geo) {
       destinoLat = geo.lat; destinoLng = geo.lng
       patch.destino_lat = geo.lat; patch.destino_lng = geo.lng
@@ -137,9 +154,25 @@ export default defineEventHandler(async (event) => {
   try {
     await supabase.from('agent_tool_logs').insert({
       company_id: 'gatwick', tool_name: 'Seguimiento Emergencia',
-      input_data: { emergencia_id: emergenciaId, codigo_ascensor: codigo || null, tecnico: tecNombre },
-      output_data: { seguimiento_id: seg.id, estado: 'iniciado', destino_geocodificado: !!destinoLat, aviso },
-      status: 'success',
+      input_data: {
+        evento: 'INICIADO',
+        emergencia_id: emergenciaId,
+        codigo_ascensor: codigo || null,
+        edificio: emergFinal.edificio_nombre || emergFinal.empresa_cliente,
+        direccion: direccionDestino,
+        distrito: emergFinal.distrito,
+        elme: emergFinal.elme,
+        tecnico: tecNombre,
+        iniciado_por: sesion.email,
+      },
+      output_data: {
+        seguimiento_id: seg.id, estado: 'iniciado',
+        destino_geocodificado: destinoLat != null,
+        destino: destinoLat != null ? `${destinoLat},${destinoLng}` : null,
+        supervisores_avisados: aviso.enviados,
+        supervisores_fallidos: aviso.fallidos,
+      },
+      status: aviso.fallidos ? 'warning' : 'success',
     })
   } catch {}
 

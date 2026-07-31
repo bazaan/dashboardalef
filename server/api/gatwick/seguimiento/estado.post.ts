@@ -111,10 +111,26 @@ export default defineEventHandler(async (event) => {
   const aviso = await avisarSupervisores(supabase, mensaje)
 
   try {
+    const e: any = emerg || seg.snapshot || {}
     await supabase.from('agent_tool_logs').insert({
       company_id: 'gatwick', tool_name: 'Seguimiento Emergencia',
-      input_data: { seguimiento_id: seg.id, de: seg.estado, a: nuevo, distancia_m: dist },
-      output_data: { aviso }, status: 'success',
+      input_data: {
+        evento: `${seg.estado} → ${nuevo}`,
+        seguimiento_id: seg.id, emergencia_id: seg.emergencia_id,
+        tecnico: seg.tecnico_nombre,
+        edificio: e.edificio_nombre || e.empresa_cliente,
+        codigo_ascensor: e.codigo_ascensor,
+        direccion: e.direccion,
+        distancia_destino_m: dist,
+        notas: patch.notas_cierre ?? null,
+      },
+      output_data: {
+        estado: nuevo,
+        supervisores_avisados: aviso.enviados,
+        supervisores_fallidos: aviso.fallidos,
+        eta_segundos: segAct.eta_segundos ?? null,
+      },
+      status: aviso.fallidos ? 'warning' : 'success',
     })
   } catch {}
 

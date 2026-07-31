@@ -2524,7 +2524,7 @@ const deleteItem = async (item: any) => {
 }
 
 /* ---------------- Estado General ---------------- */
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('alefcompany')
 
 // ======================== DEV · AGENT LOGS ========================
 const devLogs                = ref<any[]>([])

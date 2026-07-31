@@ -271,7 +271,7 @@ import { useTheme } from 'vuetify'
 
 
 // Estado reactivo
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('pruebas')
 const timeRange = ref('Last 7 days')
 const rowsPerPage = ref('10')
 const activeTab = ref('outline')

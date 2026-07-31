@@ -2160,7 +2160,7 @@ async function saveCompra() {
 }
 
 /* ---------------- Estado General ---------------- */
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('alegrated')
 const facturacionTab = ref('resumen')
 const activeTab = ref('compras')
 const showUserMenu = ref(false)

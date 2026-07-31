@@ -2802,7 +2802,7 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig') => {
 }
 
 /* ---------------- Estado General ---------------- */
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('solari')
 const facturacionTab = ref('resumen')
 
 const showUserMenu = ref(false)

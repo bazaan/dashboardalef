@@ -2565,7 +2565,7 @@ const deleteItem = async (item: any) => {
 }
 
 /* ---------------- Estado General ---------------- */
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('estasconsuerte')
 const facturacionTab = ref('cobro_manual')
 const activeTab = ref('ventas')
 const showUserMenu = ref(false)

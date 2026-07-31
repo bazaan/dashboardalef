@@ -855,7 +855,7 @@ const logoUrl = '/tradecars-logo.png'
 
 const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('tradecars')
 const dashTab = ref('solicitudes')
 
 const snackbar = ref({ show: false, text: '', color: 'success' })

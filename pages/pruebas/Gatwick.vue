@@ -1936,7 +1936,7 @@ const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('gatwick')
 
 const menuItems = [
   { id: 'dashboard',    label: 'Dashboard',    icon: 'mdi-view-dashboard' },

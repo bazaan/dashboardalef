@@ -6789,7 +6789,7 @@ const deletePatient = async (item: any, type: 'wpp' | 'fbig' | 'tiktok') => {
 }
 
 /* ---------------- Estado General ---------------- */
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('healup')
 const facturacionTab = ref('cobro_atencion')
 
 /* ---------------- Boletas Pendientes ---------------- */

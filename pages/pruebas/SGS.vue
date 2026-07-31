@@ -434,7 +434,7 @@ const client = useSupabaseClient()
 const logoUrl = '/sgs-logo.png'
 const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('sgs')
 const dashTab = ref('recientes')
 
 const snackbar = ref({ show: false, text: '', color: 'success' })

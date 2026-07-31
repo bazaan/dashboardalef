@@ -531,7 +531,7 @@ const isDark = ref(true)
 function toggleTheme() { isDark.value = !isDark.value }
 
 // ── Navegación ────────────────────────────────────────────────────────────────
-const activeView = ref('dashboard')
+const activeView = useVistaPersistente('fitmain')
 
 const menuItems = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard',        id: 'dashboard' },

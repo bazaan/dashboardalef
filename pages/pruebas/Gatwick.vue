@@ -728,39 +728,28 @@
                 <div><span>Técnico</span><strong>{{ segCreado.seguimiento?.tecnico_nombre }}</strong></div>
               </div>
 
-              <v-alert :type="segCreado.destino_ubicado ? 'success' : 'warning'" variant="tonal" density="compact" class="my-3">
-                <template v-if="segCreado.destino_ubicado">Destino ubicado en el mapa — el técnico verá la ruta y el ETA.</template>
-                <template v-else>No se pudo ubicar la dirección en el mapa: el seguimiento funciona igual, pero sin ruta ni geofence.</template>
+              <v-alert v-if="!segCreado.destino_ubicado" type="warning" variant="tonal" density="compact" class="my-3">
+                No se pudo ubicar la dirección en el mapa: el seguimiento funciona igual, pero sin ruta ni ETA.
               </v-alert>
-
-              <div class="link-box">
-                <div class="link-label">🔗 Link del TÉCNICO (envíaselo por WhatsApp)</div>
-                <div class="link-row">
-                  <input :value="segCreado.link_tecnico" readonly class="link-input" @focus="(e: any) => e.target.select()" />
-                  <v-btn size="small" variant="tonal" @click="copiar(segCreado.link_tecnico)">Copiar</v-btn>
-                  <v-btn size="small" variant="tonal" color="success" :href="waTecnico" target="_blank">
-                    <v-icon icon="mdi-whatsapp" />
-                  </v-btn>
-                </div>
-              </div>
-
-              <div class="link-box">
-                <div class="link-label">🗺️ Link de MONITOREO (ya enviado a los supervisores)</div>
-                <div class="link-row">
-                  <input :value="segCreado.link_supervisor" readonly class="link-input" @focus="(e: any) => e.target.select()" />
-                  <v-btn size="small" variant="tonal" @click="copiar(segCreado.link_supervisor)">Copiar</v-btn>
-                  <v-btn size="small" variant="tonal" color="primary" :href="segCreado.link_supervisor" target="_blank">Abrir</v-btn>
-                </div>
-              </div>
 
               <v-alert v-if="segCreado.aviso" :type="segCreado.aviso.fallidos ? 'warning' : 'success'"
-                variant="tonal" density="compact" class="mt-3">
-                WhatsApp a supervisores: {{ segCreado.aviso.enviados }} enviado(s)<template v-if="segCreado.aviso.fallidos">, {{ segCreado.aviso.fallidos }} fallido(s)</template>
+                variant="tonal" density="compact" class="my-3">
+                Supervisores avisados por WhatsApp ({{ segCreado.aviso.enviados }})<template v-if="segCreado.aviso.fallidos">, {{ segCreado.aviso.fallidos }} fallido(s)</template>.
+                Ellos ya pueden verte en el mapa.
               </v-alert>
+
+              <!-- El técnico entra directo a su seguimiento: un botón, sin links que copiar -->
+              <a :href="segCreado.link_tecnico" class="btn-seguimiento">
+                <v-icon icon="mdi-map-marker-radius" size="22" />
+                <span>Iniciar mi seguimiento GPS</span>
+                <small>Se activará tu ubicación en vivo</small>
+              </a>
+
+              <p class="seg-pie">Al entrar podrás marcar “En camino”, “Atendiendo” y cerrar la emergencia.</p>
             </v-card-text>
             <v-card-actions>
               <v-spacer />
-              <v-btn variant="flat" color="primary" @click="showSegCreado = false">Listo</v-btn>
+              <v-btn variant="text" @click="showSegCreado = false">Ahora no</v-btn>
             </v-card-actions>
           </v-card>
         </v-dialog>
@@ -2587,22 +2576,6 @@ async function comenzarEmergencia() {
   }
 }
 
-/** Link listo para mandarle el seguimiento al técnico por WhatsApp. */
-const waTecnico = computed(() => {
-  const s = segCreado.value
-  if (!s) return '#'
-  const tel = String(s.seguimiento?.tecnico_telefono || '').replace(/\D/g, '')
-  const num = tel.length === 9 ? `51${tel}` : tel
-  const e = s.emergencia || {}
-  const msg = `🚨 EMERGENCIA #${e.id}\n${e.edificio_nombre || e.empresa_cliente || ''}\n${e.direccion || ''}${e.codigo_ascensor ? `\nAscensor: ${e.codigo_ascensor}` : ''}\n\nAbre este link para iniciar el seguimiento:\n${s.link_tecnico}`
-  return num ? `https://wa.me/${num}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
-})
-
-async function copiar(txt) {
-  try { await navigator.clipboard.writeText(txt); notify('Link copiado') }
-  catch { notify('No se pudo copiar', 'error') }
-}
-
 async function saveEmergencia() {
   savingEmerg.value = true
   try {
@@ -3904,27 +3877,40 @@ onUnmounted(() => {
 .seg-info-grid span { font-size: 10.5px; opacity: .6; text-transform: uppercase; letter-spacing: .4px; }
 .seg-info-grid strong { font-size: 13.5px; }
 
-.link-box {
-  margin-top: 12px;
-  padding: 11px 12px;
-  border-radius: 10px;
-  background: rgba(128, 128, 128, .09);
-  border: 1px solid rgba(128, 128, 128, .2);
+/* Botón con el que el técnico entra directo a su seguimiento GPS */
+.btn-seguimiento {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  color: #fff;
+  text-decoration: none;
+  text-align: center;
+  font-weight: 700;
+  font-size: 15.5px;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, .35);
+  transition: transform .12s ease, box-shadow .12s ease;
 }
 
-.link-label { font-size: 12px; font-weight: 600; margin-bottom: 7px; opacity: .85; }
+.btn-seguimiento:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, .45);
+}
 
-.link-row { display: flex; gap: 7px; align-items: center; }
+.btn-seguimiento small {
+  font-weight: 400;
+  font-size: 11.5px;
+  opacity: .85;
+}
 
-.link-input {
-  flex: 1;
-  min-width: 0;
-  padding: 7px 9px;
-  border-radius: 7px;
-  border: 1px solid rgba(128, 128, 128, .3);
-  background: rgba(0, 0, 0, .22);
-  color: inherit;
+.seg-pie {
+  margin: 10px 0 0;
+  text-align: center;
   font-size: 12px;
-  font-family: monospace;
+  opacity: .6;
 }
 </style>

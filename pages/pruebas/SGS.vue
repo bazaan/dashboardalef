@@ -186,30 +186,69 @@
               </v-alert>
             </div>
 
-            <div class="form-section-title">Identificación (la llave del sistema)</div>
+            <!-- 1 · IDENTIFICACIÓN -->
+            <div class="form-section-title">1 · Identificación</div>
             <div class="form-grid-3">
-              <v-text-field v-model="form.n_orden" label="N° de Orden (OLxxxxxx-xx) *" density="compact"
+              <v-text-field v-model="form.n_orden" label="N° de Orden (OLxxxxxx-xx)" density="compact"
                 placeholder="OL218122-01" hide-details :error="!!form.n_orden && !RE_ORDEN.test(form.n_orden.trim().toUpperCase())" />
-              <v-text-field v-model="form.n_ticket" label="N° de Ticket de balanza *" density="compact" placeholder="TK26-2976" hide-details />
-              <v-text-field v-model="form.sublote" label="Sublote (~1.000 t)" density="compact" placeholder="SL-001" hide-details />
+              <v-text-field v-model="form.n_ticket" label="N° de Ticket de balanza *" density="compact" placeholder="N011711" hide-details />
+              <v-text-field v-model="form.guia_remision" label="Guía de remisión" density="compact" hide-details />
             </div>
-            <p class="field-hint">El N° de orden NO viene impreso en el ticket: lo asigna el encargado. Sin él, nada entra (Regla §4.1).</p>
+            <v-alert v-if="!form.n_orden?.trim()" type="warning" variant="tonal" density="compact" class="mt-2">
+              Sin N° de orden el ticket <strong>se guarda igual</strong> en la bandeja
+              <strong>PENDIENTE_OL</strong> (Regla §4.1.c): no entra al consolidado ni arranca el TAT,
+              pero no se pierde. Se le asigna el OL después.
+            </v-alert>
+            <p v-else class="field-hint">El OL no viene impreso: lo asigna el encargado desde el sistema de SGS.</p>
 
-            <div class="form-section-title" style="margin-top:18px;">Datos del ticket</div>
+            <!-- 2 · TRANSPORTE -->
+            <div class="form-section-title" style="margin-top:18px;">2 · Transporte</div>
             <div class="form-grid-3">
-              <v-text-field v-model="form.fecha" label="Fecha del ticket *" density="compact" placeholder="11/07/2026" hide-details />
-              <v-select v-model="form.sede" :items="['Matarani', 'Pisco']" label="Sede" density="compact" hide-details />
-              <v-text-field v-model="form.placa" label="Placa *" density="compact" placeholder="CLR-726" hide-details />
-              <v-text-field v-model="form.cliente" label="Cliente" density="compact" placeholder="CLIENTE A" hide-details />
-              <v-text-field v-model="form.calidad_material" label="Calidad / Material *" density="compact" placeholder="CALIDAD X" hide-details />
+              <v-text-field v-model="form.placa" label="Placa (tracto) *" density="compact" placeholder="CHT-845" hide-details />
+              <v-text-field v-model="form.carreta" label="Placa (carreta)" density="compact" hide-details />
+              <v-text-field v-model="form.chofer" label="Chofer" density="compact" hide-details />
+              <v-text-field v-model="form.transportista" label="Transportista" density="compact" hide-details />
+              <v-text-field v-model="form.ruc_transportista" label="RUC transportista" density="compact" hide-details />
+              <v-text-field v-model="form.brevete" label="Brevete" density="compact" hide-details />
             </div>
 
-            <div class="form-section-title" style="margin-top:18px;">Pesos (kg)</div>
+            <!-- 3 · PARTES -->
+            <div class="form-section-title" style="margin-top:18px;">3 · Partes</div>
             <div class="form-grid-3">
-              <v-text-field v-model.number="form.peso_bruto" type="number" label="Peso bruto *" density="compact" hide-details />
-              <v-text-field v-model.number="form.tara" type="number" label="Tara *" density="compact" hide-details />
-              <v-text-field v-model.number="form.peso_neto" type="number" label="Peso neto *" density="compact" hide-details
+              <v-text-field v-model="form.emisor" label="Emisor del ticket" density="compact" placeholder="MINERA FERROBAMBA SA" hide-details />
+              <v-text-field v-model="form.ruc_emisor" label="RUC emisor" density="compact" hide-details />
+              <v-text-field v-model="form.cliente" label="Cliente" density="compact" hide-details />
+            </div>
+
+            <!-- 4 · MATERIAL Y RUTA -->
+            <div class="form-section-title" style="margin-top:18px;">4 · Material y ruta</div>
+            <div class="form-grid-3">
+              <v-text-field v-model="form.cod_material" label="Cód. material" density="compact" hide-details />
+              <v-text-field v-model="form.material" label="Material (del ticket)" density="compact" placeholder="PRODUCTO" hide-details />
+              <v-text-field v-model="form.almacen" label="Almacén / Zona" density="compact" hide-details />
+              <v-text-field v-model="form.origen" label="Origen" density="compact" hide-details />
+              <v-text-field v-model="form.destino" label="Destino" density="compact" placeholder="PARACAS" hide-details />
+              <v-text-field :model-value="sedeDerivada || '—'" label="Sede (derivada del destino)" density="compact"
+                readonly hide-details class="campo-derivado" />
+            </div>
+            <p class="field-hint">
+              El “material” es lo que imprime el ticket, <strong>no la calidad</strong> (esa viene de la orden y se completa después).
+              La sede se deriva del destino: no se elige a mano.
+            </p>
+
+            <div class="form-section-title" style="margin-top:18px;">5 · Pesaje</div>
+            <div class="form-grid-3">
+              <v-text-field v-model="form.fecha_ingreso" label="Fecha entrada *" density="compact" placeholder="28/06/2026" hide-details />
+              <v-text-field v-model="form.hora_ingreso" label="Hora entrada" density="compact" placeholder="07:44:15" hide-details />
+              <v-text-field v-model="form.fecha_salida" label="Fecha salida" density="compact" hide-details />
+              <v-text-field v-model="form.hora_salida" label="Hora salida" density="compact" hide-details />
+            </div>
+            <div class="form-grid-3" style="margin-top:12px;">
+              <v-text-field v-model.number="form.peso_bruto" type="number" label="Peso bruto (kg) *" density="compact" hide-details />
+              <v-text-field v-model.number="form.tara" type="number" label="Tara (kg) *" density="compact" hide-details />
+              <v-text-field v-model.number="form.peso_neto" type="number" label="Peso neto (kg) *" density="compact" hide-details
                 :hint="netoSugerido !== null ? `Sugerido: ${netoSugerido}` : ''" persistent-hint />
+              <v-text-field :model-value="netoTm" label="Neto (TM) — derivado" density="compact" readonly hide-details class="campo-derivado" />
             </div>
             <v-alert v-if="netoDescuadre" type="warning" variant="tonal" density="compact" class="mt-2">
               El neto no coincide con bruto − tara ({{ netoSugerido }}). Puedes guardarlo igual: el Agente Supervisor lo marcará para revisión.
@@ -228,12 +267,30 @@
               </v-expansion-panel>
             </v-expansion-panels>
 
-            <div class="form-section-title" style="margin-top:18px;">Análisis (motor TAT)</div>
-            <div class="form-grid-3">
-              <v-text-field v-model="form.fecha_ingreso_analisis" type="date" label="Fecha ingreso a análisis" density="compact"
-                hide-details hint="Inicia el reloj TAT" persistent-hint />
-              <v-text-field v-model.number="form.tat_dias" type="number" label="TAT contractual (días)" density="compact" hide-details />
-            </div>
+            <!-- 6 · EMBARQUE — solo TISUR lo imprime -->
+            <v-expansion-panels class="mt-4" variant="accordion">
+              <v-expansion-panel title="6 · Embarque (solo tickets TISUR: nave, BL, régimen)">
+                <v-expansion-panel-text>
+                  <div class="form-grid-3">
+                    <v-text-field v-model="form.nave" label="Nave" density="compact" hide-details />
+                    <v-text-field v-model="form.bl_ne" label="BL / N°" density="compact" hide-details />
+                    <v-text-field v-model="form.item_bl" label="Ítem BL" density="compact" hide-details />
+                    <v-text-field v-model="form.regimen" label="Régimen" density="compact" placeholder="EXPORTACION" hide-details />
+                    <v-text-field v-model="form.bultos" label="Bultos" density="compact" hide-details />
+                  </div>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+
+            <!-- 8 · CONTROL -->
+            <div class="form-section-title" style="margin-top:18px;">8 · Control</div>
+            <v-text-field v-model="form.observaciones_ticket" label="Observaciones impresas en el ticket" density="compact" hide-details />
+
+            <v-alert type="info" variant="tonal" density="compact" class="mt-4">
+              El <strong>sublote</strong> y el <strong>ingreso a análisis</strong> ya no se cargan acá:
+              el sublote se calcula solo (corte a ~1.000 t) y el análisis se registra
+              <strong>por sublote</strong> desde su pestaña, que es como trabaja el laboratorio.
+            </v-alert>
 
             <v-divider class="my-5" />
             <v-checkbox v-model="form.verificado_humano" color="success" density="compact" hide-details
@@ -241,7 +298,8 @@
 
             <div style="display:flex; gap:10px; margin-top:16px; align-items:center; flex-wrap:wrap;">
               <v-btn color="primary" variant="flat" :loading="guardando" :disabled="!form.verificado_humano" @click="guardarTicket">
-                <v-icon icon="mdi-content-save" start /> Catalogar ticket
+                <v-icon icon="mdi-content-save" start />
+                {{ form.n_orden?.trim() ? 'Catalogar ticket' : 'Guardar como PENDIENTE_OL' }}
               </v-btn>
               <span v-if="!form.verificado_humano" class="field-hint">Marca la verificación humana para habilitar el guardado.</span>
             </div>
@@ -293,7 +351,9 @@
               <span class="table-title">Tickets catalogados ({{ ticketsFiltrados.length }})</span>
             </v-card-title>
             <div class="filtros-bar">
-              <v-select v-model="fSede" :items="['todas','Matarani','Pisco']" density="compact" hide-details
+              <v-select v-model="fEstado" :items="['todos','catalogado','pendiente_ol']" density="compact" hide-details
+                variant="outlined" label="Estado" class="filtro" />
+              <v-select v-model="fSede" :items="['todas','Matarani','Pisco','Ilo','Chimbote','Callao']" density="compact" hide-details
                 variant="outlined" label="Sede" class="filtro" />
               <v-select v-model="fTat" :items="['todos','en_plazo','por_vencer','vencido','sin_fecha']" density="compact" hide-details
                 variant="outlined" label="TAT" class="filtro" />
@@ -317,6 +377,145 @@
             </v-data-table>
           </v-card>
         </div>
+      </div>
+
+      <!-- ========== VISTA: BANDEJA PENDIENTE_OL (§4.1.c) ========== -->
+      <div v-else-if="activeView === 'pendientes'" class="view-container">
+        <header class="top-header">
+          <h1>Pendientes de OL</h1>
+          <button class="btn-primary" @click="fetchTickets"><v-icon icon="mdi-refresh" size="16" /><span>Actualizar</span></button>
+        </header>
+        <div class="content-area">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Tickets ingresados <strong>sin N° de orden</strong>. Están completos y con su foto, pero
+            <strong>no entran al consolidado ni arrancan el TAT</strong> hasta que se les asigne el OL.
+            El OL no viene impreso en el ticket: lo escribe el encargado desde el sistema de SGS.
+          </v-alert>
+
+          <div v-if="!pendientes.length" class="sin-foto" style="padding:50px;">
+            <v-icon icon="mdi-check-circle-outline" size="40" />
+            <p>No hay tickets pendientes de orden 🎉</p>
+          </div>
+
+          <div v-else class="pend-grid">
+            <v-card v-for="t in pendientes" :key="t.id" class="pend-card" flat>
+              <div class="pend-head">
+                <div>
+                  <strong>{{ t.n_ticket }}</strong>
+                  <small>{{ t.formato_ticket || 'formato ?' }} · {{ t.fecha_ingreso || t.fecha || 's/fecha' }}</small>
+                </div>
+                <v-chip size="x-small" color="warning" variant="flat">PENDIENTE_OL</v-chip>
+              </div>
+              <div class="pend-datos">
+                <span v-if="t.placa">🚚 {{ t.placa }}</span>
+                <span v-if="t.cliente">🏭 {{ String(t.cliente).slice(0, 22) }}</span>
+                <span v-if="t.peso_neto">⚖️ {{ Number(t.peso_neto).toLocaleString('es-PE') }} kg</span>
+                <span v-if="t.sede">📍 {{ t.sede }}</span>
+              </div>
+              <div class="pend-ol">
+                <v-text-field v-model="olAsignar[t.id]" label="N° de Orden (OLxxxxxx-xx)" density="compact"
+                  hide-details placeholder="OL217946-01"
+                  :error="!!olAsignar[t.id] && !RE_ORDEN.test(String(olAsignar[t.id]).trim().toUpperCase())" />
+                <v-btn color="success" variant="flat" size="small" :loading="asignandoOl === t.id"
+                  :disabled="!olAsignar[t.id] || !RE_ORDEN.test(String(olAsignar[t.id]).trim().toUpperCase())"
+                  @click="asignarOl(t)">
+                  Asignar
+                </v-btn>
+              </div>
+              <div class="pend-pie">
+                <v-btn size="x-small" variant="text" @click="abrirDetalle(t)">Ver ficha completa</v-btn>
+                <img v-if="t.imagen_ticket" :src="t.imagen_ticket" class="pend-thumb" @click="abrirDetalle(t)" />
+              </div>
+            </v-card>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== VISTA: SUBLOTES (§2.3 · §2.6 · §2.8) ========== -->
+      <div v-else-if="activeView === 'sublotes'" class="view-container">
+        <header class="top-header">
+          <h1>Sublotes</h1>
+          <button class="btn-primary" @click="fetchSublotes"><v-icon icon="mdi-refresh" size="16" /><span>Actualizar</span></button>
+        </header>
+        <div class="content-area">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            El sublote se arma solo: acumula el peso neto de los tickets hasta ~1.000 t y corta.
+            <strong>El TAT del laboratorio corre por sublote</strong> (un job de análisis cubre todo el
+            sublote), no camión por camión.
+          </v-alert>
+
+          <div v-if="!sublotes.length" class="sin-foto" style="padding:50px;">
+            <v-icon icon="mdi-layers-off" size="40" />
+            <p>Aún no hay sublotes. Se crean al catalogar tickets con N° de orden.</p>
+          </div>
+
+          <div v-else class="sub-grid">
+            <v-card v-for="s in sublotes" :key="s.id" class="sub-card" flat>
+              <div class="sub-head">
+                <div>
+                  <strong>{{ s.codigo }}</strong>
+                  <small>{{ s.n_orden || '—' }}<template v-if="s.sede"> · {{ s.sede }}</template></small>
+                </div>
+                <span class="sem-chip" :class="'tat-' + s.tat_estado">{{ semTat(s.tat_estado) }}</span>
+              </div>
+
+              <div class="sub-barra">
+                <div class="sub-barra-fill" :style="{ width: pctSublote(s) + '%', background: s.cerrado ? '#6b7280' : '#2980b9' }"></div>
+              </div>
+              <div class="sub-meta">
+                <span>{{ Number(s.peso_neto_tm || 0).toFixed(1) }} / {{ Number(s.capacidad_tm || 1000).toFixed(0) }} t</span>
+                <span>{{ s.tickets_count || 0 }} camiones</span>
+                <span>{{ s.cerrado ? '🔒 cerrado' : '🟢 abierto' }}</span>
+              </div>
+
+              <div v-if="s.fecha_ingreso_analisis" class="sub-lab">
+                🧪 Análisis: {{ s.fecha_ingreso_analisis }} · TAT {{ s.tat_dias }}d
+                <template v-if="s.tat_dias_restantes != null"> · {{ s.tat_dias_restantes }}d restantes</template>
+                <template v-if="s.job_laboratorio"> · job {{ s.job_laboratorio }}</template>
+              </div>
+
+              <div class="sub-acciones">
+                <v-btn size="small" :color="s.fecha_ingreso_analisis ? 'secondary' : 'primary'"
+                  :variant="s.fecha_ingreso_analisis ? 'tonal' : 'flat'" @click="abrirAnalisis(s)">
+                  <v-icon icon="mdi-flask" start size="16" />
+                  {{ s.fecha_ingreso_analisis ? 'Editar análisis' : 'Registrar ingreso a análisis' }}
+                </v-btn>
+                <v-btn size="small" variant="text" @click="verTicketsSublote(s)">
+                  Ver {{ s.tickets_count || 0 }} tickets
+                </v-btn>
+              </div>
+            </v-card>
+          </div>
+        </div>
+
+        <!-- Dialog: registrar ingreso a análisis -->
+        <v-dialog v-model="showAnalisis" max-width="480" persistent>
+          <v-card v-if="subloteAnalisis">
+            <v-card-title class="pt-4">Ingreso a análisis · {{ subloteAnalisis.codigo }}</v-card-title>
+            <v-card-text>
+              <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                Se sellarán de una vez los <strong>{{ subloteAnalisis.tickets_count || 0 }} tickets</strong>
+                del sublote y arrancará el reloj TAT.
+              </v-alert>
+              <v-text-field v-model="analisisForm.fecha" type="date" label="Fecha de ingreso a análisis *"
+                density="compact" hide-details class="mb-3" />
+              <v-text-field v-model.number="analisisForm.tat_dias" type="number" label="TAT contractual (días)"
+                density="compact" hide-details class="mb-3"
+                hint="4 es el promedio observado; SGS aún no dio el contractual por cliente" persistent-hint />
+              <v-text-field v-model="analisisForm.job" label="Job de laboratorio (opcional)" density="compact"
+                hide-details placeholder="Fe, Sizing…" />
+              <v-checkbox v-model="analisisForm.cerrar" label="Cerrar el sublote aunque no llegue a 1.000 t"
+                density="compact" hide-details class="mt-2" />
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="showAnalisis = false">Cancelar</v-btn>
+              <v-btn color="primary" variant="flat" :loading="registrandoAnalisis" @click="registrarAnalisis">
+                Registrar y sellar
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
       </div>
 
       <!-- ========== VISTA: ESCALAMIENTOS TAT ========== -->
@@ -362,78 +561,70 @@
       <SettingsView v-else-if="activeView === 'settings'" company-id="sgs" :current-user-role="currentUser?.role" />
     </div>
 
-    <!-- ========== DRILL-DOWN DE TICKET ========== -->
-    <v-dialog :model-value="!!detalle" max-width="860" @update:model-value="detalle = null" scrollable>
+    <!-- ========== DRILL-DOWN DE TICKET (8 secciones · §2.4) ========== -->
+    <v-dialog :model-value="!!detalle" max-width="1000" @update:model-value="cerrarDetalle" scrollable>
       <v-card v-if="detalle">
         <v-card-title class="pt-4" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <b>{{ detalle.n_orden }}</b> · {{ detalle.n_ticket }}
+          <b>{{ detalle.n_orden || 'SIN ORDEN' }}</b> · {{ detalle.n_ticket }}
+          <span v-if="detalle.estado === 'pendiente_ol'" class="sem-chip est-pendiente">🟠 PENDIENTE_OL</span>
           <span class="sem-chip" :class="'tat-' + detalle.tat_estado">{{ semTat(detalle.tat_estado) }}</span>
           <span class="sem-chip" :class="'res-' + detalle.resultado_estado">{{ semRes(detalle.resultado_estado) }}</span>
+          <v-chip v-if="detalle.formato_ticket" size="x-small" variant="tonal" style="text-transform:uppercase;">
+            {{ detalle.formato_ticket }}
+          </v-chip>
+          <v-spacer />
+          <v-btn v-if="!editando" size="small" variant="tonal" @click="editando = true">
+            <v-icon icon="mdi-pencil" start /> Editar
+          </v-btn>
         </v-card-title>
+
         <v-card-text>
-          <div class="detalle-grid">
-            <div class="detalle-datos">
-              <div class="sol-campos">
-                <div class="sol-campo"><span>Fecha ticket</span><strong>{{ detalle.fecha || '—' }}</strong></div>
-                <div class="sol-campo"><span>Sede</span><strong>{{ detalle.sede || '—' }}</strong></div>
-                <div class="sol-campo"><span>Cliente</span><strong>{{ detalle.cliente || '—' }}</strong></div>
-                <div class="sol-campo"><span>Calidad</span><strong>{{ detalle.calidad_material || '—' }}</strong></div>
-                <div class="sol-campo"><span>Placa</span><strong>{{ detalle.placa || '—' }}</strong></div>
-                <div class="sol-campo"><span>Sublote</span><strong>{{ detalle.sublote || '—' }}</strong></div>
-                <div class="sol-campo"><span>Peso bruto</span><strong>{{ kg(detalle.peso_bruto) }}</strong></div>
-                <div class="sol-campo"><span>Tara</span><strong>{{ kg(detalle.tara) }}</strong></div>
-                <div class="sol-campo"><span>Peso neto</span><strong>{{ kg(detalle.peso_neto) }}</strong></div>
-                <div class="sol-campo"><span>Ingreso a análisis</span><strong>{{ detalle.fecha_ingreso_analisis || '—' }}</strong></div>
-                <div class="sol-campo"><span>TAT contractual</span><strong>{{ detalle.tat_dias }} días</strong></div>
-                <div class="sol-campo"><span>Días restantes</span><strong>{{ detalle.tat_dias_restantes ?? '—' }}</strong></div>
-                <div class="sol-campo"><span>Catalogado por</span><strong>{{ detalle.created_by || '—' }}</strong></div>
-                <div class="sol-campo"><span>Verificación humana</span><strong>{{ detalle.verificado_humano ? 'Sí ✔' : 'No' }}</strong></div>
-              </div>
+          <v-alert v-if="editando" type="info" variant="tonal" density="compact" class="mb-3">
+            Todo campo se puede corregir después del ingreso (Regla §4.8). Los campos
+            ⚙️ calculados y 🧪 de laboratorio no se editan acá.
+          </v-alert>
+          <v-alert v-if="detalle.supervision === 'revisar'" type="warning" variant="tonal" density="compact" class="mb-3">
+            <b>Agente Supervisor — revisar ({{ detalle.supervision_severidad }}):</b> {{ detalle.supervision_obs }}
+          </v-alert>
 
-              <div v-if="detalle.balanza2_nombre" class="mt-3">
-                <div class="field-hint" style="font-weight:600;">Segunda balanza — {{ detalle.balanza2_nombre }}</div>
-                <div class="sol-campos mt-1">
-                  <div class="sol-campo"><span>Bruto</span><strong>{{ kg(detalle.balanza2_bruto) }}</strong></div>
-                  <div class="sol-campo"><span>Tara</span><strong>{{ kg(detalle.balanza2_tara) }}</strong></div>
-                  <div class="sol-campo"><span>Neto</span><strong>{{ kg(detalle.balanza2_neto) }}</strong></div>
-                </div>
-              </div>
+          <SGSTicketSecciones :ticket="detalle" :sublote="subloteDe(detalle)" :editando="editando"
+            @update:borrador="v => borradorEdicion = v" />
 
-              <v-alert v-if="detalle.supervision === 'revisar'" type="warning" variant="tonal" density="compact" class="mt-3">
-                <b>Agente Supervisor — revisar ({{ detalle.supervision_severidad }}):</b> {{ detalle.supervision_obs }}
-              </v-alert>
-
-              <div class="mt-4">
-                <div class="field-hint" style="font-weight:600; margin-bottom:6px;">Semáforo de resultado (E):</div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                  <v-btn v-for="e in (['no_esta','listo','leido'] as const)" :key="e" size="small"
-                    :variant="detalle.resultado_estado === e ? 'flat' : 'tonal'"
-                    :color="e === 'no_esta' ? 'error' : e === 'listo' ? 'warning' : 'success'"
-                    :loading="cambiandoResultado === e" @click="cambiarResultado(e)">
-                    {{ semRes(e) }}
-                  </v-btn>
-                </div>
-              </div>
-
-              <div v-if="escalasDeDetalle.length" class="mt-4">
-                <div class="field-hint" style="font-weight:600; margin-bottom:6px;">Avisos TAT de esta orden:</div>
-                <div v-for="a in escalasDeDetalle" :key="a.id" style="font-size:13px; padding:4px 0; border-bottom:1px dashed rgba(128,128,128,.25);">
-                  <v-chip size="x-small" variant="flat" :color="a.nivel === 3 ? 'error' : a.nivel === 2 ? 'warning' : 'info'" class="mr-2">N{{ a.nivel }}</v-chip>
-                  {{ a.destinatario }} · {{ fechaHora(a.created_at) }}
-                </div>
-              </div>
+          <!-- Semáforo de resultado -->
+          <div v-if="!editando" class="mt-4">
+            <div class="field-hint" style="font-weight:600; margin-bottom:6px;">Semáforo de resultado (E):</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <v-btn v-for="e in (['no_esta','listo','leido'] as const)" :key="e" size="small"
+                :variant="detalle.resultado_estado === e ? 'flat' : 'tonal'"
+                :color="e === 'no_esta' ? 'error' : e === 'listo' ? 'warning' : 'success'"
+                :loading="cambiandoResultado === e" @click="cambiarResultado(e)">
+                {{ semRes(e) }}
+              </v-btn>
             </div>
+          </div>
 
-            <div class="detalle-foto">
-              <div class="field-hint" style="font-weight:600; margin-bottom:6px;">Foto del ticket</div>
-              <a v-if="detalle.imagen_ticket" :href="detalle.imagen_ticket" target="_blank">
-                <img :src="detalle.imagen_ticket" alt="Ticket" style="width:100%; border-radius:10px; border:1px solid rgba(128,128,128,.3);" />
-              </a>
-              <div v-else class="sin-foto"><v-icon icon="mdi-image-off-outline" size="34" /><p>Sin foto adjunta</p></div>
+          <div v-if="escalasDeDetalle.length && !editando" class="mt-4">
+            <div class="field-hint" style="font-weight:600; margin-bottom:6px;">Avisos TAT de este sublote:</div>
+            <div v-for="a in escalasDeDetalle" :key="a.id" style="font-size:13px; padding:4px 0; border-bottom:1px dashed rgba(128,128,128,.25);">
+              <v-chip size="x-small" variant="flat" :color="a.nivel === 3 ? 'error' : a.nivel === 2 ? 'warning' : 'info'" class="mr-2">N{{ a.nivel }}</v-chip>
+              {{ a.destinatario }} · {{ fechaHora(a.created_at) }}
             </div>
           </div>
         </v-card-text>
-        <v-card-actions><v-spacer /><v-btn variant="text" @click="detalle = null">Cerrar</v-btn></v-card-actions>
+
+        <v-card-actions>
+          <span v-if="detalle.editado_por" class="field-hint" style="margin-left:12px;">
+            Última edición: {{ detalle.editado_por }} · {{ fechaHora(detalle.editado_en) }}
+          </span>
+          <v-spacer />
+          <template v-if="editando">
+            <v-btn variant="text" @click="editando = false">Cancelar</v-btn>
+            <v-btn color="primary" variant="flat" :loading="guardandoEdicion" @click="guardarEdicion">
+              <v-icon icon="mdi-content-save" start /> Guardar cambios
+            </v-btn>
+          </template>
+          <v-btn v-else variant="text" @click="cerrarDetalle">Cerrar</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -490,12 +681,14 @@ function logout() {
 }
 
 /* ── Menú ── */
-const menuItems = [
+const menuItems = computed(() => [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
   { icon: 'mdi-clipboard-plus', label: 'Ingreso de Ticket', id: 'ingreso' },
   { icon: 'mdi-scale-balance', label: 'Recepción', id: 'tickets' },
+  { icon: 'mdi-tray-alert', label: `Pendientes de OL${pendientes.value.length ? ' (' + pendientes.value.length + ')' : ''}`, id: 'pendientes' },
+  { icon: 'mdi-layers-triple', label: 'Sublotes', id: 'sublotes' },
   { icon: 'mdi-bell-alert', label: 'Escalamientos TAT', id: 'escalamientos' },
-]
+])
 
 /* ── Semáforos (mismos valores que semaforo.py) ── */
 const SEM_TAT: Record<string, string> = {
@@ -533,15 +726,22 @@ async function fetchTickets() {
   loadingTickets.value = false
 }
 
+const fEstado = usePersistente('sgs:fEstado', 'todos')
+
 const ticketsFiltrados = computed(() => {
   let lista = tickets.value
+  if (fEstado.value !== 'todos') lista = lista.filter(t => (t.estado || 'catalogado') === fEstado.value)
   if (fSede.value !== 'todas') lista = lista.filter(t => t.sede === fSede.value)
   if (fTat.value !== 'todos') lista = lista.filter(t => t.tat_estado === fTat.value)
   if (fRes.value !== 'todos') lista = lista.filter(t => t.resultado_estado === fRes.value)
   if (fSearch.value) {
     const q = fSearch.value.toLowerCase()
-    lista = lista.filter(t => [t.n_orden, t.n_ticket, t.placa, t.cliente, t.calidad_material, t.sublote]
-      .some(v => String(v ?? '').toLowerCase().includes(q)))
+    // Busca también por código de sublote (así funciona "Ver tickets" del sublote)
+    lista = lista.filter(t => {
+      const sub = sublotes.value.find(s => s.id === t.sublote_id)
+      return [t.n_orden, t.n_ticket, t.placa, t.cliente, t.material, t.guia_remision, sub?.codigo]
+        .some(v => String(v ?? '').toLowerCase().includes(q))
+    })
   }
   return lista
 })
@@ -583,13 +783,43 @@ const fotoInput = ref<HTMLInputElement | null>(null)
 const guardando = ref(false)
 const resultadoIngreso = ref<any>(null)
 
-const form = reactive<any>({
-  n_orden: '', n_ticket: '', fecha: '', sede: 'Matarani', cliente: '', calidad_material: '',
-  placa: '', peso_bruto: null, tara: null, peso_neto: null, sublote: '',
-  fecha_ingreso_analisis: '', tat_dias: 4, verificado_humano: false,
-  balanza2: { nombre: '', bruto: null, tara: null, neto: null },
-  imagen_base64: null as string | null,
+/** Estado inicial del formulario — las 8 secciones (§3 del handoff). */
+function formVacio() {
+  return {
+    // 1 · Identificación (el OL es OPCIONAL: sin él va a PENDIENTE_OL)
+    n_orden: '', n_ticket: '', guia_remision: '',
+    // 2 · Transporte
+    placa: '', carreta: '', transportista: '', ruc_transportista: '', chofer: '', brevete: '',
+    // 3 · Partes
+    emisor: '', ruc_emisor: '', cliente: '',
+    // 4 · Material y ruta
+    cod_material: '', material: '', origen: '', destino: '', almacen: '',
+    // 5 · Pesaje
+    fecha_ingreso: '', hora_ingreso: '', fecha_salida: '', hora_salida: '',
+    peso_bruto: null as number | null, tara: null as number | null, peso_neto: null as number | null,
+    balanza2: { nombre: '', bruto: null as number | null, tara: null as number | null, neto: null as number | null },
+    // 6 · Embarque (TISUR)
+    nave: '', bl_ne: '', item_bl: '', regimen: '', bultos: '',
+    // 8 · Control
+    observaciones_ticket: '', verificado_humano: false,
+    imagen_base64: null as string | null,
+  }
+}
+const form = reactive<any>(formVacio())
+
+/* §4.10 — DERIVADOS: se muestran calculados, nunca se teclean */
+const sedeDerivada = computed(() => {
+  const d = String(form.destino || '').toUpperCase()
+  if (!d) return null
+  const SEDES: Record<string, string> = {
+    PARACAS: 'Pisco', PISCO: 'Pisco', MATARANI: 'Matarani',
+    ILO: 'Ilo', CHIMBOTE: 'Chimbote', CALLAO: 'Callao',
+  }
+  for (const [k, v] of Object.entries(SEDES)) if (d.includes(k)) return v
+  return null
 })
+const netoTm = computed(() =>
+  form.peso_neto ? `${(Number(form.peso_neto) / 1000).toFixed(3)} t` : '—')
 
 const netoSugerido = computed(() => {
   if (form.peso_bruto == null || form.tara == null) return null
@@ -620,15 +850,23 @@ async function escanearTicket() {
     const c = r.campos || {}
     // Solo se rellenan los campos que la IA logró leer: lo que ya escribiste
     // a mano no se pisa con un null.
-    if (c.numero_ticket) form.n_ticket = String(c.numero_ticket).toUpperCase()
-    if (c.placa) form.placa = c.placa
+    const copiar: [string, string][] = [
+      ['numero_ticket', 'n_ticket'], ['guia_remision', 'guia_remision'],
+      ['placa', 'placa'], ['carreta', 'carreta'], ['chofer', 'chofer'], ['brevete', 'brevete'],
+      ['transportista', 'transportista'], ['ruc_transportista', 'ruc_transportista'],
+      ['emisor', 'emisor'], ['ruc_emisor', 'ruc_emisor'], ['cliente', 'cliente'],
+      ['cod_material', 'cod_material'], ['material', 'material'],
+      ['origen', 'origen'], ['destino', 'destino'], ['almacen', 'almacen'],
+      ['fecha_ingreso', 'fecha_ingreso'], ['hora_ingreso', 'hora_ingreso'],
+      ['fecha_salida', 'fecha_salida'], ['hora_salida', 'hora_salida'],
+      ['nave', 'nave'], ['bl_ne', 'bl_ne'], ['item_bl', 'item_bl'],
+      ['regimen', 'regimen'], ['bultos', 'bultos'],
+      ['observaciones_ticket', 'observaciones_ticket'],
+    ]
+    for (const [de, a] of copiar) if (c[de]) form[a] = c[de]
     if (c.peso_bruto != null) form.peso_bruto = c.peso_bruto
     if (c.tara != null) form.tara = c.tara
     if (c.peso_neto != null) form.peso_neto = c.peso_neto
-    if (c.fecha) form.fecha = c.fecha
-    if (c.calidad_material) form.calidad_material = c.calidad_material
-    if (c.cliente) form.cliente = c.cliente
-    if (c.sede && ['Matarani', 'Pisco'].includes(c.sede)) form.sede = c.sede
     if (c.segunda_balanza?.nombre) {
       form.balanza2 = {
         nombre: c.segunda_balanza.nombre,
@@ -675,28 +913,43 @@ function onFoto(e: Event) {
 
 async function guardarTicket() {
   resultadoIngreso.value = null
+  // §4.1.c — el OL ya NO bloquea: si no viene, el ticket entra como PENDIENTE_OL.
   const orden = String(form.n_orden || '').trim().toUpperCase()
-  if (!RE_ORDEN.test(orden)) { notify('N° de orden inválido: debe ser OLxxxxxx-xx (Regla §4.1)', 'error'); return }
+  if (orden && !RE_ORDEN.test(orden)) {
+    notify('El N° de orden debe ser OLxxxxxx-xx, o déjalo vacío para guardarlo como pendiente', 'error')
+    return
+  }
+  if (!String(form.n_ticket || '').trim()) {
+    notify('Falta el N° de ticket de balanza', 'error'); return
+  }
   guardando.value = true
   try {
     const res = await $fetch<any>('/api/sgs/tickets', {
       method: 'POST',
       body: {
         ...form,
-        n_orden: orden,
+        n_orden: orden || undefined,
+        sede: sedeDerivada.value || undefined,
         balanza2: form.balanza2.nombre ? form.balanza2 : undefined,
       },
     })
     resultadoIngreso.value = res
-    notify(res.accion === 'insert' ? 'Ticket catalogado ✔' : 'Ticket actualizado ✔')
-    logActivity(`Catalogó ticket SGS ${orden}/${form.n_ticket}`)
-    // Conserva orden/contexto para el siguiente ticket del mismo lote
-    form.n_ticket = ''; form.placa = ''; form.fecha = ''
-    form.peso_bruto = null; form.tara = null; form.peso_neto = null
-    form.imagen_base64 = null; form.verificado_humano = false
+    notify(res.estado === 'pendiente_ol'
+      ? 'Guardado en la bandeja PENDIENTE_OL — asígnale el N° de orden cuando lo tengas'
+      : (res.accion === 'insert' ? 'Ticket catalogado ✔' : 'Ticket actualizado ✔'))
+    logActivity(`Ingresó ticket SGS ${orden || 'PENDIENTE_OL'}/${form.n_ticket}`)
+
+    // Se limpia el ticket pero se conserva el contexto del lote (orden, emisor,
+    // cliente, ruta): el siguiente camión suele venir del mismo viaje.
+    const conservar = {
+      n_orden: form.n_orden, emisor: form.emisor, ruc_emisor: form.ruc_emisor,
+      cliente: form.cliente, origen: form.origen, destino: form.destino,
+      almacen: form.almacen, cod_material: form.cod_material, material: form.material,
+      transportista: form.transportista, ruc_transportista: form.ruc_transportista,
+    }
+    Object.assign(form, formVacio(), conservar)
     ocrOk.value = false; ocrAvisos.value = []
-    form.balanza2 = { nombre: '', bruto: null, tara: null, neto: null }
-    await fetchTickets()
+    await Promise.all([fetchTickets(), fetchSublotes()])
   } catch (e: any) {
     notify(e?.data?.statusMessage || e?.statusMessage || 'Error guardando el ticket', 'error')
   } finally {
@@ -704,9 +957,122 @@ async function guardarTicket() {
   }
 }
 
+/* ══════════ BANDEJA PENDIENTE_OL (§4.1.c) ══════════ */
+const pendientes = computed(() => tickets.value.filter(t => t.estado === 'pendiente_ol'))
+const olAsignar = reactive<Record<number, string>>({})
+const asignandoOl = ref<number | null>(null)
+
+/** Asignar el OL saca al ticket de la bandeja: entra por el flujo normal. */
+async function asignarOl(t: any) {
+  const ol = String(olAsignar[t.id] || '').trim().toUpperCase()
+  if (!RE_ORDEN.test(ol)) { notify('El N° de orden debe ser OLxxxxxx-xx', 'error'); return }
+  asignandoOl.value = t.id
+  try {
+    const r = await $fetch<any>('/api/sgs/ticket-editar', {
+      method: 'POST', body: { id: t.id, cambios: { n_orden: ol } },
+    })
+    delete olAsignar[t.id]
+    notify(`Ticket catalogado en ${ol}${r.sublote ? ' · ' + r.sublote.codigo : ''}`)
+    await Promise.all([fetchTickets(), fetchSublotes()])
+  } catch (e: any) {
+    notify(e?.data?.statusMessage || 'No se pudo asignar la orden', 'error')
+  } finally {
+    asignandoOl.value = null
+  }
+}
+
+/* ══════════ SUBLOTES (§2.3 · §2.6 · §2.8) ══════════ */
+const sublotes = ref<any[]>([])
+const showAnalisis = ref(false)
+const subloteAnalisis = ref<any>(null)
+const registrandoAnalisis = ref(false)
+const analisisForm = reactive({ fecha: '', tat_dias: 4, job: '', cerrar: false })
+
+async function fetchSublotes() {
+  const { data, error } = await client.from('sgs_sublotes').select('*').order('id', { ascending: false }).limit(500)
+  if (error) notify('Error cargando sublotes: ' + error.message, 'error')
+  sublotes.value = data || []
+}
+
+const subloteDe = (t: any) => sublotes.value.find(s => s.id === t?.sublote_id) || null
+const pctSublote = (s: any) =>
+  Math.min(100, Math.round((Number(s.peso_neto_tm || 0) / Number(s.capacidad_tm || 1000)) * 100))
+
+function abrirAnalisis(s: any) {
+  subloteAnalisis.value = s
+  analisisForm.fecha = s.fecha_ingreso_analisis || new Date().toISOString().slice(0, 10)
+  analisisForm.tat_dias = s.tat_dias || 4
+  analisisForm.job = s.job_laboratorio || ''
+  analisisForm.cerrar = false
+  showAnalisis.value = true
+}
+
+/** Sella TODOS los tickets del sublote de una vez: así arranca el TAT. */
+async function registrarAnalisis() {
+  if (!subloteAnalisis.value) return
+  registrandoAnalisis.value = true
+  try {
+    const r = await $fetch<any>('/api/sgs/sublote-analisis', {
+      method: 'POST',
+      body: {
+        sublote_id: subloteAnalisis.value.id,
+        fecha_ingreso_analisis: analisisForm.fecha,
+        tat_dias: analisisForm.tat_dias,
+        job_laboratorio: analisisForm.job || undefined,
+        cerrar: analisisForm.cerrar,
+      },
+    })
+    showAnalisis.value = false
+    notify(`Análisis registrado · ${r.tickets_sellados} tickets sellados · TAT ${semTat(r.tat.estado)}`)
+    await Promise.all([fetchSublotes(), fetchTickets()])
+  } catch (e: any) {
+    notify(e?.data?.statusMessage || 'No se pudo registrar el análisis', 'error')
+  } finally {
+    registrandoAnalisis.value = false
+  }
+}
+
+/** Salta a Recepción filtrando por ese sublote. */
+function verTicketsSublote(s: any) {
+  fSearch.value = s.codigo
+  activeView.value = 'tickets'
+}
+
 /* ══════════ DRILL-DOWN ══════════ */
 const detalle = ref<any>(null)
 const cambiandoResultado = ref<string | null>(null)
+const editando = ref(false)
+const guardandoEdicion = ref(false)
+const borradorEdicion = ref<Record<string, any>>({})
+
+function cerrarDetalle() { detalle.value = null; editando.value = false }
+
+/** §4.8 — todo campo se corrige después del ingreso. */
+async function guardarEdicion() {
+  if (!detalle.value) return
+  const cambios: Record<string, any> = {}
+  for (const [k, v] of Object.entries(borradorEdicion.value)) {
+    const antes = detalle.value[k]
+    const ahora = v === '' ? null : v
+    if (String(antes ?? '') !== String(ahora ?? '')) cambios[k] = ahora
+  }
+  if (!Object.keys(cambios).length) { editando.value = false; notify('No hay cambios que guardar'); return }
+
+  guardandoEdicion.value = true
+  try {
+    const r = await $fetch<any>('/api/sgs/ticket-editar', {
+      method: 'POST', body: { id: detalle.value.id, cambios },
+    })
+    detalle.value = r.ticket
+    editando.value = false
+    notify(`${r.cambios} campo(s) actualizados${r.sublote ? ' · ' + r.sublote.codigo : ''}`)
+    await Promise.all([fetchTickets(), fetchSublotes()])
+  } catch (e: any) {
+    notify(e?.data?.statusMessage || 'No se pudo guardar', 'error')
+  } finally {
+    guardandoEdicion.value = false
+  }
+}
 const escalasDeDetalle = computed(() =>
   detalle.value ? escalamientos.value.filter(a => a.n_orden === detalle.value.n_orden && a.n_ticket === detalle.value.n_ticket) : [])
 
@@ -761,7 +1127,7 @@ async function correrRelojTat() {
     const res = await $fetch<any>('/api/sgs/tick-tat', { method: 'POST' })
     const nuevos = (res.avisos || []).filter((a: any) => a.nuevo).length
     notify(`Reloj TAT: ${res.revisados} muestras revisadas · ${res.actualizados} actualizadas · ${nuevos} aviso(s) nuevo(s)`)
-    await Promise.all([fetchTickets(), fetchEscalamientos()])
+    await Promise.all([fetchTickets(), fetchEscalamientos(), fetchSublotes()])
   } catch (e: any) {
     notify(e?.data?.statusMessage || 'Error corriendo el reloj TAT', 'error')
   } finally {
@@ -812,7 +1178,7 @@ const chartOptions = computed<ApexOptions>(() => ({
 
 /* ══════════ LIFECYCLE ══════════ */
 async function refreshAll() {
-  await Promise.all([fetchTickets(), fetchEscalamientos()])
+  await Promise.all([fetchTickets(), fetchEscalamientos(), fetchSublotes()])
   notify('Datos actualizados')
 }
 
@@ -822,7 +1188,7 @@ onMounted(async () => {
     return navigateTo('/')
   }
   applyTheme()
-  await Promise.all([fetchTickets(), fetchEscalamientos()])
+  await Promise.all([fetchTickets(), fetchEscalamientos(), fetchSublotes()])
 })
 </script>
 
@@ -847,6 +1213,70 @@ onMounted(async () => {
 .res-no_esta { background: rgba(226, 35, 26, .13); color: #e2231a; }
 
 .tat-sin_fecha { background: rgba(128, 128, 128, .15); color: #888; }
+.est-pendiente { background: rgba(230, 150, 40, .2); color: #f59e0b; }
+
+/* Campos derivados: se ven distintos porque no se teclean (§4.10) */
+.campo-derivado :deep(.v-field) { background: rgba(41, 128, 185, .07); }
+.campo-derivado :deep(input) { font-style: italic; opacity: .85; }
+
+/* ── Bandeja PENDIENTE_OL ── */
+.pend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.pend-card {
+  padding: 14px;
+  border-radius: 12px;
+  border-left: 4px solid #f59e0b;
+  background: rgba(230, 150, 40, .05);
+}
+
+.pend-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.pend-head strong { display: block; font-size: 15px; }
+.pend-head small { font-size: 11.5px; opacity: .65; }
+
+.pend-datos {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin: 10px 0; font-size: 12.5px; opacity: .8;
+}
+
+.pend-ol { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.pend-pie { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.pend-thumb { max-height: 42px; border-radius: 6px; cursor: zoom-in; border: 1px solid rgba(128, 128, 128, .3); }
+
+/* ── Sublotes ── */
+.sub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.sub-card { padding: 15px; border-radius: 12px; background: rgba(128, 128, 128, .06); }
+
+.sub-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.sub-head strong { display: block; font-size: 16px; }
+.sub-head small { font-size: 11.5px; opacity: .65; }
+
+.sub-barra {
+  height: 8px; border-radius: 5px; overflow: hidden;
+  background: rgba(128, 128, 128, .2);
+}
+
+.sub-barra-fill { height: 100%; transition: width .3s ease; }
+
+.sub-meta {
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  margin-top: 7px; font-size: 12px; opacity: .75;
+}
+
+.sub-lab {
+  margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(155, 89, 182, .12); font-size: 12.5px;
+}
+
+.sub-acciones { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 
 /* Formulario */
 .form-grid-3 {

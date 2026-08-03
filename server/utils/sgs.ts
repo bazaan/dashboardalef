@@ -175,6 +175,47 @@ export function supervisar(reg: Record<string, any>, flags?: string[]): Veredict
   }
 }
 
+/* ══════════════════ Campos derivados (§4.10: nunca se teclean) ══════════════════ */
+
+/** Destino impreso en el ticket → sede de SGS. PARACAS es el puerto de Pisco. */
+export const SEDES: Record<string, string> = {
+  PARACAS: 'Pisco', PISCO: 'Pisco', MATARANI: 'Matarani',
+  ILO: 'Ilo', CHIMBOTE: 'Chimbote', CALLAO: 'Callao',
+}
+
+/**
+ * La sede se DERIVA del destino, no se elige a dedo (§2.7): si no, un ticket
+ * de Paracas se puede catalogar como Matarani.
+ */
+export function derivarSede(destino: any): string | null {
+  const d = String(destino || '').toUpperCase()
+  if (!d) return null
+  for (const [clave, sede] of Object.entries(SEDES)) {
+    if (d.includes(clave)) return sede
+  }
+  return null
+}
+
+/** Familia del ticket. El emisor viene con variantes, así que se usa el n° como respaldo. */
+export function detectarFormato(reg: Record<string, any>): string | null {
+  const blob = JSON.stringify(reg).toUpperCase()
+  const tk = String(reg.numero_ticket || reg.n_ticket || '').toUpperCase()
+  if (blob.includes('FERROBAMBA') || /^N\d{6}$/.test(tk)) return 'ferrobamba'
+  if (blob.includes('MINING & SOLUTION') || blob.includes('MSCON') || tk.startsWith('TK')) return 'mscon'
+  if (blob.includes('TERMINAL INTERNACIONAL') || blob.includes('TISUR') || tk.startsWith('MB')) return 'tisur'
+  return null
+}
+
+/** El ticket viene en kg; el Excel de SGS trabaja en TM. */
+export function kgATm(kg: any): number | null {
+  const n = Number(kg)
+  return Number.isFinite(n) && n > 0 ? Math.round((n / 1000) * 1000) / 1000 : null
+}
+
+/** Corte del sublote (§4.5). Provisional hasta que SGS confirme el contractual. */
+export const SUBLOTE_TM = 1000
+export const TAT_DEFAULT = 4
+
 /* ══════════════════ Autenticación de los endpoints SGS ══════════════════ */
 
 /**

@@ -18,7 +18,7 @@
  * Resp: { ok, campos: {...}, avisos: [...], confianza }
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
-import { verificarSesionSGS } from '../../utils/sgs'
+import { verificarSesionSGS, derivarSede, kgATm, detectarFormato } from '../../utils/sgs'
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions'
 
@@ -34,43 +34,51 @@ const MODELOS = [
 const MAX_BASE64 = 8 * 1024 * 1024
 
 const PROMPT = `Eres un extractor de datos de TICKETS DE BALANZA de recepción de mineral en Perú.
-Recibes la foto de un ticket (formatos: Ferrobamba térmico, MSCON de concentrados, TISUR de puerto).
+Formatos posibles: FERROBAMBA (térmico), MSCON (concentrados) y TISUR (terminal portuario).
 
-Extrae EXCLUSIVAMENTE lo que ves impreso. NO inventes ni completes nada: si un dato no aparece, devuelve null.
+REGLA ABSOLUTA: extrae SOLO lo que ves impreso en el papel. Si un dato no aparece, devuelve null.
+NUNCA inventes, deduzcas ni completes un campo que no esté impreso.
 
-REGLAS DE INTERPRETACIÓN DE PESOS (lo más importante):
-- El ticket suele traer dos pesajes (ingreso y salida) y un PESO NETO.
+PESOS (donde más se falla):
+- El ticket trae dos pesajes (entrada y salida) y un PESO NETO.
 - peso_bruto = el pesaje MAYOR (camión cargado).
 - tara = el pesaje MENOR (camión vacío).
 - peso_neto = el que dice "PESO NETO"; debe cumplir bruto - tara = neto.
-- Los pesos van en KILOS, solo dígitos, sin comas ni puntos de miles.
+- En KILOS, solo dígitos, sin comas ni puntos de miles.
 
-OTROS CAMPOS:
-- numero_ticket: el N° del ticket de pesaje (ej. "N011711" -> "011711"; quita el prefijo "N" si es solo marcador).
-- placa: formato peruano AAA-999. Si hay PLACA y CARRETA, usa PLACA.
-- fecha: la fecha del pesaje en formato DD/MM/YYYY (si el año viene de 2 dígitos como 26, conviértelo a 2026).
-- calidad_material: el MATERIAL o calidad del mineral (ej. "PRODUCTO", "MINERAL DE HIERRO").
-- cliente: el nombre del CLIENTE (persona o empresa).
-- sede: el DESTINO si es un puerto/planta conocido (Matarani, Pisco, Paracas...). null si no aplica.
-- guia_remision, chofer, origen, destino: si aparecen.
-- segunda_balanza: SOLO si el ticket trae dos balanzas diferenciadas (ej. MINA y PUERTO/MISCON),
-  con su propio bruto/tara/neto. Si no, null.
+CAMPOS:
+- numero_ticket: el N° del ticket tal como se imprime (ej. "N011711", "MB02063153", "TK26-2976").
+- placa / carreta: placas peruanas AAA-999. "placa" es el tracto; "carreta" el acoplado (suele traerlo solo TISUR).
+- emisor / ruc_emisor: la empresa que imprime el ticket y su RUC.
+- cliente: a quién pertenece la carga (persona o empresa).
+- transportista / ruc_transportista: la empresa de transporte (TISUR la imprime).
+- chofer, brevete, nro_ejes: si aparecen.
+- guia_remision: la guía de remisión (NO la del transportista).
+- cod_material y material: el código y el nombre del material TAL COMO SE IMPRIME (ej. "PRODUCTO",
+  "MINERAL DE HIERRO"). OJO: esto NO es la calidad del mineral, es lo que dice el papel.
+- origen, destino, almacen: la ruta y la zona/almacén.
+- fecha_ingreso / hora_ingreso: del pesaje de ENTRADA. fecha_salida / hora_salida: del de SALIDA.
+  Fechas en formato DD/MM/YYYY (si el año viene con 2 dígitos, como 26, conviértelo a 2026).
+- EMBARQUE (solo tickets TISUR): nave, bl_ne (BL/NE), item_bl, regimen (ej. EXPORTACION), bultos.
+- segunda_balanza: SOLO si el ticket muestra dos balanzas diferenciadas (ej. MINA y MISCON/puerto),
+  cada una con su bruto/tara/neto. Si no, null.
+- observaciones_ticket: el texto del campo OBSERVACIONES si trae algo escrito.
 
 Devuelve EXCLUSIVAMENTE un JSON con esta forma exacta:
 {
-  "numero_ticket": string|null,
-  "placa": string|null,
-  "peso_bruto": number|null,
-  "tara": number|null,
-  "peso_neto": number|null,
-  "fecha": string|null,
-  "calidad_material": string|null,
-  "cliente": string|null,
-  "sede": string|null,
+  "numero_ticket": string|null, "placa": string|null, "carreta": string|null,
+  "emisor": string|null, "ruc_emisor": string|null, "cliente": string|null,
+  "transportista": string|null, "ruc_transportista": string|null,
+  "chofer": string|null, "brevete": string|null, "nro_ejes": string|null,
   "guia_remision": string|null,
-  "chofer": string|null,
-  "origen": string|null,
-  "destino": string|null,
+  "cod_material": string|null, "material": string|null,
+  "origen": string|null, "destino": string|null, "almacen": string|null,
+  "fecha_ingreso": string|null, "hora_ingreso": string|null,
+  "fecha_salida": string|null, "hora_salida": string|null,
+  "peso_bruto": number|null, "tara": number|null, "peso_neto": number|null,
+  "nave": string|null, "bl_ne": string|null, "item_bl": string|null,
+  "regimen": string|null, "bultos": string|null,
+  "observaciones_ticket": string|null,
   "segunda_balanza": {"nombre": string, "bruto": number|null, "tara": number|null, "neto": number|null}|null,
   "avisos": [string],
   "confianza": "alta"|"media"|"baja"
@@ -197,23 +205,64 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const salida = {
-    numero_ticket: campos.numero_ticket ?? null,
-    placa: campos.placa ? String(campos.placa).toUpperCase().trim() : null,
-    peso_bruto: bruto, tara, peso_neto: neto,
-    fecha: campos.fecha ?? null,
-    calidad_material: campos.calidad_material ?? null,
-    cliente: campos.cliente ?? null,
-    sede: campos.sede ?? null,
-    guia_remision: campos.guia_remision ?? null,
-    chofer: campos.chofer ?? null,
-    origen: campos.origen ?? null,
-    destino: campos.destino ?? null,
-    segunda_balanza: campos.segunda_balanza ?? null,
+  const t = (v: any) => {
+    const s = String(v ?? '').trim()
+    return s === '' || s.toLowerCase() === 'null' ? null : s
   }
 
-  const faltantes = ['numero_ticket', 'placa', 'peso_bruto', 'tara', 'peso_neto', 'fecha', 'calidad_material']
-    .filter(k => (salida as any)[k] === null || (salida as any)[k] === '')
+  const salida: Record<string, any> = {
+    // 1 · Identificación
+    numero_ticket: t(campos.numero_ticket),
+    guia_remision: t(campos.guia_remision),
+    // 2 · Transporte
+    placa: t(campos.placa)?.toUpperCase() ?? null,
+    carreta: t(campos.carreta)?.toUpperCase() ?? null,
+    transportista: t(campos.transportista),
+    ruc_transportista: t(campos.ruc_transportista),
+    chofer: t(campos.chofer),
+    brevete: t(campos.brevete),
+    nro_ejes: t(campos.nro_ejes),
+    // 3 · Partes
+    emisor: t(campos.emisor),
+    ruc_emisor: t(campos.ruc_emisor),
+    cliente: t(campos.cliente),
+    // 4 · Material y ruta
+    cod_material: t(campos.cod_material),
+    material: t(campos.material),
+    origen: t(campos.origen),
+    destino: t(campos.destino),
+    almacen: t(campos.almacen),
+    // 5 · Pesaje
+    fecha_ingreso: t(campos.fecha_ingreso),
+    hora_ingreso: t(campos.hora_ingreso),
+    fecha_salida: t(campos.fecha_salida),
+    hora_salida: t(campos.hora_salida),
+    peso_bruto: bruto, tara, peso_neto: neto,
+    segunda_balanza: campos.segunda_balanza ?? null,
+    // 6 · Embarque (TISUR)
+    nave: t(campos.nave),
+    bl_ne: t(campos.bl_ne),
+    item_bl: t(campos.item_bl),
+    regimen: t(campos.regimen),
+    bultos: t(campos.bultos),
+    // 8 · Control
+    observaciones_ticket: t(campos.observaciones_ticket),
+  }
+
+  // §4.10 DERIVADOS: el servidor los calcula, no se piden a la IA ni se teclean
+  salida.fecha = salida.fecha_ingreso            // fecha del ticket = la de entrada
+  salida.sede_derivada = derivarSede(salida.destino)
+  salida.peso_neto_tm = kgATm(neto)
+  salida.formato_ticket = detectarFormato(salida)
+
+  if (salida.destino && !salida.sede_derivada) {
+    avisos.push(`El destino "${salida.destino}" no corresponde a una sede conocida — revísalo.`)
+  }
+
+  // Obligatorios del ticket (§4.3). El N° de orden NO entra acá: puede faltar
+  // y el registro igual se guarda como PENDIENTE_OL (§4.1.c).
+  const faltantes = ['numero_ticket', 'placa', 'peso_bruto', 'tara', 'peso_neto', 'fecha_ingreso']
+    .filter(k => salida[k] === null || salida[k] === '')
   if (faltantes.length) avisos.push(`No se pudo leer: ${faltantes.join(', ')}. Complétalos a mano.`)
 
   try {

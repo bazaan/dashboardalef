@@ -90,7 +90,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const ed = hit.edificio
-  const partes = [ed.direccion, ed.distrito].filter(Boolean).join(', ')
+  // Varias direcciones del catálogo ya traen el distrito al final ("Abraham
+  // Valdelomar 549, Pueblo Libre"). Repetirlo suena mal dicho en voz alta.
+  const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+  const dirIncluyeDistrito = !!ed.distrito && norm(ed.direccion).includes(norm(ed.distrito))
+  const partes = [ed.direccion, dirIncluyeDistrito ? '' : ed.distrito].filter(Boolean).join(', ')
   const r = {
     encontrado: true,
     codigo: hit.codigo,

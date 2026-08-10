@@ -64,17 +64,118 @@ export async function geocodificar(direccion: string, distrito?: string): Promis
 
 /* ══════════════════ Código de ascensor → edificio ══════════════════ */
 
+/* ── Números dictados en palabras ─────────────────────────────────────────
+ * El cliente lee el sticker por teléfono, así que el código llega de mil
+ * formas: "AP17", "ap cero cero diez", "A de Ana P de Perro uno siete".
+ * Retell a veces convierte las palabras a dígitos y a veces no, según cómo
+ * se pronuncien. Acá se cubren ambos casos.
+ */
+const PALABRA_NUM: Record<string, number> = {
+  cero: 0, o: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
+  seis: 6, siete: 7, ocho: 8, nueve: 9,
+  diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15,
+  dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19,
+  veinte: 20, veintiuno: 21, veintiuna: 21, veintidos: 22, veintitres: 23,
+  veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27,
+  veintiocho: 28, veintinueve: 29,
+  treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70,
+  ochenta: 80, noventa: 90,
+  cien: 100, ciento: 100, doscientos: 200, trescientos: 300, cuatrocientos: 400,
+  quinientos: 500, seiscientos: 600, setecientos: 700, ochocientos: 800,
+  novecientos: 900, mil: 1000,
+}
+
+/** minúsculas, sin acentos, sin puntuación */
+function plano(s: string): string {
+  return String(s || '').toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Devuelve TODOS los códigos que razonablemente pudo haber dictado el cliente.
+ * Se generan varios porque "cero cero diez" admite dos lecturas —dígito por
+ * dígito ("0010") o número hablado ("10" → 0010)— y a veces no coinciden.
+ * Quien decide cuál es el bueno es el catálogo: se prueban todos y solo vale
+ * el que existe. Si existiera más de uno, se trata como ambiguo y se vuelve a
+ * preguntar, nunca se adivina.
+ */
+export function candidatosCodigoAscensor(bruto: string): string[] {
+  let txt = plano(bruto)
+  if (!txt) return []
+
+  // Letras pronunciadas: "a pe" = AP, "eme uve" = MV, "pe de" = PD, "eme pe" = MP
+  for (const [dicho, sigla] of [
+    ['eme\\s*uve', 'mv'], ['eme\\s*ve', 'mv'], ['eme\\s*pe', 'mp'],
+    ['a\\s*pe', 'ap'], ['pe\\s*de', 'pd'],
+  ] as [string, string][]) {
+    txt = txt.replace(new RegExp(`\\b${dicho}\\b`, 'g'), sigla)
+  }
+
+  // "a de ana", "p de perro" → "a", "p"  (alfabeto fonético del prompt)
+  const sinFonetico = txt.replace(/\b([a-z])\s+de\s+[a-z]+/g, '$1')
+
+  // Letras: las 2 primeras que aparezcan sueltas o pegadas, antes de los números
+  const tokens = sinFonetico.split(' ')
+  let letras = ''
+  const numToks: string[] = []
+  for (const t of tokens) {
+    if (letras.length < 2) {
+      const soloLetras = t.replace(/[^a-z]/g, '')
+      // "ap0017" viene todo junto: separar letras de dígitos
+      const m = t.match(/^([a-z]{1,2})(\d+)$/)
+      if (m) { letras += m[1]; numToks.push(m[2]); continue }
+      if (soloLetras && !(soloLetras in PALABRA_NUM)) {
+        letras += soloLetras.slice(0, 2 - letras.length)
+        const resto = t.replace(/[^0-9]/g, '')
+        if (resto) numToks.push(resto)
+        continue
+      }
+    }
+    if (/^\d+$/.test(t)) { numToks.push(t); continue }
+    if (t in PALABRA_NUM) { numToks.push(t); continue }
+    if (t === 'y' && numToks.length) { numToks.push('y'); continue }
+  }
+  if (letras.length !== 2 || !numToks.length) return []
+  const prefijo = letras.toUpperCase()
+
+  // Lectura A — concatenar: "cero cero diez" → "0"+"0"+"10" = "0010"
+  const concat = numToks
+    .filter(t => t !== 'y')
+    .map(t => (/^\d+$/.test(t) ? t : String(PALABRA_NUM[t])))
+    .join('')
+
+  // Lectura B — número hablado: "mil setecientos" → 1700, "treinta y dos" → 32.
+  // Solo tiene sentido si alguna palabra vale 10 o más: si el cliente dictó
+  // "uno siete" quiso decir 17, jamás 8, y ofrecer AP-0008 como alternativa
+  // solo generaría falsas ambigüedades.
+  const valores = numToks.filter(t => t !== 'y')
+    .map(t => (/^\d+$/.test(t) ? Number(t) : PALABRA_NUM[t]))
+  let suma = ''
+  if (valores.some(v => v >= 10) && valores.length > 1) {
+    let total = 0, parcial = 0
+    for (const v of valores) {
+      if (v === 1000) { total += (parcial || 1) * 1000; parcial = 0 }
+      else parcial += v
+    }
+    suma = String(total + parcial)
+  }
+
+  const out: string[] = []
+  for (const n of [concat, suma]) {
+    if (!n || !/^\d{1,4}$/.test(n)) continue
+    const cod = `${prefijo}-${n.padStart(4, '0')}`
+    if (!out.includes(cod)) out.push(cod)
+  }
+  return out
+}
+
 /**
  * Normaliza lo que dictó el cliente por teléfono a `XX-0000`.
- * El STT entrega cosas como "ap 17", "A P cero cero uno siete", "AP0017",
- * "ap-17". Todas deben resolver a AP-0017.
- * Devuelve null si no hay dos letras + al menos un dígito.
+ * Devuelve la lectura más probable, o null si no hay dos letras + dígitos.
  */
 export function normalizarCodigoAscensor(bruto: string): string | null {
-  const s = String(bruto || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
-  const m = s.match(/^([A-Z]{2})(\d{1,6})$/)
-  if (!m) return null
-  return `${m[1]}-${m[2].padStart(4, '0')}`
+  return candidatosCodigoAscensor(bruto)[0] ?? null
 }
 
 export interface EdificioResuelto {
@@ -85,13 +186,34 @@ export interface EdificioResuelto {
 }
 
 /**
- * Busca el equipo con ese código dentro de `gatwick_edificios.equipos` (JSONB).
+ * Busca el equipo dentro de `gatwick_edificios.equipos` (JSONB).
  * Solo coincidencia EXACTA: AP-0017 y AP-0117 son equipos distintos y mandar al
  * técnico al edificio equivocado en una emergencia es peor que no encontrarlo.
+ *
+ * Prueba todas las lecturas posibles de lo que dictó el cliente y devuelve la
+ * única que exista en el catálogo. Si existen varias, no adivina: marca
+ * `ambiguo` con las opciones para que el bot pida el código otra vez.
  */
-export async function resolverCodigoAscensor(supabase: any, bruto: string): Promise<EdificioResuelto | null> {
-  const codigo = normalizarCodigoAscensor(bruto)
-  if (!codigo) return null
+export async function resolverCodigoAscensor(
+  supabase: any, bruto: string,
+): Promise<EdificioResuelto | null> {
+  const r = await resolverCodigoAscensorDetalle(supabase, bruto)
+  return r.hit
+}
+
+export interface ResolucionCodigo {
+  hit: EdificioResuelto | null
+  candidatos: string[]
+  ambiguo: boolean
+  coincidencias: string[]
+}
+
+export async function resolverCodigoAscensorDetalle(
+  supabase: any, bruto: string,
+): Promise<ResolucionCodigo> {
+  const candidatos = candidatosCodigoAscensor(bruto)
+  const vacio: ResolucionCodigo = { hit: null, candidatos, ambiguo: false, coincidencias: [] }
+  if (!candidatos.length) return vacio
 
   const { data: edificios } = await supabase
     .from('gatwick_edificios')
@@ -99,12 +221,19 @@ export async function resolverCodigoAscensor(supabase: any, bruto: string): Prom
     .eq('activo', true)
     .limit(2000)
 
-  for (const ed of edificios || []) {
-    if (!Array.isArray(ed.equipos)) continue
-    const eq = ed.equipos.find((a: any) => String(a?.codigo || '').toUpperCase().trim() === codigo)
-    if (eq) return { codigo, edificio: ed, equipo: eq, tipo_equipo: eq?.tipo ?? null }
+  const hallados: EdificioResuelto[] = []
+  for (const codigo of candidatos) {
+    for (const ed of edificios || []) {
+      if (!Array.isArray(ed.equipos)) continue
+      const eq = ed.equipos.find((a: any) => String(a?.codigo || '').toUpperCase().trim() === codigo)
+      if (eq) { hallados.push({ codigo, edificio: ed, equipo: eq, tipo_equipo: eq?.tipo ?? null }); break }
+    }
   }
-  return null
+
+  const coincidencias = hallados.map(h => h.codigo)
+  if (!hallados.length) return vacio
+  if (hallados.length > 1) return { hit: null, candidatos, ambiguo: true, coincidencias }
+  return { hit: hallados[0], candidatos, ambiguo: false, coincidencias }
 }
 
 /* ══════════════════ Chatwoot ══════════════════ */

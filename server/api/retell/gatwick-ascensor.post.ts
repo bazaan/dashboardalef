@@ -24,7 +24,7 @@
  * }
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
-import { resolverCodigoAscensor, normalizarCodigoAscensor } from '../../utils/gatwick-tracking'
+import { resolverCodigoAscensorDetalle, candidatosCodigoAscensor } from '../../utils/gatwick-tracking'
 
 const API_KEY = 'retell-gatwick-2026'
 
@@ -58,8 +58,8 @@ export default defineEventHandler(async (event) => {
     return r
   }
 
-  const normalizado = normalizarCodigoAscensor(bruto)
-  if (!normalizado) {
+  const posibles = candidatosCodigoAscensor(bruto)
+  if (!posibles.length) {
     const r = {
       encontrado: false, motivo: 'formato_invalido', codigo_dictado: bruto,
       confirmacion: 'Ese código no tiene el formato esperado. Son dos letras y cuatro números, por ejemplo A de Ana, P de Perro, cero, cero, uno, siete. ¿Puede verificar el sticker?',
@@ -67,10 +67,11 @@ export default defineEventHandler(async (event) => {
     await log('warning', r)
     return r
   }
+  const normalizado = posibles[0]
 
-  let hit: any = null
+  let res: any = null
   try {
-    hit = await resolverCodigoAscensor(supabase, normalizado)
+    res = await resolverCodigoAscensorDetalle(supabase, bruto)
   } catch (e: any) {
     const r = {
       encontrado: false, motivo: 'error_consulta', codigo: normalizado,
@@ -80,9 +81,22 @@ export default defineEventHandler(async (event) => {
     return r
   }
 
+  // Dos lecturas distintas del dictado existen en el catálogo: no se adivina.
+  if (res.ambiguo) {
+    const lista = res.coincidencias.join(' o ')
+    const r = {
+      encontrado: false, motivo: 'ambiguo', candidatos: res.coincidencias,
+      confirmacion: `Puede ser ${lista}. ¿Me confirma el código dígito por dígito, por favor?`,
+    }
+    await log('warning', r)
+    return r
+  }
+
+  const hit = res.hit
   if (!hit) {
     const r = {
       encontrado: false, motivo: 'no_existe', codigo: normalizado,
+      candidatos: posibles,
       confirmacion: `No encuentro el código ${normalizado} en nuestros registros. ¿Puede verificar el sticker y dictarlo otra vez?`,
     }
     await log('warning', r)

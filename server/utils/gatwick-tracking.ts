@@ -62,6 +62,51 @@ export async function geocodificar(direccion: string, distrito?: string): Promis
   return null
 }
 
+/* ══════════════════ Código de ascensor → edificio ══════════════════ */
+
+/**
+ * Normaliza lo que dictó el cliente por teléfono a `XX-0000`.
+ * El STT entrega cosas como "ap 17", "A P cero cero uno siete", "AP0017",
+ * "ap-17". Todas deben resolver a AP-0017.
+ * Devuelve null si no hay dos letras + al menos un dígito.
+ */
+export function normalizarCodigoAscensor(bruto: string): string | null {
+  const s = String(bruto || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const m = s.match(/^([A-Z]{2})(\d{1,6})$/)
+  if (!m) return null
+  return `${m[1]}-${m[2].padStart(4, '0')}`
+}
+
+export interface EdificioResuelto {
+  codigo: string
+  edificio: any
+  equipo: any
+  tipo_equipo: string | null
+}
+
+/**
+ * Busca el equipo con ese código dentro de `gatwick_edificios.equipos` (JSONB).
+ * Solo coincidencia EXACTA: AP-0017 y AP-0117 son equipos distintos y mandar al
+ * técnico al edificio equivocado en una emergencia es peor que no encontrarlo.
+ */
+export async function resolverCodigoAscensor(supabase: any, bruto: string): Promise<EdificioResuelto | null> {
+  const codigo = normalizarCodigoAscensor(bruto)
+  if (!codigo) return null
+
+  const { data: edificios } = await supabase
+    .from('gatwick_edificios')
+    .select('id, elme, nombre, direccion, distrito, equipos, es_instalacion_critica')
+    .eq('activo', true)
+    .limit(2000)
+
+  for (const ed of edificios || []) {
+    if (!Array.isArray(ed.equipos)) continue
+    const eq = ed.equipos.find((a: any) => String(a?.codigo || '').toUpperCase().trim() === codigo)
+    if (eq) return { codigo, edificio: ed, equipo: eq, tipo_equipo: eq?.tipo ?? null }
+  }
+  return null
+}
+
 /* ══════════════════ Chatwoot ══════════════════ */
 
 /**
@@ -116,7 +161,7 @@ function hhmm(d?: Date) {
 }
 
 /** Bloque con los datos del edificio/ascensor (se repite en varios mensajes). */
-function bloqueEmergencia(e: any): string {
+export function bloqueEmergencia(e: any): string {
   const lineas: string[] = []
   if (e.edificio_nombre || e.empresa_cliente) lineas.push(`🏢 *Edificio:* ${e.edificio_nombre || e.empresa_cliente}`)
   if (e.codigo_ascensor) lineas.push(`🛗 *Ascensor:* ${e.codigo_ascensor}${e.tipo_equipo ? ` — ${e.tipo_equipo}` : ''}`)
@@ -127,6 +172,40 @@ function bloqueEmergencia(e: any): string {
   if (e.telefono_contacto) lineas.push(`☎️ *Contacto:* ${e.telefono_contacto}`)
   if (e.descripcion) lineas.push(`📝 *Detalle:* ${e.descripcion}`)
   return lineas.join('\n')
+}
+
+/**
+ * Aviso de EMERGENCIA NUEVA reportada por la línea telefónica (Retell).
+ * Mismo canal y formato que los avisos del seguimiento, pero se dispara antes:
+ * cuando el bot confirma la emergencia en la llamada, no cuando el técnico sale.
+ */
+export function mensajeEmergenciaLlamada(e: any, extra: {
+  telefonoSeguimiento?: string | null
+  contactoNombre?: string | null
+  atrapados?: string | null
+  critico?: boolean
+  codigoNoEncontrado?: boolean
+  linkMonitor?: string
+}): string {
+  const prioridad = String(e.prioridad || 'critica').toUpperCase()
+  return [
+    `🚨 *EMERGENCIA REPORTADA POR LLAMADA — Prioridad ${prioridad}*`,
+    `Emergencia #${e.id}${e.titulo ? ` · ${e.titulo}` : ''}`,
+    extra.critico ? `\n🔴 *CASO CRÍTICO* — se reportó fuego, humo, agua, herido o dificultad para respirar.` : '',
+    '',
+    bloqueEmergencia(e),
+    extra.atrapados ? `🧍 *Atrapados:* ${extra.atrapados}` : '',
+    extra.contactoNombre ? `🙍 *Reporta:* ${extra.contactoNombre}` : '',
+    extra.telefonoSeguimiento ? `📱 *WhatsApp para seguimiento:* ${extra.telefonoSeguimiento}` : '',
+    extra.codigoNoEncontrado
+      ? `\n⚠️ *El código dictado no está en el catálogo* — los datos del edificio son los que dio el cliente por teléfono, verificar antes de despachar.`
+      : '',
+    '',
+    `🕐 *Reportada:* ${hhmm()}`,
+    extra.linkMonitor ? `\n🖥️ Asignar técnico en el monitor:\n${extra.linkMonitor}` : '',
+    '',
+    `_Ya está en el monitor de emergencias. Al tocar "Comenzar" arranca el seguimiento GPS._`,
+  ].filter(Boolean).join('\n')
 }
 
 export interface MensajeCtx {

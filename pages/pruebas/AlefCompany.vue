@@ -2566,7 +2566,7 @@ const COMPANY_TOOLS: Record<string, string[]> = {
   skip:           ['Todas', ...FLOW_TOOLS],
   alegrated:      ['Todas', ...FLOW_TOOLS],
   origitec:       ['Todas', ...FLOW_TOOLS],
-  gatwick:        ['Todas', 'buscando_edificio', 'SMS Alerta Emergencia', 'Generar Llamada', 'Retell Llamada', 'Seguimiento Emergencia', 'Gestion Emergencia', ...FLOW_TOOLS],
+  gatwick:        ['Todas', 'buscando_edificio', 'SMS Alerta Emergencia', 'Generar Llamada', 'Retell Llamada', 'Consultar Ascensor', 'Emergencia por Llamada', 'Seguimiento Emergencia', 'Gestion Emergencia', ...FLOW_TOOLS],
   tradecars:      ['Todas', 'Formulario Web Venta', 'Formulario Web Compra', ...FLOW_TOOLS],
   sgs:            ['Todas', 'OCR Ticket', 'Ingreso Ticket', 'Editar Ticket', 'Ingreso a Analisis', 'Tick TAT', 'Resultado', ...FLOW_TOOLS],
   todas:          ['Todas', ...FLOW_TOOLS],
@@ -2595,6 +2595,8 @@ const devEndpoints = [
   { company: 'gatwick',        url: 'POST /api/gatwick/buscar-edificio      ·  api_key: gatwick-edificio-2026' },
   { company: 'gatwick',        url: 'POST /api/gatwick/sms-alerta           ·  api_key: gatwick-sms-2026 (SMS técnico vía Telnyx)' },
   { company: 'gatwick',        url: 'POST /api/gatwick/generar-llamada      ·  api_key: gatwick-llamada-2026 (llamada técnico vía Vonage)' },
+  { company: 'gatwick',        url: 'POST /api/retell/gatwick-ascensor      ·  api_key: retell-gatwick-2026 (código sticker → edificio, en llamada)' },
+  { company: 'gatwick',        url: 'POST /api/retell/gatwick-emergencia    ·  api_key: retell-gatwick-2026 (crea la emergencia + avisa supervisores)' },
   { company: 'todas',          url: 'POST /api/flows/log                   ·  api_key: flow-log-2026 (errores + tokens de cualquier flujo n8n)' },
 ]
 

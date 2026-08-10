@@ -474,6 +474,40 @@ Dev · Agent Logs → Empresa: Gatwick**.
 - **Guías n8n:** `referencia/n8n/gatwick-sms-alerta-guia.md` y `gatwick-generar-llamada-guia.md`
   (+ sus `*-subflow.json`).
 
+### Gatwick — Línea telefónica de emergencias (Retell AI)
+
+Agente de voz **GATWICK ELEVADORES IA** (Retell, conversation flow). Atiende solo
+**emergencias** (persona/vehículo/mascota atrapada); lo demás lo transfiere a la mesa de
+servicio. Al confirmar la emergencia hace **lo mismo que el flujo de WhatsApp**: crea la
+emergencia en el monitor y avisa a los supervisores.
+
+| Tool en Retell | Endpoint | api_key | Qué hace |
+|---|---|---|---|
+| `buscar_contexto_gatwick` | `GET /api/retell/gatwick-llamada` | `retell-gatwick-2026` | ¿Este número ya llamó en las últimas 24 h? |
+| `consultar_ascensor` | `POST /api/retell/gatwick-ascensor` | `retell-gatwick-2026` | Código del sticker → edificio/dirección/distrito. `tool_name='Consultar Ascensor'` |
+| `registrar_emergencia` | `POST /api/retell/gatwick-emergencia` | `retell-gatwick-2026` | Crea la emergencia + avisa supervisores. `tool_name='Emergencia por Llamada'` |
+| `guardar_llamada_gatwick` | `POST /api/retell/gatwick-llamada` | `retell-gatwick-2026` | Guarda transcripción (también vía webhook post-call) |
+| *(inbound webhook)* | `POST /api/retell/gatwick-inbound` | `retell-gatwick-2026` | Inyecta `{{ya_llamo}}`, `{{resumen_previo}}`… antes del saludo |
+
+- **`consultar_ascensor` sustituye a la Knowledge Base.** El global prompt dice "consulta el
+  catálogo interno", pero `knowledge_base_ids` está vacío: sin esta tool el bot no puede
+  resolver el código. Normaliza lo que entrega el STT (`ap 1`, `AP0017`, `A P cero cero uno siete`
+  → `AP-0017`) y exige **coincidencia exacta** — `AP-0017` y `AP-0117` son equipos distintos.
+- **`registrar_emergencia` NO inicia el seguimiento GPS.** Crea la emergencia en estado
+  `pendiente`; el tracking arranca cuando el técnico toca "Comenzar" en el monitor, que es
+  cuando realmente sale. El monitor la ve aparecer sola (escucha `postgres_changes`).
+- **Deduplica por `call_id`** (ventana de 60 min): si el bot llama dos veces a la tool en la
+  misma llamada no se crean dos emergencias.
+- **Nunca devuelven error HTTP** (salvo 401): un 500 haría que Retell corte la llamada. Ante
+  fallo responden `ok:false` + una frase para que el bot la lea, y queda en los logs.
+- `gatwick_edificios` es la **fuente de verdad**: sus datos pisan lo que dictó el cliente. Si el
+  código no está en el catálogo, se usa lo dictado y el aviso lo marca con ⚠️.
+- **Migración SQL:** correr una vez `sql/gatwick_retell_emergencia.sql` (crea
+  `retell_llamadas_GATWICK`, que nunca se había creado por SQL, + columnas de trazabilidad
+  `origen`, `call_id`, `telefono_origen`, `contacto_nombre`, `tipo_atrapado`,
+  `cantidad_atrapados`, `critico` en `gatwick_emergencias`).
+- **Guía de configuración manual en Retell:** `referencia/retell/gatwick-emergencia-guia.md`.
+
 ---
 
 ## Variables de Entorno (`.env`)

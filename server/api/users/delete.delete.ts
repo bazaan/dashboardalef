@@ -1,5 +1,6 @@
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import { logServerActivity } from '../../utils/logger'
+import { esGatwick, eliminarSyncGatwick } from '../../utils/gatwick-tracking'
 
 export default defineEventHandler(async (event) => {
     const client = serverSupabaseServiceRole(event)
@@ -57,16 +58,21 @@ export default defineEventHandler(async (event) => {
     const requesterRole = currentUserProfile.role
     const requesterCompany = currentUserProfile.company_id
 
+    // Datos actuales del usuario a eliminar (permisos de admin + sincronización de Gatwick)
+    const { data: targetUser, error: targetError } = await client
+        .from('dashboardlogin')
+        .select('email, company_id')
+        .eq('id', id)
+        .single()
+
+    if (targetError || !targetUser) {
+        throw createError({ statusCode: 404, statusMessage: 'Usuario a eliminar no encontrado' })
+    }
+
     // 3. Verificar Permisos
     if (requesterRole === 'admin') {
         // Verificación extra de seguridad: asegurar que el id a eliminar pertenece a la empresa del admin
-        const { data: targetUser, error: targetError } = await client
-            .from('dashboardlogin')
-            .select('company_id')
-            .eq('id', id)
-            .single()
-
-        if (targetError || !targetUser || targetUser.company_id !== requesterCompany) {
+        if (targetUser.company_id !== requesterCompany) {
             throw createError({
                 statusCode: 403,
                 statusMessage: 'Forbidden: You can only delete users for your own company'
@@ -103,6 +109,11 @@ export default defineEventHandler(async (event) => {
 
     if (requesterRole !== 'superadmin') {
         await logServerActivity(event, userEmail, `Eliminó a un usuario con ID: ${id}`, requesterCompany)
+    }
+
+    // Sincronización adicional exclusiva de Gatwick — no afecta a ninguna otra empresa
+    if (esGatwick(targetUser.company_id)) {
+        await eliminarSyncGatwick(client, targetUser.email)
     }
 
     return { success: true }

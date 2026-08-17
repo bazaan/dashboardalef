@@ -186,7 +186,7 @@ export default defineEventHandler(async (event) => {
       codigoNoEncontrado,
       linkMonitor: `${baseUrl(event)}/pruebas/Gatwick`,
     })
-    const aviso = await avisarSupervisores(supabase, mensaje)
+    const aviso = await avisarSupervisores(supabase, mensaje, 'emergencia')
 
     const confirmacion = hit
       ? `Listo. Ya reporté la emergencia en ${edificioNombre}. El equipo fue notificado y el técnico rescatista sale en breve.`

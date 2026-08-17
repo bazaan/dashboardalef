@@ -239,25 +239,39 @@ export async function resolverCodigoAscensorDetalle(
 /* ══════════════════ Chatwoot ══════════════════ */
 
 /**
- * Envía un mensaje a TODAS las conversaciones de supervisores activas.
+ * Envía un mensaje a las conversaciones de supervisores activas.
+ *
+ * `tipo` filtra la audiencia:
+ *   - 'emergencia'  (default) → todos los `activo=true` (aviso de que HAY una emergencia nueva)
+ *   - 'seguimiento'           → solo los que además tienen `recibe_seguimiento=true`
+ *     (en_camino, atendiendo, finalizada, cancelada — el progreso del técnico)
+ *
+ * Así una conversación puede configurarse para recibir solo el aviso inicial,
+ * o el aviso inicial + todo el progreso.
+ *
  * Best-effort: si una falla, las demás igual se envían.
  */
-export async function avisarSupervisores(supabase: any, mensaje: string): Promise<{ enviados: number; fallidos: number }> {
+export async function avisarSupervisores(
+  supabase: any, mensaje: string, tipo: 'emergencia' | 'seguimiento' = 'emergencia',
+): Promise<{ enviados: number; fallidos: number }> {
   let enviados = 0, fallidos = 0
   let destinos: any[] = []
 
   try {
-    const { data } = await supabase
+    let query = supabase
       .from('gatwick_supervisores')
-      .select('nombre, chatwoot_account_id, chatwoot_conversation_id')
+      .select('nombre, chatwoot_account_id, chatwoot_conversation_id, recibe_seguimiento')
       .eq('activo', true)
       .order('orden')
+    if (tipo === 'seguimiento') query = query.eq('recibe_seguimiento', true)
+    const { data } = await query
     destinos = data || []
   } catch (e: any) {
     console.error('[gatwick-tracking] no se pudo leer supervisores:', e?.message)
   }
 
   // Fallback por si la tabla está vacía: los 2 chats acordados con Gatwick
+  // (reciben de todo, ya que sin fila en la tabla no hay forma de distinguir)
   if (!destinos.length) {
     destinos = [
       { nombre: 'Supervisor 1', chatwoot_account_id: 15, chatwoot_conversation_id: 14 },
@@ -495,6 +509,88 @@ export async function verificarAdminGatwick(event: any, supabase: any): Promise<
     throw createError({ statusCode: 403, statusMessage: 'Sin permiso para Gatwick' })
   }
   return { email: perfil.email, role: rol }
+}
+
+/** ¿Este company_id es Gatwick? Mismo criterio que canAccessGatwick en utils/permissions.ts */
+export function esGatwick(companyId?: string | null): boolean {
+  const cid = String(companyId ?? '').toLowerCase().trim()
+  return cid === 'gatwick' || cid === 'gatwick ascensores' || cid.includes('gatwick')
+}
+
+/**
+ * Sincroniza (adicional, NUNCA bloqueante) las cuentas de Gatwick creadas/editadas
+ * en `dashboardlogin` con las tablas propias del módulo de emergencias, para que
+ * el alta desde Configuración también sirva para eso sin tocar el flujo normal:
+ *   - role 'agente' → gatwick_tecnicos (roster de técnicos que ya usa el Monitor
+ *     para asignar quién atiende cada emergencia).
+ *   - role 'admin'  → gatwick_alerta_destinos (recibe SMS de emergencia nueva;
+ *     es un backup del WhatsApp de gatwick_supervisores, que sigue
+ *     administrándose a mano porque se identifica por conversación de Chatwoot,
+ *     no por teléfono).
+ * Un fallo acá nunca debe tumbar el alta/edición/baja del usuario real.
+ */
+export async function sincronizarUsuarioGatwick(supabase: any, opts: {
+  role: string
+  email: string
+  nombre: string
+  telefono?: string | null
+  emailAnterior?: string | null
+}): Promise<void> {
+  const { role, email, nombre, telefono, emailAnterior } = opts
+  try {
+    const emailBusqueda = String(emailAnterior || email || '').toLowerCase().trim()
+    const emailNuevo = String(email || '').toLowerCase().trim()
+    if (!emailBusqueda || !emailNuevo) return
+
+    if (role === 'agente') {
+      const [pnombre, ...resto] = String(nombre || '').trim().split(/\s+/)
+      const { data: existente } = await supabase
+        .from('gatwick_tecnicos').select('id').ilike('email', emailBusqueda).maybeSingle()
+      const fila: Record<string, any> = {
+        nombre: pnombre || nombre || 'Técnico',
+        apellido: resto.join(' ') || null,
+        email: emailNuevo, activo: true, updated_at: new Date().toISOString(),
+      }
+      if (telefono) fila.telefono = telefono
+      if (existente) {
+        await supabase.from('gatwick_tecnicos').update(fila).eq('id', existente.id)
+      } else {
+        await supabase.from('gatwick_tecnicos').insert({ ...fila, estado: 'disponible' })
+      }
+    } else if (role === 'admin') {
+      const { data: existente } = await supabase
+        .from('gatwick_alerta_destinos').select('id').ilike('email', emailBusqueda).maybeSingle()
+      if (existente) {
+        const fila: Record<string, any> = {
+          nombre: nombre || 'Supervisor', email: emailNuevo,
+          activo: true, updated_at: new Date().toISOString(),
+        }
+        if (telefono) fila.telefono = telefono
+        await supabase.from('gatwick_alerta_destinos').update(fila).eq('id', existente.id)
+      } else if (telefono) {
+        // Sin teléfono no se puede crear (columna NOT NULL) — queda sin sincronizar
+        // hasta que se edite el usuario y se agregue uno.
+        await supabase.from('gatwick_alerta_destinos').insert({
+          nombre: nombre || 'Supervisor', email: emailNuevo, telefono,
+          activo: true, recibe_sms: true, recibe_llamada: false,
+        })
+      }
+    }
+  } catch (e: any) {
+    console.error('[gatwick-tracking] sincronizarUsuarioGatwick:', e?.message)
+  }
+}
+
+/** Baja lógica (activo=false) en las tablas de Gatwick sincronizadas al eliminar un usuario. */
+export async function eliminarSyncGatwick(supabase: any, email: string): Promise<void> {
+  try {
+    const e = String(email || '').toLowerCase().trim()
+    if (!e) return
+    await supabase.from('gatwick_tecnicos').update({ activo: false }).ilike('email', e)
+    await supabase.from('gatwick_alerta_destinos').update({ activo: false }).ilike('email', e)
+  } catch (err: any) {
+    console.error('[gatwick-tracking] eliminarSyncGatwick:', err?.message)
+  }
 }
 
 /** URL base pública del dashboard (para armar los links de los mensajes). */

@@ -149,7 +149,7 @@ export default defineEventHandler(async (event) => {
   const linkTecnico = `${base}/gatwick/tecnico/${token}`
   const linkSupervisor = `${base}/gatwick/seguimiento/${token}`
   const mensaje = mensajeParaEstado('iniciado', { emergencia: emergFinal, seguimiento: seg, linkSupervisor })
-  const aviso = await avisarSupervisores(supabase, mensaje)
+  const aviso = await avisarSupervisores(supabase, mensaje, 'seguimiento')
 
   try {
     await supabase.from('agent_tool_logs').insert({

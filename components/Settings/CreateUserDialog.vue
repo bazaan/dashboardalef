@@ -19,6 +19,11 @@
                     <v-select v-model="role" :items="availableRoles" label="Rol" variant="outlined" density="compact"
                         :rules="[rules.required]"></v-select>
 
+                    <v-text-field v-if="esGatwick" v-model="telefono"
+                        :label="role === 'admin' ? 'Teléfono (recibe SMS de emergencia)' : 'Teléfono del técnico'"
+                        placeholder="+51955322269" variant="outlined" density="compact" class="mb-2"
+                        hint="Opcional. Se usa para las alertas de emergencia de Gatwick." persistent-hint></v-text-field>
+
                     <v-alert v-if="errorMsg" type="error" variant="tonal" class="mt-2" closable>
                         {{ errorMsg }}
                     </v-alert>
@@ -64,6 +69,7 @@ const fullName = ref('')
 const email = ref('')
 const password = ref('')
 const role = ref('agente') // Default to agente
+const telefono = ref('')
 
 // Determine available roles based on current user (logic handled in backend mostly, but UI can filter)
 // For now, hardcode options
@@ -71,6 +77,10 @@ const availableRoles = [
     { title: 'Agente', value: 'agente' },
     { title: 'Admin', value: 'admin' }
 ]
+
+// Gatwick: agente = técnico, admin = supervisor — se pide teléfono para las
+// alertas de emergencia (ver server/utils/gatwick-tracking.ts sincronizarUsuarioGatwick)
+const esGatwick = computed(() => String(props.companyId || '').toLowerCase().includes('gatwick'))
 
 const rules = {
     required: (v: string) => !!v || 'Requerido',
@@ -93,7 +103,8 @@ const submit = async () => {
                 password: password.value,
                 full_name: fullName.value,
                 role: role.value,
-                company_id: props.companyId
+                company_id: props.companyId,
+                telefono: esGatwick.value ? (telefono.value || undefined) : undefined
             }
         })
 
@@ -120,6 +131,7 @@ const resetForm = () => {
     email.value = ''
     password.value = ''
     role.value = 'agente'
+    telefono.value = ''
     errorMsg.value = ''
     successMsg.value = ''
 }

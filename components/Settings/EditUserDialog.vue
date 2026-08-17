@@ -13,6 +13,11 @@
                     <v-text-field v-model="email" label="Correo Electrónico" variant="outlined" density="compact"
                         :rules="[rules.required, rules.email]" class="mb-2"></v-text-field>
 
+                    <v-text-field v-if="esGatwick" v-model="telefono"
+                        label="Teléfono (alertas de emergencia Gatwick)"
+                        placeholder="+51955322269" variant="outlined" density="compact" class="mb-2"
+                        hint="Opcional. Dejar en blanco para no cambiarlo." persistent-hint></v-text-field>
+
                     <v-alert v-if="errorMsg" type="error" variant="tonal" class="mt-2" closable>
                         {{ errorMsg }}
                     </v-alert>
@@ -38,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps<{
     user: any // The user object to edit
@@ -56,12 +61,18 @@ const successMsg = ref('')
 
 const fullName = ref('')
 const email = ref('')
+const telefono = ref('')
+
+// Gatwick: agente = técnico, admin = supervisor — se puede actualizar el
+// teléfono usado para las alertas de emergencia (ver sincronizarUsuarioGatwick)
+const esGatwick = computed(() => String(props.companyId || '').toLowerCase().includes('gatwick'))
 
 // Initialize form when dialog opens or user changes
 watch(() => props.user, (newVal) => {
     if (newVal) {
         fullName.value = newVal.full_name || ''
         email.value = newVal.email || ''
+        telefono.value = ''
         errorMsg.value = ''
         successMsg.value = ''
     }
@@ -86,7 +97,8 @@ const submit = async () => {
                 id: props.user.id,
                 email: email.value,
                 full_name: fullName.value,
-                company_id: props.companyId
+                company_id: props.companyId,
+                telefono: esGatwick.value ? (telefono.value || undefined) : undefined
             }
         })
 

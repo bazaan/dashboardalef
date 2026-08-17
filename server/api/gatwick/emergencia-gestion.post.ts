@@ -135,7 +135,7 @@ export default defineEventHandler(async (event) => {
       seguimiento: segAct,
       linkSupervisor: `${baseUrl(event)}/gatwick/seguimiento/${seg.token}`,
       notas: motivo,
-    }))
+    }), 'seguimiento')
 
     await log({ seguimiento_id: seg.id, motivo, aviso })
     return { ok: true, seguimiento: segAct, aviso }

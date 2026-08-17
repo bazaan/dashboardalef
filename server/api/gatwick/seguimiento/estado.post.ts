@@ -108,7 +108,7 @@ export default defineEventHandler(async (event) => {
     etaSegundos: segAct.eta_segundos,
     notas: patch.notas_cierre,
   })
-  const aviso = await avisarSupervisores(supabase, mensaje)
+  const aviso = await avisarSupervisores(supabase, mensaje, 'seguimiento')
 
   try {
     const e: any = emerg || seg.snapshot || {}

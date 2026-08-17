@@ -1,10 +1,11 @@
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import { logServerActivity } from '../../utils/logger'
+import { esGatwick, sincronizarUsuarioGatwick } from '../../utils/gatwick-tracking'
 
 export default defineEventHandler(async (event) => {
     const client = serverSupabaseServiceRole(event)
     const body = await readBody(event)
-    const { id, email, full_name, company_id } = body
+    const { id, email, full_name, company_id, telefono } = body
 
     if (!id || !email || !full_name) {
         throw createError({
@@ -57,6 +58,18 @@ export default defineEventHandler(async (event) => {
     const requesterRole = currentUserProfile.role
     const requesterCompany = currentUserProfile.company_id
 
+    // Datos actuales del usuario a editar (se necesitan para verificar permisos de
+    // admin y también para la sincronización de Gatwick más abajo)
+    const { data: targetUser, error: targetError } = await client
+        .from('dashboardlogin')
+        .select('email, role, company_id')
+        .eq('id', id)
+        .single()
+
+    if (targetError || !targetUser) {
+        throw createError({ statusCode: 404, statusMessage: 'Usuario a editar no encontrado' })
+    }
+
     // 3. Verificar Permisos
     if (requesterRole === 'admin') {
         // Admin solo puede editar usuarios de su propia compañía
@@ -69,13 +82,7 @@ export default defineEventHandler(async (event) => {
         }
 
         // Verificación extra de seguridad: asegurar que el id a actualizar pertenece a la empresa del admin
-        const { data: targetUser, error: targetError } = await client
-            .from('dashboardlogin')
-            .select('company_id')
-            .eq('id', id)
-            .single()
-
-        if (targetError || !targetUser || targetUser.company_id !== requesterCompany) {
+        if (targetUser.company_id !== requesterCompany) {
             throw createError({
                 statusCode: 403,
                 statusMessage: 'Forbidden: You can only edit users for your own company'
@@ -110,6 +117,14 @@ export default defineEventHandler(async (event) => {
 
     if (requesterRole !== 'superadmin') {
         await logServerActivity(event, userEmail, `Actualizó la información del usuario: ${email}`, company_id || requesterCompany)
+    }
+
+    // Sincronización adicional exclusiva de Gatwick — no afecta a ninguna otra empresa
+    if (esGatwick(targetUser.company_id)) {
+        await sincronizarUsuarioGatwick(client, {
+            role: targetUser.role, email, nombre: full_name, telefono,
+            emailAnterior: targetUser.email,
+        })
     }
 
     return { success: true, user: updatedUser }

@@ -29,7 +29,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="nav-section">
+        <div class="nav-section" v-if="!soloTecnico">
           <div class="nav-label">Inicio</div>
           <button v-for="item in menuItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
@@ -39,7 +39,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div class="nav-section" v-if="!soloTecnico">
           <div class="nav-label">INVENTARIO</div>
           <button v-for="item in inventarioItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
@@ -52,7 +52,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div class="nav-section" v-if="!soloTecnico">
           <div class="nav-label">CHATS</div>
           <button v-for="item in chatItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
@@ -64,7 +64,7 @@
 
         <div class="nav-section">
           <div class="nav-label">EMERGENCIAS</div>
-          <button v-for="item in emergenciasItems" :key="item.id"
+          <button v-for="item in (soloTecnico ? emergenciasItems.filter(i => i.id === 'emergencias') : emergenciasItems)" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
             @click="activeView = item.id">
             <v-icon :icon="item.icon" size="18" />
@@ -75,7 +75,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div class="nav-section" v-if="!soloTecnico">
           <div class="nav-label">OPERACIONES</div>
           <button v-for="item in operacionesItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
@@ -85,7 +85,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div class="nav-section" v-if="!soloTecnico">
           <div class="nav-label">FINANZAS</div>
           <button v-for="item in financiasItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
@@ -95,7 +95,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div class="nav-section" v-if="!soloTecnico">
           <div class="nav-label">REPORTES</div>
           <button v-for="item in reportesItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]"
@@ -107,7 +107,7 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="footer-item" @click="activeView = 'settings'">
+        <button v-if="!soloTecnico" class="footer-item" @click="activeView = 'settings'">
           <v-icon icon="mdi-cog" size="18" />
           <span>Configuración</span>
         </button>
@@ -1919,7 +1919,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { isSuperAdmin, dashboards } from '~/utils/permissions'
 import FormsCompanyPanel from '@/components/Forms/FormsCompanyPanel.vue'
@@ -1934,6 +1934,10 @@ const currentUser = ref({ full_name: '', email: '', role: '' })
 const isDark = ref(true)
 const showDashboardMenu = ref(false)
 const showUserMenu = ref(false)
+
+// Un 'agente' en Gatwick es el técnico: solo debe ver el Monitor de Emergencias,
+// nada más de contabilidad/clientes/leads/inventario/configuración.
+const soloTecnico = computed(() => String(currentUser.value?.role || '').toLowerCase() === 'agente')
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 const activeView = useVistaPersistente('gatwick')
@@ -3881,9 +3885,15 @@ async function refreshAll() {
   ])
 }
 
+// Un técnico (rol agente) solo puede ver el Monitor de Emergencias — si el
+// valor persistido (useVistaPersistente) apunta a otro módulo, se corrige acá.
+watch(soloTecnico, (v) => { if (v && activeView.value !== 'emergencias') activeView.value = 'emergencias' })
+watch(activeView, (v) => { if (soloTecnico.value && v !== 'emergencias') activeView.value = 'emergencias' })
+
 // ── Lifecycle ──────────────────────────────────────────────────────────────
 onMounted(async () => {
   await loadSession()
+  if (soloTecnico.value) activeView.value = 'emergencias'
   defaultRangoMov()
   await Promise.all([
     fetchEdificios(),

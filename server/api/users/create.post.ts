@@ -2,13 +2,14 @@
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import bcrypt from 'bcryptjs'
 import { logServerActivity } from '../../utils/logger'
+import { esGatwick, sincronizarUsuarioGatwick } from '../../utils/gatwick-tracking'
 
 export default defineEventHandler(async (event) => {
     // Service role bypasa RLS para poder leer/escribir dashboardlogin
     // sin importar si el solicitante tiene sesión en Supabase Auth o solo en la cookie
     const client = serverSupabaseServiceRole(event)
     const body = await readBody(event)
-    const { email, password, full_name, role, company_id } = body
+    const { email, password, full_name, role, company_id, telefono } = body
 
     // 1. Validar sesión del usuario que hace la petición
     let user = await serverSupabaseUser(event)
@@ -125,6 +126,11 @@ export default defineEventHandler(async (event) => {
 
     if (requesterRole !== 'superadmin') {
         await logServerActivity(event, userEmail, `Creó un nuevo perfil de usuario: ${email}`, targetCompanyId)
+    }
+
+    // Sincronización adicional exclusiva de Gatwick — no afecta a ninguna otra empresa
+    if (esGatwick(targetCompanyId)) {
+        await sincronizarUsuarioGatwick(client, { role, email, nombre: full_name, telefono })
     }
 
     return { success: true, user: newUser }

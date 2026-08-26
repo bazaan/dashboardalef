@@ -11,6 +11,7 @@
       <div class="table-section">
         <div class="table-tabs">
           <button :class="['tab', { active: tab === 'tablero' }]" @click="tab = 'tablero'">Tareo en vivo</button>
+          <button :class="['tab', { active: tab === 'expedientes' }]" @click="tab = 'expedientes'">Expedientes</button>
           <button :class="['tab', { active: tab === 'mensual' }]" @click="tab = 'mensual'">Reporte mensual</button>
           <button :class="['tab', { active: tab === 'vacaciones' }]" @click="tab = 'vacaciones'">
             Vacaciones <span v-if="pendientesVac" class="badge">{{ pendientesVac }}</span>
@@ -21,7 +22,12 @@
         </div>
 
         <!-- ══════════ TAREO EN VIVO ══════════ -->
-        <div v-if="tab === 'tablero'">
+        <!-- ══════════ EXPEDIENTE DEL TRABAJADOR ══════════ -->
+        <PiolaExpediente v-if="tab === 'expedientes'" :perfil="perfil"
+          :puede-editar="puedeEditar" :puede-eliminar="esAdmin"
+          @notify="(p: any) => emit('notify', p)" />
+
+        <div v-else-if="tab === 'tablero'">
           <div class="stats-grid">
             <div class="stat-card">
               <div class="stat-header"><span class="stat-title">En jornada ahora</span></div>
@@ -238,7 +244,10 @@
               </template>
               <template v-slot:item.acciones="{ item }">
                 <v-btn v-if="item.pdf_url" icon="mdi-file-eye" size="x-small" variant="text"
-                  :href="item.pdf_url" target="_blank" title="Ver / imprimir" />
+                  title="Ver aquí mismo"
+                  @click="abrirVisor(item.pdf_url, `Boleta ${item.periodo} — ${item.colaborador_nombre}`)" />
+                <v-btn v-if="item.pdf_url" icon="mdi-download" size="x-small" variant="text"
+                  title="Descargar" :href="urlDoc(item.pdf_url)" :download="item.codigo" />
                 <v-btn icon="mdi-email-fast" size="x-small" variant="text" title="Enviar por correo"
                   :loading="enviandoBoleta === item.id" @click="enviarBoleta(item)" />
               </template>
@@ -256,7 +265,10 @@
               <template v-slot:item.colaboradores="{ item }">{{ (item.detalle || []).length }}</template>
               <template v-slot:item.acciones="{ item }">
                 <v-btn v-if="item.pdf_url" icon="mdi-file-eye" size="x-small" variant="text"
-                  :href="item.pdf_url" target="_blank" title="Ver / imprimir" />
+                  title="Ver aquí mismo"
+                  @click="abrirVisor(item.pdf_url, `Descargo AFP ${item.periodo}`)" />
+                <v-btn v-if="item.pdf_url" icon="mdi-download" size="x-small" variant="text"
+                  title="Descargar" :href="urlDoc(item.pdf_url)" :download="`afp-${item.periodo}`" />
               </template>
             </v-data-table>
           </v-card>
@@ -316,6 +328,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <PiolaVisorPdf v-model="visor.abierto" :src="visor.src" :titulo="visor.titulo" />
   </div>
 </template>
 
@@ -337,13 +351,26 @@ import { ref, computed, onMounted } from 'vue'
 import { piolaCan } from '@/utils/permissions'
 import {
   PEN, fechaCorta, fechaHora, horaLima, minutosAHoras, periodoActual, ultimosPeriodos, hoyISO,
+  urlDocumento,
 } from '@/composables/usePiola'
+import PiolaVisorPdf from './PiolaVisorPdf.vue'
+import PiolaExpediente from './PiolaExpediente.vue'
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
 
 const client = useSupabaseClient()
 const esAdmin = computed(() => props.perfil?.es_admin === true)
+
+/* ── Visor embebido: los documentos se abren DENTRO del dashboard (19/08) ── */
+const visor = ref<{ abierto: boolean; src: string; titulo: string }>({
+  abierto: false, src: '', titulo: '',
+})
+const urlDoc = (path: any) => urlDocumento(client, path)
+function abrirVisor(path: any, titulo: string) {
+  visor.value = { abierto: true, src: urlDoc(path), titulo }
+}
+
 const puedeEditar = computed(() => piolaCan(props.perfil?.permisos, 'rrhh', 'edit'))
 
 const tab = ref('tablero')

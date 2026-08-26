@@ -82,6 +82,57 @@
         </div>
       </div>
 
+      <!-- ══════════ POSICIÓN FINANCIERA ══════════ -->
+      <div v-if="ve('contabilidad')" class="stats-grid">
+        <div class="stat-card clickeable" @click="emit('ir', 'contabilidad')">
+          <div class="stat-header">
+            <span class="stat-title">Por cobrar</span>
+            <div v-if="finanzas.cobrarVencido" class="stat-change down">
+              {{ PEN_CORTO(finanzas.cobrarVencido) }} vencido
+            </div>
+          </div>
+          <div class="stat-value" style="color:#2e9e5b">{{ PEN_CORTO(finanzas.porCobrar) }}</div>
+          <div class="stat-description">{{ finanzas.nCobrar }} documento(s) con saldo</div>
+        </div>
+        <div class="stat-card clickeable" @click="emit('ir', 'contabilidad')">
+          <div class="stat-header">
+            <span class="stat-title">Por pagar</span>
+            <div v-if="finanzas.pagarVencido" class="stat-change down">
+              {{ PEN_CORTO(finanzas.pagarVencido) }} vencido
+            </div>
+          </div>
+          <div class="stat-value" style="color:#e2564a">{{ PEN_CORTO(finanzas.porPagar) }}</div>
+          <div class="stat-description">{{ finanzas.nPagar }} obligación(es) pendiente(s)</div>
+        </div>
+        <div class="stat-card clickeable" @click="emit('ir', 'contabilidad')">
+          <div class="stat-header"><span class="stat-title">Caja disponible</span></div>
+          <div class="stat-value">{{ PEN_CORTO(finanzas.caja) }}</div>
+          <div class="stat-description">
+            {{ finanzas.cajaAbierta ? 'Caja abierta ahora mismo' : 'Sin caja abierta' }}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-header"><span class="stat-title">Posición proyectada</span></div>
+          <div class="stat-value"
+            :style="{ color: finanzas.posicion >= 0 ? '#2e9e5b' : '#e2564a' }">
+            {{ PEN_CORTO(finanzas.posicion) }}
+          </div>
+          <div class="stat-description">Caja + por cobrar − por pagar</div>
+        </div>
+      </div>
+
+      <!-- Proyecciones cargadas a mano en Contabilidad -->
+      <div v-if="ve('contabilidad') && (finanzas.proyIngresos || finanzas.proyEgresos)"
+        class="proyeccion-caja">
+        <v-icon icon="mdi-chart-timeline-variant" size="17" />
+        <span>
+          Proyección cargada: <b style="color:#2e9e5b">{{ PEN_CORTO(finanzas.proyIngresos) }}</b>
+          de ingresos y <b style="color:#e2564a">{{ PEN_CORTO(finanzas.proyEgresos) }}</b> de gastos
+          por venir. Con eso, la posición quedaría en
+          <b>{{ PEN_CORTO(finanzas.posicion + finanzas.proyIngresos - finanzas.proyEgresos) }}</b>.
+        </span>
+      </div>
+
       <!-- ══════════ GRÁFICO ══════════ -->
       <div v-if="ve('contabilidad') || ve('crm')" class="chart-section">
         <div class="chart-header">
@@ -155,7 +206,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useTheme } from 'vuetify'
 import { piolaCan } from '@/utils/permissions'
-import { PEN_CORTO, PEN, fechaCorta, periodoActual, ultimosPeriodos, hoyISO } from '@/composables/usePiola'
+import { PEN_CORTO, PEN, fechaCorta, periodoActual, ultimosPeriodos, hoyISO, traerTodo,} from '@/composables/usePiola'
 import type { ApexOptions } from 'apexcharts'
 
 const props = defineProps<{ perfil: any }>()
@@ -196,6 +247,9 @@ const entregables = ref<any[]>([])
 const clientes = ref<any[]>([])
 const alertas = ref<any[]>([])
 const stagesCerrados = ref<number[]>([])
+const cuentas = ref<any[]>([])
+const cajaSesion = ref<any>(null)
+const cajaMovimientos = ref<any[]>([])
 
 const meses = computed(() => [...ultimosPeriodos(6)].reverse())
 
@@ -205,8 +259,9 @@ async function cargar() {
 
   if (ve('crm')) {
     tareas.push(
-      client.from('piola_leads').select('*').gte('fecha_ingreso', desde).limit(2000)
-        .then(r => { leads.value = (r.data as any[]) || [] }),
+      traerTodo(() => client.from('piola_leads').select('*').gte('fecha_ingreso', desde)
+        .order('fecha_ingreso', { ascending: false }).order('id'))
+        .then(r => { leads.value = r.data || [] }),
       client.from('piola_lead_stages').select('id, es_ganado, es_perdido')
         .then(r => {
           stagesCerrados.value = ((r.data as any[]) || [])
@@ -215,14 +270,32 @@ async function cargar() {
     )
   }
   if (ve('contabilidad')) {
-    tareas.push(client.from('piola_transactions').select('tipo, monto, fecha, proyectado')
-      .gte('fecha', desde).limit(5000)
-      .then(r => { transacciones.value = (r.data as any[]) || [] }))
+    tareas.push(
+      traerTodo(() => client.from('piola_transactions')
+        .select('tipo, monto, fecha, proyectado, estado, monto_pagado')
+        .gte('fecha', desde).order('fecha').order('id'))
+        .then(r => { transacciones.value = r.data || [] }),
+      // Vista con saldo y atraso ya calculados en la base
+      traerTodo(() => client.from('piola_cuentas')
+        .select('tipo, saldo_pendiente, dias_atraso, proyectado').order('id'))
+        .then(r => { cuentas.value = r.data || [] })
+        .then(() => {}, () => {}),
+      // Caja: solo la sesión abierta interesa para el saldo disponible
+      client.from('piola_caja_sesiones').select('*').eq('estado', 'abierta').maybeSingle()
+        .then(async (r: any) => {
+          cajaSesion.value = r.data || null
+          if (!cajaSesion.value) return
+          const { data } = await client.from('piola_caja_movimientos')
+            .select('tipo, monto').eq('sesion_id', cajaSesion.value.id)
+          cajaMovimientos.value = (data as any[]) || []
+        })
+        .then(() => {}, () => {}),
+    )
   }
   if (ve('facturacion')) {
-    tareas.push(client.from('piola_invoices')
-      .select('id, total, neto_a_pagar, con_detraccion, estado, fecha_vencimiento').limit(1000)
-      .then(r => { facturas.value = (r.data as any[]) || [] }))
+    tareas.push(traerTodo(() => client.from('piola_invoices')
+      .select('id, total, neto_a_pagar, con_detraccion, estado, fecha_vencimiento').order('id'))
+      .then(r => { facturas.value = r.data || [] }))
   }
   if (ve('produccion')) {
     tareas.push(
@@ -280,6 +353,43 @@ const entregados = computed(() => entregables.value
 const comprometidos = computed(() => clientes.value
   .reduce((s, c) => s + Number(c.compromiso_mensual || 0), 0))
 
+/**
+ * Posición financiera: lo que hay, lo que va a entrar y lo que va a salir.
+ *
+ * Las proyecciones se muestran APARTE del número principal, no sumadas: son
+ * movimientos que el equipo cargó a mano y que todavía no ocurrieron, así que
+ * mezclarlas con la caja real haría que el dashboard prometa plata que no está.
+ */
+const finanzas = computed(() => {
+  const reales = cuentas.value.filter(c => !c.proyectado)
+  const cobrar = reales.filter(c => c.tipo === 'ingreso' && Number(c.saldo_pendiente) > 0)
+  const pagar = reales.filter(c => c.tipo === 'egreso' && Number(c.saldo_pendiente) > 0)
+  const sumaSaldo = (l: any[]) => l.reduce((s, c) => s + Number(c.saldo_pendiente || 0), 0)
+
+  const caja = cajaSesion.value
+    ? Number(cajaSesion.value.saldo_inicial || 0) + cajaMovimientos.value
+        .reduce((s, m) => s + (m.tipo === 'ingreso' ? Number(m.monto || 0) : -Number(m.monto || 0)), 0)
+    : 0
+
+  const proyectados = transacciones.value.filter(t => t.proyectado)
+  const porCobrar = sumaSaldo(cobrar)
+  const porPagar = sumaSaldo(pagar)
+
+  return {
+    porCobrar, porPagar,
+    nCobrar: cobrar.length, nPagar: pagar.length,
+    cobrarVencido: sumaSaldo(cobrar.filter(c => Number(c.dias_atraso) > 0)),
+    pagarVencido: sumaSaldo(pagar.filter(c => Number(c.dias_atraso) > 0)),
+    caja: Math.round(caja * 100) / 100,
+    cajaAbierta: !!cajaSesion.value,
+    posicion: Math.round((caja + porCobrar - porPagar) * 100) / 100,
+    proyIngresos: proyectados.filter(t => t.tipo === 'ingreso')
+      .reduce((s, t) => s + Number(t.monto || 0), 0),
+    proyEgresos: proyectados.filter(t => t.tipo === 'egreso')
+      .reduce((s, t) => s + Number(t.monto || 0), 0),
+  }
+})
+
 /* ══════════ Gráfico ══════════ */
 const seriesChart = computed(() => {
   if (ve('contabilidad')) {
@@ -334,6 +444,13 @@ onMounted(cargar)
 .mini-widget span { font-size: 11.5px; opacity: .6; }
 
 .stat-card.clickeable { cursor: pointer; }
+
+.proyeccion-caja {
+  display: flex; align-items: flex-start; gap: 9px; margin: -6px 0 22px;
+  padding: 10px 14px; font-size: 12.5px; line-height: 1.5;
+  border: 1px dashed rgba(128, 128, 128, .35); border-radius: 10px;
+  background: rgba(128, 128, 128, .04);
+}
 .lista-pendientes { max-height: 320px; overflow-y: auto; }
 
 @media (max-width: 800px) {

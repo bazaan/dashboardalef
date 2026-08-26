@@ -60,13 +60,35 @@
       <div class="table-section">
         <div class="table-tabs">
           <button :class="['tab', { active: tab === 'movimientos' }]" @click="tab = 'movimientos'">Movimientos</button>
+          <button :class="['tab', { active: tab === 'cobrar' }]" @click="tab = 'cobrar'">Por cobrar</button>
+          <button :class="['tab', { active: tab === 'pagar' }]" @click="tab = 'pagar'">Por pagar</button>
+          <button :class="['tab', { active: tab === 'caja' }]" @click="tab = 'caja'">Caja</button>
+          <button :class="['tab', { active: tab === 'presupuestos' }]" @click="tab = 'presupuestos'">Presupuestos</button>
           <button :class="['tab', { active: tab === 'flujo' }]" @click="tab = 'flujo'">Flujo mes a mes</button>
-          <button :class="['tab', { active: tab === 'categorias' }]" @click="tab = 'categorias'">Categorías de gasto</button>
+          <button :class="['tab', { active: tab === 'categorias' }]" @click="tab = 'categorias'">Categorías</button>
           <button :class="['tab', { active: tab === 'comisiones' }]" @click="tab = 'comisiones'">Comisiones</button>
         </div>
 
+        <!-- ══════════ CUENTAS POR COBRAR / POR PAGAR ══════════ -->
+        <PiolaCuentas v-if="tab === 'cobrar'" :perfil="perfil" tipo="ingreso"
+          :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+          @notify="(p: any) => emit('notify', p)" @cambio="cargar" />
+        <PiolaCuentas v-else-if="tab === 'pagar'" :perfil="perfil" tipo="egreso"
+          :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+          @notify="(p: any) => emit('notify', p)" @cambio="cargar" />
+
+        <!-- ══════════ CAJA ══════════ -->
+        <PiolaCaja v-else-if="tab === 'caja'" :perfil="perfil"
+          :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+          @notify="(p: any) => emit('notify', p)" @cambio="cargar" />
+
+        <!-- ══════════ PRESUPUESTOS ══════════ -->
+        <PiolaPresupuestos v-else-if="tab === 'presupuestos'" :perfil="perfil"
+          :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+          @notify="(p: any) => emit('notify', p)" />
+
         <!-- ══════════ MOVIMIENTOS ══════════ -->
-        <v-card v-if="tab === 'movimientos'" flat class="custom-data-table">
+        <v-card v-else-if="tab === 'movimientos'" flat class="custom-data-table">
           <div class="filtros-bar">
             <v-text-field v-model="fBuscar" prepend-inner-icon="mdi-magnify" placeholder="Concepto, proveedor…"
               density="compact" hide-details variant="outlined" clearable class="filtro filtro-buscar" />
@@ -89,6 +111,23 @@
               </span>
             </template>
             <template v-slot:item.fecha="{ item }">{{ fechaCorta(item.fecha) }}</template>
+            <template v-slot:item.fecha_vencimiento="{ item }">
+              <span v-if="item.fecha_vencimiento">{{ fechaCorta(item.fecha_vencimiento) }}</span>
+              <span v-else style="opacity:.35">—</span>
+            </template>
+            <template v-slot:item.precio="{ item }">
+              <span v-if="item.precio">{{ PEN(item.precio) }}</span>
+              <span v-else style="opacity:.35">—</span>
+            </template>
+            <template v-slot:item.cantidad="{ item }">
+              <span v-if="item.cantidad">{{ item.cantidad }}</span>
+              <span v-else style="opacity:.35">—</span>
+            </template>
+            <template v-slot:item.estado="{ item }">
+              <v-chip size="x-small" variant="flat" :color="colorEstadoMovimiento(item.estado)">
+                {{ etiquetaEstado(item.estado) }}
+              </v-chip>
+            </template>
             <template v-slot:item.proyectado="{ item }">
               <v-icon v-if="item.proyectado" icon="mdi-chart-timeline-variant" size="16" title="Proyección" />
             </template>
@@ -106,7 +145,9 @@
             <div class="chart-header">
               <div class="chart-title-section">
                 <h2>Flujo de caja</h2>
-                <div class="chart-subtitle">Ingresos, egresos y saldo de los últimos 12 meses</div>
+                <div class="chart-subtitle">
+                  Ingresos, egresos, flujo del mes y saldo acumulado de los últimos 12 meses
+                </div>
               </div>
             </div>
             <div class="chart-area">
@@ -215,33 +256,116 @@
     </div>
 
     <!-- ══════════ DIÁLOGO DE MOVIMIENTO ══════════ -->
-    <v-dialog :model-value="!!movimiento" max-width="620" @update:model-value="movimiento = null">
+    <v-dialog :model-value="!!movimiento" max-width="820" scrollable @update:model-value="movimiento = null">
       <v-card v-if="movimiento">
         <v-card-title class="pt-4">
           {{ movimiento.id ? 'Editar' : 'Nuevo' }} {{ movimiento.tipo }}
         </v-card-title>
         <v-card-text>
+          <div class="form-section-title">Datos generales</div>
           <div class="form-grid">
             <v-select v-model="movimiento.tipo" :items="['ingreso', 'egreso']" label="Tipo"
               density="compact" hide-details variant="outlined" />
             <v-text-field v-model="movimiento.fecha" type="date" label="Fecha"
-              density="compact" hide-details variant="outlined" />
+              density="compact" hide-details variant="outlined" @update:model-value="recalcularVencimiento" />
             <v-text-field v-model="movimiento.concepto" label="Concepto *" density="compact"
               hide-details variant="outlined" class="col-2" />
-            <v-text-field v-model.number="movimiento.monto" type="number" label="Monto (S/) *"
-              density="compact" hide-details variant="outlined" />
             <v-select v-model="movimiento.category_id" :items="opcionesCategoriaForm" label="Categoría"
               density="compact" hide-details variant="outlined" />
-            <v-select v-model="movimiento.cliente_id" :items="opcionesCliente" label="Cliente"
+            <v-select v-if="movimiento.tipo === 'ingreso'" v-model="movimiento.cliente_id"
+              :items="opcionesCliente" label="Cliente" density="compact" hide-details
+              variant="outlined" clearable />
+            <v-select v-else v-model="movimiento.proveedor_id" :items="opcionesProveedor"
+              label="Proveedor" density="compact" hide-details variant="outlined" clearable />
+            <v-select v-model="movimiento.area_id" :items="opcionesArea" label="Área"
               density="compact" hide-details variant="outlined" clearable />
-            <v-text-field v-model="movimiento.proveedor" label="Proveedor" density="compact"
-              hide-details variant="outlined" />
-            <v-select v-model="movimiento.payment_method" :items="metodosPago" label="Método de pago"
-              density="compact" hide-details variant="outlined" />
-            <v-checkbox v-model="movimiento.proyectado" color="primary" density="compact" hide-details
-              label="Es una proyección (aún no ocurrió)" />
+            <v-select v-model="movimiento.centro_costo_id" :items="opcionesCentroCosto"
+              label="Centro de costo" density="compact" hide-details variant="outlined" clearable />
           </div>
-          <v-textarea v-model="movimiento.notas" label="Notas" rows="2" density="compact"
+
+          <div class="form-section-title" style="margin-top:18px;">Importes</div>
+          <div class="form-grid">
+            <v-text-field v-model.number="movimiento.precio" type="number" min="0"
+              label="Precio unitario (S/)" density="compact" hide-details variant="outlined"
+              @update:model-value="desdePrecioCantidad" />
+            <v-text-field v-model.number="movimiento.cantidad" type="number" min="0" label="Cantidad"
+              density="compact" hide-details variant="outlined" @update:model-value="desdePrecioCantidad" />
+            <v-text-field v-model.number="movimiento.subtotal" type="number" min="0"
+              label="Subtotal (S/) *" density="compact" variant="outlined"
+              :readonly="usaPrecioCantidad" :hint="usaPrecioCantidad ? 'Precio × cantidad' : ' '"
+              persistent-hint />
+            <v-text-field v-model.number="movimiento.descuento" type="number" min="0"
+              label="Descuento (S/)" density="compact" hide-details variant="outlined" />
+          </div>
+
+          <div class="impuestos-caja">
+            <div class="impuestos-titulo">Impuestos</div>
+            <div class="impuestos-lista">
+              <v-checkbox v-for="imp in impuestosDisponibles" :key="imp.id"
+                :model-value="movimiento.impuestos_sel.includes(imp.codigo)" color="primary"
+                density="compact" hide-details
+                :label="`${imp.nombre} (${imp.tasa} %)`"
+                @update:model-value="() => alternarImpuesto(imp.codigo)" />
+            </div>
+            <div v-if="!impuestosDisponibles.length" class="sin-impuestos">
+              No hay impuestos configurados para este tipo de movimiento.
+            </div>
+          </div>
+
+          <div class="totales-caja">
+            <div><span>Subtotal</span><strong>{{ PEN(totalesMov.subtotal) }}</strong></div>
+            <div v-if="totalesMov.descuento">
+              <span>Descuento</span><strong>− {{ PEN(totalesMov.descuento) }}</strong>
+            </div>
+            <div v-for="d in totalesMov.detalle" :key="d.codigo">
+              <span>{{ d.nombre }} ({{ d.tasa }} %)</span>
+              <strong>{{ d.comportamiento === 'retiene' ? '(−) ' : '' }}{{ PEN(d.monto) }}</strong>
+            </div>
+            <div class="tot-final"><span>Total</span><strong>{{ PEN(totalesMov.total) }}</strong></div>
+            <div v-if="retenciones" class="tot-neto">
+              <span>Neto a {{ movimiento.tipo === 'ingreso' ? 'recibir' : 'pagar' }}</span>
+              <strong>{{ PEN(totalesMov.total - retenciones) }}</strong>
+            </div>
+          </div>
+
+          <div class="form-section-title" style="margin-top:18px;">Documento y cobro</div>
+          <div class="form-grid">
+            <v-select v-model="movimiento.tipo_comprobante_id" :items="opcionesTipoComprobante"
+              label="Tipo de comprobante" density="compact" hide-details variant="outlined" clearable />
+            <div class="doc-numero">
+              <v-text-field v-model="movimiento.documento_serie" label="Serie" density="compact"
+                hide-details variant="outlined" style="max-width:110px;" />
+              <v-text-field v-model="movimiento.documento_numero" label="Número" density="compact"
+                hide-details variant="outlined" />
+            </div>
+            <v-select v-model="movimiento.condicion_pago_id" :items="opcionesCondicionPago"
+              label="Condición de pago" density="compact" hide-details variant="outlined" clearable
+              @update:model-value="recalcularVencimiento" />
+            <v-text-field v-model="movimiento.fecha_vencimiento" type="date" label="Fecha de vencimiento"
+              density="compact" hide-details variant="outlined" />
+            <v-select v-model="movimiento.payment_method" :items="metodosPago" label="Forma de pago"
+              density="compact" hide-details variant="outlined" />
+            <v-select v-model="movimiento.responsable_email" :items="opcionesColaborador"
+              :label="movimiento.tipo === 'ingreso' ? 'Vendedor / responsable' : 'Responsable'"
+              density="compact" hide-details variant="outlined" clearable />
+          </div>
+
+          <v-alert v-if="movimiento.id && movimiento.monto_pagado > 0" type="info" variant="tonal"
+            density="compact" class="mt-4">
+            Este movimiento ya tiene <b>{{ PEN(movimiento.monto_pagado) }}</b> pagados.
+            El estado se recalcula solo desde los pagos: se gestionan en
+            <b>{{ movimiento.tipo === 'ingreso' ? 'Por cobrar' : 'Por pagar' }}</b>.
+          </v-alert>
+
+          <div class="form-section-title" style="margin-top:18px;">Comprobante adjunto</div>
+          <PiolaSubirPdf v-model="movimiento.documento_adjunto" carpeta="comprobantes"
+            label="Comprobante / documento (PDF)"
+            @error="(m: string) => emit('notify', { text: m, color: 'error' })" />
+
+          <v-checkbox v-model="movimiento.proyectado" color="primary" density="compact" hide-details
+            label="Es una proyección (aún no ocurrió)" class="mt-2" />
+
+          <v-textarea v-model="movimiento.notas" label="Observaciones" rows="2" density="compact"
             hide-details variant="outlined" class="mt-3" />
         </v-card-text>
         <v-card-actions>
@@ -270,8 +394,13 @@ import { useTheme } from 'vuetify'
 import { piolaCan } from '@/utils/permissions'
 import {
   PEN, PEN_CORTO, fechaCorta, periodoActual, ultimosPeriodos, hoyISO,
-  aplanarCategorias, categoriaRaiz,
+  aplanarCategorias, categoriaRaiz, calcularTotalesMovimiento, sumarDiasISO,
+  etiquetaEstado, colorEstadoMovimiento, traerTodo, apiPiola,
 } from '@/composables/usePiola'
+import PiolaCuentas from './PiolaCuentas.vue'
+import PiolaCaja from './PiolaCaja.vue'
+import PiolaPresupuestos from './PiolaPresupuestos.vue'
+import PiolaSubirPdf from './PiolaSubirPdf.vue'
 import type { ApexOptions } from 'apexcharts'
 
 const props = defineProps<{ perfil: any }>()
@@ -296,6 +425,15 @@ const clientes = ref<any[]>([])
 const metodosPago = ref<string[]>(['Transferencia bancaria'])
 const comisiones = ref<any[]>([])
 
+/* Catálogos de la configuración financiera */
+const proveedores = ref<any[]>([])
+const areas = ref<any[]>([])
+const centrosCosto = ref<any[]>([])
+const impuestos = ref<any[]>([])
+const tiposComprobante = ref<any[]>([])
+const condicionesPago = ref<any[]>([])
+const colaboradores = ref<any[]>([])
+
 const fBuscar = ref('')
 const fTipo = ref('todos')
 const fCategoria = ref<any>('todas')
@@ -304,11 +442,19 @@ const fCategoria = ref<any>('todas')
 async function cargar() {
   cargando.value = true
   const desde = `${periodos[periodos.length - 1]}-01`
-  const [t, c, cl, m] = await Promise.all([
-    client.from('piola_transactions').select('*').gte('fecha', desde).order('fecha', { ascending: false }).limit(5000),
+  const [t, c, cl, m, pr, ar, cc, im, tc, cp, col] = await Promise.all([
+    traerTodo(() => client.from('piola_transactions').select('*').gte('fecha', desde)
+      .order('fecha', { ascending: false }).order('id')),
     client.from('piola_expense_categories').select('*').order('orden'),
     client.from('piola_clientes').select('id, nombre').eq('activo', true).order('nombre'),
     client.from('piola_payment_methods').select('nombre').eq('activo', true).order('orden'),
+    client.from('piola_proveedores').select('id, nombre, condicion_pago_id').eq('activo', true).order('nombre'),
+    client.from('piola_areas').select('id, nombre').eq('activo', true).order('orden'),
+    client.from('piola_centros_costo').select('id, nombre, codigo').eq('activo', true).order('orden'),
+    client.from('piola_impuestos').select('*').eq('activo', true).order('orden'),
+    client.from('piola_tipos_comprobante').select('*').eq('activo', true).order('orden'),
+    client.from('piola_condiciones_pago').select('*').eq('activo', true).order('orden'),
+    client.from('piola_colaboradores').select('email, nombre').eq('activo', true).order('nombre'),
   ])
   if (t.error) emit('notify', { text: `Error cargando movimientos: ${t.error.message}`, color: 'error' })
   transacciones.value = (t.data as any[]) || []
@@ -316,6 +462,15 @@ async function cargar() {
   clientes.value = (cl.data as any[]) || []
   metodosPago.value = ((m.data as any[]) || []).map(x => x.nombre)
   if (!metodosPago.value.length) metodosPago.value = ['Transferencia bancaria']
+  // Los catálogos de la migración 03 pueden no existir todavía: si fallan, el
+  // módulo sigue funcionando con lo básico en vez de quedarse en blanco.
+  proveedores.value = (pr.data as any[]) || []
+  areas.value = (ar.data as any[]) || []
+  centrosCosto.value = (cc.data as any[]) || []
+  impuestos.value = (im.data as any[]) || []
+  tiposComprobante.value = (tc.data as any[]) || []
+  condicionesPago.value = (cp.data as any[]) || []
+  colaboradores.value = (col.data as any[]) || []
   cargando.value = false
 }
 
@@ -342,6 +497,21 @@ const opcionesCategoriaFiltro = computed(() =>
 const opcionesPadre = computed(() =>
   categoriasPlanas.value.map(c => ({ value: c.id, title: c.ruta })))
 const opcionesCliente = computed(() => clientes.value.map(c => ({ value: c.id, title: c.nombre })))
+const opcionesProveedor = computed(() => proveedores.value.map(p => ({ value: p.id, title: p.nombre })))
+const opcionesArea = computed(() => areas.value.map(a => ({ value: a.id, title: a.nombre })))
+const opcionesCentroCosto = computed(() =>
+  centrosCosto.value.map(c => ({ value: c.id, title: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre })))
+const opcionesCondicionPago = computed(() =>
+  condicionesPago.value.map(c => ({ value: c.id, title: c.nombre })))
+const opcionesColaborador = computed(() =>
+  colaboradores.value.map(c => ({ value: c.email, title: c.nombre })))
+const opcionesTipoComprobante = computed(() => tiposComprobante.value
+  .filter(t => !movimiento.value || ['ambos', movimiento.value.tipo].includes(t.aplica_a))
+  .map(t => ({ value: t.id, title: t.nombre })))
+
+/** Impuestos que aplican al tipo de movimiento que se está editando. */
+const impuestosDisponibles = computed(() => impuestos.value
+  .filter(i => !movimiento.value || ['ambos', movimiento.value.tipo].includes(i.aplica_a)))
 
 const delPeriodo = computed(() =>
   transacciones.value.filter(t => String(t.fecha).slice(0, 7) === periodo.value))
@@ -422,11 +592,26 @@ const headersTx = [
   { title: 'Tipo', key: 'tipo' },
   { title: 'Concepto', key: 'concepto' },
   { title: 'Categoría', key: 'category_id' },
-  { title: 'Proveedor / cliente', key: 'proveedor' },
-  { title: 'Monto', key: 'monto' },
+  { title: 'Proveedor / cliente', key: 'tercero', sortable: false,
+    value: (t: any) => nombreTercero(t) },
+  { title: 'Documento', key: 'documento', sortable: false,
+    value: (t: any) => [t.documento_serie, t.documento_numero].filter(Boolean).join('-') || '—' },
+  { title: 'Cant.', key: 'cantidad' },
+  { title: 'Precio', key: 'precio' },
+  { title: 'Total', key: 'monto' },
+  { title: 'Vence', key: 'fecha_vencimiento' },
+  { title: 'Estado', key: 'estado', sortable: false },
   { title: '', key: 'proyectado', sortable: false },
   { title: '', key: 'acciones', sortable: false },
 ]
+
+/** Nombre del cliente o proveedor según el tipo. `proveedor` es el texto libre viejo. */
+function nombreTercero(t: any): string {
+  if (t.tipo === 'ingreso') {
+    return clientes.value.find(c => c.id === t.cliente_id)?.nombre || t.proveedor || '—'
+  }
+  return proveedores.value.find(p => p.id === t.proveedor_id)?.nombre || t.proveedor || '—'
+}
 const headersCat = [
   { title: 'Categoría', key: 'categoria' },
   { title: 'Monto', key: 'monto' },
@@ -450,16 +635,25 @@ const seriesChart = computed(() => {
       .filter(t => String(t.fecha).slice(0, 7) === mes && t.tipo === tipo && !t.proyectado)
       .reduce((s, t) => s + Number(t.monto || 0), 0))
   const ing = porMes('ingreso'); const egr = porMes('egreso')
+  const flujo = ing.map((v, i) => v - egr[i])
+
+  // Saldo acumulado: la suma corrida del flujo mes a mes. Es lo que muestra si
+  // la caja se está llenando o vaciando — el "Flujo" por sí solo no lo dice,
+  // porque un mes malo tras varios buenos se ve igual que una caída real.
+  let corrido = 0
+  const acumulado = flujo.map(v => (corrido += v))
+
   return [
     { name: 'Ingresos', type: 'column', data: ing },
     { name: 'Egresos', type: 'column', data: egr },
-    { name: 'Flujo', type: 'line', data: ing.map((v, i) => v - egr[i]) },
+    { name: 'Flujo del mes', type: 'line', data: flujo },
+    { name: 'Saldo acumulado', type: 'line', data: acumulado },
   ]
 })
 const opcionesChart = computed<ApexOptions>(() => ({
   chart: { type: 'bar', toolbar: { show: false }, stacked: false },
-  stroke: { width: [0, 0, 3], curve: 'smooth' },
-  colors: ['#2e9e5b', '#e2564a', '#5b8def'],
+  stroke: { width: [0, 0, 3, 3], curve: 'smooth', dashArray: [0, 0, 0, 5] },
+  colors: ['#2e9e5b', '#e2564a', '#5b8def', '#8b5cf6'],
   dataLabels: { enabled: false },
   xaxis: { categories: mesesChart.value.map(m => m.slice(2).split('-').reverse().join('/')) },
   yaxis: { labels: { formatter: (v: number) => PEN_CORTO(v) } },
@@ -473,32 +667,128 @@ const opcionesChart = computed<ApexOptions>(() => ({
 const movimiento = ref<any>(null)
 const guardando = ref(false)
 
-function abrirNuevo(tipo: string) {
-  movimiento.value = {
-    tipo, fecha: hoyISO(), concepto: '', monto: null,
-    category_id: null, cliente_id: null, proveedor: '',
-    payment_method: metodosPago.value[0], proyectado: false, notas: '',
+/**
+ * Si hay precio Y cantidad, el subtotal se deriva de ellos y queda de solo
+ * lectura: dos fuentes para el mismo número terminan siempre en discrepancia.
+ * Si no, el subtotal se escribe directo, como se hacía antes de la migración.
+ */
+const usaPrecioCantidad = computed(() =>
+  !!Number(movimiento.value?.precio) && !!Number(movimiento.value?.cantidad))
+
+function desdePrecioCantidad() {
+  const m = movimiento.value
+  if (!m) return
+  if (Number(m.precio) && Number(m.cantidad)) {
+    m.subtotal = Math.round(Number(m.precio) * Number(m.cantidad) * 100) / 100
   }
 }
-function editar(item: any) { movimiento.value = { ...item, fecha: String(item.fecha).slice(0, 10) } }
+
+function alternarImpuesto(codigo: string) {
+  const sel = movimiento.value.impuestos_sel
+  const i = sel.indexOf(codigo)
+  if (i >= 0) sel.splice(i, 1)
+  else sel.push(codigo)
+}
+
+/** Vencimiento derivado de la condición de pago (contado = mismo día). */
+function recalcularVencimiento() {
+  const m = movimiento.value
+  if (!m?.condicion_pago_id || !m.fecha) return
+  const cond = condicionesPago.value.find(c => c.id === m.condicion_pago_id)
+  if (cond) m.fecha_vencimiento = sumarDiasISO(m.fecha, Number(cond.dias || 0))
+}
+
+const totalesMov = computed(() => {
+  const m = movimiento.value
+  if (!m) return { subtotal: 0, descuento: 0, impuestos: 0, total: 0, detalle: [] as any[] }
+  const aplicados = impuestosDisponibles.value
+    .filter(i => (m.impuestos_sel || []).includes(i.codigo))
+    .map(i => ({ codigo: i.codigo, nombre: i.nombre, tasa: Number(i.tasa), comportamiento: i.comportamiento }))
+  return calcularTotalesMovimiento(Number(m.subtotal || 0), Number(m.descuento || 0), aplicados)
+})
+
+/** Retenciones (renta, detracción): no cambian el total, sí lo que se recibe. */
+const retenciones = computed(() => totalesMov.value.detalle
+  .filter(d => d.comportamiento === 'retiene')
+  .reduce((s, d) => s + d.monto, 0))
+
+function abrirNuevo(tipo: string) {
+  // Por defecto, IGV en ambos sentidos: es el caso normal en Piola
+  const porDefecto = impuestos.value
+    .filter(i => i.codigo === 'igv' && ['ambos', tipo].includes(i.aplica_a))
+    .map(i => i.codigo)
+
+  movimiento.value = {
+    tipo, fecha: hoyISO(), concepto: '',
+    precio: null, cantidad: null, subtotal: null, descuento: 0,
+    impuestos_sel: porDefecto,
+    category_id: null, cliente_id: null, proveedor_id: null,
+    area_id: null, centro_costo_id: null,
+    tipo_comprobante_id: null, documento_serie: '', documento_numero: '',
+    condicion_pago_id: null, fecha_vencimiento: '',
+    payment_method: metodosPago.value[0],
+    responsable_email: props.perfil?.email || null,
+    documento_adjunto: null,
+    proyectado: false, notas: '', monto_pagado: 0,
+  }
+}
+
+function editar(item: any) {
+  movimiento.value = {
+    ...item,
+    fecha: String(item.fecha).slice(0, 10),
+    fecha_vencimiento: item.fecha_vencimiento ? String(item.fecha_vencimiento).slice(0, 10) : '',
+    // El subtotal puede ser NULL en los movimientos anteriores a la migración:
+    // ahí el total ES el subtotal y no había desglose.
+    subtotal: item.subtotal ?? item.monto,
+    descuento: item.descuento ?? 0,
+    impuestos_sel: Array.isArray(item.impuestos_detalle)
+      ? item.impuestos_detalle.map((d: any) => d.codigo) : [],
+  }
+}
 
 async function guardarMovimiento() {
   const m = movimiento.value
-  if (!m.concepto?.trim() || !Number(m.monto)) {
-    return emit('notify', { text: 'El movimiento necesita concepto y monto', color: 'error' })
+  if (!m.concepto?.trim()) {
+    return emit('notify', { text: 'El movimiento necesita un concepto', color: 'error' })
   }
+  if (!Number(totalesMov.value.total)) {
+    return emit('notify', { text: 'El movimiento necesita un importe', color: 'error' })
+  }
+
   guardando.value = true
-  const fila = {
-    tipo: m.tipo, fecha: m.fecha, concepto: m.concepto.trim(),
-    monto: Number(m.monto), category_id: m.category_id || null,
-    cliente_id: m.cliente_id || null, proveedor: m.proveedor || null,
-    payment_method: m.payment_method, proyectado: !!m.proyectado,
-    notas: m.notas || null, created_by: props.perfil?.email,
-    updated_at: new Date().toISOString(),
-  }
-  const res = m.id
-    ? await client.from('piola_transactions').update(fila).eq('id', m.id)
-    : await client.from('piola_transactions').insert(fila)
+  // Se manda el SUBTOTAL y los códigos de impuesto marcados, no los totales:
+  // el servidor lee las tasas vigentes y recalcula `monto` con la misma
+  // fórmula que `totalesMov`. `monto` es lo que suman gráficos, reportes y el
+  // saldo de las cuentas, así que no puede salir del navegador. `estado`,
+  // `monto_pagado`, `created_by` y `updated_by` también los pone el servidor.
+  const res = await apiPiola('contabilidad', {
+    accion: 'guardar_movimiento',
+    id: m.id || null,
+    tipo: m.tipo,
+    fecha: m.fecha,
+    concepto: m.concepto.trim(),
+    subtotal: Number(m.subtotal || 0),
+    descuento: Number(m.descuento || 0),
+    impuestos_sel: m.impuestos_sel || [],
+    precio: Number(m.precio) || null,
+    cantidad: Number(m.cantidad) || null,
+    category_id: m.category_id || null,
+    cliente_id: m.cliente_id || null,
+    proveedor_id: m.proveedor_id || null,
+    area_id: m.area_id || null,
+    centro_costo_id: m.centro_costo_id || null,
+    tipo_comprobante_id: m.tipo_comprobante_id || null,
+    documento_serie: m.documento_serie || null,
+    documento_numero: m.documento_numero || null,
+    documento_adjunto: m.documento_adjunto || null,
+    condicion_pago_id: m.condicion_pago_id || null,
+    fecha_vencimiento: m.fecha_vencimiento || null,
+    payment_method: m.payment_method,
+    responsable_email: m.responsable_email || null,
+    proyectado: !!m.proyectado,
+    notas: m.notas || null,
+  })
   guardando.value = false
   if (res.error) return emit('notify', { text: `Error guardando: ${res.error.message}`, color: 'error' })
   emit('notify', m.id ? 'Movimiento actualizado' : 'Movimiento registrado')
@@ -508,7 +798,7 @@ async function guardarMovimiento() {
 
 async function eliminar(item: any) {
   if (!confirm(`¿Eliminar "${item.concepto}"?`)) return
-  const { error } = await client.from('piola_transactions').delete().eq('id', item.id)
+  const { error } = await apiPiola('contabilidad', { accion: 'eliminar_movimiento', id: item.id })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Movimiento eliminado')
   await cargar()
@@ -525,7 +815,8 @@ async function crearCategoria() {
     return emit('notify', { text: 'Escribe el nombre de la categoría', color: 'error' })
   }
   guardandoCat.value = true
-  const { error } = await client.from('piola_expense_categories').insert({
+  const { error } = await apiPiola('contabilidad', {
+    accion: 'crear_categoria',
     nombre: nuevaCat.value.nombre.trim(),
     parent_id: nuevaCat.value.parent_id || null,
     tipo: nuevaCat.value.tipo,
@@ -540,8 +831,9 @@ async function crearCategoria() {
 
 async function renombrarCategoria(c: any) {
   if (!nombreEditado.value.trim()) return
-  const { error } = await client.from('piola_expense_categories')
-    .update({ nombre: nombreEditado.value.trim() }).eq('id', c.id)
+  const { error } = await apiPiola('contabilidad', {
+    accion: 'editar_categoria', id: c.id, nombre: nombreEditado.value.trim(),
+  })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   editandoCat.value = null
   emit('notify', 'Categoría renombrada')
@@ -549,8 +841,9 @@ async function renombrarCategoria(c: any) {
 }
 
 async function alternarCategoria(c: any) {
-  const { error } = await client.from('piola_expense_categories')
-    .update({ activo: !c.activo }).eq('id', c.id)
+  const { error } = await apiPiola('contabilidad', {
+    accion: 'editar_categoria', id: c.id, activo: !c.activo,
+  })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   await cargar()
 }
@@ -565,7 +858,7 @@ async function eliminarCategoria(c: any) {
 
   if (!confirm(`¿Eliminar "${c.nombre}"?\n${aviso}\n\nSi solo quieres dejar de usarla, mejor desactívala.`)) return
 
-  const { error } = await client.from('piola_expense_categories').delete().eq('id', c.id)
+  const { error } = await apiPiola('contabilidad', { accion: 'eliminar_categoria', id: c.id })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Categoría eliminada')
   await cargar()
@@ -642,5 +935,44 @@ onMounted(cargar)
   .form-grid .col-2 { grid-column: span 1; }
   .cat-nueva { grid-template-columns: 1fr; }
   .arbol-monto { display: none; }
+}
+
+/* ── Formulario de movimiento (modelo financiero completo) ── */
+.form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.form-grid .col-2 { grid-column: span 2; }
+.form-section-title {
+  font-weight: 600; font-size: 13px; text-transform: uppercase;
+  letter-spacing: .4px; opacity: .65; margin-bottom: 10px;
+}
+
+.doc-numero { display: flex; gap: 8px; }
+
+.impuestos-caja {
+  margin-top: 14px; border: 1px solid rgba(128, 128, 128, .22);
+  border-radius: 10px; padding: 10px 14px;
+}
+.impuestos-titulo {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .4px; opacity: .55; margin-bottom: 2px;
+}
+.impuestos-lista { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.sin-impuestos { font-size: 12px; opacity: .5; padding: 4px 0; }
+
+.totales-caja {
+  margin-top: 14px; margin-left: auto; max-width: 340px; font-size: 13.5px;
+  border: 1px solid rgba(128, 128, 128, .2); border-radius: 10px; padding: 12px 16px;
+}
+.totales-caja > div { display: flex; justify-content: space-between; padding: 4px 0; gap: 12px; }
+.totales-caja .tot-final {
+  border-top: 1px solid rgba(128, 128, 128, .25); margin-top: 4px; padding-top: 8px; font-size: 15px;
+}
+.totales-caja .tot-neto {
+  border-top: 1px solid rgba(128, 128, 128, .25); margin-top: 4px; padding-top: 8px;
+  font-size: 15px; color: #2e9e5b;
+}
+
+@media (max-width: 800px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .form-grid .col-2 { grid-column: span 1; }
+  .totales-caja { max-width: none; }
 }
 </style>

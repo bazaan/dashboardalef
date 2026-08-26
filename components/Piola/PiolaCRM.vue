@@ -49,12 +49,39 @@
       <div class="filtros-bar">
         <v-text-field v-model="fBuscar" prepend-inner-icon="mdi-magnify" placeholder="Nombre, teléfono, correo…"
           density="compact" hide-details variant="outlined" clearable class="filtro filtro-buscar" />
-        <v-select v-model="fFuente" :items="[{ value: 'todas', title: 'Todas las fuentes' }, ...FUENTES_LEAD]"
-          density="compact" hide-details variant="outlined" label="Fuente" class="filtro" />
+        <v-select v-model="fEtapa" :items="opcionesEtapa" density="compact" hide-details
+          variant="outlined" label="Etapa" class="filtro" />
+        <v-select v-model="fFuente" :items="[{ value: 'todas', title: 'Todos los canales' }, ...FUENTES_LEAD]"
+          density="compact" hide-details variant="outlined" label="Canal" class="filtro" />
         <v-select v-model="fOwner" :items="opcionesOwner" density="compact" hide-details
           variant="outlined" label="Responsable" class="filtro" />
+        <v-text-field v-model="fDesde" type="date" label="Desde" density="compact" hide-details
+          variant="outlined" clearable class="filtro filtro-fecha" />
+        <v-text-field v-model="fHasta" type="date" label="Hasta" density="compact" hide-details
+          variant="outlined" clearable class="filtro filtro-fecha" />
         <v-switch v-model="soloAbiertos" color="primary" density="compact" hide-details
           label="Solo abiertos" class="filtro" style="flex:0 0 auto;" />
+        <v-btn v-if="hayFiltros" size="small" variant="text" @click="limpiarFiltros">
+          <v-icon icon="mdi-filter-remove-outline" start /> Limpiar
+        </v-btn>
+      </div>
+
+      <!-- ══════════ EMBUDO ══════════ -->
+      <div class="chart-section">
+        <div class="chart-header">
+          <div class="chart-title-section">
+            <h2>Embudo de conversión</h2>
+            <div class="chart-subtitle">
+              {{ leadsFiltrados.length }} lead(s) según los filtros activos · las etapas se configuran
+              en Configuración
+            </div>
+          </div>
+        </div>
+        <div class="chart-area">
+          <client-only>
+            <apexchart type="bar" :height="alturaEmbudo" :options="opcionesEmbudo" :series="seriesEmbudo" />
+          </client-only>
+        </div>
       </div>
 
       <!-- ══════════ KANBAN ══════════ -->
@@ -99,6 +126,14 @@
             <span class="etapa-chip" :style="chipEtapa(item.stage_id)">{{ nombreEtapa(item.stage_id) }}</span>
           </template>
           <template v-slot:item.fuente="{ item }">{{ etiquetaFuente(item.fuente) }}</template>
+          <template v-slot:item.username="{ item }">
+            <span v-if="item.username">@{{ String(item.username).replace(/^@/, '') }}</span>
+            <span v-else style="opacity:.35">—</span>
+          </template>
+          <template v-slot:item.telefono="{ item }">
+            <span v-if="item.telefono">{{ item.telefono }}</span>
+            <span v-else style="opacity:.35">—</span>
+          </template>
           <template v-slot:item.monto_cotizado="{ item }">{{ PEN(item.monto_cotizado) }}</template>
           <template v-slot:item.ultima_interaccion="{ item }">
             <span :class="{ 'texto-alerta': sinSeguimiento(item) }">{{ ultimoContacto(item) }}</span>
@@ -121,7 +156,12 @@
         <v-card-text>
           <div class="form-grid">
             <v-text-field v-model="detalle.nombre" label="Nombre *" density="compact" hide-details variant="outlined" />
-            <v-text-field v-model="detalle.telefono" label="Teléfono / WhatsApp" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model="detalle.telefono" label="Teléfono / WhatsApp" density="compact"
+              variant="outlined" :error="faltaContacto" hide-details="auto" />
+            <v-text-field v-model="detalle.username" label="Usuario (@ de la red social)" density="compact"
+              variant="outlined" :error="faltaContacto" hide-details="auto"
+              :hint="faltaContacto ? 'Hace falta al menos teléfono o usuario' : 'En TikTok no hay teléfono: basta el usuario'"
+              persistent-hint />
             <v-text-field v-model="detalle.email" label="Correo" density="compact" hide-details variant="outlined" />
             <v-text-field v-model="detalle.empresa" label="Empresa / marca" density="compact" hide-details variant="outlined" />
             <v-select v-model="detalle.fuente" :items="FUENTES_LEAD" label="Fuente" density="compact" hide-details variant="outlined" />
@@ -207,11 +247,13 @@
  * Cliente, que es lo que alimenta Producción y Facturación.
  */
 import { ref, computed, onMounted } from 'vue'
+import { useTheme } from 'vuetify'
 import { piolaCan } from '@/utils/permissions'
 import {
   PEN, PEN_CORTO, fechaCorta, fechaHora, periodoActual,
-  FUENTES_LEAD, CANALES_ACTIVIDAD,
+  FUENTES_LEAD, CANALES_ACTIVIDAD, traerTodo, apiPiola,
 } from '@/composables/usePiola'
+import type { ApexOptions } from 'apexcharts'
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
@@ -230,16 +272,36 @@ const etapas = ref<any[]>([])
 const colaboradores = ref<any[]>([])
 const servicios = ref<any[]>([])
 
+const vuetifyTheme = useTheme()
+const isDark = computed(() => vuetifyTheme.global.current.value.dark)
+
 const fBuscar = ref('')
+const fEtapa = ref<any>('todas')
 const fFuente = ref('todas')
 const fOwner = ref('todos')
+const fDesde = ref('')
+const fHasta = ref('')
 const soloAbiertos = ref(true)
+
+const hayFiltros = computed(() =>
+  !!fBuscar.value || fEtapa.value !== 'todas' || fFuente.value !== 'todas'
+  || fOwner.value !== 'todos' || !!fDesde.value || !!fHasta.value)
+
+function limpiarFiltros() {
+  fBuscar.value = ''
+  fEtapa.value = 'todas'
+  fFuente.value = 'todas'
+  fOwner.value = 'todos'
+  fDesde.value = ''
+  fHasta.value = ''
+}
 
 /* ══════════ Carga ══════════ */
 async function cargar() {
   cargando.value = true
   const [l, e, c, s] = await Promise.all([
-    client.from('piola_leads').select('*').order('fecha_ingreso', { ascending: false }).limit(2000),
+    traerTodo(() => client.from('piola_leads').select('*')
+      .order('fecha_ingreso', { ascending: false }).order('id')),
     client.from('piola_lead_stages').select('*').order('orden'),
     client.from('piola_colaboradores').select('email, nombre, activo').eq('activo', true).order('nombre'),
     client.from('piola_services').select('nombre').eq('activo', true).order('orden'),
@@ -256,6 +318,11 @@ async function cargar() {
 const etapasActivas = computed(() => etapas.value.filter(e => e.activo !== false))
 const etapasSelect = computed(() => etapasActivas.value.map(e => ({ value: e.id, title: e.nombre })))
 const serviciosNombres = computed(() => servicios.value.map(s => s.nombre))
+
+const opcionesEtapa = computed(() => [
+  { value: 'todas', title: 'Todas las etapas' },
+  ...etapasActivas.value.map(e => ({ value: e.id, title: e.nombre })),
+])
 
 const opcionesOwner = computed(() => [
   { value: 'todos', title: 'Todos los responsables' },
@@ -285,15 +352,96 @@ const iniciales = (email: string) => {
 const leadsFiltrados = computed(() => {
   let lista = leads.value
   if (soloAbiertos.value) lista = lista.filter(l => !l.resultado && !esCerrada(l.stage_id))
+  if (fEtapa.value !== 'todas') lista = lista.filter(l => l.stage_id === fEtapa.value)
   if (fFuente.value !== 'todas') lista = lista.filter(l => l.fuente === fFuente.value)
   if (fOwner.value !== 'todos') lista = lista.filter(l => l.owner_email === fOwner.value)
+  // Rango sobre fecha_ingreso. Se compara en 'YYYY-MM-DD' para no arrastrar la
+  // hora del timestamp: 'hasta' debe incluir el día completo.
+  if (fDesde.value) lista = lista.filter(l => String(l.fecha_ingreso || '').slice(0, 10) >= fDesde.value)
+  if (fHasta.value) lista = lista.filter(l => String(l.fecha_ingreso || '').slice(0, 10) <= fHasta.value)
   if (fBuscar.value) {
     const q = fBuscar.value.toLowerCase()
-    lista = lista.filter(l => [l.nombre, l.telefono, l.email, l.empresa]
+    lista = lista.filter(l => [l.nombre, l.telefono, l.username, l.email, l.empresa]
       .some(v => String(v ?? '').toLowerCase().includes(q)))
   }
   return lista
 })
+
+/* ══════════ Embudo de conversión ══════════
+ *
+ * Las etapas salen de `piola_lead_stages` en su propio orden: el cliente puede
+ * crear, renombrar o reordenar etapas desde Configuración y el embudo la sigue.
+ * Por eso no hay ni un nombre de etapa escrito en este archivo.
+ *
+ * Ojo con el switch "solo abiertos": deja fuera las etapas cerradas y el embudo
+ * se ve truncado, así que para el gráfico se ignora ese filtro (los demás sí
+ * aplican) y el embudo siempre muestra el recorrido completo.
+ */
+const leadsEmbudo = computed(() => {
+  let lista = leads.value
+  if (fEtapa.value !== 'todas') lista = lista.filter(l => l.stage_id === fEtapa.value)
+  if (fFuente.value !== 'todas') lista = lista.filter(l => l.fuente === fFuente.value)
+  if (fOwner.value !== 'todos') lista = lista.filter(l => l.owner_email === fOwner.value)
+  if (fDesde.value) lista = lista.filter(l => String(l.fecha_ingreso || '').slice(0, 10) >= fDesde.value)
+  if (fHasta.value) lista = lista.filter(l => String(l.fecha_ingreso || '').slice(0, 10) <= fHasta.value)
+  if (fBuscar.value) {
+    const q = fBuscar.value.toLowerCase()
+    lista = lista.filter(l => [l.nombre, l.telefono, l.username, l.email, l.empresa]
+      .some(v => String(v ?? '').toLowerCase().includes(q)))
+  }
+  return lista
+})
+
+const embudo = computed(() => etapasActivas.value.map(e => {
+  const enEtapa = leadsEmbudo.value.filter(l => l.stage_id === e.id)
+  return {
+    nombre: e.nombre,
+    color: e.color || '#8e8e8e',
+    conteo: enEtapa.length,
+    monto: enEtapa.reduce((s, l) => s + Number(l.monto_cotizado || 0), 0),
+  }
+}))
+
+const alturaEmbudo = computed(() => Math.max(220, embudo.value.length * 46 + 70))
+
+const seriesEmbudo = computed(() => [{
+  name: 'Leads',
+  data: embudo.value.map(e => e.conteo),
+}])
+
+const opcionesEmbudo = computed<ApexOptions>(() => ({
+  chart: { type: 'bar', toolbar: { show: false } },
+  plotOptions: {
+    bar: { horizontal: true, borderRadius: 4, barHeight: '62%', distributed: true },
+  },
+  colors: embudo.value.map(e => e.color),
+  legend: { show: false },
+  dataLabels: {
+    enabled: true,
+    // Dentro de la barra: cuántos leads y cuánto dinero hay en esa etapa
+    formatter: (val: number, opt: any) => {
+      const e = embudo.value[opt?.dataPointIndex ?? 0]
+      if (!e || !e.conteo) return ''
+      return e.monto ? `${val} · ${PEN_CORTO(e.monto)}` : `${val}`
+    },
+    style: { fontSize: '11.5px', fontWeight: 600 },
+  },
+  xaxis: {
+    categories: embudo.value.map(e => e.nombre),
+    labels: { formatter: (v: any) => String(Math.round(Number(v) || 0)) },
+  },
+  theme: { mode: isDark.value ? 'dark' : 'light' },
+  grid: { borderColor: isDark.value ? '#333' : '#eee' },
+  tooltip: {
+    theme: isDark.value ? 'dark' : 'light',
+    y: {
+      formatter: (val: number, opt: any) => {
+        const e = embudo.value[opt?.dataPointIndex ?? 0]
+        return e ? `${val} lead(s) · ${PEN(e.monto)} cotizado` : `${val}`
+      },
+    },
+  },
+}))
 
 const porEtapa = (id: any) => leadsFiltrados.value.filter(l => l.stage_id === id)
 const montoEtapa = (id: any) => porEtapa(id).reduce((s, l) => s + Number(l.monto_cotizado || 0), 0)
@@ -320,8 +468,9 @@ const sinSeguimiento = (l: any) => {
 const headers = [
   { title: 'Nombre', key: 'nombre' },
   { title: 'Etapa', key: 'stage_id' },
-  { title: 'Fuente', key: 'fuente' },
+  { title: 'Canal', key: 'fuente' },
   { title: 'Teléfono', key: 'telefono' },
+  { title: 'Usuario', key: 'username' },
   { title: 'Cotizado', key: 'monto_cotizado' },
   { title: 'Responsable', key: 'owner_email' },
   { title: 'Último contacto', key: 'ultima_interaccion' },
@@ -336,22 +485,14 @@ async function soltarEn(etapa: any) {
   arrastrando.value = null
   if (!lead || !puedeEditar.value || lead.stage_id === etapa.id) return
 
-  const anterior = lead.stage_id
-  const patch: Record<string, any> = { stage_id: etapa.id, updated_at: new Date().toISOString() }
-  if (etapa.es_ganado) { patch.resultado = 'ganado'; patch.fecha_cierre = new Date().toISOString() }
-  else if (etapa.es_perdido) { patch.resultado = 'perdido'; patch.fecha_cierre = new Date().toISOString() }
-  else { patch.resultado = null; patch.fecha_cierre = null }
-
-  const { error } = await client.from('piola_leads').update(patch).eq('id', lead.id)
+  // El servidor deriva resultado/fecha_cierre de la etapa y escribe la nota de
+  // historial en la misma llamada: mover sin dejar rastro no es una opción.
+  const { data, error } = await apiPiola<{ patch: any }>('crm', {
+    accion: 'mover_lead', id: lead.id, stage_id: etapa.id,
+  })
   if (error) return emit('notify', { text: `No se pudo mover el lead: ${error.message}`, color: 'error' })
 
-  await client.from('piola_lead_activities').insert({
-    lead_id: lead.id, user_email: props.perfil?.email, canal: 'nota',
-    nota: `Movido de "${nombreEtapa(anterior)}" a "${etapa.nombre}"`,
-    stage_anterior: anterior, stage_nuevo: etapa.id,
-  })
-
-  Object.assign(lead, patch)
+  Object.assign(lead, data?.patch || { stage_id: etapa.id })
   emit('notify', `Lead movido a "${etapa.nombre}"`)
 }
 
@@ -365,7 +506,7 @@ const nuevaActividad = ref<any>({ canal: 'whatsapp', nota: '', proxima_accion: '
 
 function abrirNuevo() {
   detalle.value = {
-    nombre: '', telefono: '', email: '', empresa: '',
+    nombre: '', telefono: '', username: '', email: '', empresa: '',
     fuente: 'meta_ads', stage_id: etapasActivas.value[0]?.id || null,
     monto_cotizado: 0, owner_email: props.perfil?.email || null, servicios: [], notas: '',
   }
@@ -373,7 +514,7 @@ function abrirNuevo() {
 }
 
 async function abrirDetalle(lead: any) {
-  detalle.value = { ...lead, servicios: lead.servicios || [] }
+  detalle.value = { ...lead, servicios: lead.servicios || [], username: lead.username || '' }
   nuevaActividad.value = { canal: 'whatsapp', nota: '', proxima_accion: '' }
   const { data } = await client.from('piola_lead_activities').select('*')
     .eq('lead_id', lead.id).order('created_at', { ascending: false })
@@ -382,14 +523,31 @@ async function abrirDetalle(lead: any) {
 
 function cerrarDetalle() { detalle.value = null; actividades.value = [] }
 
+/**
+ * Al menos uno entre teléfono y usuario (los leads de TikTok no traen teléfono).
+ * La BD lo exige con un CHECK; acá se avisa antes para no comerse un error 400.
+ */
+const faltaContacto = computed(() => {
+  const d = detalle.value
+  if (!d) return false
+  return !String(d.telefono ?? '').trim() && !String(d.username ?? '').trim()
+})
+
 async function guardarLead() {
   const d = detalle.value
   if (!d?.nombre?.trim()) return emit('notify', { text: 'El lead necesita un nombre', color: 'error' })
+  if (faltaContacto.value) {
+    return emit('notify', {
+      text: 'El lead necesita al menos un teléfono o un usuario de red social',
+      color: 'error',
+    })
+  }
 
   guardando.value = true
   const fila: Record<string, any> = {
     nombre: d.nombre.trim(),
-    telefono: d.telefono || null,
+    telefono: String(d.telefono ?? '').trim() || null,
+    username: String(d.username ?? '').trim().replace(/^@/, '') || null,
     email: d.email || null,
     empresa: d.empresa || null,
     fuente: d.fuente,
@@ -401,11 +559,10 @@ async function guardarLead() {
     proxima_accion: d.proxima_accion || null,
     updated_at: new Date().toISOString(),
   }
-  if (esGanado(d.stage_id)) { fila.resultado = 'ganado'; fila.fecha_cierre = d.fecha_cierre || new Date().toISOString() }
 
-  const res = d.id
-    ? await client.from('piola_leads').update(fila).eq('id', d.id).select('*').single()
-    : await client.from('piola_leads').insert(fila).select('*').single()
+  // `resultado` y `fecha_cierre` los deriva el servidor de la etapa: marcarlos
+  // desde acá permitía dar por ganado un lead que nunca llegó a esa columna.
+  const res = await apiPiola('crm', { accion: 'guardar_lead', id: d.id || null, ...fila })
 
   guardando.value = false
   if (res.error) return emit('notify', { text: `Error guardando: ${res.error.message}`, color: 'error' })
@@ -417,7 +574,7 @@ async function guardarLead() {
 
 async function eliminarLead() {
   if (!confirm(`¿Eliminar el lead "${detalle.value.nombre}"? Se borra también su historial.`)) return
-  const { error } = await client.from('piola_leads').delete().eq('id', detalle.value.id)
+  const { error } = await apiPiola('crm', { accion: 'eliminar_lead', id: detalle.value.id })
   if (error) return emit('notify', { text: `Error eliminando: ${error.message}`, color: 'error' })
   emit('notify', 'Lead eliminado')
   cerrarDetalle()
@@ -430,20 +587,17 @@ async function registrarActividad() {
 
   guardandoActividad.value = true
   const ahora = new Date().toISOString()
-  const { error } = await client.from('piola_lead_activities').insert({
+  // El servidor pone el autor y actualiza `ultima_interaccion` en la misma
+  // llamada: es el campo que mira el cron de alertas de leads abandonados.
+  const { error } = await apiPiola('crm', {
+    accion: 'registrar_actividad',
     lead_id: detalle.value.id,
-    user_email: props.perfil?.email,
     canal: a.canal,
     nota: a.nota.trim(),
     proxima_accion: a.proxima_accion || null,
   })
 
   if (!error) {
-    await client.from('piola_leads').update({
-      ultima_interaccion: ahora,
-      proxima_accion: a.proxima_accion || detalle.value.proxima_accion || null,
-    }).eq('id', detalle.value.id)
-
     detalle.value.ultima_interaccion = ahora
     const enLista = leads.value.find(l => l.id === detalle.value.id)
     if (enLista) enLista.ultima_interaccion = ahora
@@ -464,29 +618,22 @@ async function convertirEnCliente() {
   convirtiendo.value = true
   const d = detalle.value
 
-  const { data: cliente, error } = await client.from('piola_clientes').insert({
-    nombre: d.empresa || d.nombre,
-    contacto: d.nombre,
-    email: d.email || null,
-    telefono: d.telefono || null,
-    lead_id: d.id,
-    compromiso_mensual: 0,
-  }).select('*').single()
+  // Crear la ficha y marcar el lead van juntos en el servidor: a medias
+  // quedaba un cliente huérfano o un lead ganado sin cliente. El servidor
+  // también rechaza la segunda conversión del mismo lead.
+  const { data, error } = await apiPiola<{ cliente: any }>('crm', {
+    accion: 'convertir_cliente', lead_id: d.id,
+  })
 
   if (error) {
     convirtiendo.value = false
     return emit('notify', { text: `No se pudo crear el cliente: ${error.message}`, color: 'error' })
   }
 
-  await client.from('piola_leads').update({
-    cliente_id: (cliente as any).id,
-    resultado: 'ganado',
-    fecha_cierre: d.fecha_cierre || new Date().toISOString(),
-  }).eq('id', d.id)
-
-  d.cliente_id = (cliente as any).id
+  const cliente = data!.cliente
+  d.cliente_id = cliente.id
   convirtiendo.value = false
-  emit('notify', `"${(cliente as any).nombre}" ya es cliente: aparece en Producción y Facturación`)
+  emit('notify', `"${cliente.nombre}" ya es cliente: aparece en Producción y Facturación`)
   await cargar()
 }
 
@@ -502,6 +649,7 @@ onMounted(cargar)
 }
 .filtros-bar .filtro { flex: 1 1 170px; min-width: 150px; max-width: 240px; }
 .filtros-bar .filtro-buscar { flex: 2 1 260px; max-width: 380px; }
+.filtros-bar .filtro-fecha { flex: 0 1 150px; min-width: 138px; }
 
 /* ── Kanban ── */
 .kanban {

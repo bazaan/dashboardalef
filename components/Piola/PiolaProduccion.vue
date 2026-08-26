@@ -232,6 +232,7 @@ import { ref, computed, onMounted } from 'vue'
 import { piolaCan } from '@/utils/permissions'
 import {
   PEN, fechaCorta, fechaHora, periodoActual, ultimosPeriodos, hoyISO, ESTADOS_ENTREGABLE,
+  traerTodo, apiPiola,
 } from '@/composables/usePiola'
 
 const props = defineProps<{ perfil: any }>()
@@ -258,7 +259,8 @@ const fResponsable = ref<any>('todos')
 
 async function cargar() {
   const [e, c, s, col] = await Promise.all([
-    client.from('piola_deliverables').select('*').order('fecha_compromiso', { ascending: true }).limit(2000),
+    traerTodo(() => client.from('piola_deliverables').select('*')
+      .order('fecha_compromiso', { ascending: true }).order('id')),
     client.from('piola_clientes').select('*').order('nombre'),
     client.from('piola_services').select('*').order('orden'),
     client.from('piola_colaboradores').select('email, nombre').eq('activo', true).order('nombre'),
@@ -369,9 +371,7 @@ async function guardarEntregable() {
     observaciones: d.observaciones || null, drive_url: d.drive_url || null,
     updated_at: new Date().toISOString(),
   }
-  const res = d.id
-    ? await client.from('piola_deliverables').update(fila).eq('id', d.id)
-    : await client.from('piola_deliverables').insert(fila)
+  const res = await apiPiola('produccion', { accion: 'guardar_entregable', id: d.id || null, ...fila })
   guardando.value = false
   if (res.error) return emit('notify', { text: `Error: ${res.error.message}`, color: 'error' })
   emit('notify', d.id ? 'Entregable actualizado' : 'Entregable creado')
@@ -381,11 +381,11 @@ async function guardarEntregable() {
 
 async function aprobar() {
   aprobando.value = true
-  const { error } = await client.from('piola_deliverables').update({
-    estado: 'aprobado',
-    aprobado_por: props.perfil?.email,
-    aprobado_at: new Date().toISOString(),
-  }).eq('id', detalle.value.id)
+  // Quién aprueba y cuándo los pone el servidor: el campo existe para poder
+  // responder esas dos preguntas, y un valor que escribe el navegador no lo hace.
+  const { error } = await apiPiola('produccion', {
+    accion: 'aprobar_entregable', id: detalle.value.id,
+  })
   aprobando.value = false
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Entregable aprobado por Dirección')
@@ -395,7 +395,9 @@ async function aprobar() {
 
 async function eliminarEntregable() {
   if (!confirm(`¿Eliminar "${detalle.value.titulo}"?`)) return
-  const { error } = await client.from('piola_deliverables').delete().eq('id', detalle.value.id)
+  const { error } = await apiPiola('produccion', {
+    accion: 'eliminar_entregable', id: detalle.value.id,
+  })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Entregable eliminado')
   detalle.value = null
@@ -422,9 +424,7 @@ async function guardarCliente() {
     contacto: c.contacto || null, telefono: c.telefono || null, email: c.email || null,
     direccion: c.direccion || null, compromiso_mensual: Number(c.compromiso_mensual || 0),
   }
-  const res = c.id
-    ? await client.from('piola_clientes').update(fila).eq('id', c.id)
-    : await client.from('piola_clientes').insert(fila)
+  const res = await apiPiola('produccion', { accion: 'guardar_cliente', id: c.id || null, ...fila })
   guardandoCliente.value = false
   if (res.error) return emit('notify', { text: `Error: ${res.error.message}`, color: 'error' })
   emit('notify', c.id ? 'Marca actualizada' : 'Marca creada')
@@ -437,7 +437,8 @@ const nuevoServicio = ref<any>({ nombre: '', categoria: '', precio_referencial: 
 
 async function crearServicio() {
   if (!nuevoServicio.value.nombre?.trim()) return
-  const { error } = await client.from('piola_services').insert({
+  const { error } = await apiPiola('produccion', {
+    accion: 'servicio_crear',
     nombre: nuevoServicio.value.nombre.trim(),
     categoria: nuevoServicio.value.categoria || null,
     precio_referencial: nuevoServicio.value.precio_referencial || null,
@@ -450,13 +451,16 @@ async function crearServicio() {
 }
 
 async function alternarServicio(s: any) {
-  await client.from('piola_services').update({ activo: !s.activo }).eq('id', s.id)
+  const { error } = await apiPiola('produccion', {
+    accion: 'servicio_actualizar', id: s.id, activo: !s.activo,
+  })
+  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   await cargar()
 }
 
 async function eliminarServicio(s: any) {
   if (!confirm(`¿Eliminar el servicio "${s.nombre}"?`)) return
-  const { error } = await client.from('piola_services').delete().eq('id', s.id)
+  const { error } = await apiPiola('produccion', { accion: 'servicio_eliminar', id: s.id })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   await cargar()
 }

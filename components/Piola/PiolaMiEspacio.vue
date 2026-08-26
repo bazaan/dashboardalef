@@ -178,12 +178,16 @@
             <template v-slot:item.neto="{ item }"><strong>{{ PEN(item.neto) }}</strong></template>
             <template v-slot:item.acciones="{ item }">
               <v-btn v-if="item.pdf_url" icon="mdi-file-eye" size="x-small" variant="text"
-                :href="item.pdf_url" target="_blank" title="Ver / imprimir" />
+                title="Ver aquí mismo" @click="abrirVisor(item.pdf_url, `Boleta ${item.periodo}`)" />
+              <v-btn v-if="item.pdf_url" icon="mdi-download" size="x-small" variant="text"
+                title="Descargar" :href="urlDoc(item.pdf_url)" :download="item.codigo || 'boleta'" />
             </template>
           </v-data-table>
         </v-card>
       </div>
     </div>
+
+    <PiolaVisorPdf v-model="visor.abierto" :src="visor.src" :titulo="visor.titulo" />
   </div>
 </template>
 
@@ -197,7 +201,10 @@
  * ?vista=mias y el endpoint filtra por su correo.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { PEN, fechaCorta, horaLima, minutosAHoras } from '@/composables/usePiola'
+import { PEN, fechaCorta, horaLima, minutosAHoras, urlDocumento } from '@/composables/usePiola'
+import PiolaVisorPdf from './PiolaVisorPdf.vue'
+
+const client = useSupabaseClient()
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{
@@ -207,6 +214,16 @@ const emit = defineEmits<{
 
 const tab = ref('historial')
 const w = computed(() => props.perfil?.widgets || {})
+
+/* ── Visor embebido: los documentos se abren DENTRO del dashboard (19/08) ── */
+const visor = ref<{ abierto: boolean; src: string; titulo: string }>({
+  abierto: false, src: '', titulo: '',
+})
+const urlDoc = (path: any) => urlDocumento(client, path)
+function abrirVisor(path: any, titulo: string) {
+  visor.value = { abierto: true, src: urlDoc(path), titulo }
+}
+
 
 /* ── Reloj en vivo ── */
 const horaActual = ref('')

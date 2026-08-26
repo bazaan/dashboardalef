@@ -75,6 +75,8 @@ export default defineNuxtConfig({
     head: {
       title: "Alef Company",
       titleTemplate: "%s | Dashboard Alef Company",
+      // El dashboard es íntegramente es-PE (Perú): moneda PEN, fechas dd/mm/aaaa
+      htmlAttrs: { lang: "es-PE" },
       link: [
         { rel: "stylesheet", href: "https://rsms.me/inter/inter.css" },
         { rel: "preconnect", href: "https://rsms.me/" },
@@ -151,7 +153,7 @@ export default defineNuxtConfig({
       short_name: shortTitle,
       description: description,
       theme_color: themeColor,
-      lang: "en",
+      lang: "es-PE",
       background_color: "#ffffff",
       icons: [
         {

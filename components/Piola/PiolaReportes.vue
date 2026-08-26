@@ -10,13 +10,25 @@
     <div class="content-area">
       <div class="table-section">
         <div class="table-tabs">
+          <button :class="['tab', { active: tab === 'financieros' }]" @click="tab = 'financieros'">
+            Reportes financieros
+          </button>
+          <button :class="['tab', { active: tab === 'auditoria' }]" @click="tab = 'auditoria'">Auditoría</button>
           <button :class="['tab', { active: tab === 'reportes' }]" @click="tab = 'reportes'">Reportes programados</button>
           <button :class="['tab', { active: tab === 'alertas' }]" @click="tab = 'alertas'">Alertas</button>
           <button :class="['tab', { active: tab === 'historial' }]" @click="tab = 'historial'">Historial de envíos</button>
         </div>
 
         <!-- ══════════ REPORTES PROGRAMADOS ══════════ -->
-        <div v-if="tab === 'reportes'">
+        <!-- ══════════ REPORTES FINANCIEROS ══════════ -->
+        <PiolaReportesFinancieros v-if="tab === 'financieros'" :perfil="perfil"
+          @notify="(p: any) => emit('notify', p)" />
+
+        <!-- ══════════ AUDITORÍA ══════════ -->
+        <PiolaAuditoria v-else-if="tab === 'auditoria'" :perfil="perfil"
+          @notify="(p: any) => emit('notify', p)" />
+
+        <div v-else-if="tab === 'reportes'">
           <v-alert type="info" variant="tonal" density="compact" class="mb-4">
             Los reportes se envían solos según su frecuencia. La Scheduled Function corre a diario y
             decide cuáles tocan; cambiar la frecuencia o los destinatarios aquí surte efecto
@@ -185,16 +197,17 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { piolaCan } from '@/utils/permissions'
-import { fechaCorta, fechaHora, periodoActual } from '@/composables/usePiola'
+import { fechaCorta, fechaHora, periodoActual, apiPiola } from '@/composables/usePiola'
+import PiolaReportesFinancieros from './PiolaReportesFinancieros.vue'
+import PiolaAuditoria from './PiolaAuditoria.vue'
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
 
-const client = useSupabaseClient()
 const puedeEditar = computed(() =>
   props.perfil?.es_admin || piolaCan(props.perfil?.permisos, 'reportes', 'edit'))
 
-const tab = ref('reportes')
+const tab = ref('financieros')
 const programados = ref<any[]>([])
 const corridas = ref<any[]>([])
 const alertas = ref<any[]>([])
@@ -227,7 +240,9 @@ const preview = ref<any>(null)
 const previewTab = ref('correo')
 
 async function actualizar(r: any, patch: any) {
-  const { error } = await client.from('piola_scheduled_reports').update(patch).eq('id', r.id)
+  // Los destinatarios son la lista de distribución de la información financiera:
+  // el servidor valida la forma de cada campo antes de guardarla.
+  const { error } = await apiPiola('reportes', { accion: 'reporte_actualizar', id: r.id, ...patch })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   Object.assign(r, patch)
   emit('notify', 'Configuración guardada')
@@ -272,7 +287,7 @@ async function ejecutar(r: any) {
 const corriendoAlertas = ref(false)
 
 async function actualizarAlerta(s: any, patch: any) {
-  const { error } = await client.from('piola_alert_settings').update(patch).eq('id', s.id)
+  const { error } = await apiPiola('reportes', { accion: 'alerta_actualizar', id: s.id, ...patch })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   Object.assign(s, patch)
   emit('notify', 'Alerta configurada')

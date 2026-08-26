@@ -2,12 +2,27 @@
   <div class="view-container">
     <header class="top-header">
       <h1>Facturación</h1>
-      <button v-if="puedeCrear" class="btn-primary" @click="abrirNueva">
+      <button v-if="puedeCrear && tab === 'comprobantes'" class="btn-primary" @click="abrirNueva">
         <v-icon icon="mdi-file-document-plus" size="16" /><span>Nueva factura</span>
       </button>
     </header>
 
     <div class="content-area">
+      <!-- Contratos vive acá dentro, como pestaña, no como módulo aparte -->
+      <div class="table-tabs mb-4">
+        <button :class="['tab', { active: tab === 'comprobantes' }]" @click="tab = 'comprobantes'">
+          <v-icon icon="mdi-receipt-text-outline" size="15" /> Comprobantes
+        </button>
+        <button :class="['tab', { active: tab === 'contratos' }]" @click="tab = 'contratos'">
+          <v-icon icon="mdi-file-sign" size="15" /> Contratos y adendas
+        </button>
+      </div>
+
+      <PiolaContratos v-if="tab === 'contratos'" :perfil="perfil" :puede-crear="puedeCrear"
+        :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+        @notify="(p: any) => emit('notify', p)" />
+
+      <template v-else>
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-header"><span class="stat-title">Emitidas este mes</span></div>
@@ -72,6 +87,7 @@
           </template>
         </v-data-table>
       </v-card>
+      </template>
     </div>
 
     <!-- ══════════ NUEVA FACTURA ══════════ -->
@@ -85,7 +101,8 @@
               density="compact" hide-details variant="outlined" clearable @update:model-value="autocompletarCliente" />
             <v-text-field v-model="nueva.cliente.razon_social" label="Razón social *" density="compact"
               hide-details variant="outlined" />
-            <v-text-field v-model="nueva.cliente.ruc" label="RUC" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model="nueva.cliente.ruc" label="RUC" density="compact" variant="outlined"
+              maxlength="11" :rules="[ruleRucOpcional]" hint="11 dígitos" persistent-hint />
             <v-text-field v-model="nueva.cliente.email" label="Correo" density="compact" hide-details variant="outlined" />
             <v-text-field v-model="nueva.cliente.direccion" label="Dirección" density="compact"
               hide-details variant="outlined" class="col-2" />
@@ -194,8 +211,12 @@
           </v-alert>
         </v-card-text>
         <v-card-actions style="flex-wrap:wrap; gap:8px; padding: 12px 20px 18px;">
-          <v-btn v-if="detalle.pdf_url" variant="tonal" :href="detalle.pdf_url" target="_blank">
-            <v-icon icon="mdi-file-pdf-box" start /> Ver PDF
+          <v-btn v-if="detalle.pdf_url" variant="tonal" @click="abrirVisor(detalle)">
+            <v-icon icon="mdi-file-pdf-box" start /> Ver comprobante
+          </v-btn>
+          <v-btn v-if="detalle.pdf_url" variant="text" :href="urlDoc(detalle.pdf_url)"
+            :download="`${detalle.serie}-${detalle.numero}`">
+            <v-icon icon="mdi-download" start /> Descargar
           </v-btn>
           <v-btn v-if="puedeEditar && detalle.estado !== 'pagada' && detalle.estado !== 'anulada'"
             color="success" variant="tonal" :loading="accionando === 'pagar'" @click="marcarPagada">
@@ -211,6 +232,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <PiolaVisorPdf v-model="visor.abierto" :src="visor.src" :titulo="visor.titulo" />
   </div>
 </template>
 
@@ -227,16 +250,36 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { piolaCan } from '@/utils/permissions'
-import { PEN, PEN_CORTO, fechaCorta, periodoActual, hoyISO } from '@/composables/usePiola'
+import { PEN, PEN_CORTO, fechaCorta, periodoActual, hoyISO, urlDocumento, traerTodo} from '@/composables/usePiola'
+import { useFormRules } from '@/composables/rules'
+import PiolaContratos from './PiolaContratos.vue'
+import PiolaVisorPdf from './PiolaVisorPdf.vue'
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
 
 const client = useSupabaseClient()
 const periodo = periodoActual()
+const { ruleRuc } = useFormRules()
+
+/** 'comprobantes' | 'contratos' — Contratos es una pestaña de este módulo (19/08). */
+const tab = ref('comprobantes')
 
 const puedeCrear = computed(() => piolaCan(props.perfil?.permisos, 'facturacion', 'create'))
 const puedeEditar = computed(() => piolaCan(props.perfil?.permisos, 'facturacion', 'edit'))
+const puedeEliminar = computed(() => piolaCan(props.perfil?.permisos, 'facturacion', 'delete'))
+
+/** El RUC es opcional (una boleta va con DNI), pero si se escribe debe ser válido. */
+const ruleRucOpcional = (v: any) => !String(v ?? '').trim() || ruleRuc(v)
+
+/* ── Visor embebido: el comprobante se abre dentro del dashboard ── */
+const visor = ref<{ abierto: boolean; src: string; titulo: string }>({
+  abierto: false, src: '', titulo: '',
+})
+const urlDoc = (path: any) => urlDocumento(client, path)
+function abrirVisor(f: any) {
+  visor.value = { abierto: true, src: urlDoc(f.pdf_url), titulo: `${f.serie}-${f.numero}` }
+}
 
 const cargando = ref(false)
 const facturas = ref<any[]>([])
@@ -248,7 +291,8 @@ const fEstado = ref('todos')
 async function cargar() {
   cargando.value = true
   const [f, c, s] = await Promise.all([
-    client.from('piola_invoices').select('*').order('fecha_emision', { ascending: false }).limit(1000),
+    traerTodo(() => client.from('piola_invoices').select('*')
+      .order('fecha_emision', { ascending: false }).order('id')),
     client.from('piola_clientes').select('*').eq('activo', true).order('nombre'),
     client.from('piola_services').select('*').eq('activo', true).order('orden'),
   ])
@@ -375,6 +419,14 @@ async function emitir() {
   }
   if (!n.items.some((it: any) => it.descripcion && Number(it.valor_unitario))) {
     return emit('notify', { text: 'Agrega al menos un ítem con descripción y precio', color: 'error' })
+  }
+  // Una factura (tipo 1) sin RUC válido la rechaza SUNAT; mejor pararla acá.
+  const ruc = String(n.cliente.ruc || '').trim()
+  if (ruc && ruleRuc(ruc) !== true) {
+    return emit('notify', { text: 'El RUC debe tener 11 dígitos', color: 'error' })
+  }
+  if (Number(n.tipo_comprobante) === 1 && !ruc) {
+    return emit('notify', { text: 'Una factura necesita el RUC del cliente', color: 'error' })
   }
 
   emitiendo.value = true

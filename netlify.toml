@@ -4,7 +4,12 @@
   functions = "netlify/functions"
 
 [build.environment]
-  NODE_OPTIONS = "--max-old-space-size=4096"
+  # 6 GB para el build. Con 4096 el bundling de Nitro se quedaba sin heap
+  # ("Ineffective mark-compacts near heap limit") y el deploy fallaba: el
+  # proyecto ya rozaba el techo con ~20 dashboards grandes y cada módulo nuevo
+  # lo empujaba un poco más. El contenedor de Netlify tiene 8 GB, así que 6144
+  # deja aire para el resto del proceso.
+  NODE_OPTIONS = "--max-old-space-size=6144"
   SECRETS_SCAN_OMIT_PATHS = ".netlify/functions-internal/server/chunks/nitro/nitro.mjs"
 
 # Las Scheduled Functions del proyecto:

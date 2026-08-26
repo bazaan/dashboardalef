@@ -510,6 +510,73 @@ emergencia en el monitor y avisa a los supervisores.
 
 ---
 
+### Trade Cars — Funnel de Compras (reemplazo del Power BI)
+
+Implementa la minuta del **26/08/2026**. Trade Cars llevaba el funnel en Power BI
+alimentado a mano desde un Excel por asesor; ahora el asesor llena los campos en el
+CRM y el dashboard calcula el embudo en vivo.
+
+**Tres módulos** (sección "Funnel de Ventas" del sidebar):
+
+| Módulo | Componente | Qué hace |
+|---|---|---|
+| Funnel de Compras | `components/TradeCars/FunnelCompras.vue` | Embudo de 7 barras acumulativas + % de conversión |
+| Tabla de Leads | `components/TradeCars/TablaLeadsFunnel.vue` | Detalle con etapa/fecha calculadas, export y link al CRM |
+| Análisis de Conversión | `components/TradeCars/AnalisisConversion.vue` | Motivos de no cita, ventas probables y seguimientos vencidos |
+
+**La lógica vive en UN solo lugar:** `utils/tradecarsFunnel.ts` (auto-import). Los tres
+módulos la comparten, así que el embudo y la tabla nunca pueden contradecirse.
+La **misma lógica está replicada en columnas `GENERATED` de Postgres** — si se cambia
+una hay que cambiar la otra (está avisado en ambos archivos).
+
+**Reglas que no son obvias:**
+
+- **El embudo es ACUMULATIVO**, no un conteo por etapa: cada barra cuenta los leads que
+  alcanzaron esa etapa **o una superior**. Un lead `CONCRETADA` suma en las 7 barras.
+  Implementado con `etapa_rank` (0–6): la barra N cuenta `rank >= N`.
+- **El % de cada barra es contra la barra ANTERIOR**, no contra el total de leads.
+- **`FECHA DEL FUNNEL`** = `fecha_compra` > `fecha_cita` > `fecha_derivacion` (en ese
+  orden de prioridad). Un lead que entró en mayo y compró en agosto **aparece en agosto**.
+- **`PERFIL COINCIDE = NO`** → el lead se queda en `LEADS` sin importar el status.
+- **`PERFIL = SI` con STATUS vacío** → queda **fuera de TODAS las barras** (`rank = -1`),
+  no sólo de las superiores. Se muestra como aviso ámbar en el módulo 1.
+- **STATUS fuera de la lista cerrada** → NO se ignora: se guarda, se marca en rojo en la
+  tabla y sale una alerta en el embudo. El endpoint devuelve `ok:false` + `status_invalido`
+  pero **200**, para que el CRM no reintente en bucle.
+- **Anti-regresión:** un lead que ya llegó a `CITA`/`CITA ASISTIDA`/`CONCRETADA` no puede
+  bajar de etapa. Se aplica con un **trigger en la BD**, no sólo en la UI, para que también
+  proteja los updates que entren por el endpoint o por n8n.
+- Los 6 valores de STATUS son **cerrados**: `NO CONTACTADO`, `NO INTERESADO`,
+  `EN SEGUIMIENTO`, `CITA`, `CITA ASISTIDA`, `CONCRETADA`.
+
+**Endpoint del CRM:**
+
+| Método | Ruta | api_key |
+|---|---|---|
+| POST | `/api/tradecars/funnel-lead` | `tradecars-funnel-2026` |
+
+Hace UPSERT por `chatwoot_conversation_id` (si el CRM reenvía el mismo webhook no duplica).
+Acepta los nombres de campo del Power BI actual (`PERFIL COINCIDE`, `FECHA DE CITA`…)
+además de snake_case. Log en `agent_tool_logs` → Dev · Agent Logs → Trade Cars → `Funnel Lead`.
+
+**Tablas nuevas** (migración: correr una vez `sql/tradecars_funnel.sql`):
+
+| Tabla | Propósito |
+|---|---|
+| `tradecars_funnel_leads` | Tabla central. Incluye `etapa`, `etapa_rank` y `fecha_funnel` como columnas `GENERATED STORED` |
+| `tradecars_asesores` | Catálogo de asesores (filtro del funnel), editable sin redeploy |
+| `tradecars_funnel_motivos` | Catálogo de MOTIVO DE NO CITA — la minuta lo dejó "a definir", por eso es tabla y no enum |
+| `tradecars_funnel_resumen` | Vista con las barras ya agregadas por mes/asesor/canal (útil para validar contra el Power BI durante la transición) |
+
+**Separada de `GeneralBDwppTRADECARS` a propósito:** aquella guarda el lead crudo que
+llega del bot; `tradecars_funnel_leads` guarda el trabajo comercial del asesor sobre ese
+lead. Se enlazan por `lead_origen_tabla` + `lead_origen_id`.
+
+**Pendiente del cliente:** definir la lista real de MOTIVO DE NO CITA (hay 8 sembrados de
+ejemplo) y cargar los asesores en `tradecars_asesores`.
+
+---
+
 ## Variables de Entorno (`.env`)
 
 ```

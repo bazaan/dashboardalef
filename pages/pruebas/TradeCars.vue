@@ -39,6 +39,16 @@
         </div>
 
         <div class="nav-section">
+          <div class="nav-label">Funnel de Ventas</div>
+          <button v-for="item in funnelItems" :key="item.id"
+            :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
+            <v-icon :icon="item.icon" size="18" />
+            <span>{{ item.label }}</span>
+            <span v-if="item.id === 'analisis' && alertasVencidas" class="nav-badge">{{ alertasVencidas }}</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
           <div class="nav-label">Operaciones</div>
           <button v-for="item in operacionesItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
@@ -813,12 +823,123 @@
       </div>
 
       <!-- ==========  VISTA: SETTINGS  ========== -->
+      <!-- ==========  FUNNEL: MODULO 1 — EMBUDO  ========== -->
+      <TradeCarsFunnelCompras v-else-if="activeView === 'funnel'"
+        :leads="funnelLeads" :asesores="asesoresNombres" @refresh="fetchFunnel" />
+
+      <!-- ==========  FUNNEL: MODULO 2 — TABLA DE LEADS  ========== -->
+      <TradeCarsTablaLeadsFunnel v-else-if="activeView === 'funnel_leads'"
+        :leads="funnelLeads" :asesores="asesoresNombres" :loading="loadingFunnel"
+        :chatwoot-account-id="CHATWOOT_ACCOUNT_ID"
+        @refresh="fetchFunnel" @editar="editarFunnelLead" @nuevo="nuevoFunnelLead" />
+
+      <!-- ==========  FUNNEL: MODULO 3 — ANALISIS DE CONVERSION  ========== -->
+      <TradeCarsAnalisisConversion v-else-if="activeView === 'analisis'"
+        :leads="funnelLeads" :asesores="asesoresNombres" :loading="loadingFunnel"
+        @refresh="fetchFunnel" @editar="editarFunnelLead" />
+
       <SettingsView v-else-if="activeView === 'settings'" company-id="tradecars"
         :current-user-role="currentUser?.role" />
 
       <!-- ==========  VISTA: REMARKETING  ========== -->
       <RemarketingPanel v-else-if="activeView === 'remarketing'" company-id="tradecars"
         :lead-tablas="{ wpp: 'GeneralBDwppTRADECARS', fbig: 'GeneralBDfbigTRADECARS' }" />
+
+      <!-- ==========  DIÁLOGO: EDITAR LEAD DEL FUNNEL  ========== -->
+      <v-dialog v-model="showFunnelDialog" max-width="760" persistent scrollable>
+        <v-card v-if="funnelForm">
+          <v-card-title class="pt-4">
+            {{ funnelForm.id ? 'Editar lead' : 'Nuevo lead' }}
+            <span v-if="funnelForm.contacto_nombre" class="text-medium-emphasis text-body-2">
+              — {{ funnelForm.contacto_nombre }}
+            </span>
+          </v-card-title>
+
+          <v-card-text>
+            <!-- Vista previa de lo que va a pasar en el embudo al guardar -->
+            <v-alert density="compact" variant="tonal"
+              :type="etapaPrevista ? 'info' : 'warning'" class="mb-4">
+              <div class="d-flex align-center flex-wrap" style="gap:14px;">
+                <div>
+                  <div class="text-caption text-medium-emphasis">Etapa resultante</div>
+                  <strong>{{ etapaPrevista || 'Fuera del funnel' }}</strong>
+                </div>
+                <v-divider vertical />
+                <div>
+                  <div class="text-caption text-medium-emphasis">Fecha del funnel</div>
+                  <strong>{{ fechaFunnelPrevista || 'sin fecha' }}</strong>
+                </div>
+                <template v-if="!etapaPrevista">
+                  <v-divider vertical />
+                  <span class="text-caption">
+                    Con perfil SI hace falta un status para que entre al embudo.
+                  </span>
+                </template>
+              </div>
+            </v-alert>
+
+            <div class="text-overline mb-1">Datos del contacto</div>
+            <div class="form-grid-2">
+              <v-text-field v-model="funnelForm.contacto_nombre" label="Nombre del cliente *"
+                density="compact" hide-details />
+              <v-text-field v-model="funnelForm.contacto_telefono" label="Teléfono"
+                density="compact" hide-details />
+              <v-select v-model="funnelForm.canal_origen" :items="[...TC_CANALES]"
+                label="Canal de origen" density="compact" hide-details />
+              <v-combobox v-model="funnelForm.asesor" :items="asesoresNombres"
+                label="Asesor asignado" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.fecha_derivacion" type="date"
+                label="Fecha de derivación" density="compact" hide-details />
+            </div>
+
+            <v-divider class="my-4" />
+            <div class="text-overline mb-1">Clasificación del asesor</div>
+            <div class="form-grid-2">
+              <v-select v-model="funnelForm.perfil_coincide" :items="['SI', 'NO']"
+                label="Perfil coincide *" density="compact" hide-details />
+              <v-select v-model="funnelForm.status" :items="[...TC_STATUS]"
+                label="Status *" density="compact" hide-details clearable
+                :disabled="funnelForm.perfil_coincide === 'NO'"
+                :hint="funnelForm.perfil_coincide === 'NO' ? 'Con perfil NO el lead se queda en LEADS' : ''"
+                persistent-hint />
+              <v-text-field v-model="funnelForm.fecha_cita" type="date" label="Fecha de cita"
+                density="compact" hide-details
+                :class="{ 'campo-requerido': ['CITA', 'CITA ASISTIDA'].includes(funnelForm.status) && !funnelForm.fecha_cita }" />
+              <v-text-field v-model="funnelForm.fecha_compra" type="date" label="Fecha de compra"
+                density="compact" hide-details
+                :class="{ 'campo-requerido': funnelForm.status === 'CONCRETADA' && !funnelForm.fecha_compra }" />
+            </div>
+
+            <v-alert v-if="funnelForm._statusOriginal && tcStatusEsInvalido(funnelForm._statusOriginal)"
+              type="error" variant="tonal" density="compact" class="mt-3">
+              El CRM había mandado <strong>{{ funnelForm._statusOriginal }}</strong>, que no es un valor
+              permitido. Elige uno de la lista para que el lead vuelva a contar en el embudo.
+            </v-alert>
+
+            <v-divider class="my-4" />
+            <div class="text-overline mb-1">Gestión y seguimiento</div>
+            <div class="form-grid-2">
+              <v-combobox v-model="funnelForm.motivo_no_cita" :items="motivosNoCita.map(m => m.motivo)"
+                label="Motivo de no cita" density="compact" hide-details clearable />
+              <v-text-field v-model="funnelForm.fecha_probable_venta" type="date"
+                label="Fecha probable de venta" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.proxima_accion" label="Próxima acción"
+                density="compact" hide-details />
+              <v-text-field v-model="funnelForm.fecha_seguimiento" type="date"
+                label="Fecha de seguimiento" density="compact" hide-details />
+            </div>
+
+            <v-textarea v-model="funnelForm.observaciones" label="Observaciones" rows="2"
+              density="compact" hide-details class="mt-4" auto-grow />
+          </v-card-text>
+
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="text" @click="showFunnelDialog = false">Cancelar</v-btn>
+            <v-btn color="primary" variant="flat" @click="guardarFunnelLead">Guardar</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
     </div>
 
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="3000" location="bottom right">
@@ -888,6 +1009,11 @@ const menuItems = [
   { icon: 'mdi-form-select', label: 'Solicitudes Web', id: 'solicitudes' },
   { icon: 'mdi-account-group', label: 'Clientes', id: 'clientes' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
+]
+const funnelItems = [
+  { icon: 'mdi-filter-variant', label: 'Funnel de Compras', id: 'funnel' },
+  { icon: 'mdi-table-account', label: 'Tabla de Leads', id: 'funnel_leads' },
+  { icon: 'mdi-chart-timeline-variant', label: 'Análisis de Conversión', id: 'analisis' },
 ]
 const operacionesItems = [
   { icon: 'mdi-car-multiple', label: 'Vehículos', id: 'vehiculos' },
@@ -1457,6 +1583,128 @@ async function fetchLeads() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   FUNNEL DE COMPRAS  (reemplazo del Power BI — minuta 26/08/2026)
+
+   Una sola carga alimenta los tres módulos: embudo, tabla de leads y análisis
+   de conversión. La etapa y la fecha del funnel las calcula la BD en columnas
+   GENERATED, y utils/tradecarsFunnel.ts las recalcula en vivo para filtrar sin
+   ir al servidor en cada cambio.
+   ══════════════════════════════════════════════════════════════════════════ */
+const CHATWOOT_ACCOUNT_ID = 17          // cuenta de Trade Cars en Chatwoot
+
+const funnelLeads = ref<any[]>([])
+const asesores = ref<any[]>([])
+const motivosNoCita = ref<any[]>([])
+const loadingFunnel = ref(false)
+
+const asesoresNombres = computed(() =>
+  asesores.value.filter(a => a.activo !== false).map(a => a.nombre))
+
+/** Leads con el seguimiento vencido: alimenta el badge rojo del menú. */
+const alertasVencidas = computed(() =>
+  funnelLeads.value.filter(l => tcSeguimientoVencido(l)).length)
+
+async function fetchFunnel() {
+  loadingFunnel.value = true
+  try {
+    const [leads, ases, mot] = await Promise.all([
+      client.from('tradecars_funnel_leads').select('*').order('created_at', { ascending: false }),
+      client.from('tradecars_asesores').select('*').order('orden'),
+      client.from('tradecars_funnel_motivos').select('*').eq('activo', true).order('orden'),
+    ])
+    funnelLeads.value = leads.data || []
+    asesores.value = ases.data || []
+    motivosNoCita.value = mot.data || []
+
+    // La tabla es nueva: si aún no se corrió el SQL, se avisa en vez de fallar en silencio
+    if (leads.error) {
+      console.warn('[tradecars/funnel]', leads.error.message)
+      notify('Falta correr sql/tradecars_funnel.sql en Supabase', 'warning')
+    }
+  } finally {
+    loadingFunnel.value = false
+  }
+}
+
+/* ---------------- Edición del lead desde el dashboard ---------------- */
+const showFunnelDialog = ref(false)
+const funnelForm = ref<any>(null)
+
+function editarFunnelLead(lead: any) {
+  // Se copian sólo los campos editables: etapa/fecha_funnel las calcula la BD
+  funnelForm.value = {
+    id: lead.id,
+    contacto_nombre: lead.contacto_nombre,
+    contacto_telefono: lead.contacto_telefono,
+    canal_origen: lead.canal_origen,
+    asesor: lead.asesor,
+    fecha_derivacion: lead.fecha_derivacion,
+    perfil_coincide: tcPerfilCoincide(lead.perfil_coincide) ? 'SI' : 'NO',
+    status: tcStatusValido(lead.status) || null,
+    fecha_cita: lead.fecha_cita,
+    fecha_compra: lead.fecha_compra,
+    motivo_no_cita: lead.motivo_no_cita,
+    fecha_probable_venta: lead.fecha_probable_venta,
+    proxima_accion: lead.proxima_accion,
+    fecha_seguimiento: lead.fecha_seguimiento,
+    observaciones: lead.observaciones,
+    _statusOriginal: lead.status,
+  }
+  showFunnelDialog.value = true
+}
+
+function nuevoFunnelLead() {
+  funnelForm.value = {
+    contacto_nombre: '', contacto_telefono: '', canal_origen: 'WhatsApp',
+    asesor: asesoresNombres.value[0] || '', fecha_derivacion: tcHoyLima(),
+    perfil_coincide: 'SI', status: 'NO CONTACTADO',
+    fecha_cita: null, fecha_compra: null, motivo_no_cita: null,
+    fecha_probable_venta: null, proxima_accion: '', fecha_seguimiento: null,
+    observaciones: '',
+  }
+  showFunnelDialog.value = true
+}
+
+/** La etapa que va a quedar tras guardar: se muestra en vivo dentro del diálogo. */
+const etapaPrevista = computed(() =>
+  funnelForm.value ? tcEtapa(funnelForm.value) : null)
+
+/** La fecha con la que el lead caerá en el embudo tras guardar. */
+const fechaFunnelPrevista = computed(() =>
+  funnelForm.value ? tcFechaFunnel(funnelForm.value) : null)
+
+async function guardarFunnelLead() {
+  const f = funnelForm.value
+  if (!f) return
+  if (!f.contacto_nombre?.trim()) return notify('El nombre del cliente es obligatorio', 'error')
+
+  // CITA / CITA ASISTIDA necesitan fecha de cita, y CONCRETADA fecha de compra:
+  // sin eso el lead caería en el mes equivocado del embudo.
+  if ((f.status === 'CITA' || f.status === 'CITA ASISTIDA') && !f.fecha_cita) {
+    return notify('Con status ' + f.status + ' hace falta la fecha de cita', 'error')
+  }
+  if (f.status === 'CONCRETADA' && !f.fecha_compra) {
+    return notify('Con status CONCRETADA hace falta la fecha de compra', 'error')
+  }
+
+  const fila: Record<string, any> = { ...f }
+  delete fila._statusOriginal
+  delete fila.id
+  for (const k of Object.keys(fila)) if (fila[k] === '') fila[k] = null
+
+  const { error } = f.id
+    ? await client.from('tradecars_funnel_leads').update(fila).eq('id', f.id)
+    : await client.from('tradecars_funnel_leads').insert(fila)
+
+  if (error) return notify('No se pudo guardar: ' + error.message, 'error')
+
+  showFunnelDialog.value = false
+  logActivity((f.id ? 'Editó' : 'Creó') + ' lead del funnel: ' + f.contacto_nombre)
+  await fetchFunnel()
+  notify(f.id ? 'Lead actualizado' : 'Lead creado')
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    AGENDA / CITAS
    ══════════════════════════════════════════════════════════════════════════ */
 const citas = ref<any[]>([])
@@ -1679,6 +1927,7 @@ async function refreshAll() {
   await Promise.all([
     fetchSolicitudes(), fetchClientes(), fetchVehiculos(),
     fetchVentas(), fetchCompras(), fetchLeads(), fetchCitas(), fetchEgresos(),
+    fetchFunnel(),
   ])
   notify('Datos actualizados')
 }
@@ -1692,6 +1941,7 @@ onMounted(async () => {
   await Promise.all([
     fetchSolicitudes(), fetchClientes(), fetchVehiculos(),
     fetchVentas(), fetchCompras(), fetchLeads(), fetchCitas(), fetchEgresos(),
+    fetchFunnel(),
   ])
 })
 </script>
@@ -1882,5 +2132,31 @@ onMounted(async () => {
   .form-grid-2 {
     grid-template-columns: 1fr;
   }
+}
+
+/* ══════════ Funnel de compras ══════════ */
+
+/* Contador rojo de seguimientos vencidos, en el ítem del menú */
+.nav-badge {
+  margin-left: auto;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Marca el campo de fecha que falta según el status elegido */
+.campo-requerido :deep(.v-field) {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 1px #dc2626 inset;
+  border-radius: 4px;
 }
 </style>

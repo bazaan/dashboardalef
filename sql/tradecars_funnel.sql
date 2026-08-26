@@ -220,6 +220,9 @@ BEGIN
      AND column_name = 'fecha_funnel';
 
   IF expr IS NOT NULL AND position('fecha_cita_asistida' in expr) = 0 THEN
+    -- La vista de resumen lee fecha_funnel, así que Postgres no deja soltar la
+    -- columna mientras exista. Se elimina aquí y la sección 7 la vuelve a crear.
+    DROP VIEW IF EXISTS public.tradecars_funnel_resumen;
     ALTER TABLE public.tradecars_funnel_leads DROP COLUMN fecha_funnel;
     expr := NULL;
   END IF;

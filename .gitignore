@@ -248,3 +248,7 @@ $RECYCLE.BIN/
 
 # Local Netlify folder
 .netlify
+
+# Python (scripts de migracion)
+__pycache__/
+*.pyc

@@ -41,6 +41,8 @@
           label="Perfil coincide" density="compact" hide-details variant="outlined" class="filtro" />
         <v-select v-model="fEtapa" :items="opcionesEtapa"
           label="Etapa" density="compact" hide-details variant="outlined" class="filtro" />
+        <v-select v-model="fCampana" :items="opcionesCampana"
+          label="Campaña" density="compact" hide-details variant="outlined" class="filtro" />
         <v-text-field v-model="fBuscar" prepend-inner-icon="mdi-magnify" placeholder="Buscar nombre o teléfono…"
           density="compact" hide-details variant="outlined" class="filtro-buscar" clearable />
         <v-btn v-if="hayFiltros" variant="text" size="small" prepend-icon="mdi-filter-off"
@@ -88,6 +90,14 @@
             <v-chip v-if="item.canal_origen" size="x-small" variant="tonal" :color="colorCanal(item.canal_origen)">
               {{ item.canal_origen }}
             </v-chip>
+            <span v-else>—</span>
+          </template>
+
+          <template #item.vehiculo="{ item }">
+            <div v-if="item._vehiculo" class="celda-vehiculo">
+              <span>{{ item._vehiculo }}</span>
+              <span v-if="item.placa" class="placa">{{ item.placa }}</span>
+            </div>
             <span v-else>—</span>
           </template>
 
@@ -175,6 +185,7 @@ const fAsesor = usePersistente('tradecars:tabla:asesor', 'todos')
 const fCanal  = usePersistente('tradecars:tabla:canal', 'todos')
 const fPerfil = usePersistente('tradecars:tabla:perfil', 'todos')
 const fEtapa  = usePersistente('tradecars:tabla:etapa', 'todos')
+const fCampana = usePersistente('tradecars:tabla:campana', 'todos')
 const fBuscar = ref('')
 
 const filtros = computed<TcFiltros>(() => ({
@@ -188,12 +199,19 @@ const filtros = computed<TcFiltros>(() => ({
 
 const hayFiltros = computed(() =>
   fMes.value !== 'todos' || fAsesor.value !== 'todos' || fCanal.value !== 'todos'
-  || fPerfil.value !== 'todos' || fEtapa.value !== 'todos' || !!fBuscar.value)
+  || fPerfil.value !== 'todos' || fEtapa.value !== 'todos'
+  || fCampana.value !== 'todos' || !!fBuscar.value)
 
 function limpiarFiltros() {
   fMes.value = 'todos'; fAsesor.value = 'todos'; fCanal.value = 'todos'
-  fPerfil.value = 'todos'; fEtapa.value = 'todos'; fBuscar.value = ''
+  fPerfil.value = 'todos'; fEtapa.value = 'todos'; fCampana.value = 'todos'; fBuscar.value = ''
 }
+
+const opcionesCampana = computed(() => {
+  const set = new Set<string>()
+  for (const l of props.leads) if (l.campana) set.add(l.campana)
+  return ['todos', ...[...set].sort()]
+})
 
 /* ---------------- Opciones ---------------- */
 const opcionesMes = computed(() => {
@@ -223,7 +241,12 @@ const opcionesCanal = computed(() => {
 const opcionesEtapa = computed(() => ['todos', ...TC_ETAPAS])
 
 /* ---------------- Datos ---------------- */
-const leadsFiltrados = computed(() => tcFiltrar(props.leads, filtros.value))
+const leadsFiltrados = computed(() => {
+  const base = tcFiltrar(props.leads, filtros.value)
+  // La campaña no vive en tcFiltrar porque no forma parte del cálculo del
+  // funnel: es una dimensión de marketing propia de la base de Trade Cars.
+  return fCampana.value === 'todos' ? base : base.filter(l => l.campana === fCampana.value)
+})
 
 /**
  * Se precalculan etapa y fecha del funnel una sola vez por fila para no
@@ -234,7 +257,10 @@ const filasOrdenadas = computed(() =>
     ...l,
     _etapa: tcEtapa(l),
     _fechaFunnel: tcFechaFunnel(l),
-    _origenFecha: l.fecha_compra ? 'compra' : l.fecha_cita ? 'cita' : l.fecha_derivacion ? 'derivación' : '',
+    _origenFecha: l.fecha_compra ? 'compra'
+      : (l.fecha_cita_asistida || l.fecha_cita) ? 'cita'
+      : l.fecha_derivacion ? 'derivación' : '',
+    _vehiculo: [l.marca, l.modelo, l.anio].filter(Boolean).join(' ') || '',
   })),
 )
 
@@ -249,6 +275,7 @@ const headers = [
   { title: 'Cliente', key: 'contacto_nombre' },
   { title: 'Teléfono', key: 'contacto_telefono' },
   { title: 'Canal', key: 'canal_origen' },
+  { title: 'Vehículo', key: 'vehiculo', value: '_vehiculo', sortable: false },
   { title: 'Asesor', key: 'asesor' },
   { title: 'Perfil', key: 'perfil_coincide', align: 'center' as const },
   { title: 'Status', key: 'status' },
@@ -314,6 +341,19 @@ function exportarExcel() {
     ['Fecha derivacion', (l: any) => tcFecha(l.fecha_derivacion)],
     ['Fecha cita', (l: any) => tcFecha(l.fecha_cita)],
     ['Fecha compra', (l: any) => tcFecha(l.fecha_compra)],
+    ['Fecha cita asistida', (l: any) => tcFecha(l.fecha_cita_asistida)],
+    ['Campana', (l: any) => l.campana],
+    ['Placa', (l: any) => l.placa],
+    ['Marca', (l: any) => l.marca],
+    ['Modelo', (l: any) => l.modelo],
+    ['Version', (l: any) => l.version],
+    ['Anio', (l: any) => l.anio],
+    ['Kilometraje', (l: any) => l.kilometraje],
+    ['Distrito', (l: any) => l.distrito],
+    ['Zona', (l: any) => l.zona],
+    ['Propuesta inicial', (l: any) => l.monto_propuesta_inicial],
+    ['Monto mejorado', (l: any) => l.monto_mejorado],
+    ['Expectativa cliente', (l: any) => l.expectativa_cliente],
     ['Motivo no cita', (l: any) => l.motivo_no_cita],
     ['Fecha probable venta', (l: any) => tcFecha(l.fecha_probable_venta)],
     ['Proxima accion', (l: any) => l.proxima_accion],
@@ -374,6 +414,14 @@ function exportarExcel() {
   flex-shrink: 0;
 }
 .mono { font-variant-numeric: tabular-nums; font-size: 0.84rem; }
+
+.celda-vehiculo { display: flex; flex-direction: column; line-height: 1.2; }
+.placa {
+  font-size: 0.64rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
 .fst-italic { font-style: italic; font-size: 0.78rem; }
 
 .tabla-leads :deep(td) { white-space: nowrap; }

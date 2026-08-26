@@ -535,8 +535,12 @@ una hay que cambiar la otra (está avisado en ambos archivos).
   alcanzaron esa etapa **o una superior**. Un lead `CONCRETADA` suma en las 7 barras.
   Implementado con `etapa_rank` (0–6): la barra N cuenta `rank >= N`.
 - **El % de cada barra es contra la barra ANTERIOR**, no contra el total de leads.
-- **`FECHA DEL FUNNEL`** = `fecha_compra` > `fecha_cita` > `fecha_derivacion` (en ese
-  orden de prioridad). Un lead que entró en mayo y compró en agosto **aparece en agosto**.
+- **`FECHA DEL FUNNEL`** = `fecha_compra` > **la más reciente entre `fecha_cita_asistida` y
+  `fecha_cita`** > `fecha_derivacion`. Un lead que entró en mayo y compró en agosto
+  **aparece en agosto**. En el Excel actual CITA y CITA ASISTIDA comparten una sola columna
+  de fecha; el CRM las separa (lo pidió el cliente) y la §4 de su especificación técnica
+  manda usar la del evento más reciente. Validado contra las 8.515 filas de su base real:
+  la cascada coincide con su columna `FECHA` calculada en el 100% de los casos.
 - **`PERFIL COINCIDE = NO`** → el lead se queda en `LEADS` sin importar el status.
 - **`PERFIL = SI` con STATUS vacío** → queda **fuera de TODAS las barras** (`rank = -1`),
   no sólo de las superiores. Se muestra como aviso ámbar en el módulo 1.
@@ -565,8 +569,20 @@ además de snake_case. Log en `agent_tool_logs` → Dev · Agent Logs → Trade 
 |---|---|
 | `tradecars_funnel_leads` | Tabla central. Incluye `etapa`, `etapa_rank` y `fecha_funnel` como columnas `GENERATED STORED` |
 | `tradecars_asesores` | Catálogo de asesores (filtro del funnel), editable sin redeploy |
-| `tradecars_funnel_motivos` | Catálogo de MOTIVO DE NO CITA — la minuta lo dejó "a definir", por eso es tabla y no enum |
+| `tradecars_funnel_motivos` | Catálogo de MOTIVO DE NO CITA — tabla y no enum porque la minuta lo dejó "a definir". Sembrado con los 5 motivos **reales** contados sobre su base (Precio 78%, No recibimos el modelo 15%, Ya lo vendió 5%, Deuda mayor 1%, No responde) |
 | `tradecars_funnel_resumen` | Vista con las barras ya agregadas por mes/asesor/canal (útil para validar contra el Power BI durante la transición) |
+
+**Además del funnel, la tabla guarda los campos del Excel del asesor** (vehículo: placa,
+marca, modelo, versión, año, km; negociación: propuesta inicial, monto mejorado,
+expectativa; y campaña, distrito, zona, deuda/banco, último contacto, feedback). No entran
+en el cálculo del embudo, pero si el CRM no los guardara el asesor seguiría abriendo el
+Excel y no se reemplazaría nada — que es el objetivo de la minuta.
+
+**Ojo con un supuesto de su especificación:** dice que el Power BI puede deducir el perfil
+mirando sólo si STATUS está vacío, porque "100% de los perfil NO tienen STATUS vacío". En
+su base real **no se cumple**: hay 23 filas con perfil NO y status lleno, y 4 con perfil SI
+sin status. Por eso la etapa se calcula con **ambas** columnas explícitamente, como su
+propia especificación recomienda.
 
 **Separada de `GeneralBDwppTRADECARS` a propósito:** aquella guarda el lead crudo que
 llega del bot; `tradecars_funnel_leads` guarda el trabajo comercial del asesor sobre ese

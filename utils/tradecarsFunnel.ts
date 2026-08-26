@@ -94,6 +94,7 @@ export interface TcLeadCrudo {
   status?: any
   fecha_compra?: any
   fecha_cita?: any
+  fecha_cita_asistida?: any
   fecha_derivacion?: any
   [k: string]: any
 }
@@ -151,11 +152,20 @@ export function tcFecha(v: any): string | null {
 
 /**
  * La ÚNICA fecha con la que se filtra el dashboard por mes/año.
- * Prioridad: fecha de compra > fecha de cita > fecha de derivación al asesor.
+ * Prioridad: fecha de compra > fecha de la cita > fecha de derivación al asesor.
  * Un lead comprado en agosto aparece en agosto aunque haya entrado en mayo.
+ *
+ * En el Excel actual CITA y CITA ASISTIDA comparten la columna FECHA DE CITA.
+ * El CRM sí las separa (el cliente pidió registrar cuándo se realizó la cita),
+ * así que entre las dos gana la MÁS RECIENTE, como recomienda la §4 de la
+ * especificación técnica.
  */
 export function tcFechaFunnel(lead: TcLeadCrudo): string | null {
-  return tcFecha(lead?.fecha_compra) || tcFecha(lead?.fecha_cita) || tcFecha(lead?.fecha_derivacion)
+  const cita = tcFecha(lead?.fecha_cita)
+  const asistida = tcFecha(lead?.fecha_cita_asistida)
+  const evento = (cita && asistida) ? (asistida > cita ? asistida : cita) : (asistida || cita)
+
+  return tcFecha(lead?.fecha_compra) || evento || tcFecha(lead?.fecha_derivacion)
 }
 
 /** YYYY-MM de la fecha del funnel, para agrupar/filtrar por mes. */

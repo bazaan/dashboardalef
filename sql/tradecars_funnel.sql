@@ -55,17 +55,24 @@ CREATE TABLE IF NOT EXISTS public.tradecars_funnel_motivos (
   created_at  TIMESTAMPTZ DEFAULT timezone('utc', now())
 );
 
--- Semilla inicial. El cliente puede editarla/ampliarla desde el dashboard.
-INSERT INTO public.tradecars_funnel_motivos (motivo, orden) VALUES
-  ('Precio ofrecido bajo',              1),
-  ('Aún no decide vender',              2),
-  ('Vendió por otro medio',             3),
-  ('No responde / dejó de contestar',   4),
-  ('Vehículo no cumple política',       5),
-  ('Distancia / no puede acercarse',    6),
-  ('Solo consultaba precio referencial',7),
-  ('Otro',                              99)
+-- Semilla con los motivos REALES de la base de Trade Cars: salen de contar la
+-- columna "¿POR QUÉ NO SE CONCRETO?" en las 8.515 filas de BASE COMPRAS (Miguel C.).
+-- El porcentaje es sobre los 2.043 leads que sí tenían motivo registrado.
+INSERT INTO public.tradecars_funnel_motivos (motivo, descripcion, orden) VALUES
+  ('Precio',                               'El cliente no acepta la propuesta economica (78% de los casos)', 1),
+  ('No recibimos el modelo',               'El vehiculo no entra en la politica de compra (15%)',            2),
+  ('Ya lo vendio',                         'Vendio por otro medio antes de concretar (5%)',                  3),
+  ('Su deuda es mayor al precio ofertado', 'El saldo del prestamo supera la oferta (1%)',                    4),
+  ('No responde',                          'Dejo de contestar durante el seguimiento',                       5),
+  ('Otro',                                 'Cualquier caso que no encaje en los anteriores',                99)
 ON CONFLICT (motivo) DO NOTHING;
+
+-- Los 8 motivos inventados de la primera version se desactivan (no se borran,
+-- por si algun lead ya quedo apuntando a uno de ellos).
+UPDATE public.tradecars_funnel_motivos SET activo = FALSE
+ WHERE motivo IN ('Precio ofrecido bajo', 'Aún no decide vender', 'Vendió por otro medio',
+                  'No responde / dejó de contestar', 'Vehículo no cumple política',
+                  'Distancia / no puede acercarse', 'Solo consultaba precio referencial');
 
 COMMENT ON TABLE public.tradecars_funnel_motivos IS
   'Catálogo de MOTIVO DE NO CITA. Editable desde el dashboard (Módulo 3).';
@@ -113,6 +120,50 @@ CREATE TABLE IF NOT EXISTS public.tradecars_funnel_leads (
   updated_at           TIMESTAMPTZ DEFAULT timezone('utc', now())
 );
 
+-- ──────────────────────────────────────────────────────────────────────────
+-- 3b. CAMPOS DEL EXCEL REAL
+--
+--     La base del asesor (BASE COMPRAS - MIGUEL C.xlsx) tiene 33 columnas que
+--     el funnel no usa, pero que son el trabajo diario del asesor. Si el CRM no
+--     las guarda, el asesor seguiria abriendo el Excel y no se reemplazaria nada
+--     -que es el objetivo de la minuta-. No entran en el calculo del embudo.
+-- ──────────────────────────────────────────────────────────────────────────
+ALTER TABLE public.tradecars_funnel_leads
+  -- Fecha del evento cuando el status pasa a CITA ASISTIDA. En el Excel no
+  -- existe (CITA y CITA ASISTIDA comparten FECHA DE CITA); el cliente pidio
+  -- separarlas, y la §4 de la especificacion manda usar la mas reciente.
+  ADD COLUMN IF NOT EXISTS fecha_cita_asistida  DATE,
+
+  -- Vehiculo
+  ADD COLUMN IF NOT EXISTS placa                TEXT,
+  ADD COLUMN IF NOT EXISTS marca                TEXT,
+  ADD COLUMN IF NOT EXISTS modelo               TEXT,
+  ADD COLUMN IF NOT EXISTS version              TEXT,
+  ADD COLUMN IF NOT EXISTS anio                 TEXT,   -- en la base viene "2014/2015"
+  ADD COLUMN IF NOT EXISTS kilometraje          INTEGER,
+
+  -- Negociacion
+  ADD COLUMN IF NOT EXISTS monto_propuesta_inicial NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS monto_mejorado          NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS expectativa_cliente     NUMERIC(12,2),
+
+  -- Origen y ubicacion
+  ADD COLUMN IF NOT EXISTS campana              TEXT,   -- VENDE TU AUTO, NEOAUTO, TIK TOK...
+  ADD COLUMN IF NOT EXISTS distrito             TEXT,
+  ADD COLUMN IF NOT EXISTS zona                 TEXT,   -- Z1..Z4 (hoja Zonificacion)
+  ADD COLUMN IF NOT EXISTS correo               TEXT,
+
+  -- Financiamiento del vehiculo
+  ADD COLUMN IF NOT EXISTS tiene_deuda          TEXT,   -- SI | NO
+  ADD COLUMN IF NOT EXISTS banco                TEXT,
+
+  -- Seguimiento
+  ADD COLUMN IF NOT EXISTS fecha_llegada        DATE,
+  ADD COLUMN IF NOT EXISTS fecha_ultimo_contacto DATE,
+  ADD COLUMN IF NOT EXISTS num_contactos        INTEGER,
+  ADD COLUMN IF NOT EXISTS feedback             TEXT;
+
+
 -- Por si la tabla ya existía de una corrida anterior con menos columnas
 ALTER TABLE public.tradecars_funnel_leads
   ADD COLUMN IF NOT EXISTS contacto_nombre      TEXT,
@@ -149,15 +200,42 @@ ALTER TABLE public.tradecars_funnel_leads
 
 -- Se agregan sólo si no existen (ADD COLUMN IF NOT EXISTS no admite GENERATED
 -- en todas las versiones, por eso el DO block con guard).
+-- fecha_funnel: la ÚNICA fecha con la que el dashboard filtra por mes/año.
+--   compra  >  la MÁS RECIENTE entre cita y cita asistida  >  derivación
+--
+-- En el Excel actual CITA y CITA ASISTIDA comparten la columna FECHA DE CITA;
+-- el CRM las separa, y la §4 de la especificación técnica pide que entre las
+-- dos entre la del evento más reciente.
+--
+-- Si la columna existe con la fórmula vieja (sin fecha_cita_asistida) se
+-- recrea: es derivada, así que no se pierde ningún dato.
 DO $$
+DECLARE
+  expr TEXT;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'tradecars_funnel_leads' AND column_name = 'fecha_funnel'
-  ) THEN
+  SELECT generation_expression INTO expr
+    FROM information_schema.columns
+   WHERE table_schema = 'public'
+     AND table_name  = 'tradecars_funnel_leads'
+     AND column_name = 'fecha_funnel';
+
+  IF expr IS NOT NULL AND position('fecha_cita_asistida' in expr) = 0 THEN
+    ALTER TABLE public.tradecars_funnel_leads DROP COLUMN fecha_funnel;
+    expr := NULL;
+  END IF;
+
+  IF expr IS NULL THEN
     ALTER TABLE public.tradecars_funnel_leads
       ADD COLUMN fecha_funnel DATE
-      GENERATED ALWAYS AS (COALESCE(fecha_compra, fecha_cita, fecha_derivacion)) STORED;
+      GENERATED ALWAYS AS (
+        COALESCE(
+          fecha_compra,
+          -- En PostgreSQL GREATEST ignora los NULL (a diferencia de MySQL):
+          -- si solo hay una de las dos fechas, devuelve esa; NULL solo si faltan ambas.
+          GREATEST(fecha_cita_asistida, fecha_cita),
+          fecha_derivacion
+        )
+      ) STORED;
   END IF;
 END $$;
 

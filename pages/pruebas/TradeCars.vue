@@ -902,9 +902,12 @@
                 :disabled="funnelForm.perfil_coincide === 'NO'"
                 :hint="funnelForm.perfil_coincide === 'NO' ? 'Con perfil NO el lead se queda en LEADS' : ''"
                 persistent-hint />
-              <v-text-field v-model="funnelForm.fecha_cita" type="date" label="Fecha de cita"
+              <v-text-field v-model="funnelForm.fecha_cita" type="date" label="Fecha de cita (agendada)"
                 density="compact" hide-details
                 :class="{ 'campo-requerido': ['CITA', 'CITA ASISTIDA'].includes(funnelForm.status) && !funnelForm.fecha_cita }" />
+              <v-text-field v-model="funnelForm.fecha_cita_asistida" type="date" label="Fecha en que se realizó la cita"
+                density="compact" hide-details
+                :class="{ 'campo-requerido': funnelForm.status === 'CITA ASISTIDA' && !funnelForm.fecha_cita_asistida }" />
               <v-text-field v-model="funnelForm.fecha_compra" type="date" label="Fecha de compra"
                 density="compact" hide-details
                 :class="{ 'campo-requerido': funnelForm.status === 'CONCRETADA' && !funnelForm.fecha_compra }" />
@@ -929,6 +932,51 @@
                 label="Fecha de seguimiento" density="compact" hide-details />
             </div>
 
+            <v-divider class="my-4" />
+            <div class="text-overline mb-1">Vehículo</div>
+            <div class="form-grid-2">
+              <v-text-field v-model="funnelForm.placa" label="Placa" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.marca" label="Marca" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.modelo" label="Modelo" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.version" label="Versión" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.anio" label="Año" density="compact" hide-details
+                hint="En la base viene como 2014/2015" persistent-hint />
+              <v-text-field v-model.number="funnelForm.kilometraje" type="number" label="Kilometraje"
+                density="compact" hide-details />
+              <v-select v-model="funnelForm.tiene_deuda" :items="['NO', 'SI']" label="Tiene deuda"
+                density="compact" hide-details />
+              <v-text-field v-model="funnelForm.banco" label="Banco" density="compact" hide-details
+                :disabled="funnelForm.tiene_deuda !== 'SI'" />
+            </div>
+
+            <v-divider class="my-4" />
+            <div class="text-overline mb-1">Negociación</div>
+            <div class="form-grid-2">
+              <v-text-field v-model.number="funnelForm.monto_propuesta_inicial" type="number" prefix="S/"
+                label="Propuesta inicial" density="compact" hide-details />
+              <v-text-field v-model.number="funnelForm.monto_mejorado" type="number" prefix="S/"
+                label="Monto mejorado" density="compact" hide-details />
+              <v-text-field v-model.number="funnelForm.expectativa_cliente" type="number" prefix="S/"
+                label="Expectativa del cliente" density="compact" hide-details />
+              <v-text-field v-model.number="funnelForm.num_contactos" type="number" label="N° de contactos"
+                density="compact" hide-details />
+            </div>
+
+            <v-divider class="my-4" />
+            <div class="text-overline mb-1">Origen y ubicación</div>
+            <div class="form-grid-2">
+              <v-combobox v-model="funnelForm.campana" :items="campanasConocidas" label="Campaña"
+                density="compact" hide-details />
+              <v-text-field v-model="funnelForm.distrito" label="Distrito" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.zona" label="Zona" density="compact" hide-details
+                hint="Z1 · Z2 · Z3 · Z4" persistent-hint />
+              <v-text-field v-model="funnelForm.correo" label="Correo" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.fecha_ultimo_contacto" type="date" label="Último contacto"
+                density="compact" hide-details />
+            </div>
+
+            <v-textarea v-model="funnelForm.feedback" label="Feedback del cliente" rows="2"
+              density="compact" hide-details class="mt-4" auto-grow />
             <v-textarea v-model="funnelForm.observaciones" label="Observaciones" rows="2"
               density="compact" hide-details class="mt-4" auto-grow />
           </v-card-text>
@@ -1600,6 +1648,22 @@ const loadingFunnel = ref(false)
 const asesoresNombres = computed(() =>
   asesores.value.filter(a => a.activo !== false).map(a => a.nombre))
 
+/**
+ * Campañas que ya existen en la base de Trade Cars (BASE COMPRAS del asesor).
+ * Es un combobox, no un select cerrado: si aparece una campaña nueva se escribe
+ * y queda disponible, sin esperar un cambio de código.
+ */
+const CAMPANAS_BASE = [
+  'VENDE TU AUTO', 'LIMA REGULAR', 'NEOAUTO', 'TIK TOK', 'WEB', 'INTERACCIÓN',
+  'TRAFICO WTP 1', 'TRAFICO WTP 2', 'TRAFICO MARCAS', 'ZONA 1', 'ZONA 2',
+  'POR VIAJE', 'BÚSQUEDA PROPIA', 'REFERIDOS', 'MARKETPLACE PROPIA',
+]
+const campanasConocidas = computed(() => {
+  const set = new Set<string>(CAMPANAS_BASE)
+  for (const l of funnelLeads.value) if (l.campana) set.add(l.campana)
+  return [...set].sort()
+})
+
 /** Leads con el seguimiento vencido: alimenta el badge rojo del menú. */
 const alertasVencidas = computed(() =>
   funnelLeads.value.filter(l => tcSeguimientoVencido(l)).length)
@@ -1642,12 +1706,23 @@ function editarFunnelLead(lead: any) {
     perfil_coincide: tcPerfilCoincide(lead.perfil_coincide) ? 'SI' : 'NO',
     status: tcStatusValido(lead.status) || null,
     fecha_cita: lead.fecha_cita,
+    fecha_cita_asistida: lead.fecha_cita_asistida,
     fecha_compra: lead.fecha_compra,
     motivo_no_cita: lead.motivo_no_cita,
     fecha_probable_venta: lead.fecha_probable_venta,
     proxima_accion: lead.proxima_accion,
     fecha_seguimiento: lead.fecha_seguimiento,
     observaciones: lead.observaciones,
+    // Campos del Excel del asesor (no afectan el cálculo del funnel)
+    placa: lead.placa, marca: lead.marca, modelo: lead.modelo, version: lead.version,
+    anio: lead.anio, kilometraje: lead.kilometraje,
+    monto_propuesta_inicial: lead.monto_propuesta_inicial,
+    monto_mejorado: lead.monto_mejorado,
+    expectativa_cliente: lead.expectativa_cliente,
+    campana: lead.campana, distrito: lead.distrito, zona: lead.zona, correo: lead.correo,
+    tiene_deuda: lead.tiene_deuda, banco: lead.banco,
+    fecha_ultimo_contacto: lead.fecha_ultimo_contacto,
+    num_contactos: lead.num_contactos, feedback: lead.feedback,
     _statusOriginal: lead.status,
   }
   showFunnelDialog.value = true
@@ -1658,9 +1733,13 @@ function nuevoFunnelLead() {
     contacto_nombre: '', contacto_telefono: '', canal_origen: 'WhatsApp',
     asesor: asesoresNombres.value[0] || '', fecha_derivacion: tcHoyLima(),
     perfil_coincide: 'SI', status: 'NO CONTACTADO',
-    fecha_cita: null, fecha_compra: null, motivo_no_cita: null,
+    fecha_cita: null, fecha_cita_asistida: null, fecha_compra: null, motivo_no_cita: null,
     fecha_probable_venta: null, proxima_accion: '', fecha_seguimiento: null,
     observaciones: '',
+    placa: '', marca: '', modelo: '', version: '', anio: '', kilometraje: null,
+    monto_propuesta_inicial: null, monto_mejorado: null, expectativa_cliente: null,
+    campana: '', distrito: '', zona: '', correo: '',
+    tiene_deuda: 'NO', banco: '', fecha_ultimo_contacto: null, num_contactos: null, feedback: '',
   }
   showFunnelDialog.value = true
 }
@@ -1682,6 +1761,9 @@ async function guardarFunnelLead() {
   // sin eso el lead caería en el mes equivocado del embudo.
   if ((f.status === 'CITA' || f.status === 'CITA ASISTIDA') && !f.fecha_cita) {
     return notify('Con status ' + f.status + ' hace falta la fecha de cita', 'error')
+  }
+  if (f.status === 'CITA ASISTIDA' && !f.fecha_cita_asistida) {
+    return notify('Con status CITA ASISTIDA hace falta la fecha en que se realizó la cita', 'error')
   }
   if (f.status === 'CONCRETADA' && !f.fecha_compra) {
     return notify('Con status CONCRETADA hace falta la fecha de compra', 'error')

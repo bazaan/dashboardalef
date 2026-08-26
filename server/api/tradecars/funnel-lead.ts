@@ -152,12 +152,38 @@ export default defineEventHandler(async (event) => {
     perfil_coincide:      perfil,
     status:               status,
     fecha_cita:           fecha(pick(body, 'fecha_cita', 'fechaCita', 'FECHA DE CITA')),
+    fecha_cita_asistida:  fecha(pick(body, 'fecha_cita_asistida', 'fechaCitaAsistida', 'FECHA DE CITA ASISTIDA')),
     fecha_compra:         fecha(pick(body, 'fecha_compra', 'fechaCompra', 'FECHA DE COMPRA')),
     motivo_no_cita:       pick(body, 'motivo_no_cita', 'motivoNoCita', 'MOTIVO DE NO CITA') || null,
     fecha_probable_venta: fecha(pick(body, 'fecha_probable_venta', 'fechaProbableVenta', 'FECHA PROBABLE DE VENTA')),
     proxima_accion:       pick(body, 'proxima_accion', 'proximaAccion', 'PROXIMA ACCION') || null,
     fecha_seguimiento:    fecha(pick(body, 'fecha_seguimiento', 'fechaSeguimiento', 'FECHA DE SEGUIMIENTO')),
     observaciones:        pick(body, 'observaciones', 'notas') || null,
+
+    // ── Campos del Excel del asesor (no entran al cálculo del funnel) ──
+    placa:        pick(body, 'placa', 'PLACA') || null,
+    marca:        pick(body, 'marca', 'MARCA') || null,
+    modelo:       pick(body, 'modelo', 'MODELO') || null,
+    version:      pick(body, 'version', 'VERSION', 'VERSIÓN') || null,
+    anio:         pick(body, 'anio', 'año', 'AÑO') || null,
+    kilometraje:  Number(pick(body, 'kilometraje', 'km', 'KM')) || null,
+
+    monto_propuesta_inicial: Number(pick(body, 'monto_propuesta_inicial', 'MONTO PROPUESTA INICIAL')) || null,
+    monto_mejorado:          Number(pick(body, 'monto_mejorado', 'MONTO MEJORADO')) || null,
+    expectativa_cliente:     Number(pick(body, 'expectativa_cliente', 'EXPECTATIVA CLIENTE')) || null,
+
+    campana:   pick(body, 'campana', 'campaña', 'CAMPAÑA') || null,
+    distrito:  pick(body, 'distrito', 'DISTRITO') || null,
+    zona:      pick(body, 'zona', 'ZONAS', 'ZONA') || null,
+    correo:    pick(body, 'correo', 'email', 'CORREO') || null,
+
+    tiene_deuda: pick(body, 'tiene_deuda', 'deuda', '¿DEUDA?') || null,
+    banco:       pick(body, 'banco', 'BANCO') || null,
+
+    fecha_llegada:         fecha(pick(body, 'fecha_llegada', 'FECHA DE LLEGADA')),
+    fecha_ultimo_contacto: fecha(pick(body, 'fecha_ultimo_contacto', 'FECHA ÚLTIMO CONTACTO')),
+    num_contactos:         Number(pick(body, 'num_contactos', '# DE CONTACTOS')) || null,
+    feedback:              pick(body, 'feedback', 'FEEDBACK') || null,
   }
 
   // No pisar con null los campos que el CRM no mandó en este envío parcial

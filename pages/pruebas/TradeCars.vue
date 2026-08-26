@@ -1707,9 +1707,17 @@ const alertasVencidas = computed(() =>
 /**
  * Trae TODOS los leads del funnel.
  *
- * Supabase corta en 1.000 filas por consulta y el histórico migrado del Excel
- * son ~8.700: sin este bucle el embudo mostraría menos de la octava parte de
- * los leads y nadie se daría cuenta, porque no da error.
+ * Dos cosas que no son opcionales aquí:
+ *
+ * 1. Paginar. Supabase corta en 1.000 filas por consulta y el histórico
+ *    migrado del Excel son ~8.700: sin el bucle el embudo mostraría menos de
+ *    la octava parte de los leads y nadie se daría cuenta, porque no da error.
+ *
+ * 2. Desempatar el ORDER BY con `id`. La migración escribió las 8.737 filas en
+ *    lotes, así que sólo hay 20 valores distintos de created_at. Con un orden
+ *    no total, Postgres no garantiza el mismo reparto entre páginas y se
+ *    repiten filas mientras otras no salen nunca: medido, 334 duplicadas.
+ *    El embudo daba 230 compras donde la base tiene 229.
  */
 async function fetchFunnelLeads() {
   const PAGINA = 1000
@@ -1719,6 +1727,7 @@ async function fetchFunnelLeads() {
       .from('tradecars_funnel_leads')
       .select('*')
       .order('created_at', { ascending: false })
+      .order('id', { ascending: true })        // desempate: sin esto el paginado repite filas
       .range(desde, desde + PAGINA - 1)
     if (error) return { data: todos, error }
     todos.push(...(data || []))

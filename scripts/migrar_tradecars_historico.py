@@ -75,27 +75,55 @@ def texto(v):
     return s
 
 
+SUCIOS = Counter()
+
+
+def _fecha_valida(anio, mes, dia):
+    """Descarta fechas imposibles y anos absurdos.
+
+    En la base real hay valores como "0202-17-04" (ano 202, mes 17): Postgres
+    los rechaza con 22008 y tumba el lote entero de 400 filas. Mejor perder
+    ese dato que las otras 399.
+    """
+    try:
+        d = datetime.date(int(anio), int(mes), int(dia))
+    except ValueError:
+        return None
+    if not (2000 <= d.year <= 2100):
+        return None
+    return d.isoformat()
+
+
 def fecha(v):
     if v is None or v == '':
         return None
     if isinstance(v, datetime.datetime):
-        return v.date().isoformat()
+        v = v.date()
     if isinstance(v, datetime.date):
-        return v.isoformat()
+        ok = _fecha_valida(v.year, v.month, v.day)
+        if not ok:
+            SUCIOS['fecha fuera de rango'] += 1
+        return ok
     s = str(v).strip()
-    m = re.match(r'^(\d{4})-(\d{2})-(\d{2})', s)
+    m = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})', s)
     if m:
-        return '%s-%s-%s' % m.groups()
+        ok = _fecha_valida(m.group(1), m.group(2), m.group(3))
+        if not ok:
+            SUCIOS['fecha fuera de rango'] += 1
+        return ok
     m = re.match(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$', s)
     if m:
-        return '%s-%02d-%02d' % (m.group(3), int(m.group(2)), int(m.group(1)))
+        ok = _fecha_valida(m.group(3), m.group(2), m.group(1))
+        if not ok:
+            SUCIOS['fecha fuera de rango'] += 1
+        return ok
     # Serial de Excel
     if re.match(r'^\d{5}$', s):
         try:
-            base = datetime.date(1899, 12, 30)
-            return (base + datetime.timedelta(days=int(s))).isoformat()
-        except ValueError:
+            d = datetime.date(1899, 12, 30) + datetime.timedelta(days=int(s))
+        except (ValueError, OverflowError):
             return None
+        return _fecha_valida(d.year, d.month, d.day)
     return None
 
 
@@ -106,9 +134,15 @@ def numero(v, entero=False):
     if not re.match(r'^-?\d+(\.\d+)?$', s):
         return None
     try:
-        return int(float(s)) if entero else round(float(s), 2)
-    except ValueError:
+        n = int(float(s)) if entero else round(float(s), 2)
+    except (ValueError, OverflowError):
         return None
+    # integer de Postgres. En la base hay un kilometraje de 9.500.095.000
+    # (alguien pego el numero dos veces) que revienta el lote completo.
+    if entero and not (-2147483648 <= n <= 2147483647):
+        SUCIOS['entero fuera de rango'] += 1
+        return None
+    return n
 
 
 def telefono(v):
@@ -316,6 +350,11 @@ def main():
     for c in ['perfil_coincide', 'status', 'distrito', 'marca', 'campana',
               'canal_origen', 'marca_prioridad', 'fecha_compra', 'motivo_no_cita']:
         print('   %-18s %5d  (%.0f%%)' % (c, con(c), 100.0 * con(c) / max(len(total), 1)))
+
+    if SUCIOS:
+        print('\nvalores descartados por estar corruptos en el Excel:')
+        for k, v in SUCIOS.most_common():
+            print('   %-26s %d' % (k, v))
 
     if not escribir:
         print('\nDry-run. Para subirlo:  python %s --escribir' % os.path.basename(__file__))

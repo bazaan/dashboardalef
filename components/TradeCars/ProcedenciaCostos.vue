@@ -261,18 +261,38 @@ const leadsFiltrados = computed(() => props.leads.filter((l) => {
 const RANK_CITA = 4
 const RANK_COMPRA = 6
 
+/**
+ * Agrupa por una clave NORMALIZADA (mayúsculas, sin tildes) y muestra la
+ * grafía más frecuente de las que escribieron los asesores.
+ *
+ * Sin esto "SPORTAGE" y "Sportage" salen como dos modelos distintos: en la
+ * base real eso partía los 3.200 pares marca-modelo casi por la mitad y
+ * ninguna fila reflejaba el total del modelo.
+ */
 function agrupar(clave: (l: any) => string, extra?: (l: any) => any) {
   const mapa = new Map<string, any>()
   for (const l of leadsFiltrados.value) {
-    const k = clave(l)
-    if (!mapa.has(k)) mapa.set(k, { leads: 0, citas: 0, compras: 0, ...(extra ? extra(l) : {}) })
+    const bruta = clave(l)
+    const k = tcNormalizar(bruta)
+    if (!mapa.has(k)) {
+      mapa.set(k, { leads: 0, citas: 0, compras: 0, _grafias: new Map<string, number>(), ...(extra ? extra(l) : {}) })
+    }
     const g = mapa.get(k)
+    g._grafias.set(bruta, (g._grafias.get(bruta) || 0) + 1)
     g.leads++
     const r = tcRank(l)
     if (r >= RANK_CITA) g.citas++
     if (r === RANK_COMPRA) g.compras++
   }
   return mapa
+}
+
+/** La grafía que más veces escribieron para ese grupo. */
+function grafiaMasUsada(g: any): string {
+  let mejor = ''
+  let max = -1
+  for (const [texto, n] of g._grafias) if (n > max) { mejor = texto; max = n }
+  return mejor
 }
 
 /**
@@ -292,7 +312,8 @@ function costoDe(campana: string): number | null {
 
 const porCampana = computed(() => {
   const mapa = agrupar(l => l.campana || 'Sin campaña')
-  return [...mapa.entries()].map(([campana, g]) => {
+  return [...mapa.values()].map((g) => {
+    const campana = grafiaMasUsada(g)
     const costo = costoDe(campana)
     return {
       campana,
@@ -308,20 +329,23 @@ const porCampana = computed(() => {
 
 const porModelo = computed(() => {
   const mapa = agrupar(
+    // La marca ya viene canónica del catálogo; el modelo es texto libre, así
+    // que la clave lo normaliza y se muestra la grafía más usada.
     l => (l.marca_normalizada || l.marca || 'Sin marca') + ' · ' + (l.modelo || 'Sin modelo'),
     l => ({
       marca: l.marca_normalizada || l.marca || 'Sin marca',
-      modelo: l.modelo || 'Sin modelo',
       prioridad: l.marca_prioridad || null,
     }),
   )
-  return [...mapa.values()].sort((a, b) => b.leads - a.leads)
+  return [...mapa.values()]
+    .map(g => ({ ...g, modelo: grafiaMasUsada(g).split(' · ').slice(1).join(' · ') || 'Sin modelo' }))
+    .sort((a, b) => b.leads - a.leads)
 })
 
 const porZona = computed(() => {
   const mapa = agrupar(l => l.zona || 'Sin zona')
-  return [...mapa.entries()]
-    .map(([zona, g]) => ({ zona, ...g }))
+  return [...mapa.values()]
+    .map(g => ({ ...g, zona: grafiaMasUsada(g) }))
     .sort((a, b) => b.leads - a.leads)
 })
 const maxZona = computed(() => Math.max(0, ...porZona.value.map(z => z.leads)))

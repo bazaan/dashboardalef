@@ -564,8 +564,12 @@ una hay que cambiar la otra (está avisado en ambos archivos).
   así que es función estricta de la marca. Resuelve el 99,2% de los nombres y el
   95,1% con prioridad (su Excel: 79%). Las marcas que Trade Cars nunca clasificó
   entran con `prioridad = NULL`, no con un número inventado.
-- **`fetchFunnel()` pagina de a 1.000.** Supabase corta ahí y el histórico son ~8.700
-  filas: sin el bucle el embudo mostraría un octavo de los leads y sin dar error.
+- **`fetchFunnel()` pagina de a 1.000 y desempata el ORDER BY con `id`.** Supabase corta
+  en 1.000 y el histórico son 8.737 filas: sin el bucle el embudo mostraría un octavo de
+  los leads sin dar error. Y como la migración escribió por lotes, las 8.737 filas comparten
+  **20 valores de `created_at`**: ordenar sólo por ahí no es un orden total y el paginado
+  repetía 334 filas mientras otras no salían nunca (el embudo daba 230 compras donde la
+  base tiene 229). **Cualquier paginado por `.range()` necesita una clave de orden única.**
 
 **Endpoint del CRM:**
 
@@ -606,9 +610,12 @@ propia especificación recomienda.
 llega del bot; `tradecars_funnel_leads` guarda el trabajo comercial del asesor sobre ese
 lead. Se enlazan por `lead_origen_tabla` + `lead_origen_id`.
 
-**Migración del histórico:** `scripts/migrar_tradecars_historico.py` sube al dashboard las
-**8.737 filas** del Excel del asesor (8.512 de `BASE LEADS`, 24 meses desde 2024-09, más 225
-de `HISTORICO`). Corre primero en dry-run y sólo escribe con `--escribir`; es idempotente
+**Migración del histórico: YA CORRIDA** (26/08/2026). `scripts/migrar_tradecars_historico.py`
+subió las **8.737 filas** del Excel del asesor (8.512 de `BASE LEADS`, 28 meses entre 2024-01 y
+2026-07, más 225 de `HISTORICO`). El embudo resultante —**8.732 / 7.036 / 4.903 / 333 / 325 /
+269 / 229**— se validó recalculándolo aparte desde el Excel: coincide exacto.
+El script descarta valores corruptos de su base (un kilometraje de 9.500.095.000 que no entra
+en un `integer` y una fecha `0202-17-04`); sin eso Postgres tumbaba el lote entero de 400 filas. Corre primero en dry-run y sólo escribe con `--escribir`; es idempotente
 gracias a `import_key`. Descarta las filas sin contacto o sin ninguna fecha y lo informa.
 No calcula etapa ni zona: eso lo hacen las columnas GENERATED y el trigger.
 

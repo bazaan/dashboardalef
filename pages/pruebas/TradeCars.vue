@@ -58,6 +58,15 @@
         </div>
 
         <div class="nav-section">
+          <div class="nav-label">Tasador</div>
+          <button v-for="item in tasadorItems" :key="item.id"
+            :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
+            <v-icon :icon="item.icon" size="18" />
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+
+        <div class="nav-section">
           <div class="nav-label">Chats</div>
           <button v-for="item in chatsItems" :key="item.id" class="nav-item" @click="navigateToChat(item.url)">
             <v-icon :icon="item.icon" size="18" />
@@ -842,6 +851,9 @@
         :leads="funnelLeads" :asesores="asesoresNombres" :loading="loadingFunnel"
         @refresh="fetchFunnel" @editar="editarFunnelLead" />
 
+      <!-- ==========  TASADOR IA  ========== -->
+      <TradeCarsTasadorChat v-else-if="activeView === 'tasador'" @notificar="notify" />
+
       <SettingsView v-else-if="activeView === 'settings'" company-id="tradecars"
         :current-user-role="currentUser?.role" />
 
@@ -1104,6 +1116,9 @@ const operacionesItems = [
 ]
 const finanzasItems = [
   { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos' },
+]
+const tasadorItems = [
+  { icon: 'mdi-car-wrench', label: 'Tasador IA', id: 'tasador' },
 ]
 const chatsItems = [
   { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'chatwoot', url: 'https://chats.alef.company/app/accounts/1/dashboard' },

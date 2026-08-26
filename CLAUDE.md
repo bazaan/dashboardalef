@@ -524,6 +524,7 @@ CRM y el dashboard calcula el embudo en vivo.
 | Tabla de Leads | `components/TradeCars/TablaLeadsFunnel.vue` | Detalle con etapa/fecha calculadas, export y link al CRM |
 | Análisis de Conversión | `components/TradeCars/AnalisisConversion.vue` | Motivos de no cita, ventas probables y seguimientos vencidos |
 | Procedencia y Costos | `components/TradeCars/ProcedenciaCostos.vue` | Leads/compras por campaña, marca-modelo y zona + costo por lead e inversión por compra |
+| Tasador IA | `components/TradeCars/TasadorChat.vue` | Chat de texto conectado a ChatGPT para ayudar a tasar autos. Responde primero con las tablas propias de Trade Cars (compras/ventas históricas, negociaciones del funnel, stock, solicitudes de venta web); sólo si no hay dato interno recurre a conocimiento general del mercado, aclarándolo |
 
 **La lógica vive en UN solo lugar:** `utils/tradecarsFunnel.ts` (auto-import). Los cuatro
 módulos la comparten, así que el embudo y la tabla nunca pueden contradecirse.
@@ -636,6 +637,42 @@ eventos sin clasificar**: Chatwoot dispara `conversation_updated` en cada mensaj
 **Pendiente del cliente:** definir la lista real de MOTIVO DE NO CITA (hay 8 sembrados de ejemplo).
 Los 4 asesores ya están cargados en `tradecars_asesores` y sus nombres coinciden con
 los de Chatwoot (cuenta 17), que es lo que hace que el filtro cruce.
+
+---
+
+### Tasador IA (chat de tasación) — `server/api/tradecars/tasador-chat.post.ts`
+
+Módulo de nav propio ("Tasador"), no un widget flotante como `HealupAgent`. Reutiliza
+`OPENAI_API_KEY` (la misma que Whisper y el OCR de SGS). Diseño clave: **todo el loop de
+function calling corre en el servidor**, a diferencia de `HealupAgent` (que ejecuta los
+tools en el cliente y hace ping-pong con el navegador). El componente Vue sólo manda
+`{ messages: [{role, content}] }` en texto plano y recibe `{ reply: string }` — nunca ve
+`tool_calls` ni nombres de tabla, así que el bundle del navegador no expone el esquema
+interno.
+
+**Prioridad de respuesta (pedido explícito del cliente):** primero las tablas propias de
+Trade Cars, recién si no hay dato interno cae al conocimiento general del modelo — y el
+system prompt le exige decirlo explícito cuando lo hace ("Trade Cars no tiene registros
+propios de este modelo..."). No hay búsqueda real en internet (no hay una API de búsqueda
+configurada en el proyecto): el "segundo con internet" que pidió el cliente se resuelve con
+el conocimiento general de ChatGPT, no con navegación en vivo.
+
+**Tools (todas de sólo lectura, ninguna escribe en la BD):**
+
+| Tool | Qué consulta |
+|---|---|
+| `resumen_precio_referencia` | La principal para tasar. Cruza `tradecars_compras` (completadas) + `tradecars_funnel_leads` (negociaciones concretadas, `monto_mejorado`) para una marca/modelo y devuelve casos/mínimo/promedio/máximo |
+| `buscar_vehiculos_stock` | `tradecars_vehiculos` — inventario actual |
+| `buscar_compras_historicas` | `tradecars_compras` — detalle de compras (tasación vs precio final) |
+| `buscar_ventas_historicas` | `tradecars_ventas` — detalle de ventas + margen calculado |
+| `buscar_negociaciones_funnel` | `tradecars_funnel_leads` — propuesta inicial vs monto mejorado vs expectativa del cliente |
+| `buscar_solicitudes_venta` | `tradecars_solicitudes_venta` — lo que pidió el dueño en el formulario web, antes de negociar |
+
+Historial guardado en `localStorage` del navegador (`usePersistente`), no en Supabase: es
+apoyo de trabajo del asesor, no un registro que otros necesiten auditar.
+
+**Variable de entorno opcional:** `TRADECARS_TASADOR_MODEL` (default `gpt-4o`, mismo patrón
+que `SGS_OCR_MODEL`).
 
 ---
 

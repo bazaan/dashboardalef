@@ -166,6 +166,28 @@ export function exigirModulo(
   }
 }
 
+/**
+ * Lanza 403 si el perfil no puede hacer `accion` en NINGUNO de los módulos.
+ *
+ * Existe porque hay tablas que escriben dos pantallas distintas: `piola_clientes`
+ * se toca desde CRM (al convertir un lead) y desde Producción (al mantener la
+ * ficha del cliente), y `piola_colaboradores` desde el Expediente (RR. HH.) y
+ * desde la lista de Configuración. Exigir un módulo concreto le quitaría el
+ * acceso a una de las dos, y el servidor no puede saber desde cuál se llamó —
+ * eso lo diría el cliente, que es justo lo que no se cree.
+ *
+ * El 403 nombra el primer módulo de la lista: es el más probable.
+ */
+export function exigirAlguno(
+  perfil: PerfilPiola,
+  modulos: PiolaModule[],
+  accion: 'view' | 'create' | 'edit' | 'delete' = 'view'
+): void {
+  if (perfil.esAdmin) return
+  const puede = modulos.some(m => perfil.permisos[m]?.[`can_${accion}`] === true)
+  if (!puede) exigirModulo(perfil, modulos[0], accion)
+}
+
 /** §7.5 — Boletas de pago y reporte AFP: SOLO Administrador. */
 export function exigirAdmin(perfil: PerfilPiola, que = 'esta operación'): void {
   if (!perfil.esAdmin) {

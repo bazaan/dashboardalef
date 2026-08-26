@@ -925,7 +925,10 @@ CRM + contabilidad + facturación + producción + RR. HH.
 
 - **company_id en BD:** `piola`
 - **Permiso:** `canAccessPiola` en `utils/permissions.ts`
-- **Migración SQL:** correr una vez `sql/piola_tables.sql`
+- **Migración SQL:** correr una vez `sql/piola.sql` — **es el único archivo SQL de Piola**,
+  idempotente, se puede correr las veces que haga falta
+- **Documentación completa:** `PIOLA.md` en la raíz (qué crea el SQL, los endpoints,
+  los guards de escritura y lo que queda pendiente)
 - **Moneda única:** PEN. **Zona horaria:** America/Lima. **UI:** español.
 
 ### Roles y permisos — distinto al resto del proyecto
@@ -973,9 +976,44 @@ Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplan
 | POST | `/api/piola/factura` | Emitir / marcar pagada / anular / enviar |
 | GET | `/api/piola/alertas` | `?run=1` corre el motor; `?api_key=` para el cron |
 | GET | `/api/piola/reportes` | `?run=1` ejecuta; `?preview=1&tipo=` vista previa |
+| POST | `/api/piola/caja` | Abrir / movimiento / eliminar_movimiento / cerrar |
+| POST | `/api/piola/pagos` | Registrar o eliminar un cobro/pago contra una cuenta |
+| POST | `/api/piola/colaborador` | Ficha, contratos laborales y documentos del expediente |
+| POST | `/api/piola/contabilidad` | Movimientos y categorías de gasto |
+| POST | `/api/piola/configuracion` | Roles, permisos y catálogos (incl. la config financiera) |
+| POST | `/api/piola/crm` | Leads, interacciones y conversión a cliente |
+| POST | `/api/piola/produccion` | Entregables, marcas y catálogo de servicios |
+| POST | `/api/piola/contratos` | Contratos de cliente y adendas |
+| POST | `/api/piola/presupuestos` | Presupuesto vs. ejecutado |
+| POST | `/api/piola/reportes` | Configuración de reportes programados y alertas |
 
 ### Reglas que NO son obvias
 
+- **Ningún componente de Piola escribe a Supabase directamente.** Toda mutación pasa por
+  `apiPiola('<endpoint>', { accion, ... })` (`composables/usePiola.ts`) contra un endpoint que
+  llama a `exigirModulo()` / `exigirAdmin()` / `exigirAlguno()`. Escribir con
+  `client.from('piola_…').insert()` desde un `.vue` saltea los permisos por módulo: la
+  cerradura queda puesta y se entra por la ventana de al lado. Las **lecturas** sí siguen yendo
+  directo con `client.from(...).select()`.
+  El servidor además recalcula lo que el navegador no puede firmar: saldo del arqueo de caja,
+  total de un movimiento (lee las tasas de `piola_impuestos`), saldo pendiente de una cuenta,
+  resultado de un lead (de `es_ganado`/`es_perdido` de la etapa) y los campos de autoría
+  (`registrado_por`, `created_by`, `aprobado_por`, `user_email`…).
+- **Roles y permisos (`piola_roles`, `piola_role_permissions`) son solo de Administrador**, no
+  de quien tenga `configuracion.edit`: si no, cualquiera con ese permiso se marca todos los
+  módulos y queda como Administrador de hecho.
+- **Un movimiento contable con pagos registrados no se puede eliminar.** La FK de
+  `piola_pagos` es `ON DELETE CASCADE`: borrarlo se llevaba el historial de cobros en silencio.
+
+- **Nunca usar `.limit(n)` con n > 1000 contra Supabase.** PostgREST corta en 1000 y no devuelve
+  error: un `.limit(8000)` trae 1000 filas y el reporte sale incompleto en silencio. Para traer un
+  conjunto completo, usar `traerTodo()` de `composables/usePiola.ts`, que pagina con `.range()`.
+  Toda consulta paginada necesita un `.order()` **determinista** — sin orden estable, dos páginas
+  pueden repetir una fila o saltarse otra.
+- **La auditoría censura las remuneraciones.** `piola_auditoria` es legible por `anon`, así que el
+  trigger reemplaza por `■■■` el valor de `sueldo_bruto`, `remuneracion`, `bonificaciones`,
+  `comision_pct` y `afp_cuspp` antes de guardar. El nombre del campo sí queda en `campos`: se
+  audita **que** se tocó el sueldo, no **cuánto**.
 - **El tareo usa la hora del servidor**, nunca la del cliente (§7.1 de la spec): si el navegador
   mandara horas, cualquiera maquillaría su jornada. `tareo-correccion` recibe `HH:MM` hora Lima
   y convierte a UTC (Lima es UTC-5 todo el año).

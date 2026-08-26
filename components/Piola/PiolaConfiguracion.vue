@@ -14,13 +14,21 @@
           <button :class="['tab', { active: tab === 'roles' }]" @click="tab = 'roles'">Roles y permisos</button>
           <button :class="['tab', { active: tab === 'etapas' }]" @click="tab = 'etapas'">Etapas del CRM</button>
           <button :class="['tab', { active: tab === 'pagos' }]" @click="tab = 'pagos'">Métodos de pago</button>
+          <button :class="['tab', { active: tab === 'financiera' }]" @click="tab = 'financiera'">
+            Configuración financiera
+          </button>
           <button v-if="esAdmin" :class="['tab', { active: tab === 'usuarios' }]" @click="tab = 'usuarios'">
             Usuarios del sistema
           </button>
         </div>
 
         <!-- ══════════ COLABORADORES ══════════ -->
-        <v-card v-if="tab === 'colaboradores'" flat class="custom-data-table">
+        <!-- ══════════ CONFIGURACIÓN FINANCIERA ══════════ -->
+        <PiolaConfigFinanciera v-if="tab === 'financiera'" :perfil="perfil"
+          :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+          @notify="(p: any) => emit('notify', p)" />
+
+        <v-card v-else-if="tab === 'colaboradores'" flat class="custom-data-table">
           <v-card-title class="table-search-bar">
             <span class="table-title">Colaboradores ({{ colaboradores.length }})</span>
             <v-spacer />
@@ -251,8 +259,10 @@
  * junto a los movimientos que las usan.
  */
 import { ref, computed, onMounted } from 'vue'
-import { fechaCorta } from '@/composables/usePiola'
+import { piolaCan } from '@/utils/permissions'
+import { fechaCorta, traerTodo, apiPiola } from '@/composables/usePiola'
 import SettingsView from '@/components/Settings/SettingsView.vue'
+import PiolaConfigFinanciera from './PiolaConfigFinanciera.vue'
 
 const props = defineProps<{ perfil: any; currentUser?: any }>()
 const emit = defineEmits<{
@@ -263,6 +273,10 @@ const emit = defineEmits<{
 const client = useSupabaseClient()
 const tab = ref('colaboradores')
 const esAdmin = computed(() => props.perfil?.es_admin === true)
+
+// La configuración financiera se edita con el permiso del propio módulo
+const puedeEditar = computed(() => piolaCan(props.perfil?.permisos, 'configuracion', 'edit'))
+const puedeEliminar = computed(() => piolaCan(props.perfil?.permisos, 'configuracion', 'delete'))
 
 const MODULOS = [
   { id: 'home', label: 'Dashboard' },
@@ -290,7 +304,7 @@ async function cargar() {
     client.from('piola_role_permissions').select('*'),
     client.from('piola_lead_stages').select('*').order('orden'),
     client.from('piola_payment_methods').select('*').order('orden'),
-    client.from('piola_leads').select('id, stage_id').limit(3000),
+    traerTodo(() => client.from('piola_leads').select('id, stage_id').order('id')),
   ])
   colaboradores.value = (c.data as any[]) || []
   roles.value = (r.data as any[]) || []
@@ -351,9 +365,9 @@ async function guardarColaborador() {
     asignacion_familiar: !!c.asignacion_familiar,
     activo: c.activo !== false, updated_at: new Date().toISOString(),
   }
-  const res = c.id
-    ? await client.from('piola_colaboradores').update(fila).eq('id', c.id)
-    : await client.from('piola_colaboradores').insert(fila)
+  // Sueldo, comisión y CUSPP solo los acepta el servidor de un Administrador, y
+  // solo si cambian; el rol exige además permiso de Configuración.
+  const res = await apiPiola('colaborador', { accion: 'guardar', id: c.id || null, ...fila })
   guardando.value = false
   if (res.error) return emit('notify', { text: `Error: ${res.error.message}`, color: 'error' })
   emit('notify', c.id ? 'Ficha actualizada' : 'Colaborador registrado')
@@ -364,7 +378,7 @@ async function guardarColaborador() {
 
 async function eliminarColaborador() {
   if (!confirm(`¿Eliminar la ficha de ${colaborador.value.nombre}? Su acceso al sistema no se toca.`)) return
-  const { error } = await client.from('piola_colaboradores').delete().eq('id', colaborador.value.id)
+  const { error } = await apiPiola('colaborador', { accion: 'eliminar', id: colaborador.value.id })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Ficha eliminada')
   colaborador.value = null
@@ -387,25 +401,21 @@ async function setPermiso(rol: any, modulo: string, campo: string, valor: boolea
     patch.can_create = false; patch.can_edit = false; patch.can_delete = false
   }
 
-  if (existente) {
-    const { error } = await client.from('piola_role_permissions').update(patch).eq('id', existente.id)
-    if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
-    Object.assign(existente, patch)
-  } else {
-    const fila = {
-      role_id: rol.id, module: modulo,
-      can_view: false, can_create: false, can_edit: false, can_delete: false, ...patch,
-    }
-    const { data, error } = await client.from('piola_role_permissions').insert(fila).select('*').single()
-    if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
-    permisos.value.push(data as any)
-  }
+  // El servidor repite el "activar can_view solo" y exige Administrador: un
+  // permiso que sirve para ampliarse el permiso no es un permiso.
+  const { data, error } = await apiPiola<{ permiso: any }>('configuracion', {
+    accion: 'permiso_set', role_id: rol.id, module: modulo, campo, valor,
+  })
+  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
+
+  if (existente) Object.assign(existente, data?.permiso || patch)
+  else if (data?.permiso) permisos.value.push(data.permiso as any)
   emit('perfil-actualizado')
 }
 
 async function crearRol() {
   if (!nuevoRol.value.trim()) return
-  const { error } = await client.from('piola_roles').insert({ nombre: nuevoRol.value.trim(), editable: true })
+  const { error } = await apiPiola('configuracion', { accion: 'rol_crear', nombre: nuevoRol.value.trim() })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   nuevoRol.value = ''
   emit('notify', 'Rol creado — marca sus módulos abajo')
@@ -421,7 +431,7 @@ async function eliminarRol(rol: any) {
     })
   }
   if (!confirm(`¿Eliminar el rol "${rol.nombre}"?`)) return
-  const { error } = await client.from('piola_roles').delete().eq('id', rol.id)
+  const { error } = await apiPiola('configuracion', { accion: 'rol_eliminar', id: rol.id })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Rol eliminado')
   await cargar()
@@ -434,10 +444,13 @@ const contarLeads = (stageId: any) => leads.value.filter(l => l.stage_id === sta
 
 async function crearEtapa() {
   if (!nuevaEtapa.value.nombre.trim()) return
-  const { error } = await client.from('piola_lead_stages').insert({
-    nombre: nuevaEtapa.value.nombre.trim(),
-    color: nuevaEtapa.value.color,
-    orden: etapas.value.length + 1,
+  const { error } = await apiPiola('configuracion', {
+    accion: 'catalogo_crear', tabla: 'piola_lead_stages',
+    fila: {
+      nombre: nuevaEtapa.value.nombre.trim(),
+      color: nuevaEtapa.value.color,
+      orden: etapas.value.length + 1,
+    },
   })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   nuevaEtapa.value = { nombre: '', color: '#5b8def' }
@@ -446,7 +459,9 @@ async function crearEtapa() {
 }
 
 async function actualizarEtapa(e: any, patch: any) {
-  const { error } = await client.from('piola_lead_stages').update(patch).eq('id', e.id)
+  const { error } = await apiPiola('configuracion', {
+    accion: 'catalogo_actualizar', tabla: 'piola_lead_stages', id: e.id, patch,
+  })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   Object.assign(e, patch)
 }
@@ -456,10 +471,12 @@ async function mover(e: any, delta: number) {
   const j = i + delta
   if (j < 0 || j >= etapas.value.length) return
   const otra = etapas.value[j]
-  await Promise.all([
-    client.from('piola_lead_stages').update({ orden: otra.orden }).eq('id', e.id),
-    client.from('piola_lead_stages').update({ orden: e.orden }).eq('id', otra.id),
-  ])
+  // Los dos `orden` los relee el servidor: intercambiarlos con los números de
+  // una pestaña vieja dejaría dos etapas empatadas.
+  const { error } = await apiPiola('configuracion', {
+    accion: 'etapa_mover', id: e.id, otra_id: otra.id,
+  })
+  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   await cargar()
 }
 
@@ -472,7 +489,9 @@ async function eliminarEtapa(e: any) {
     })
   }
   if (!confirm(`¿Eliminar la etapa "${e.nombre}"?`)) return
-  const { error } = await client.from('piola_lead_stages').delete().eq('id', e.id)
+  const { error } = await apiPiola('configuracion', {
+    accion: 'catalogo_eliminar', tabla: 'piola_lead_stages', id: e.id,
+  })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Etapa eliminada')
   await cargar()
@@ -483,15 +502,19 @@ const nuevoMetodo = ref('')
 
 async function crearMetodo() {
   if (!nuevoMetodo.value.trim()) return
-  const { error } = await client.from('piola_payment_methods')
-    .insert({ nombre: nuevoMetodo.value.trim(), activo: true, orden: metodos.value.length + 1 })
+  const { error } = await apiPiola('configuracion', {
+    accion: 'catalogo_crear', tabla: 'piola_payment_methods',
+    fila: { nombre: nuevoMetodo.value.trim(), activo: true, orden: metodos.value.length + 1 },
+  })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   nuevoMetodo.value = ''
   await cargar()
 }
 
 async function actualizarMetodo(m: any, activo: boolean) {
-  const { error } = await client.from('piola_payment_methods').update({ activo }).eq('id', m.id)
+  const { error } = await apiPiola('configuracion', {
+    accion: 'catalogo_actualizar', tabla: 'piola_payment_methods', id: m.id, patch: { activo },
+  })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   m.activo = activo
 }

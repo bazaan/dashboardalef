@@ -25,6 +25,7 @@ import {
 } from '../../utils/piola'
 import { htmlFactura } from '../../utils/piola-factura'
 import { subirDocumento } from '../../utils/piola-planilla'
+import { esRucValido } from '../../../composables/rules'
 
 /** 'YYYY-MM-DD' → 'DD-MM-YYYY' (formato que exige NubeFact). */
 function fechaNubefact(iso: string): string {
@@ -133,6 +134,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const tipo = Number(body?.tipo_comprobante || 1)          // 1 factura, 2 boleta
+
+  /*
+   * RUC: 11 dígitos. Se valida también acá y no solo en la UI, porque el
+   * endpoint es alcanzable sin pasar por el formulario. Una factura (tipo 1)
+   * sin RUC la rechaza SUNAT, así que ahí además es obligatorio.
+   */
+  const rucCliente = String(cliente.ruc ?? '').trim()
+  if (rucCliente && !esRucValido(rucCliente)) {
+    throw createError({ statusCode: 400, statusMessage: 'El RUC debe tener 11 dígitos' })
+  }
+  if (tipo === 1 && !rucCliente) {
+    throw createError({ statusCode: 400, statusMessage: 'Una factura necesita el RUC del cliente' })
+  }
+  cliente.ruc = rucCliente || null
   const serie = String(body?.serie || (tipo === 1 ? 'F001' : 'B001')).toUpperCase()
   const conDetraccion = body?.con_detraccion !== false      // por defecto SÍ (§5)
   const detraccionPct = Number(body?.detraccion_pct ?? DETRACCION_PCT_DEFAULT)

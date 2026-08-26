@@ -1,0 +1,118 @@
+{
+  "name": "TRADE CARS - Funnel de compras (CRM -> Dashboard)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tradecars-funnel",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Webhook Chatwoot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-260, 300],
+      "webhookId": "tradecars-funnel"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Traduce el evento de Chatwoot al formato que espera el endpoint del funnel.\n// Se hace en un Code node y no en expresiones sueltas para que quede en un\n// solo lugar legible: si Chatwoot cambia el shape del payload, se toca aqui.\n\nconst salida = [];\n\nfor (const item of $input.all()) {\n  const c = item.json || {};\n\n  // Segun la version, Chatwoot manda la conversacion en la raiz o anidada\n  const conv  = c.conversation || c;\n  const attrs = conv.custom_attributes || c.custom_attributes || {};\n  const meta  = conv.meta || c.meta || {};\n\n  // \"Channel::Whatsapp\" -> \"WhatsApp\" (lo que muestra el filtro del dashboard)\n  const CANALES = {\n    'Channel::Whatsapp':    'WhatsApp',\n    'Channel::Instagram':   'Instagram',\n    'Channel::FacebookPage':'Facebook',\n    'Channel::Tiktok':      'TikTok',\n    'Channel::Api':         'API',\n    'Channel::WebWidget':   'Web',\n    'Channel::Email':       'Email',\n  };\n\n  // Chatwoot manda las fechas como epoch en segundos o como ISO, segun el campo\n  const aFecha = (v) => {\n    if (v === null || v === undefined || v === '') return null;\n    if (typeof v === 'number') return new Date(v * 1000).toISOString().slice(0, 10);\n    const s = String(v).trim();\n    if (/^\\d{10}$/.test(s)) return new Date(Number(s) * 1000).toISOString().slice(0, 10);\n    const d = new Date(s);\n    return isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);\n  };\n\n  const payload = {\n    // ── Automatico del CRM ──\n    conversation_id: conv.id ?? null,\n    account_id:      conv.account_id ?? c.account?.id ?? null,\n    contact_id:      meta.sender?.id ?? null,\n    nombre:          meta.sender?.name || '',\n    telefono:        meta.sender?.phone_number || '',\n    canal:           CANALES[conv.channel] || conv.channel || '',\n    asesor:          meta.assignee?.name || '',\n    fecha_derivacion: aFecha(conv.created_at),\n\n    // ── Lo que llena el asesor (custom attributes) ──\n    perfil_coincide:      attrs.perfil_coincide || '',\n    status:               attrs.status || '',\n    fecha_cita:           aFecha(attrs.fecha_cita),\n    fecha_compra:         aFecha(attrs.fecha_compra),\n    motivo_no_cita:       attrs.motivo_no_cita || '',\n    fecha_probable_venta: aFecha(attrs.fecha_probable_venta),\n    proxima_accion:       attrs.proxima_accion || '',\n    fecha_seguimiento:    aFecha(attrs.fecha_seguimiento),\n  };\n\n  // Chatwoot dispara conversation_updated en CADA mensaje. Solo tiene sentido\n  // escribir cuando el asesor ya clasifico el lead; si no, se llenaria la tabla\n  // de filas vacias y el endpoint recibiria trafico inutil.\n  payload._enviar = Boolean(payload.perfil_coincide || payload.status);\n\n  salida.push({ json: payload });\n}\n\nreturn salida;"
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Armar payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-enviar",
+              "leftValue": "={{ $json._enviar }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Ya clasificado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashboard.alef.company/api/tradecars/funnel-lead",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "tradecars-funnel-2026"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Enviar al funnel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [420, 200]
+    },
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Sin clasificar - no hacer nada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [420, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Chatwoot": {
+      "main": [[{ "node": "Armar payload", "type": "main", "index": 0 }]]
+    },
+    "Armar payload": {
+      "main": [[{ "node": "Ya clasificado?", "type": "main", "index": 0 }]]
+    },
+    "Ya clasificado?": {
+      "main": [
+        [{ "node": "Enviar al funnel", "type": "main", "index": 0 }],
+        [{ "node": "Sin clasificar - no hacer nada", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}

@@ -572,8 +572,14 @@ además de snake_case. Log en `agent_tool_logs` → Dev · Agent Logs → Trade 
 llega del bot; `tradecars_funnel_leads` guarda el trabajo comercial del asesor sobre ese
 lead. Se enlazan por `lead_origen_tabla` + `lead_origen_id`.
 
-**Pendiente del cliente:** definir la lista real de MOTIVO DE NO CITA (hay 8 sembrados de
-ejemplo) y cargar los asesores en `tradecars_asesores`.
+**Guía para conectar el CRM:** `referencia/n8n/tradecars-funnel-guia.md` + el workflow
+importable `tradecars-funnel-workflow.json` (webhook Chatwoot → n8n → endpoint). El Code
+node traduce `Channel::Whatsapp` → `WhatsApp`, normaliza fechas epoch/ISO y **descarta los
+eventos sin clasificar**: Chatwoot dispara `conversation_updated` en cada mensaje.
+
+**Pendiente del cliente:** definir la lista real de MOTIVO DE NO CITA (hay 8 sembrados de ejemplo).
+Los 4 asesores ya están cargados en `tradecars_asesores` y sus nombres coinciden con
+los de Chatwoot (cuenta 17), que es lo que hace que el filtro cruce.
 
 ---
 

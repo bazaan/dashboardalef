@@ -523,8 +523,9 @@ CRM y el dashboard calcula el embudo en vivo.
 | Funnel de Compras | `components/TradeCars/FunnelCompras.vue` | Embudo de 7 barras acumulativas + % de conversión |
 | Tabla de Leads | `components/TradeCars/TablaLeadsFunnel.vue` | Detalle con etapa/fecha calculadas, export y link al CRM |
 | Análisis de Conversión | `components/TradeCars/AnalisisConversion.vue` | Motivos de no cita, ventas probables y seguimientos vencidos |
+| Procedencia y Costos | `components/TradeCars/ProcedenciaCostos.vue` | Leads/compras por campaña, marca-modelo y zona + costo por lead e inversión por compra |
 
-**La lógica vive en UN solo lugar:** `utils/tradecarsFunnel.ts` (auto-import). Los tres
+**La lógica vive en UN solo lugar:** `utils/tradecarsFunnel.ts` (auto-import). Los cuatro
 módulos la comparten, así que el embudo y la tabla nunca pueden contradecirse.
 La **misma lógica está replicada en columnas `GENERATED` de Postgres** — si se cambia
 una hay que cambiar la otra (está avisado en ambos archivos).
@@ -552,6 +553,19 @@ una hay que cambiar la otra (está avisado en ambos archivos).
   proteja los updates que entren por el endpoint o por n8n.
 - Los 6 valores de STATUS son **cerrados**: `NO CONTACTADO`, `NO INTERESADO`,
   `EN SEGUIMIENTO`, `CITA`, `CITA ASISTIDA`, `CONCRETADA`.
+- **La ZONA no se escribe: se deduce del distrito** contra `tradecars_zonificacion`
+  (trigger `tradecars_funnel_autocompletar`, no sólo la UI, para que valga también
+  vía endpoint y migración). En su Excel ese VLOOKUP fallaba el **31%** de las veces
+  —el asesor escribe "SURCO" y la hoja dice "Santiago de Surco"—; el catálogo guarda
+  también los alias reales y resuelve el **96,7%**. Hay tres intentos: exacto, prefijo
+  (`SURCO CHACARILLA`) y sin espacios ni puntuación (`SANMIGUEL`, `S.M.P`).
+- **La PRIORIDAD de marca (1/2/3) tampoco se escribe**: sale de `tradecars_marcas`.
+  En las 8.515 filas de su base no hay una sola marca con dos prioridades distintas,
+  así que es función estricta de la marca. Resuelve el 99,2% de los nombres y el
+  95,1% con prioridad (su Excel: 79%). Las marcas que Trade Cars nunca clasificó
+  entran con `prioridad = NULL`, no con un número inventado.
+- **`fetchFunnel()` pagina de a 1.000.** Supabase corta ahí y el histórico son ~8.700
+  filas: sin el bucle el embudo mostraría un octavo de los leads y sin dar error.
 
 **Endpoint del CRM:**
 
@@ -571,6 +585,10 @@ además de snake_case. Log en `agent_tool_logs` → Dev · Agent Logs → Trade 
 | `tradecars_asesores` | Catálogo de asesores (filtro del funnel), editable sin redeploy |
 | `tradecars_funnel_motivos` | Catálogo de MOTIVO DE NO CITA — tabla y no enum porque la minuta lo dejó "a definir". Sembrado con los 5 motivos **reales** contados sobre su base (Precio 78%, No recibimos el modelo 15%, Ya lo vendió 5%, Deuda mayor 1%, No responde) |
 | `tradecars_funnel_resumen` | Vista con las barras ya agregadas por mes/asesor/canal (útil para validar contra el Power BI durante la transición) |
+| `tradecars_zonificacion` | Distrito → zona (Z1/Z2/Z3/NO PERTENECE) + alias de cómo lo escribe el asesor. 178 filas sembradas desde la hoja «Zonificación» y de contar la columna DISTRITO real |
+| `tradecars_marcas` | Marca → prioridad 1/2/3 + typos. 123 filas sembradas contando su base |
+| `tradecars_campana_costos` | Inversión publicitaria por mes y campaña. Alimenta costo por lead e inversión por compra (módulo 4). Equivale a las tablas COSTOS del .pbix, que hoy alguien pega a mano |
+| `tradecars_procedencia` | Vista: leads/citas/compras por campaña, marca y modelo |
 
 **Además del funnel, la tabla guarda los campos del Excel del asesor** (vehículo: placa,
 marca, modelo, versión, año, km; negociación: propuesta inicial, monto mejorado,
@@ -587,6 +605,21 @@ propia especificación recomienda.
 **Separada de `GeneralBDwppTRADECARS` a propósito:** aquella guarda el lead crudo que
 llega del bot; `tradecars_funnel_leads` guarda el trabajo comercial del asesor sobre ese
 lead. Se enlazan por `lead_origen_tabla` + `lead_origen_id`.
+
+**Migración del histórico:** `scripts/migrar_tradecars_historico.py` sube al dashboard las
+**8.737 filas** del Excel del asesor (8.512 de `BASE LEADS`, 24 meses desde 2024-09, más 225
+de `HISTORICO`). Corre primero en dry-run y sólo escribe con `--escribir`; es idempotente
+gracias a `import_key`. Descarta las filas sin contacto o sin ninguna fecha y lo informa.
+No calcula etapa ni zona: eso lo hacen las columnas GENERATED y el trigger.
+
+```bash
+python scripts/migrar_tradecars_historico.py            # dry-run
+python scripts/migrar_tradecars_historico.py --escribir # sube
+```
+
+**El Excel no tiene columna de canal** (el CRM sí): en la migración se deduce sólo cuando la
+campaña lo dice sin ambigüedad (TIK TOK, TRAFICO WTP, WEB…) — el 26% de las filas. En el
+resto queda vacío antes que inventarlo.
 
 **Guía para conectar el CRM:** `referencia/n8n/tradecars-funnel-guia.md` + el workflow
 importable `tradecars-funnel-workflow.json` (webhook Chatwoot → n8n → endpoint). El Code

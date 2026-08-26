@@ -463,3 +463,575 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 --   FROM public.tradecars_funnel_leads WHERE contacto_nombre LIKE 'Prueba%';
 -- -- Esperado: NO->LEADS(0) | SI1->CUMPLE POLITICA(1) | SI2->COMPRAS(6) | SI3->NULL(-1)
 -- DELETE FROM public.tradecars_funnel_leads WHERE contacto_nombre LIKE 'Prueba%';
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 10. ZONIFICACIÓN  (hoja "Zonificación" del Excel del asesor)
+--
+--     En el Excel, ZONAS sale de un VLOOKUP contra esa hoja y falla el 31% de
+--     las veces: el asesor escribe "SURCO" (714 leads) y la hoja dice
+--     "Santiago de Surco", así que queda "NO ENCONTRADO". Aquí el catálogo
+--     guarda además los alias reales que se escriben, y la zona se autocompleta
+--     con un trigger: el asesor ya no la escribe.
+--
+--     `clave` es el texto normalizado (mayúsculas, sin tildes, sin espacios de
+--     más). Agregar un alias nuevo = insertar una fila, sin tocar código.
+-- ══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.tradecars_zonificacion (
+  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  clave      TEXT NOT NULL UNIQUE,          -- normalizado: con esto se busca
+  distrito   TEXT NOT NULL,                 -- nombre canónico, el que se muestra
+  zona       TEXT NOT NULL,                 -- Z1 | Z2 | Z3 | NO PERTENECE
+  es_alias   BOOLEAN DEFAULT FALSE,         -- TRUE = forma alternativa de escribirlo
+  created_at TIMESTAMPTZ DEFAULT timezone('utc', now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_tc_zonif_distrito ON public.tradecars_zonificacion (distrito);
+
+INSERT INTO public.tradecars_zonificacion (clave, distrito, zona, es_alias) VALUES
+  ('BARRANCO', 'Barranco', 'Z1', FALSE),
+  ('BRENA', 'Breña', 'Z1', FALSE),
+  ('CHORRILLOS', 'Chorrillos', 'Z1', FALSE),
+  ('JESUS MARIA', 'Jesús maría', 'Z1', FALSE),
+  ('LA MOLINA', 'La molina', 'Z1', FALSE),
+  ('LA VICTORIA', 'La victoria', 'Z1', FALSE),
+  ('LINCE', 'Lince', 'Z1', FALSE),
+  ('MAGDALENA DEL MAR', 'Magdalena del mar', 'Z1', FALSE),
+  ('MIRAFLORES', 'Miraflores', 'Z1', FALSE),
+  ('PUEBLO LIBRE', 'Pueblo libre', 'Z1', FALSE),
+  ('SAN BORJA', 'San borja', 'Z1', FALSE),
+  ('SAN ISIDRO', 'San isidro', 'Z1', FALSE),
+  ('SAN LUIS', 'San Luis', 'Z1', FALSE),
+  ('SAN MIGUEL', 'San Miguel', 'Z1', FALSE),
+  ('SANTIAGO DE SURCO', 'Santiago de Surco', 'Z1', FALSE),
+  ('SURQUILLO', 'Surquillo', 'Z1', FALSE),
+  ('CALLAO', 'Callao', 'Z1', FALSE),
+  ('BELLAVISTA', 'Bellavista', 'Z1', FALSE),
+  ('LA PERLA', 'La Perla', 'Z1', FALSE),
+  ('LA PUNTA', 'La Punta', 'Z1', FALSE),
+  ('ATE', 'Ate', 'Z2', FALSE),
+  ('CERCADO DE LIMA', 'Cercado de Lima', 'Z2', FALSE),
+  ('COMAS', 'Comas', 'Z2', FALSE),
+  ('EL AGUSTINO', 'El agustino', 'Z2', FALSE),
+  ('INDEPENDENCIA', 'Independencia', 'Z2', FALSE),
+  ('LOS OLIVOS', 'Los olivos', 'Z2', FALSE),
+  ('RIMAC', 'Rímac', 'Z2', FALSE),
+  ('SAN MARTIN DE PORRES', 'San Martin de Porres', 'Z2', FALSE),
+  ('SANTA ANITA', 'Santa Anita', 'Z2', FALSE),
+  ('SANTA ROSA', 'Santa Rosa', 'Z2', FALSE),
+  ('VILLA EL SALVADOR', 'Villa el Salvador', 'Z2', FALSE),
+  ('VILLA MARIA DEL TRIUNFO', 'Villa Maria del Triunfo', 'Z2', FALSE),
+  ('CARMEN DE LA LEGUA-REYNOSO', 'Carmen de La Legua-Reynoso', 'Z2', FALSE),
+  ('ANCON', 'Ancón', 'Z3', FALSE),
+  ('CARABAYLLO', 'Carabayllo', 'Z3', FALSE),
+  ('CHACLACAYO', 'Chaclacayo', 'Z3', FALSE),
+  ('CIENEGUILLA', 'Cieneguilla', 'Z3', FALSE),
+  ('LURIGANCHO', 'Lurigancho', 'Z3', FALSE),
+  ('LURIN', 'Lurín', 'Z3', FALSE),
+  ('PACHACAMAC', 'Pachacámac', 'Z3', FALSE),
+  ('PUCUSANA', 'Pucusana', 'Z3', FALSE),
+  ('PUENTE PIEDRA', 'Puente piedra', 'Z3', FALSE),
+  ('PUNTA HERMOSA', 'Punta hermosa', 'Z3', FALSE),
+  ('PUNTA NEGRA', 'Punta negra', 'Z3', FALSE),
+  ('SAN BARTOLO', 'San bartolo', 'Z3', FALSE),
+  ('SAN JUAN DE LURIGANCHO', 'San Juan de Lurigancho', 'Z3', FALSE),
+  ('SAN JUAN DE MIRAFLORES', 'San Juan de Miraflores', 'Z3', FALSE),
+  ('SANTA MARIA DEL MAR', 'Santa María del Mar', 'Z3', FALSE),
+  ('VENTANILLA', 'Ventanilla', 'Z3', FALSE),
+  ('MI PERU', 'Mi Perú', 'Z3', FALSE),
+  ('SURCO', 'Santiago de Surco', 'Z1', TRUE),
+  ('SURCO VIEJO', 'Santiago de Surco', 'Z1', TRUE),
+  ('SANTIAGO DE SURCO CHACARILLA', 'Santiago de Surco', 'Z1', TRUE),
+  ('MONTERRICO', 'Santiago de Surco', 'Z1', TRUE),
+  ('LIMA', 'Cercado de Lima', 'Z2', TRUE),
+  ('CERCADO', 'Cercado de Lima', 'Z2', TRUE),
+  ('LIMA CERCADO', 'Cercado de Lima', 'Z2', TRUE),
+  ('CENTRO DE LIMA', 'Cercado de Lima', 'Z2', TRUE),
+  ('LIMA CENTRO', 'Cercado de Lima', 'Z2', TRUE),
+  ('CERCADO LIMA', 'Cercado de Lima', 'Z2', TRUE),
+  ('MAGDALENA', 'Magdalena del mar', 'Z1', TRUE),
+  ('SMP', 'San Martin de Porres', 'Z2', TRUE),
+  ('SAN MARTIN DE PORRAS', 'San Martin de Porres', 'Z2', TRUE),
+  ('S M P', 'San Martin de Porres', 'Z2', TRUE),
+  ('SJL', 'San Juan de Lurigancho', 'Z3', TRUE),
+  ('SAN JUAN LURIGANCHO', 'San Juan de Lurigancho', 'Z3', TRUE),
+  ('ZARATE', 'San Juan de Lurigancho', 'Z3', TRUE),
+  ('CANTO GRANDE', 'San Juan de Lurigancho', 'Z3', TRUE),
+  ('MARISCAL CACERES', 'San Juan de Lurigancho', 'Z3', TRUE),
+  ('SJM', 'San Juan de Miraflores', 'Z3', TRUE),
+  ('SAN JUAN MIRAFLORES', 'San Juan de Miraflores', 'Z3', TRUE),
+  ('PAMPLONA', 'San Juan de Miraflores', 'Z3', TRUE),
+  ('PAMPLONA ALTA', 'San Juan de Miraflores', 'Z3', TRUE),
+  ('VMT', 'Villa Maria del Triunfo', 'Z2', TRUE),
+  ('VILLA MARIA', 'Villa Maria del Triunfo', 'Z2', TRUE),
+  ('VES', 'Villa el Salvador', 'Z2', TRUE),
+  ('VILLA SALVADOR', 'Villa el Salvador', 'Z2', TRUE),
+  ('ATE VITARTE', 'Ate', 'Z2', TRUE),
+  ('VITARTE', 'Ate', 'Z2', TRUE),
+  ('SALAMANCA', 'Ate', 'Z2', TRUE),
+  ('SANTA CLARA', 'Ate', 'Z2', TRUE),
+  ('CERES', 'Ate', 'Z2', TRUE),
+  ('MAYORAZGO', 'Ate', 'Z2', TRUE),
+  ('CHOSICA', 'Lurigancho', 'Z3', TRUE),
+  ('LURIGANCHO CHOSICA', 'Lurigancho', 'Z3', TRUE),
+  ('LURIGANCHO-CHOSICA', 'Lurigancho', 'Z3', TRUE),
+  ('HUACHIPA', 'Lurigancho', 'Z3', TRUE),
+  ('CAJAMARQUILLA', 'Lurigancho', 'Z3', TRUE),
+  ('NIEVERIA', 'Lurigancho', 'Z3', TRUE),
+  ('OLIVOS', 'Los olivos', 'Z2', TRUE),
+  ('PRO', 'Los olivos', 'Z2', TRUE),
+  ('LOS OLIVOS PRO', 'Los olivos', 'Z2', TRUE),
+  ('AGUSTINO', 'El agustino', 'Z2', TRUE),
+  ('MOLINA', 'La molina', 'Z1', TRUE),
+  ('SANISIDRO', 'San isidro', 'Z1', TRUE),
+  ('SAN ISIDRO LIMA', 'San isidro', 'Z1', TRUE),
+  ('CARMEN DE LA LEGUA', 'Carmen de La Legua-Reynoso', 'Z2', TRUE),
+  ('CARMEN DE LA LEGUA REYNOSO', 'Carmen de La Legua-Reynoso', 'Z2', TRUE),
+  ('EL RIMAC', 'Rimac', 'Z2', TRUE),
+  ('BALCONCILLO', 'La victoria', 'Z1', TRUE),
+  ('EL CALLAO', 'Callao', 'Z1', TRUE),
+  ('PACHACUTEC', 'Ventanilla', 'Z3', TRUE),
+  ('MANCHAY', 'Pachacamac', 'Z3', TRUE),
+  ('HUANCAYO', 'Huancayo', 'NO PERTENECE', FALSE),
+  ('EL TAMBO', 'El Tambo', 'NO PERTENECE', FALSE),
+  ('TAMBO', 'Tambo', 'NO PERTENECE', FALSE),
+  ('TRUJILLO', 'Trujillo', 'NO PERTENECE', FALSE),
+  ('CHICLAYO', 'Chiclayo', 'NO PERTENECE', FALSE),
+  ('ICA', 'Ica', 'NO PERTENECE', FALSE),
+  ('AREQUIPA', 'Arequipa', 'NO PERTENECE', FALSE),
+  ('PIURA', 'Piura', 'NO PERTENECE', FALSE),
+  ('CUSCO', 'Cusco', 'NO PERTENECE', FALSE),
+  ('HUANUCO', 'Huanuco', 'NO PERTENECE', FALSE),
+  ('CAJAMARCA', 'Cajamarca', 'NO PERTENECE', FALSE),
+  ('CHIMBOTE', 'Chimbote', 'NO PERTENECE', FALSE),
+  ('NUEVO CHIMBOTE', 'Nuevo Chimbote', 'NO PERTENECE', FALSE),
+  ('HUACHO', 'Huacho', 'NO PERTENECE', FALSE),
+  ('CANETE', 'Canete', 'NO PERTENECE', FALSE),
+  ('CHANCAY', 'Chancay', 'NO PERTENECE', FALSE),
+  ('AYACUCHO', 'Ayacucho', 'NO PERTENECE', FALSE),
+  ('BARRANCA', 'Barranca', 'NO PERTENECE', FALSE),
+  ('PAUCARPATA', 'Paucarpata', 'NO PERTENECE', FALSE),
+  ('CHINCHA', 'Chincha', 'NO PERTENECE', FALSE),
+  ('TARAPOTO', 'Tarapoto', 'NO PERTENECE', FALSE),
+  ('CHILCA', 'Chilca', 'NO PERTENECE', FALSE),
+  ('PUNO', 'Puno', 'NO PERTENECE', FALSE),
+  ('JULIACA', 'Juliaca', 'NO PERTENECE', FALSE),
+  ('CAYMA', 'Cayma', 'NO PERTENECE', FALSE),
+  ('YANAHUARA', 'Yanahuara', 'NO PERTENECE', FALSE),
+  ('CERRO COLORADO', 'Cerro Colorado', 'NO PERTENECE', FALSE),
+  ('PISCO', 'Pisco', 'NO PERTENECE', FALSE),
+  ('CALLERIA', 'Calleria', 'NO PERTENECE', FALSE),
+  ('PUCALLPA', 'Pucallpa', 'NO PERTENECE', FALSE),
+  ('LAMBAYEQUE', 'Lambayeque', 'NO PERTENECE', FALSE),
+  ('HUARAZ', 'Huaraz', 'NO PERTENECE', FALSE),
+  ('SULLANA', 'Sullana', 'NO PERTENECE', FALSE),
+  ('HUAURA', 'Huaura', 'NO PERTENECE', FALSE),
+  ('HUARAL', 'Huaral', 'NO PERTENECE', FALSE),
+  ('TARMA', 'Tarma', 'NO PERTENECE', FALSE),
+  ('MARCONA', 'Marcona', 'NO PERTENECE', FALSE),
+  ('HUALMAY', 'Hualmay', 'NO PERTENECE', FALSE),
+  ('IQUITOS', 'Iquitos', 'NO PERTENECE', FALSE),
+  ('SUPE', 'Supe', 'NO PERTENECE', FALSE),
+  ('OXAPAMPA', 'Oxapampa', 'NO PERTENECE', FALSE),
+  ('OYON', 'Oyon', 'NO PERTENECE', FALSE),
+  ('TACNA', 'Tacna', 'NO PERTENECE', FALSE),
+  ('MOQUEGUA', 'Moquegua', 'NO PERTENECE', FALSE),
+  ('ILO', 'Ilo', 'NO PERTENECE', FALSE),
+  ('MOLLENDO', 'Mollendo', 'NO PERTENECE', FALSE),
+  ('CAMANA', 'Camana', 'NO PERTENECE', FALSE),
+  ('TUMBES', 'Tumbes', 'NO PERTENECE', FALSE),
+  ('ABANCAY', 'Abancay', 'NO PERTENECE', FALSE),
+  ('HUANCAVELICA', 'Huancavelica', 'NO PERTENECE', FALSE),
+  ('CERRO DE PASCO', 'Cerro De Pasco', 'NO PERTENECE', FALSE),
+  ('MOYOBAMBA', 'Moyobamba', 'NO PERTENECE', FALSE),
+  ('JAEN', 'Jaen', 'NO PERTENECE', FALSE),
+  ('TALARA', 'Talara', 'NO PERTENECE', FALSE),
+  ('PAITA', 'Paita', 'NO PERTENECE', FALSE),
+  ('NAZCA', 'Nazca', 'NO PERTENECE', FALSE),
+  ('NASCA', 'Nasca', 'NO PERTENECE', FALSE),
+  ('CHEPEN', 'Chepen', 'NO PERTENECE', FALSE),
+  ('VIRU', 'Viru', 'NO PERTENECE', FALSE),
+  ('PACASMAYO', 'Pacasmayo', 'NO PERTENECE', FALSE),
+  ('SICUANI', 'Sicuani', 'NO PERTENECE', FALSE),
+  ('SATIPO', 'Satipo', 'NO PERTENECE', FALSE),
+  ('LA MERCED', 'La Merced', 'NO PERTENECE', FALSE),
+  ('CHANCHAMAYO', 'Chanchamayo', 'NO PERTENECE', FALSE),
+  ('SANTA EULALIA', 'Santa Eulalia', 'NO PERTENECE', FALSE),
+  ('SAN MARTIN', 'San Martin', 'NO PERTENECE', FALSE),
+  ('SAN VICENTE DE CANETE', 'San Vicente De Canete', 'NO PERTENECE', FALSE),
+  ('MALA', 'Mala', 'NO PERTENECE', FALSE),
+  ('ASIA', 'Asia', 'NO PERTENECE', FALSE),
+  ('PARAMONGA', 'Paramonga', 'NO PERTENECE', FALSE),
+  ('PATIVILCA', 'Pativilca', 'NO PERTENECE', FALSE),
+  ('OTROS', 'Otros', 'NO PERTENECE', FALSE),
+  ('PROVINCIA', 'Provincia', 'NO PERTENECE', FALSE),
+  ('EXTRANJERO', 'Extranjero', 'NO PERTENECE', FALSE),
+  ('NO PRECISA', 'No Precisa', 'NO PERTENECE', FALSE)
+ON CONFLICT (clave) DO NOTHING;
+
+COMMENT ON TABLE public.tradecars_zonificacion IS
+  'Distrito -> zona (Z1/Z2/Z3) + alias de cómo lo escribe el asesor. Editable desde el dashboard.';
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 11. MARCAS Y PRIORIDAD  (columna "MARCA // PRIORIDAD" del Excel)
+--
+--     1 = marca prioritaria, 2 = media, 3 = baja. Está llena en el 81% de los
+--     leads y es función estricta de la marca: en las 8.515 filas no hay una
+--     sola marca con dos prioridades distintas. Por eso vive en un catálogo y
+--     se autocompleta, en vez de escribirla lead por lead.
+-- ══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.tradecars_marcas (
+  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  clave      TEXT NOT NULL UNIQUE,
+  marca      TEXT NOT NULL,
+  prioridad  SMALLINT CHECK (prioridad IN (1, 2, 3)),
+  es_alias   BOOLEAN DEFAULT FALSE,
+  activo     BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc', now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_tc_marcas_prioridad ON public.tradecars_marcas (prioridad);
+
+INSERT INTO public.tradecars_marcas (clave, marca, prioridad, es_alias) VALUES
+  ('CHEVROLET', 'Chevrolet', 1, FALSE),
+  ('HYUNDAI', 'Hyundai', 1, FALSE),
+  ('KIA', 'Kia', 1, FALSE),
+  ('MAXUS', 'Maxus', 1, FALSE),
+  ('NISSAN', 'Nissan', 1, FALSE),
+  ('SUZUKI', 'Suzuki', 1, FALSE),
+  ('TOYOTA', 'Toyota', 1, FALSE),
+  ('BMW', 'Bmw', 2, FALSE),
+  ('CHANGAN', 'Changan', 2, FALSE),
+  ('CHERY', 'Chery', 2, FALSE),
+  ('DFSK', 'Dfsk', 2, FALSE),
+  ('FORD', 'Ford', 2, FALSE),
+  ('HONDA', 'Honda', 2, FALSE),
+  ('JAC', 'Jac', 2, FALSE),
+  ('MAZDA', 'Mazda', 2, FALSE),
+  ('MG', 'Mg', 2, FALSE),
+  ('MITSUBISHI', 'Mitsubishi', 2, FALSE),
+  ('RENAULT', 'Renault', 2, FALSE),
+  ('SUBARU', 'Subaru', 2, FALSE),
+  ('VOLKSWAGEN', 'Volkswagen', 2, FALSE),
+  ('AUDI', 'Audi', 3, FALSE),
+  ('BAIC', 'Baic', 3, FALSE),
+  ('BYD', 'Byd', 3, FALSE),
+  ('CITROEN', 'Citroen', 3, FALSE),
+  ('DODGE', 'Dodge', 3, FALSE),
+  ('FAW', 'Faw', 3, FALSE),
+  ('FIAT', 'Fiat', 3, FALSE),
+  ('FOTON', 'Foton', 3, FALSE),
+  ('GAC', 'Gac', 3, FALSE),
+  ('GEELY', 'Geely', 3, FALSE),
+  ('GREAT WALL', 'Great Wall', 3, FALSE),
+  ('HAFEI', 'Hafei', 3, FALSE),
+  ('HAVAL', 'Haval', 3, FALSE),
+  ('JAGUAR', 'Jaguar', 3, FALSE),
+  ('JEEP', 'Jeep', 3, FALSE),
+  ('JETOUR', 'Jetour', 3, FALSE),
+  ('JINBEI', 'Jinbei', 3, FALSE),
+  ('JMC', 'Jmc', 3, FALSE),
+  ('KEYTON', 'Keyton', 3, FALSE),
+  ('KYC', 'Kyc', 3, FALSE),
+  ('LAND ROVER', 'Land Rover', 3, FALSE),
+  ('LEXUS', 'Lexus', 3, FALSE),
+  ('MERCEDES BENZ', 'Mercedes Benz', 3, FALSE),
+  ('MINI', 'Mini', 3, FALSE),
+  ('MOTO', 'Moto', 3, FALSE),
+  ('PEUGEOT', 'Peugeot', 3, FALSE),
+  ('PORSCHE', 'Porsche', 3, FALSE),
+  ('RAM', 'Ram', 3, FALSE),
+  ('SEAT', 'Seat', 3, FALSE),
+  ('SHINERAY', 'Shineray', 3, FALSE),
+  ('SOUEAST', 'Soueast', 3, FALSE),
+  ('SSANGYONG', 'Ssangyong', 3, FALSE),
+  ('VOLVO', 'Volvo', 3, FALSE),
+  ('MERDECES BENZ', 'Mercedes Benz', 3, TRUE),
+  ('MERCEDES', 'Mercedes Benz', 3, TRUE),
+  ('MERCEDES-BENZ', 'Mercedes Benz', 3, TRUE),
+  ('MERCEDEZ BENZ', 'Mercedes Benz', 3, TRUE),
+  ('BENZ', 'Mercedes Benz', 3, TRUE),
+  ('VW', 'Volkswagen', 2, TRUE),
+  ('VOLSKWAGEN', 'Volkswagen', 2, TRUE),
+  ('VOLKSWAGUEN', 'Volkswagen', 2, TRUE),
+  ('RENUALT', 'Renault', 2, TRUE),
+  ('RENAUL', 'Renault', 2, TRUE),
+  ('SUSUKI', 'Suzuki', 1, TRUE),
+  ('SUZUKO', 'Suzuki', 1, TRUE),
+  ('SUZUCKI', 'Suzuki', 1, TRUE),
+  ('JEPP', 'Jeep', 3, TRUE),
+  ('SSANYONG', 'Ssangyong', 3, TRUE),
+  ('SANGYONG', 'Ssangyong', 3, TRUE),
+  ('SSANG YONG', 'Ssangyong', 3, TRUE),
+  ('CHEVROLETT', 'Chevrolet', 1, TRUE),
+  ('CHEVY', 'Chevrolet', 1, TRUE),
+  ('MITSUBISHI MOTORS', 'Mitsubishi', 2, TRUE),
+  ('MISTUBISHI', 'Mitsubishi', 2, TRUE),
+  ('HIUNDAI', 'Hyundai', 1, TRUE),
+  ('HYNDAI', 'Hyundai', 1, TRUE),
+  ('HUYNDAI', 'Hyundai', 1, TRUE),
+  ('TOYOTA MOTORS', 'Toyota', 1, TRUE),
+  ('GREATWALL', 'Great Wall', 3, TRUE),
+  ('GWM', 'Great Wall', 3, TRUE),
+  ('LANDROVER', 'Land Rover', 3, TRUE),
+  ('RANGE ROVER', 'Land Rover', 3, TRUE),
+  ('VOKLSWAGEN', 'Volkswagen', 2, TRUE),
+  ('VOLKVAGEN', 'Volkswagen', 2, TRUE),
+  ('WOLSKVAGEN', 'Volkswagen', 2, TRUE),
+  ('RENOLT', 'Renault', 2, TRUE),
+  ('OTRA MARCA', 'Otra marca', NULL, FALSE),
+  ('OTRO (ESCRIBE A CONTINUACION LA MARCA DE TU AUTO)', 'Otra marca', NULL, TRUE),
+  ('OTRO', 'Otra marca', NULL, TRUE),
+  ('DONGFENG', 'Dongfeng', NULL, FALSE),
+  ('DONG FENG', 'Dongfeng', NULL, TRUE),
+  ('DFM', 'Dongfeng', NULL, TRUE),
+  ('DONGFRNG', 'Dongfeng', NULL, TRUE),
+  ('BRILLIANCE', 'Brilliance', NULL, FALSE),
+  ('SWM', 'SWM', NULL, FALSE),
+  ('MAHINDRA', 'Mahindra', NULL, FALSE),
+  ('DAIHATSU', 'Daihatsu', NULL, FALSE),
+  ('CUPRA', 'Cupra', NULL, FALSE),
+  ('T-KING', 'T-King', NULL, FALSE),
+  ('TKING', 'T-King', NULL, TRUE),
+  ('T KING', 'T-King', NULL, TRUE),
+  ('ZOTYE', 'Zotye', NULL, FALSE),
+  ('KARRY', 'Karry', NULL, FALSE),
+  ('PONTIAC', 'Pontiac', NULL, FALSE),
+  ('DAEWOO', 'Daewoo', NULL, FALSE),
+  ('FERRARI', 'Ferrari', NULL, FALSE),
+  ('MASERATI', 'Maserati', NULL, FALSE),
+  ('CHANGHE', 'Changhe', NULL, FALSE),
+  ('CHANA', 'Chana', NULL, FALSE),
+  ('HINO', 'Hino', NULL, FALSE),
+  ('LADA', 'Lada', NULL, FALSE),
+  ('HAIMA', 'Haima', NULL, FALSE),
+  ('LIFAN', 'Lifan', NULL, FALSE),
+  ('CADILLAC', 'Cadillac', NULL, FALSE),
+  ('OLDSMOBILE', 'Oldsmobile', NULL, FALSE),
+  ('BAW', 'BAW', NULL, FALSE),
+  ('ZNA', 'ZNA', NULL, FALSE),
+  ('FORLAND', 'Forland', NULL, FALSE),
+  ('WEICHAI', 'Weichai', NULL, FALSE),
+  ('AIMA', 'Aima', NULL, FALSE),
+  ('VESPA', 'Vespa', NULL, FALSE),
+  ('INTERNATIONAL', 'International', NULL, FALSE),
+  ('INTENATIONAL', 'International', NULL, TRUE)
+ON CONFLICT (clave) DO NOTHING;
+
+COMMENT ON TABLE public.tradecars_marcas IS
+  'Marca -> prioridad 1/2/3 + alias/typos. Sembrada contando la base real de Trade Cars.';
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 12. COSTO DE CAMPAÑA  (tablas "COSTOS COMPRAS" / "COSTOS VENTAS" del .pbix)
+--
+--     El Power BI calcula "Costo por lead" e "Inv. por compra" contra una tabla
+--     de costos que NO viene en el Excel: hoy alguien la pega a mano cada mes.
+--     Aquí queda normalizada (una fila por mes/campaña) y el dashboard divide
+--     contra los leads que ya tiene. Mientras no se carguen los montos, el
+--     módulo simplemente no muestra costos: no inventa nada.
+-- ══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.tradecars_campana_costos (
+  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  mes        DATE NOT NULL,                 -- siempre el día 1 del mes
+  tipo       TEXT NOT NULL DEFAULT 'compras',  -- compras | ventas
+  campana    TEXT NOT NULL,
+  costo      NUMERIC(12,2) NOT NULL DEFAULT 0,
+  moneda     TEXT NOT NULL DEFAULT 'USD',
+  nota       TEXT,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
+  UNIQUE (mes, tipo, campana)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tc_costos_mes ON public.tradecars_campana_costos (mes DESC);
+
+COMMENT ON TABLE public.tradecars_campana_costos IS
+  'Inversión publicitaria por mes y campaña. Alimenta costo por lead / inversión por compra.';
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 13. AUTOCOMPLETADO: zona, distrito normalizado, marca y prioridad
+--
+--     Vive en la BD y no sólo en la UI para que también se aplique a lo que
+--     entra por el endpoint del CRM, por n8n o por la migración del histórico.
+-- ══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.tradecars_funnel_leads
+  ADD COLUMN IF NOT EXISTS marca_prioridad      SMALLINT,
+  ADD COLUMN IF NOT EXISTS distrito_normalizado TEXT,
+  ADD COLUMN IF NOT EXISTS marca_normalizada    TEXT,
+  -- Clave de la fila de origen en el Excel. Hace que re-correr la migración
+  -- del histórico actualice en vez de duplicar.
+  ADD COLUMN IF NOT EXISTS import_key           TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_tc_funnel_import_key'
+  ) THEN
+    ALTER TABLE public.tradecars_funnel_leads
+      ADD CONSTRAINT uq_tc_funnel_import_key UNIQUE (import_key);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_tc_funnel_prioridad ON public.tradecars_funnel_leads (marca_prioridad);
+CREATE INDEX IF NOT EXISTS idx_tc_funnel_campana   ON public.tradecars_funnel_leads (campana);
+
+-- Mismo criterio de normalización que tcNormalizar() en utils/tradecarsFunnel.ts.
+-- IMMUTABLE para poder usarla en índices y columnas generadas si hiciera falta.
+CREATE OR REPLACE FUNCTION public.tc_normalizar(v TEXT)
+RETURNS TEXT
+LANGUAGE sql IMMUTABLE
+AS $$
+  SELECT btrim(regexp_replace(
+    translate(upper(COALESCE(v, '')), 'ÁÉÍÓÚÜÀÈÌÒÙÂÊÎÔÛÄËÏÖÑÇ', 'AEIOUUAEIOUAEIOUAEIONC'),
+    '\s+', ' ', 'g'))
+$$;
+
+CREATE OR REPLACE FUNCTION public.tradecars_funnel_autocompletar()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  k        TEXT;
+  primera  TEXT;
+  z        RECORD;
+  m        RECORD;
+BEGIN
+  -- ── Distrito -> distrito canónico + zona ──
+  k := public.tc_normalizar(NEW.distrito);
+  IF k <> '' THEN
+    SELECT distrito, zona INTO z
+      FROM public.tradecars_zonificacion WHERE clave = k;
+
+    IF NOT FOUND THEN
+      -- "SURCO CHACARILLA", "ATE VITARTE SANTA CLARA": se prueba con el
+      -- prefijo más largo que sí exista en el catálogo.
+      SELECT distrito, zona INTO z
+        FROM public.tradecars_zonificacion
+       WHERE k LIKE clave || ' %'
+       ORDER BY length(clave) DESC
+       LIMIT 1;
+    END IF;
+
+    IF NOT FOUND THEN
+      -- "SANMIGUEL", "PUEBLOLIBRE", "S.M.P", "SAN_JUAN_DE_LURIGANCHO":
+      -- se ignoran espacios y puntuación a ambos lados. Cubre el patrón
+      -- completo en vez de ir agregando el typo de cada día como alias.
+      SELECT distrito, zona INTO z
+        FROM public.tradecars_zonificacion
+       WHERE regexp_replace(clave, '[^A-Z0-9]', '', 'g')
+           = regexp_replace(k,     '[^A-Z0-9]', '', 'g')
+       ORDER BY es_alias, length(clave) DESC
+       LIMIT 1;
+    END IF;
+
+    IF FOUND THEN
+      NEW.distrito_normalizado := z.distrito;
+      -- La zona escrita a mano gana sólo si el catálogo no conoce el distrito.
+      NEW.zona := z.zona;
+    ELSE
+      NEW.distrito_normalizado := NULL;
+    END IF;
+  ELSE
+    NEW.distrito_normalizado := NULL;
+  END IF;
+
+  -- ── Marca -> marca canónica + prioridad ──
+  k := public.tc_normalizar(NEW.marca);
+  IF k <> '' THEN
+    SELECT marca, prioridad INTO m
+      FROM public.tradecars_marcas WHERE clave = k AND activo;
+
+    IF NOT FOUND THEN
+      -- "KIA RIO", "TOYOTA YARIS": el asesor escribe marca + modelo.
+      primera := split_part(k, ' ', 1);
+      SELECT marca, prioridad INTO m
+        FROM public.tradecars_marcas
+       WHERE clave = primera AND activo;
+    END IF;
+
+    IF NOT FOUND THEN
+      SELECT marca, prioridad INTO m
+        FROM public.tradecars_marcas
+       WHERE activo
+         AND regexp_replace(clave, '[^A-Z0-9]', '', 'g')
+           = regexp_replace(k,     '[^A-Z0-9]', '', 'g')
+       ORDER BY es_alias
+       LIMIT 1;
+    END IF;
+
+    IF FOUND THEN
+      NEW.marca_normalizada := m.marca;
+      IF NEW.marca_prioridad IS NULL THEN
+        NEW.marca_prioridad := m.prioridad;
+      END IF;
+    ELSE
+      NEW.marca_normalizada := NULL;
+    END IF;
+  ELSE
+    NEW.marca_normalizada := NULL;
+  END IF;
+
+  RETURN NEW;
+END $$;
+
+-- Corre DESPUÉS del guard: los nombres de trigger se disparan en orden
+-- alfabético y 'trg_tradecars_funnel_autocompletar' < 'trg_tradecars_funnel_guard'
+-- no importa aquí porque tocan columnas distintas.
+DROP TRIGGER IF EXISTS trg_tradecars_funnel_autocompletar ON public.tradecars_funnel_leads;
+CREATE TRIGGER trg_tradecars_funnel_autocompletar
+  BEFORE INSERT OR UPDATE ON public.tradecars_funnel_leads
+  FOR EACH ROW EXECUTE FUNCTION public.tradecars_funnel_autocompletar();
+
+-- Rellena lo que ya estuviera cargado antes de existir el trigger.
+UPDATE public.tradecars_funnel_leads SET updated_at = updated_at
+ WHERE distrito IS NOT NULL OR marca IS NOT NULL;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 14. RLS DE LAS TABLAS NUEVAS
+-- ══════════════════════════════════════════════════════════════════════════
+ALTER TABLE public.tradecars_zonificacion     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tradecars_marcas           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tradecars_campana_costos   ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tradecars_zonificacion') THEN
+    CREATE POLICY tc_zonif_all ON public.tradecars_zonificacion
+      FOR ALL TO anon USING (TRUE) WITH CHECK (TRUE);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tradecars_marcas') THEN
+    CREATE POLICY tc_marcas_all ON public.tradecars_marcas
+      FOR ALL TO anon USING (TRUE) WITH CHECK (TRUE);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tradecars_campana_costos') THEN
+    CREATE POLICY tc_costos_all ON public.tradecars_campana_costos
+      FOR ALL TO anon USING (TRUE) WITH CHECK (TRUE);
+  END IF;
+END $$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 15. VISTA DE PROCEDENCIA  (páginas "PROCEDENCIA DEL LEAD" del .pbix)
+--     Leads y compras por campaña y modelo, con la fecha del funnel.
+-- ══════════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE VIEW public.tradecars_procedencia AS
+SELECT
+  to_char(fecha_funnel, 'YYYY-MM')          AS mes,
+  COALESCE(NULLIF(btrim(campana), ''), 'Sin campaña') AS campana,
+  COALESCE(NULLIF(btrim(marca_normalizada), ''),
+           NULLIF(btrim(marca), ''), 'Sin marca')     AS marca,
+  COALESCE(NULLIF(btrim(modelo), ''), 'Sin modelo')   AS modelo,
+  COUNT(*)                                            AS leads,
+  COUNT(*) FILTER (WHERE etapa_rank >= 4)             AS citas,
+  COUNT(*) FILTER (WHERE etapa_rank = 6)              AS compras
+FROM public.tradecars_funnel_leads
+WHERE etapa_rank >= 0
+GROUP BY 1, 2, 3, 4;
+
+COMMENT ON VIEW public.tradecars_procedencia IS
+  'Leads / citas / compras por campaña y modelo. Equivale a PROCEDENCIA DEL LEAD del Power BI.';

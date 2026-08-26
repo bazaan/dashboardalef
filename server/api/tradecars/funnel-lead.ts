@@ -174,7 +174,11 @@ export default defineEventHandler(async (event) => {
 
     campana:   pick(body, 'campana', 'campaña', 'CAMPAÑA') || null,
     distrito:  pick(body, 'distrito', 'DISTRITO') || null,
+    // La zona se acepta por compatibilidad con el Excel, pero si el distrito
+    // está en tradecars_zonificacion el trigger de la BD la pisa: el catálogo
+    // es la fuente de verdad. Lo mismo con la prioridad de la marca.
     zona:      pick(body, 'zona', 'ZONAS', 'ZONA') || null,
+    marca_prioridad: Number(pick(body, 'marca_prioridad', 'MARCA // PRIORIDAD', 'prioridad')) || null,
     correo:    pick(body, 'correo', 'email', 'CORREO') || null,
 
     tiene_deuda: pick(body, 'tiene_deuda', 'deuda', '¿DEUDA?') || null,

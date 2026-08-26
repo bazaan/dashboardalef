@@ -834,6 +834,10 @@
         @refresh="fetchFunnel" @editar="editarFunnelLead" @nuevo="nuevoFunnelLead" />
 
       <!-- ==========  FUNNEL: MODULO 3 — ANALISIS DE CONVERSION  ========== -->
+      <TradeCarsProcedenciaCostos v-else-if="activeView === 'procedencia'"
+        :leads="funnelLeads" :costos="costosCampana" :loading="loadingFunnel"
+        @refresh="fetchFunnel" @notificar="notify" />
+
       <TradeCarsAnalisisConversion v-else-if="activeView === 'analisis'"
         :leads="funnelLeads" :asesores="asesoresNombres" :loading="loadingFunnel"
         @refresh="fetchFunnel" @editar="editarFunnelLead" />
@@ -898,7 +902,7 @@
               <v-select v-model="funnelForm.perfil_coincide" :items="['SI', 'NO']"
                 label="Perfil coincide *" density="compact" hide-details />
               <v-select v-model="funnelForm.status" :items="[...TC_STATUS]"
-                label="Status *" density="compact" hide-details clearable
+                label="Status *" density="compact" hide-details="auto" clearable
                 :disabled="funnelForm.perfil_coincide === 'NO'"
                 :hint="funnelForm.perfil_coincide === 'NO' ? 'Con perfil NO el lead se queda en LEADS' : ''"
                 persistent-hint />
@@ -936,10 +940,27 @@
             <div class="text-overline mb-1">Vehículo</div>
             <div class="form-grid-2">
               <v-text-field v-model="funnelForm.placa" label="Placa" density="compact" hide-details />
-              <v-text-field v-model="funnelForm.marca" label="Marca" density="compact" hide-details />
+              <!-- La prioridad va en un chip y no en el hint: v-messages deja
+                   pegado el mensaje anterior al pasar de una marca a otra. -->
+              <v-combobox v-model="funnelForm.marca" :items="marcasCanonicas" label="Marca"
+                density="compact" hide-details>
+                <template #append-inner>
+                  <span v-if="marcaResuelta?.prioridad" class="chip-prioridad"
+                    :class="'p' + marcaResuelta.prioridad"
+                    :title="marcaResuelta.marca + ' · prioridad ' + marcaResuelta.prioridad">
+                    P{{ marcaResuelta.prioridad }}
+                  </span>
+                  <span v-else-if="marcaResuelta" class="chip-prioridad sin"
+                    :title="marcaResuelta.marca + ' · sin prioridad asignada en el catálogo'">
+                    sin P
+                  </span>
+                  <span v-else-if="funnelForm.marca" class="chip-prioridad desconocida"
+                    title="Marca no reconocida en el catálogo">?</span>
+                </template>
+              </v-combobox>
               <v-text-field v-model="funnelForm.modelo" label="Modelo" density="compact" hide-details />
               <v-text-field v-model="funnelForm.version" label="Versión" density="compact" hide-details />
-              <v-text-field v-model="funnelForm.anio" label="Año" density="compact" hide-details
+              <v-text-field v-model="funnelForm.anio" label="Año" density="compact" hide-details="auto"
                 hint="En la base viene como 2014/2015" persistent-hint />
               <v-text-field v-model.number="funnelForm.kilometraje" type="number" label="Kilometraje"
                 density="compact" hide-details />
@@ -967,10 +988,21 @@
             <div class="form-grid-2">
               <v-combobox v-model="funnelForm.campana" :items="campanasConocidas" label="Campaña"
                 density="compact" hide-details />
-              <v-text-field v-model="funnelForm.distrito" label="Distrito" density="compact" hide-details />
-              <v-text-field v-model="funnelForm.zona" label="Zona" density="compact" hide-details
-                hint="Z1 · Z2 · Z3 · Z4" persistent-hint />
+              <v-combobox v-model="funnelForm.distrito" :items="distritosCanonicos" label="Distrito"
+                density="compact" hide-details="auto"
+                :hint="funnelForm.distrito && !zonaResuelta ? 'Distrito no reconocido: la zona queda vacía' : ''"
+                persistent-hint />
+              <!-- La zona no se escribe: sale de tradecars_zonificacion. En su Excel
+                   se llenaba a mano y fallaba el 31% de las veces. -->
+              <!-- El distrito canónico va en el propio valor y no en el hint: al
+                   cambiar de un hint a otro, v-messages deja el mensaje viejo pegado. -->
+              <v-text-field
+                :model-value="zonaResuelta ? zonaResuelta.zona + ' · ' + zonaResuelta.distrito : ''"
+                label="Zona (automática)" placeholder="Se completa al reconocer el distrito"
+                density="compact" hide-details readonly persistent-placeholder />
               <v-text-field v-model="funnelForm.correo" label="Correo" density="compact" hide-details />
+              <v-text-field v-model="funnelForm.fecha_llegada" type="date" label="Fecha de llegada"
+                density="compact" hide-details />
               <v-text-field v-model="funnelForm.fecha_ultimo_contacto" type="date" label="Último contacto"
                 density="compact" hide-details />
             </div>
@@ -1062,6 +1094,7 @@ const funnelItems = [
   { icon: 'mdi-filter-variant', label: 'Funnel de Compras', id: 'funnel' },
   { icon: 'mdi-table-account', label: 'Tabla de Leads', id: 'funnel_leads' },
   { icon: 'mdi-chart-timeline-variant', label: 'Análisis de Conversión', id: 'analisis' },
+  { icon: 'mdi-source-branch', label: 'Procedencia y Costos', id: 'procedencia' },
 ]
 const operacionesItems = [
   { icon: 'mdi-car-multiple', label: 'Vehículos', id: 'vehiculos' },
@@ -1643,6 +1676,9 @@ const CHATWOOT_ACCOUNT_ID = 17          // cuenta de Trade Cars en Chatwoot
 const funnelLeads = ref<any[]>([])
 const asesores = ref<any[]>([])
 const motivosNoCita = ref<any[]>([])
+const zonificacion = ref<any[]>([])
+const marcasCatalogo = ref<any[]>([])
+const costosCampana = ref<any[]>([])
 const loadingFunnel = ref(false)
 
 const asesoresNombres = computed(() =>
@@ -1668,17 +1704,46 @@ const campanasConocidas = computed(() => {
 const alertasVencidas = computed(() =>
   funnelLeads.value.filter(l => tcSeguimientoVencido(l)).length)
 
+/**
+ * Trae TODOS los leads del funnel.
+ *
+ * Supabase corta en 1.000 filas por consulta y el histórico migrado del Excel
+ * son ~8.700: sin este bucle el embudo mostraría menos de la octava parte de
+ * los leads y nadie se daría cuenta, porque no da error.
+ */
+async function fetchFunnelLeads() {
+  const PAGINA = 1000
+  const todos: any[] = []
+  for (let desde = 0; ; desde += PAGINA) {
+    const { data, error } = await client
+      .from('tradecars_funnel_leads')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(desde, desde + PAGINA - 1)
+    if (error) return { data: todos, error }
+    todos.push(...(data || []))
+    if (!data || data.length < PAGINA) break
+  }
+  return { data: todos, error: null }
+}
+
 async function fetchFunnel() {
   loadingFunnel.value = true
   try {
-    const [leads, ases, mot] = await Promise.all([
-      client.from('tradecars_funnel_leads').select('*').order('created_at', { ascending: false }),
+    const [leads, ases, mot, zon, marc, cost] = await Promise.all([
+      fetchFunnelLeads(),
       client.from('tradecars_asesores').select('*').order('orden'),
       client.from('tradecars_funnel_motivos').select('*').eq('activo', true).order('orden'),
+      client.from('tradecars_zonificacion').select('*').order('distrito'),
+      client.from('tradecars_marcas').select('*').eq('activo', true).order('marca'),
+      client.from('tradecars_campana_costos').select('*').order('mes', { ascending: false }),
     ])
     funnelLeads.value = leads.data || []
     asesores.value = ases.data || []
     motivosNoCita.value = mot.data || []
+    zonificacion.value = zon.data || []
+    marcasCatalogo.value = marc.data || []
+    costosCampana.value = cost.data || []
 
     // La tabla es nueva: si aún no se corrió el SQL, se avisa en vez de fallar en silencio
     if (leads.error) {
@@ -1689,6 +1754,49 @@ async function fetchFunnel() {
     loadingFunnel.value = false
   }
 }
+
+/* ---------------- Autocompletado desde los catálogos ----------------
+   La BD hace lo mismo en el trigger `tradecars_funnel_autocompletar`, que es
+   lo que protege al endpoint del CRM y a la migración. Aquí se repite en el
+   cliente sólo para que el asesor VEA la zona y la prioridad mientras escribe,
+   sin tener que guardar primero.                                              */
+
+/** Mismo criterio que tc_normalizar() en SQL y tcNormalizar() en utils/. */
+function claveCatalogo(v: any): string {
+  return String(v ?? '').toUpperCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+}
+const soloAlfanum = (v: string) => v.replace(/[^A-Z0-9]/g, '')
+
+/** Nombres canónicos para el desplegable (sin los alias, que ensuciarían). */
+const distritosCanonicos = computed(() =>
+  [...new Set(zonificacion.value.filter(z => !z.es_alias).map(z => z.distrito))].sort())
+const marcasCanonicas = computed(() =>
+  [...new Set(marcasCatalogo.value.filter(m => !m.es_alias).map(m => m.marca))].sort())
+
+function buscarZona(distrito: any) {
+  const k = claveCatalogo(distrito)
+  if (!k) return null
+  return zonificacion.value.find(z => z.clave === k)
+    || zonificacion.value.filter(z => k.startsWith(z.clave + ' '))
+         .sort((a, b) => b.clave.length - a.clave.length)[0]
+    || zonificacion.value.find(z => soloAlfanum(z.clave) === soloAlfanum(k))
+    || null
+}
+
+function buscarMarca(marca: any) {
+  const k = claveCatalogo(marca)
+  if (!k) return null
+  const primera = k.split(' ')[0]
+  return marcasCatalogo.value.find(m => m.clave === k)
+    || marcasCatalogo.value.find(m => m.clave === primera)
+    || marcasCatalogo.value.find(m => soloAlfanum(m.clave) === soloAlfanum(k))
+    || null
+}
+
+/** Zona resuelta para el lead que se está editando (sólo lectura en la UI). */
+const zonaResuelta = computed(() => buscarZona(funnelForm.value?.distrito))
+const marcaResuelta = computed(() => buscarMarca(funnelForm.value?.marca))
 
 /* ---------------- Edición del lead desde el dashboard ---------------- */
 const showFunnelDialog = ref(false)
@@ -1721,6 +1829,7 @@ function editarFunnelLead(lead: any) {
     expectativa_cliente: lead.expectativa_cliente,
     campana: lead.campana, distrito: lead.distrito, zona: lead.zona, correo: lead.correo,
     tiene_deuda: lead.tiene_deuda, banco: lead.banco,
+    fecha_llegada: lead.fecha_llegada,
     fecha_ultimo_contacto: lead.fecha_ultimo_contacto,
     num_contactos: lead.num_contactos, feedback: lead.feedback,
     _statusOriginal: lead.status,
@@ -1739,7 +1848,8 @@ function nuevoFunnelLead() {
     placa: '', marca: '', modelo: '', version: '', anio: '', kilometraje: null,
     monto_propuesta_inicial: null, monto_mejorado: null, expectativa_cliente: null,
     campana: '', distrito: '', zona: '', correo: '',
-    tiene_deuda: 'NO', banco: '', fecha_ultimo_contacto: null, num_contactos: null, feedback: '',
+    tiene_deuda: 'NO', banco: '', fecha_llegada: null,
+    fecha_ultimo_contacto: null, num_contactos: null, feedback: '',
   }
   showFunnelDialog.value = true
 }
@@ -1772,6 +1882,12 @@ async function guardarFunnelLead() {
   const fila: Record<string, any> = { ...f }
   delete fila._statusOriginal
   delete fila.id
+  // zona, marca_normalizada y marca_prioridad los resuelve el trigger de la BD
+  // contra los catálogos: mandarlos desde aquí sólo abriría la puerta a que la
+  // UI y la BD se contradigan.
+  delete fila.zona
+  delete fila.marca_normalizada
+  delete fila.marca_prioridad
   for (const k of Object.keys(fila)) if (fila[k] === '') fila[k] = null
 
   const { error } = f.id
@@ -2236,6 +2352,21 @@ onMounted(async () => {
 }
 
 /* Marca el campo de fecha que falta según el status elegido */
+.chip-prioridad {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  align-self: center;
+}
+.chip-prioridad.p1 { background: rgba(22, 163, 74, 0.16); color: #16a34a; }
+.chip-prioridad.p2 { background: rgba(217, 119, 6, 0.16); color: #d97706; }
+.chip-prioridad.p3 { background: rgba(148, 163, 184, 0.16); color: var(--muted-foreground); }
+.chip-prioridad.sin { background: rgba(148, 163, 184, 0.12); color: var(--muted-foreground); }
+.chip-prioridad.desconocida { background: rgba(220, 38, 38, 0.14); color: #dc2626; }
+
 .campo-requerido :deep(.v-field) {
   border-color: #dc2626;
   box-shadow: 0 0 0 1px #dc2626 inset;

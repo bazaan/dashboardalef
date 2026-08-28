@@ -295,16 +295,18 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* El PNG que mandó Piola ya trae transparencia real (verificado con PIL:
-   alpha=0 fuera del bocadillo) — va directo, sin ninguna caja ni fondo
-   detrás, igual que el archivo que enviaron. El wordmark "HAZLO" es ancho
-   (380x208), no cuadrado como el resto de los dashboards, por eso no se
-   fuerza a un círculo de 35x35 —le cortaría el texto—, sino que conserva su
-   proporción real con height fijo y width automático. */
+/* El PNG que mandó Piola ya trae transparencia real — va directo, sin
+   ninguna caja ni fondo detrás. El recorte anterior solo dejaba el badge
+   amarillo "HAZLO": el nombre "piola" va en cursiva BLANCA arriba del badge,
+   invisible al revisar el archivo sobre fondo blanco, así que quedó afuera
+   por error. El isotipo completo (piola + HAZLO + pro!) es 771x517, no
+   cuadrado, por eso no se fuerza a un círculo de 35x35 —le cortaría el
+   texto—, sino que conserva su proporción real con height fijo y width
+   automático. */
 .piola-logo-mark {
-  height: 36px;
+  height: 44px;
   width: auto;
-  max-width: 110px;
+  max-width: 130px;
   flex-shrink: 0;
 }
 </style>

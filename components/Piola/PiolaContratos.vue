@@ -54,6 +54,10 @@
           </span>
         </template>
         <template v-slot:item.importe_pagado="{ item }">{{ PEN(item.importe_pagado) }}</template>
+        <template v-slot:item.pago_mensual="{ item }">
+          <span v-if="item.pago_mensual">{{ PEN(item.pago_mensual) }}<span class="dia-pago" v-if="item.dia_pago"> · día {{ item.dia_pago }}</span></span>
+          <span v-else style="opacity:.35">—</span>
+        </template>
         <template v-slot:item.modalidad_pago="{ item }">{{ etiquetaModalidad(item.modalidad_pago) }}</template>
         <template v-slot:item.adendas="{ item }">
           <v-chip v-if="adendasDe(item.id).length" size="x-small" variant="tonal">
@@ -102,9 +106,16 @@
               <v-text-field v-model="edicion.fecha_cierre" type="date" label="Fecha de cierre"
                 density="compact" variant="outlined" :rules="[ruleRangoFechas]" />
               <v-text-field v-model.number="edicion.importe_pagado" type="number" min="0"
-                label="Importe pagado (S/)" density="compact" hide-details variant="outlined" />
+                label="Importe pagado acumulado (S/)" density="compact" hide-details variant="outlined"
+                hint="Total histórico, no la cuota del mes" persistent-hint />
               <v-select v-model="edicion.modalidad_pago" :items="MODALIDADES_PAGO"
                 label="Modalidad de pago" density="compact" hide-details variant="outlined" clearable />
+              <v-text-field v-model.number="edicion.pago_mensual" type="number" min="0"
+                label="Cuota mensual (S/)" density="compact" variant="outlined"
+                hint="Vacío = proyecto puntual, sin cuota recurrente" persistent-hint />
+              <v-text-field v-model.number="edicion.dia_pago" type="number" min="1" max="31"
+                label="Día de pago" density="compact" hide-details variant="outlined"
+                :disabled="!edicion.pago_mensual" />
             </div>
 
             <div class="form-section-title" style="margin-top:18px;">Documento</div>
@@ -142,6 +153,16 @@
             <div><span>Importe pagado</span><strong>{{ PEN(detalle.importe_pagado) }}</strong></div>
             <div><span>Modalidad</span><strong>{{ etiquetaModalidad(detalle.modalidad_pago) }}</strong></div>
             <div><span>Con adendas</span><strong>{{ PEN(totalConAdendas(detalle)) }}</strong></div>
+            <div v-if="detalle.pago_mensual">
+              <span>Cuota mensual</span>
+              <strong>{{ PEN(detalle.pago_mensual) }}<template v-if="detalle.dia_pago"> · día {{ detalle.dia_pago }}</template></strong>
+            </div>
+            <div v-if="diasParaCierre(detalle) !== null">
+              <span>Para el cierre</span>
+              <strong :class="{ 'texto-alerta': diasParaCierre(detalle)! < 0 }">
+                {{ diasParaCierre(detalle)! < 0 ? `Vencido hace ${-diasParaCierre(detalle)!} día(s)` : `${diasParaCierre(detalle)} día(s)` }}
+              </strong>
+            </div>
           </div>
 
           <div v-if="detalle.notas" class="notas-caja">{{ detalle.notas }}</div>
@@ -229,6 +250,10 @@
           <v-btn v-if="puedeEliminar" color="error" variant="text" @click="eliminarContrato">
             Eliminar contrato
           </v-btn>
+          <v-btn v-if="puedeCrear && detalle.pago_mensual" variant="tonal" color="primary"
+            :loading="generandoCobro" prepend-icon="mdi-cash-plus" @click="generarCobroDelMes">
+            Generar cobro del mes
+          </v-btn>
           <v-spacer />
           <v-btn variant="text" @click="cerrarDetalle">Cerrar</v-btn>
           <v-btn v-if="puedeEditar" color="primary" variant="flat" @click="editarDesdeDetalle">
@@ -284,7 +309,8 @@ const fEstado = ref('todos')
 const OPCIONES_ESTADO = [
   { value: 'todos', title: 'Todos' },
   { value: 'vigente', title: 'Vigentes' },
-  { value: 'por_vencer', title: 'Por vencer' },
+  { value: 'proxima_renovacion', title: 'Próxima renovación' },
+  { value: 'renovar_ahora', title: 'Renovar ahora' },
   { value: 'vencido', title: 'Vencidos' },
   { value: 'sin_fecha', title: 'Sin fecha de cierre' },
 ]
@@ -312,24 +338,45 @@ const adendasDe = (contratoId: any) => adendas.value.filter(a => a.contrato_id =
 const etiquetaModalidad = (v: any) =>
   MODALIDADES_PAGO.find(m => m.value === v)?.title || v || '—'
 
-/** Vigente / por vencer (30 días) / vencido, calculado contra la fecha de cierre. */
+/**
+ * Semáforo de renovación — mismos 4 tramos que el Excel "Marcas y Contratos"
+ * que mandó Piola: VIGENTE / PRÓXIMA RENOVACIÓN (31-60 días) / RENOVAR AHORA
+ * (0-30 días) / VENCIDO. Antes sólo había 3 (un único "por vencer" a 30 días);
+ * separarlo en dos da la misma urgencia que ya usan en su planilla.
+ */
 function estadoContrato(c: any): string {
   if (!c?.fecha_cierre) return 'sin_fecha'
   const cierre = String(c.fecha_cierre).slice(0, 10)
   const hoy = hoyISO()
-  if (cierre < hoy) return 'vencido'
-  const dias = (Date.parse(`${cierre}T12:00:00`) - Date.parse(`${hoy}T12:00:00`)) / 86400000
-  return dias <= 30 ? 'por_vencer' : 'vigente'
+  const dias = Math.round((Date.parse(`${cierre}T12:00:00`) - Date.parse(`${hoy}T12:00:00`)) / 86400000)
+  if (dias < 0) return 'vencido'
+  // Los tramos intermedios (próxima renovación / renovar ahora) sólo tienen
+  // sentido para una cuota RECURRENTE: avisan que hay que renegociar antes de
+  // que la marca se quede sin contrato. Un proyecto puntual (sin pago_mensual)
+  // no se "renueva" — simplemente termina, así que se queda en "vigente"
+  // hasta su fecha de cierre.
+  if (!c.pago_mensual) return 'vigente'
+  if (dias <= 30) return 'renovar_ahora'
+  if (dias <= 60) return 'proxima_renovacion'
+  return 'vigente'
+}
+/** Días para el cierre. Negativo = ya vencido. Usado en el detalle y el semáforo. */
+function diasParaCierre(c: any): number | null {
+  if (!c?.fecha_cierre) return null
+  const cierre = String(c.fecha_cierre).slice(0, 10)
+  return Math.round((Date.parse(`${cierre}T12:00:00`) - Date.parse(`${hoyISO()}T12:00:00`)) / 86400000)
 }
 const textoEstado = (e: string) => ({
-  vigente: 'Vigente', por_vencer: 'Por vencer', vencido: 'Vencido', sin_fecha: 'Sin fecha',
+  vigente: 'Vigente', proxima_renovacion: 'Próxima renovación', renovar_ahora: 'Renovar ahora',
+  vencido: 'Vencido', sin_fecha: 'Sin fecha',
 }[e] || e)
 const colorEstado = (e: string) => ({
-  vigente: 'success', por_vencer: 'warning', vencido: 'error', sin_fecha: 'grey',
+  vigente: 'success', proxima_renovacion: 'info', renovar_ahora: 'warning',
+  vencido: 'error', sin_fecha: 'grey',
 }[e] || 'grey')
 
-const vigentes = computed(() => contratos.value.filter(c => ['vigente', 'por_vencer'].includes(estadoContrato(c))))
-const porVencer = computed(() => contratos.value.filter(c => estadoContrato(c) === 'por_vencer'))
+const vigentes = computed(() => contratos.value.filter(c => !['vencido', 'sin_fecha'].includes(estadoContrato(c))))
+const porVencer = computed(() => contratos.value.filter(c => ['proxima_renovacion', 'renovar_ahora'].includes(estadoContrato(c))))
 const totalAdendas = computed(() => adendas.value.reduce((s, a) => s + Number(a.importe || 0), 0))
 const totalContratado = computed(() => vigentes.value.reduce((s, c) => s + totalConAdendas(c), 0))
 
@@ -356,6 +403,7 @@ const headers = [
   { title: 'Inicio', key: 'fecha_inicio' },
   { title: 'Cierre', key: 'fecha_cierre' },
   { title: 'Importe pagado', key: 'importe_pagado' },
+  { title: 'Cuota mensual', key: 'pago_mensual' },
   { title: 'Modalidad', key: 'modalidad_pago' },
   { title: 'Adendas', key: 'adendas', sortable: false },
   { title: 'Estado', key: 'estado', sortable: false },
@@ -394,6 +442,7 @@ function abrirNuevo() {
     cliente_id: null, nombre_cliente: '', ruc: '',
     fecha_inicio: hoyISO(), fecha_cierre: '', importe_pagado: 0,
     modalidad_pago: 'mensual', contrato_pdf: null, notas: '',
+    pago_mensual: null, dia_pago: null,
   }
 }
 
@@ -433,6 +482,8 @@ async function guardarContrato() {
     modalidad_pago: e.modalidad_pago || null,
     contrato_pdf: e.contrato_pdf || null,
     notas: e.notas || null,
+    pago_mensual: e.pago_mensual ? Number(e.pago_mensual) : null,
+    dia_pago: e.pago_mensual && e.dia_pago ? Number(e.dia_pago) : null,
   }
   const res = await apiPiola('contratos', { accion: 'guardar', id: e.id || null, ...fila })
   guardando.value = false
@@ -441,6 +492,32 @@ async function guardarContrato() {
   emit('notify', e.id ? 'Contrato actualizado' : 'Contrato registrado')
   edicion.value = null
   await cargar()
+}
+
+const generandoCobro = ref(false)
+
+/**
+ * Crea la cuenta por cobrar del mes en Contabilidad para este contrato.
+ * El índice único (contrato_id, periodo_cobro) en el servidor es lo que de
+ * verdad impide duplicarlo; acá sólo se traduce el error 409 a un aviso claro.
+ */
+async function generarCobroDelMes() {
+  const c = detalle.value
+  generandoCobro.value = true
+  const { error } = await apiPiola('contratos', { accion: 'generar_cobro', contrato_id: c.id })
+  generandoCobro.value = false
+
+  if (error) {
+    // apiPiola() sólo expone { message }, no el statusCode: la única forma
+    // fiable de distinguir "ya existía" (409) de un error real es el texto,
+    // que el endpoint redacta siempre igual a propósito.
+    const yaExiste = /ya se generó/i.test(error.message || '')
+    return emit('notify', {
+      text: yaExiste ? 'El cobro de este mes ya estaba generado' : `Error: ${error.message}`,
+      color: yaExiste ? 'warning' : 'error',
+    })
+  }
+  emit('notify', 'Cobro del mes generado en Cuentas por Cobrar')
 }
 
 async function eliminarContrato() {
@@ -506,6 +583,7 @@ defineExpose({ cargar })
 </script>
 
 <style scoped>
+.dia-pago { font-size: 11px; opacity: .6; }
 .filtros-bar { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px 16px 14px; }
 .filtros-bar .filtro { flex: 1 1 150px; max-width: 220px; }
 .filtros-bar .filtro-buscar { flex: 2 1 240px; max-width: 340px; }

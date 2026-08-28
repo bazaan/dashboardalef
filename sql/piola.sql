@@ -1837,3 +1837,134 @@ END $$;
 --            THEN '"■■■"'::jsonb ELSE v END)
 --          FROM jsonb_each(datos_despues) AS e(k, v)) END
 --  WHERE tabla = 'piola_colaboradores';
+
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- PARTE 5 — 28/08: pago recurrente en contratos + alertas de vencimiento
+--           de cuentas por cobrar/pagar + aprobación en cuentas por pagar
+--
+--   Motivada por dos documentos que mandó Piola:
+--   - "Configuración financiera y de RRHH.pdf": pide explícitamente alertas
+--     de vencimiento para cuentas por cobrar y un responsable de aprobación
+--     en cuentas por pagar. Todo lo demás del PDF ya estaba construido.
+--   - "Control de Pagos con Marcas y Contratos.xlsx": revela que sus contratos
+--     en realidad son una CUOTA MENSUAL recurrente por marca (no el importe
+--     único que hoy guarda piola_contratos), con un semáforo de renovación
+--     (VIGENTE / PRÓXIMA RENOVACIÓN / RENOVAR AHORA / VENCIDO) y 5 hojas
+--     mensuales de control de si ese mes se pagó o no — eso es exactamente
+--     lo que faltaba conectar entre Contratos y Cuentas por Cobrar.
+-- ══════════════════════════════════════════════════════════════════════════
+
+-- 1. Contratos: cuota mensual recurrente -------------------------------------
+-- `importe_pagado` sigue siendo el acumulado histórico (no se toca). Un
+-- contrato sin pago_mensual es un proyecto puntual, no una marca con cuota fija.
+ALTER TABLE public.piola_contratos
+  ADD COLUMN IF NOT EXISTS pago_mensual   NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS dia_pago       SMALLINT,
+  ADD COLUMN IF NOT EXISTS cantidad_meses SMALLINT;
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_contratos
+    ADD CONSTRAINT piola_contratos_dia_pago_chk
+    CHECK (dia_pago IS NULL OR dia_pago BETWEEN 1 AND 31) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+COMMENT ON COLUMN public.piola_contratos.pago_mensual IS
+  'Cuota mensual recurrente. Distinto de importe_pagado (acumulado histórico). NULL = proyecto puntual, sin cuota fija.';
+
+-- 2. Trazabilidad contrato -> cobro generado en Cuentas por Cobrar -----------
+-- Permite el botón "Generar cobro del mes" en Contratos y evita generarlo dos
+-- veces para el mismo periodo (el índice único de abajo es lo que lo impide,
+-- no la aplicación).
+ALTER TABLE public.piola_transactions
+  ADD COLUMN IF NOT EXISTS contrato_id    BIGINT REFERENCES public.piola_contratos(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS periodo_cobro  DATE,    -- primer día del mes que cubre el cobro
+  -- §3 de la especificación financiera: "Cuentas por pagar ... responsable de
+  -- aprobación". Mismo patrón que anulado_por/anulado_at, ya usado en esta tabla.
+  ADD COLUMN IF NOT EXISTS aprobado_por   TEXT,
+  ADD COLUMN IF NOT EXISTS aprobado_at    TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_piola_tx_contrato_periodo
+  ON public.piola_transactions (contrato_id, periodo_cobro)
+  WHERE contrato_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_piola_tx_contrato ON public.piola_transactions (contrato_id);
+
+-- 3. Nuevos tipos de alerta ---------------------------------------------------
+-- "contrato_por_renovar" ya existía pero alerta de CONTRATOS LABORALES
+-- (piola_colaboradores.fecha_fin_contrato) — es un tipo distinto de contrato,
+-- por eso el nuevo se llama contrato_cliente_por_vencer y no reutiliza el
+-- nombre.
+DO $$ BEGIN
+  ALTER TABLE public.piola_alert_settings DROP CONSTRAINT piola_alert_settings_tipo_check;
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
+
+ALTER TABLE public.piola_alert_settings ADD CONSTRAINT piola_alert_settings_tipo_check
+  CHECK (tipo IN ('factura_por_vencer','factura_por_emitir','contrato_por_renovar',
+                  'lead_sin_seguimiento','entregable_por_vencer','comision_por_pagar',
+                  'cuenta_cobrar_vencida','cuenta_pagar_vencida','contrato_cliente_por_vencer'));
+
+INSERT INTO public.piola_alert_settings (tipo, descripcion, dias_antes) VALUES
+  ('cuenta_cobrar_vencida',        'Cuenta por cobrar cerca de su vencimiento o ya vencida', 5),
+  ('cuenta_pagar_vencida',         'Cuenta por pagar cerca de su vencimiento o ya vencida',  5),
+  ('contrato_cliente_por_vencer',  'Contrato de marca/cliente por renovar',                  30)
+ON CONFLICT (tipo) DO NOTHING;
+
+-- 4. La vista piola_cuentas tiene lista explícita de columnas ---------------
+-- PiolaCuentas.vue (el módulo real de Cuentas por Cobrar/Pagar) NO lee
+-- piola_transactions directo: lee esta vista. Sin recrearla, aprobado_por y
+-- contrato_id quedarían en la tabla pero invisibles para la pantalla — el
+-- mismo error que ya se documentó para fecha_funnel en tradecars_funnel.sql.
+CREATE OR REPLACE VIEW public.piola_cuentas AS
+SELECT
+  t.id,
+  t.tipo,                                             -- ingreso = por cobrar, egreso = por pagar
+  t.fecha AS fecha_emision,
+  t.fecha_vencimiento,
+  t.concepto,
+  t.cliente_id,
+  cl.nombre AS cliente_nombre,
+  t.proveedor_id,
+  pr.nombre AS proveedor_nombre,
+  t.documento_serie,
+  t.documento_numero,
+  NULLIF(CONCAT_WS('-', t.documento_serie, t.documento_numero), '') AS documento,
+  t.monto AS importe_total,
+  t.monto_pagado AS importe_pagado,
+  ROUND(GREATEST(COALESCE(t.monto, 0) - COALESCE(t.monto_pagado, 0), 0), 2) AS saldo_pendiente,
+  CASE
+    WHEN t.estado IN ('pagado','anulado') THEN 0
+    WHEN t.fecha_vencimiento IS NULL      THEN 0
+    ELSE GREATEST((CURRENT_DATE - t.fecha_vencimiento), 0)
+  END AS dias_atraso,
+  t.estado,
+  t.responsable_email AS vendedor,
+  t.area_id,
+  t.centro_costo_id,
+  t.proyectado,
+  -- Parte 5: responsable de aprobación (sólo aplica a egresos / cuentas por
+  -- pagar, pero se expone para ambos tipos por si algún día se pide para CxC).
+  t.aprobado_por,
+  t.aprobado_at,
+  -- Parte 5: de qué contrato salió este cobro, si vino de "Generar cobro del mes".
+  t.contrato_id
+FROM public.piola_transactions t
+LEFT JOIN public.piola_clientes    cl ON cl.id = t.cliente_id
+LEFT JOIN public.piola_proveedores pr ON pr.id = t.proveedor_id
+WHERE t.estado <> 'anulado';
+
+GRANT SELECT ON public.piola_cuentas TO anon, authenticated, service_role;
+
+-- 5. Verificación --------------------------------------------------------------
+DO $$
+DECLARE n_tipos INT;
+BEGIN
+  SELECT COUNT(*) INTO n_tipos FROM public.piola_alert_settings
+   WHERE tipo IN ('cuenta_cobrar_vencida','cuenta_pagar_vencida','contrato_cliente_por_vencer');
+  IF n_tipos = 3 THEN
+    RAISE NOTICE '✓ Parte 5 aplicada: pago_mensual/dia_pago en contratos, contrato_id/aprobado_por en transactions + vista piola_cuentas, 3 alertas nuevas.';
+  ELSE
+    RAISE NOTICE '⚠️  Parte 5: se esperaban 3 tipos de alerta nuevos y se encontraron %.', n_tipos;
+  END IF;
+END $$;

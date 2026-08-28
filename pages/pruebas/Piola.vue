@@ -4,7 +4,7 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="logo" style="gap: 0.5rem;">
-          <div class="piola-logo-mark">P</div>
+          <img src="/piola-logo.png" alt="Piola" class="piola-logo-mark" />
           <template v-if="isSuperAdmin(currentUser)">
             <v-menu v-model="showDashboardMenu">
               <template v-slot:activator="{ props }">
@@ -295,18 +295,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* La marca real es un wordmark ancho (bocadillo "HAZLO"), no un icono cuadrado:
+   se respeta su proporción con object-fit: contain en vez de forzarla a un
+   círculo de 35x35 como el resto de los dashboards, que le cortaría el texto. */
 .piola-logo-mark {
-  width: 35px;
-  height: 35px;
-  border-radius: 10px;
+  height: 32px;
+  width: auto;
+  max-width: 96px;
   flex-shrink: 0;
-  background: linear-gradient(135deg, #e2564a, #f2a63b);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 19px;
-  letter-spacing: -0.5px;
+  object-fit: contain;
 }
 </style>

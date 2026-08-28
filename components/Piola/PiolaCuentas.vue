@@ -84,6 +84,8 @@
           </v-chip>
         </template>
         <template v-slot:item.acciones="{ item }">
+          <v-icon v-if="!esCobrar && !item.aprobado_por" icon="mdi-alert-circle-outline" size="16"
+            color="warning" title="Sin aprobar" style="margin-right:4px;" />
           <v-btn v-if="puedeEditar && item.saldo_pendiente > 0" icon="mdi-cash-plus" size="x-small"
             variant="text" color="success" :title="esCobrar ? 'Registrar cobro' : 'Registrar pago'"
             @click.stop="abrirPago(item)" />
@@ -123,7 +125,19 @@
             <div v-if="detalle.dias_atraso > 0">
               <span>Atraso</span><strong style="color:#e2564a">{{ detalle.dias_atraso }} días</strong>
             </div>
+            <div v-if="!esCobrar">
+              <span>Aprobación</span>
+              <strong v-if="detalle.aprobado_por" style="color:#2e9e5b">
+                {{ detalle.aprobado_por }} · {{ fechaCorta(detalle.aprobado_at) }}
+              </strong>
+              <strong v-else style="opacity:.5">Sin aprobar</strong>
+            </div>
           </div>
+
+          <v-btn v-if="!esCobrar && puedeEditar && !detalle.aprobado_por" class="mt-3" size="small"
+            variant="tonal" color="warning" :loading="aprobando" @click="aprobarEgreso">
+            <v-icon icon="mdi-check-decagram" start /> Aprobar este pago
+          </v-btn>
 
           <v-divider class="my-5" />
 
@@ -423,6 +437,22 @@ async function abrirDetalle(c: any) {
   pagos.value = (data as any[]) || []
 }
 function cerrarDetalle() { detalle.value = null; pagos.value = [] }
+
+/* ══════════ Aprobación (sólo cuentas por pagar) ══════════ */
+const aprobando = ref(false)
+
+async function aprobarEgreso() {
+  const c = detalle.value
+  aprobando.value = true
+  const { error } = await apiPiola('contabilidad', { accion: 'aprobar_egreso', id: c.id })
+  aprobando.value = false
+
+  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
+  detalle.value.aprobado_por = props.perfil?.email || ''
+  detalle.value.aprobado_at = new Date().toISOString()
+  emit('notify', 'Pago aprobado')
+  await cargar()
+}
 
 /* ══════════ Registrar pago ══════════ */
 const pago = ref<any>(null)

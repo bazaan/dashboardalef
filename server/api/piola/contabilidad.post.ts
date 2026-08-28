@@ -5,6 +5,7 @@
  *   { accion: 'guardar_movimiento', id?, tipo, fecha, concepto, subtotal, descuento,
  *     impuestos_sel: string[], ...campos }
  *   { accion: 'eliminar_movimiento', id }
+ *   { accion: 'aprobar_egreso', id }
  *   { accion: 'crear_categoria', nombre, parent_id?, tipo }
  *   { accion: 'editar_categoria', id, nombre?, activo? }
  *   { accion: 'eliminar_categoria', id }
@@ -154,6 +155,34 @@ export default defineEventHandler(async (event) => {
     }
 
     const { error } = await supabase.from('piola_transactions').delete().eq('id', id)
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    return { ok: true }
+  }
+
+  /* ══════════ Aprobar un egreso (cuenta por pagar) ══════════ */
+  // §3 de la especificación financiera: "Cuentas por pagar ... responsable de
+  // aprobación". Es metadata aparte del `estado` (pendiente/parcial/pagado),
+  // que sigue siendo dueño exclusivo del trigger — un egreso puede estar
+  // aprobado y seguir pendiente de pago, o pagarse sin haber pasado por acá
+  // si el flujo de la empresa no lo exige.
+  if (accion === 'aprobar_egreso') {
+    exigirModulo(perfil, 'contabilidad', 'edit')
+
+    const id = Number(body?.id)
+    if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el egreso a aprobar' })
+
+    const { data: mov } = await supabase.from('piola_transactions')
+      .select('id, tipo').eq('id', id).maybeSingle()
+    if (!mov) throw createError({ statusCode: 404, statusMessage: 'El movimiento no existe' })
+    if (mov.tipo !== 'egreso') {
+      throw createError({ statusCode: 400, statusMessage: 'Sólo los egresos (cuentas por pagar) se aprueban' })
+    }
+
+    const { error } = await supabase.from('piola_transactions').update({
+      aprobado_por: perfil.email,
+      aprobado_at: new Date().toISOString(),
+    }).eq('id', id)
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
 
     return { ok: true }

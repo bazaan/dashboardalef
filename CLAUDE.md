@@ -1030,6 +1030,25 @@ Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplan
 - **Documentos en HTML, no PDF**: el proyecto no tiene librería de PDF. Boletas, AFP y facturas se
   generan como HTML con branding, se suben al bucket `piola-docs` y se imprimen a PDF desde el
   navegador. Por correo viajan como HTML.
+- **`piola_contratos.pago_mensual` es la cuota recurrente, `importe_pagado` es el acumulado
+  histórico** — son cosas distintas y conviven. Salió de un Excel real de Piola ("Control de Pagos
+  con Marcas y Contratos"): sus contratos son en realidad una cuota mensual por marca con un día de
+  pago fijo, no el importe único que el módulo guardaba hasta el 28/08.
+- **"Generar cobro del mes" en Contratos crea la fila en Cuentas por Cobrar**, no al revés — el
+  contrato es la fuente de verdad de la cuota; el cobro del mes es una instancia de esa cuota. El
+  índice único `(contrato_id, periodo_cobro)` es lo que impide duplicar el cobro de un mismo mes,
+  no una validación de la pantalla.
+- **El semáforo de renovación de contratos tiene 4 tramos**, no 3: VIGENTE (+60 días) / PRÓXIMA
+  RENOVACIÓN (31-60) / RENOVAR AHORA (0-30) / VENCIDO. Son los mismos tramos que ya usaba Piola en
+  su Excel — no es un valor inventado.
+- **`piola_cuentas` es una VISTA con lista explícita de columnas**, no la tabla `piola_transactions`
+  directa. Agregar una columna a `piola_transactions` (como `aprobado_por` o `contrato_id`) no la
+  hace visible en Cuentas por Cobrar/Pagar hasta que también se agrega a esta vista — mismo error
+  que ya pasó una vez con `fecha_funnel` en `tradecars_funnel.sql`.
+- **La aprobación de un egreso (`aprobado_por`/`aprobado_at`) es independiente del `estado`.** Un
+  egreso puede estar aprobado y seguir "pendiente" de pago, o pagarse sin haber pasado por
+  aprobación si el flujo de la empresa no lo exige — no es un estado más del ciclo pendiente →
+  parcial → pagado, que sigue siendo dueño exclusivo del trigger.
 
 ### Crons (Netlify Scheduled Functions)
 
@@ -1049,7 +1068,7 @@ PIOLA_PSE_TOKEN=                 # JWT de esa empresa en PSE.PE
 PIOLA_RAZON_SOCIAL=              # branding de los documentos
 PIOLA_RUC=
 PIOLA_DIRECCION=
-PIOLA_LOGO_URL=
+PIOLA_LOGO_URL=                  # https://dashboard.alef.company/piola-logo.png (archivo ya en public/, falta setear la var)
 PIOLA_COLOR=                     # default #111111
 PIOLA_COLOR_ACENTO=              # default #e2564a
 PIOLA_CUENTA_DETRACCION=         # cuenta del Banco de la Nación, se imprime en la factura
@@ -1057,9 +1076,10 @@ PIOLA_CUENTA_DETRACCION=         # cuenta del Banco de la Nación, se imprime en
 
 ### Pendientes del cliente (bloquean cierre, no desarrollo)
 
-**Logo:** pedido en la reunión del 19/08 (acción de Raysa Cucho), nunca llegó. El sidebar usa un
-mark de texto (`.piola-logo-mark`, la letra "P") en su lugar, y `PIOLA_LOGO_URL` sigue vacía — los
-documentos generados (contratos, facturas, boletas) salen sin logo.
+**Logo — resuelto el 28/08.** Llegó `LOGO_BL@2x.png` (el bocadillo "HAZLO"), recortado y en
+`public/piola-logo.png`. El sidebar ya lo usa. Sólo falta **setear `PIOLA_LOGO_URL`** en Netlify a
+`https://dashboard.alef.company/piola-logo.png` para que también salga en los documentos generados
+(contratos, facturas, boletas) — sin eso, esos siguen sin logo aunque el dashboard ya lo tenga.
 
 Lista de gastos operativos con su jerarquía · fórmula exacta de comisiones de Héctor ·
 modelos reales de boleta y formato AFP · lista de usuarios (nombre + correo + rol) ·

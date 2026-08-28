@@ -11,7 +11,11 @@
  *   contrato_por_renovar   colaboradores con fecha_fin_contrato cercana
  *   lead_sin_seguimiento   leads abiertos sin interacción en N días
  *   entregable_por_vencer  entregables con fecha de compromiso cerca y sin entregar
- *   comision_por_pagar     comisiones pendientes cuya fecha de pago (15) se acerca
+ *   comision_por_pagar          comisiones pendientes cuya fecha de pago (15) se acerca
+ *   cuenta_cobrar_vencida       piola_transactions ingreso, sin pagar, vencimiento cerca o pasado
+ *   cuenta_pagar_vencida        piola_transactions egreso, sin pagar, vencimiento cerca o pasado
+ *   contrato_cliente_por_vencer piola_contratos con fecha_cierre cercana (marca/cliente, NO
+ *                               laboral — ese es "contrato_por_renovar", tabla distinta)
  *
  * Cada alerta es única por (tipo, tabla, id, fecha_objetivo): correr el motor
  * dos veces el mismo día no duplica avisos ni re-envía WhatsApps.
@@ -186,6 +190,68 @@ export async function generarAlertas(supabase: any, hoy = hoyLima()): Promise<Al
         titulo: `Comisión de ${c.colaborador_email} (${c.periodo})`,
         mensaje: `💰 *Comisión por pagar*\n${c.colaborador_email} — periodo ${c.periodo}\n`
           + `Monto: ${money(c.monto)}\nFecha de pago: ${String(c.fecha_pago).slice(0, 10)}`,
+      }))
+    }
+  }
+
+  /* ── Cuentas por cobrar / pagar vencidas o cerca de vencer ──
+   * `.lte(limite)` sin piso: a diferencia de las demás alertas (que sólo
+   * miran hacia adelante), acá interesa tanto lo próximo a vencer como lo YA
+   * vencido — el pedido explícito de Piola fue "generar alertas de
+   * vencimiento" para cuentas por cobrar, y una cuenta vencida sigue
+   * necesitando el aviso hasta que se pague o se anule. */
+  for (const [tipoAlerta, tipoTx, etiqueta] of [
+    ['cuenta_cobrar_vencida', 'ingreso', 'Cuenta por cobrar'],
+    ['cuenta_pagar_vencida', 'egreso', 'Cuenta por pagar'],
+  ] as const) {
+    const c = cfg(tipoAlerta)
+    if (!c) continue
+    const limite = sumarDias(hoy, c.dias_antes)
+
+    const { data: cuentas } = await supabase.from('piola_transactions')
+      .select('id, concepto, monto, monto_pagado, fecha_vencimiento, estado')
+      .eq('tipo', tipoTx)
+      .in('estado', ['pendiente', 'parcial', 'vencido'])
+      .not('fecha_vencimiento', 'is', null)
+      .lte('fecha_vencimiento', limite)
+
+    for (const t of cuentas || []) {
+      const venc = String(t.fecha_vencimiento).slice(0, 10)
+      const dias = diasEntre(hoy, venc)
+      const saldo = Number(t.monto || 0) - Number(t.monto_pagado || 0)
+      alertas.push(base(c, {
+        related_table: 'piola_transactions', related_id: t.id,
+        fecha_objetivo: venc,
+        titulo: `${etiqueta}: ${t.concepto} — ${dias < 0 ? `vencida hace ${-dias} día(s)` : `vence en ${dias} día(s)`}`,
+        mensaje: `${tipoTx === 'ingreso' ? '💵' : '📤'} *${etiqueta}*\n${t.concepto}\n`
+          + `Saldo: ${money(saldo)}\nVencimiento: ${venc}`
+          + (dias < 0 ? ` (vencida hace ${-dias} día(s))` : ` (en ${dias} día(s))`),
+      }))
+    }
+  }
+
+  /* ── Contratos de marca/cliente por renovar ──
+   * Distinto de "contrato_por_renovar" (colaboradores). Un contrato sin
+   * pago_mensual es un proyecto puntual: no tiene sentido avisar de su
+   * "renovación" porque no es recurrente. */
+  const cConCliente = cfg('contrato_cliente_por_vencer')
+  if (cConCliente) {
+    const limite = sumarDias(hoy, cConCliente.dias_antes)
+    const { data: contratos } = await supabase.from('piola_contratos')
+      .select('id, nombre_cliente, fecha_cierre, pago_mensual')
+      .not('fecha_cierre', 'is', null)
+      .not('pago_mensual', 'is', null)
+      .gte('fecha_cierre', hoy).lte('fecha_cierre', limite)
+
+    for (const c2 of contratos || []) {
+      const venc = String(c2.fecha_cierre).slice(0, 10)
+      const dias = diasEntre(hoy, venc)
+      alertas.push(base(cConCliente, {
+        related_table: 'piola_contratos', related_id: c2.id,
+        fecha_objetivo: venc,
+        titulo: `Contrato de ${c2.nombre_cliente} por renovar (${dias} día(s))`,
+        mensaje: `📄 *Contrato por renovar*\n${c2.nombre_cliente}\n`
+          + `Cuota: ${money(c2.pago_mensual)}/mes\nVence: ${venc} (en ${dias} día(s))`,
       }))
     }
   }

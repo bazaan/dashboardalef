@@ -23,7 +23,7 @@
         </div>
 
         <!-- ══════════ TABLERO POR ESTADO ══════════ -->
-        <div v-if="tab === 'tablero'">
+        <div v-if="tab === 'tablero'" class="tablero-content">
           <v-alert type="info" variant="tonal" density="compact" class="mb-4">
             Todo contenido pasa por el <b>Director Estratégico</b>, que aprueba antes de la entrega:
             En producción → En revisión → Aprobado por Dirección → Entregado.
@@ -469,6 +469,11 @@ onMounted(cargar)
 </script>
 
 <style scoped>
+/* Único tab que no delega en un v-card (las otras 3 pestañas usan
+   .custom-data-table, que ya trae su propio padding vía .table-search-bar).
+   Sin esto, el contenido queda pegado al borde de .table-section. */
+.tablero-content { padding: 1rem 1.5rem 1.5rem; }
+
 .filtros-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 .filtros-bar .filtro { flex: 1 1 180px; max-width: 250px; }
 

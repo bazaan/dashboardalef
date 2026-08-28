@@ -4,9 +4,7 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="logo" style="gap: 0.5rem;">
-          <div class="piola-logo-box">
-            <img src="/piola-logo.png" alt="Piola" class="piola-logo-mark" />
-          </div>
+          <img src="/piola-logo.png" alt="Piola" class="piola-logo-mark" />
           <template v-if="isSuperAdmin(currentUser)">
             <v-menu v-model="showDashboardMenu">
               <template v-slot:activator="{ props }">
@@ -297,27 +295,16 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* El wordmark "HAZLO" es ancho (380x208), no cuadrado como el resto de los
-   dashboards: en vez de forzarlo a un círculo de 35x35 —le cortaría el
-   texto— se le da su propio cuadro, blanco para que el bocadillo amarillo se
-   lea bien, con la imagen centrada y con aire adentro (padding), en vez de
-   dejarla flotando suelta pegada al texto "Piola". */
-.piola-logo-box {
-  height: 36px;
-  width: 62px;
-  flex-shrink: 0;
-  border-radius: 8px;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 6px;
-}
+/* El PNG que mandó Piola ya trae transparencia real (verificado con PIL:
+   alpha=0 fuera del bocadillo) — va directo, sin ninguna caja ni fondo
+   detrás, igual que el archivo que enviaron. El wordmark "HAZLO" es ancho
+   (380x208), no cuadrado como el resto de los dashboards, por eso no se
+   fuerza a un círculo de 35x35 —le cortaría el texto—, sino que conserva su
+   proporción real con height fijo y width automático. */
 .piola-logo-mark {
-  max-width: 100%;
-  max-height: 100%;
+  height: 36px;
   width: auto;
-  height: auto;
-  object-fit: contain;
+  max-width: 110px;
+  flex-shrink: 0;
 }
 </style>

@@ -1057,9 +1057,9 @@ PIOLA_CUENTA_DETRACCION=         # cuenta del Banco de la Nación, se imprime en
 
 ### Pendientes del cliente (bloquean cierre, no desarrollo)
 
-**Cuenta de Chatwoot:** la sección "Chats" del sidebar lee `remarketing_config.chatwoot_account_id`
-para `company_id='piola'`. Mientras esa fila no exista, el enlace lleva al selector de cuentas de
-Chatwoot en vez de a un inbox equivocado. Al asignarle cuenta a Piola, insertar la fila y listo.
+**Logo:** pedido en la reunión del 19/08 (acción de Raysa Cucho), nunca llegó. El sidebar usa un
+mark de texto (`.piola-logo-mark`, la letra "P") en su lugar, y `PIOLA_LOGO_URL` sigue vacía — los
+documentos generados (contratos, facturas, boletas) salen sin logo.
 
 Lista de gastos operativos con su jerarquía · fórmula exacta de comisiones de Héctor ·
 modelos reales de boleta y formato AFP · lista de usuarios (nombre + correo + rol) ·

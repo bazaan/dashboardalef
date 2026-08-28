@@ -4,7 +4,9 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="logo" style="gap: 0.5rem;">
-          <img src="/piola-logo.png" alt="Piola" class="piola-logo-mark" />
+          <div class="piola-logo-box">
+            <img src="/piola-logo.png" alt="Piola" class="piola-logo-mark" />
+          </div>
           <template v-if="isSuperAdmin(currentUser)">
             <v-menu v-model="showDashboardMenu">
               <template v-slot:activator="{ props }">
@@ -295,14 +297,27 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* La marca real es un wordmark ancho (bocadillo "HAZLO"), no un icono cuadrado:
-   se respeta su proporción con object-fit: contain en vez de forzarla a un
-   círculo de 35x35 como el resto de los dashboards, que le cortaría el texto. */
-.piola-logo-mark {
-  height: 32px;
-  width: auto;
-  max-width: 96px;
+/* El wordmark "HAZLO" es ancho (380x208), no cuadrado como el resto de los
+   dashboards: en vez de forzarlo a un círculo de 35x35 —le cortaría el
+   texto— se le da su propio cuadro, blanco para que el bocadillo amarillo se
+   lea bien, con la imagen centrada y con aire adentro (padding), en vez de
+   dejarla flotando suelta pegada al texto "Piola". */
+.piola-logo-box {
+  height: 36px;
+  width: 62px;
   flex-shrink: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+}
+.piola-logo-mark {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
   object-fit: contain;
 }
 </style>

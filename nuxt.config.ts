@@ -147,6 +147,16 @@ export default defineNuxtConfig({
   },
 
   pwa: {
+    // Sin esto, el default es "prompt": el service worker nuevo queda
+    // "esperando" hasta que algo llame a skipWaiting(), y nada en este
+    // proyecto implementa ese prompt — así que cualquier usuario que ya
+    // tenga el dashboard abierto se queda viendo la versión vieja
+    // indefinidamente después de un deploy, sin importar que haga hard
+    // refresh o borre el caché del navegador (el service worker vive un
+    // nivel por encima del caché HTTP normal). "autoUpdate" hace que la
+    // pestaña detecte la versión nueva y la active sola en la siguiente
+    // navegación, sin depender de que el usuario cierre todas las pestañas.
+    registerType: "autoUpdate",
     includeAssets: ["favicon.ico", "robots.txt"],
     manifest: {
       name: shortTitle,

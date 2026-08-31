@@ -41,15 +41,25 @@
 
       <v-alert v-if="sinStatus.length" type="warning" variant="tonal" density="compact"
         class="mb-4" icon="mdi-help-circle">
-        <strong>{{ sinStatus.length }}</strong>
+        <div><strong>{{ sinStatus.length }}</strong>
         lead(s) con PERFIL COINCIDE = SI pero sin STATUS asignado. Quedan fuera del
-        embudo hasta que el asesor los clasifique.
+        embudo hasta que el asesor los clasifique.</div>
+        <div v-if="sinStatusPorAsesor.length" class="sin-status-asesores">
+          <v-chip v-for="a in sinStatusPorAsesor" :key="a.asesor" size="x-small" variant="flat" color="warning">
+            {{ a.asesor }}: {{ a.cantidad }}
+          </v-chip>
+        </div>
       </v-alert>
 
       <!-- ══════════ FILTROS ══════════ -->
       <div class="filtros-bar">
         <v-select v-model="fMes" :items="opcionesMes" item-title="label" item-value="value"
-          label="Mes" density="compact" hide-details variant="outlined" class="filtro" />
+          label="Mes" density="compact" hide-details variant="outlined" class="filtro"
+          :disabled="usaRango" />
+        <v-text-field v-model="fDesde" type="date" label="Desde" density="compact" hide-details
+          variant="outlined" class="filtro filtro-fecha" />
+        <v-text-field v-model="fHasta" type="date" label="Hasta" density="compact" hide-details
+          variant="outlined" class="filtro filtro-fecha" />
         <v-select v-model="fAsesor" :items="opcionesAsesor"
           label="Asesor" density="compact" hide-details variant="outlined" class="filtro" />
         <v-select v-model="fCanal" :items="opcionesCanal"
@@ -79,6 +89,40 @@
           <div class="stat-title">Citas asistidas</div>
           <div class="stat-value">{{ barras[5]?.cantidad ?? 0 }}</div>
           <div class="stat-description">de {{ barras[4]?.cantidad ?? 0 }} agendadas</div>
+        </div>
+      </div>
+
+      <!-- ══════════ COSTOS DEL PERÍODO ══════════ -->
+      <div class="chart-section costos-ref">
+        <div class="chart-header">
+          <div class="chart-title-section">
+            <h2>Costos del período</h2>
+            <div class="chart-subtitle">
+              Se actualiza solo con los mismos filtros de fecha de arriba — jala la
+              inversión cargada en Procedencia y Costos.
+            </div>
+          </div>
+        </div>
+        <div v-if="costosPeriodo.total == null" class="bloque-vacio-costos">
+          Todavía no hay inversión cargada para este período. Se carga desde
+          Procedencia y Costos → «Cargar inversión».
+        </div>
+        <div v-else class="stats-grid mini">
+          <div class="stat-card">
+            <div class="stat-title">Costo total</div>
+            <div class="stat-value">{{ fmtMoneda(costosPeriodo.total) }}</div>
+            <div class="stat-description">Inversión del período</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Costo por lead</div>
+            <div class="stat-value">{{ costosPeriodo.porLead != null ? fmtMoneda(costosPeriodo.porLead) : '—' }}</div>
+            <div class="stat-description">Inversión / leads</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Inversión por compra</div>
+            <div class="stat-value">{{ costosPeriodo.porCompra != null ? fmtMoneda(costosPeriodo.porCompra) : '—' }}</div>
+            <div class="stat-description">Inversión / compras concretadas</div>
+          </div>
         </div>
       </div>
 
@@ -169,6 +213,8 @@
 const props = defineProps<{
   leads: any[]
   asesores?: string[]
+  /** Inversión por campaña (tradecars_campana_costos) para el cuadro de costos del período. */
+  costos?: any[]
 }>()
 defineEmits<{ refresh: [] }>()
 
@@ -176,20 +222,31 @@ defineEmits<{ refresh: [] }>()
 // usePersistente devuelve refs que ya se guardan solas en localStorage:
 // se usan directo, sin duplicarlas en un reactive aparte.
 const fMes    = usePersistente('tradecars:funnel:mes', tcHoyLima().slice(0, 7))
+const fDesde  = usePersistente('tradecars:funnel:desde', '')
+const fHasta  = usePersistente('tradecars:funnel:hasta', '')
 const fAsesor = usePersistente('tradecars:funnel:asesor', 'todos')
 const fCanal  = usePersistente('tradecars:funnel:canal', 'todos')
 
+/** Con un rango de fechas puesto, el mes calendario se ignora — pedido explícito
+ *  del cliente para poder cortar por semana o cualquier tramo, no solo por mes. */
+const usaRango = computed(() => !!(fDesde.value || fHasta.value))
+
 const filtros = computed<TcFiltros>(() => ({
   mes: fMes.value,
+  fechaDesde: fDesde.value || undefined,
+  fechaHasta: fHasta.value || undefined,
   asesor: fAsesor.value,
   canal: fCanal.value,
 }))
 
 const hayFiltros = computed(() =>
-  fMes.value !== 'todos' || fAsesor.value !== 'todos' || fCanal.value !== 'todos')
+  fMes.value !== 'todos' || fAsesor.value !== 'todos' || fCanal.value !== 'todos'
+  || !!fDesde.value || !!fHasta.value)
 
 function limpiarFiltros() {
   fMes.value = 'todos'
+  fDesde.value = ''
+  fHasta.value = ''
   fAsesor.value = 'todos'
   fCanal.value = 'todos'
 }
@@ -227,8 +284,19 @@ const opcionesCanal = computed(() => {
   return ['todos', ...[...set].sort()]
 })
 
-const etiquetaPeriodo = computed(() =>
-  fMes.value === 'todos' ? 'Histórico completo' : nombreMes(fMes.value))
+function fmtFechaCorta(f: string) {
+  const [y, m, d] = f.split('-')
+  return `${d}/${m}/${y}`
+}
+
+const etiquetaPeriodo = computed(() => {
+  if (usaRango.value) {
+    if (fDesde.value && fHasta.value) return `${fmtFechaCorta(fDesde.value)} — ${fmtFechaCorta(fHasta.value)}`
+    if (fDesde.value) return `Desde ${fmtFechaCorta(fDesde.value)}`
+    return `Hasta ${fmtFechaCorta(fHasta.value)}`
+  }
+  return fMes.value === 'todos' ? 'Histórico completo' : nombreMes(fMes.value)
+})
 
 /* ---------------- Cálculo ---------------- */
 const leadsFiltrados = computed(() => tcFiltrar(props.leads, filtros.value))
@@ -245,6 +313,65 @@ const statusInvalidosUnicos = computed(() =>
 const sinStatus = computed(() =>
   leadsFiltrados.value.filter(l =>
     tcPerfilCoincide(l.perfil_coincide) && !String(l.status ?? '').trim()))
+
+/**
+ * Desglose por asesor de los leads sin status — pedido en la reunión del
+ * 26/08: que se pueda ver de un vistazo a quién le falta clasificar leads,
+ * para poder hablarle antes del cierre semanal.
+ */
+const sinStatusPorAsesor = computed(() => {
+  const mapa = new Map<string, number>()
+  for (const l of sinStatus.value) {
+    const nombre = l.asesor || 'Sin asesor'
+    mapa.set(nombre, (mapa.get(nombre) || 0) + 1)
+  }
+  return [...mapa.entries()]
+    .map(([asesor, cantidad]) => ({ asesor, cantidad }))
+    .sort((a, b) => b.cantidad - a.cantidad)
+})
+
+/**
+ * Cuadro referencial de costos del período — pedido en la reunión del 26/08:
+ * que al filtrar el funnel por fecha, también se actualice el costo total,
+ * el costo por lead y la inversión por compra de ese mismo período.
+ * Suma la inversión cargada en `tradecars_campana_costos` (Procedencia y
+ * Costos) cuyo mes cae dentro del período filtrado — no se inventa ningún
+ * número: si no hay inversión cargada, sale "—".
+ */
+const costosPeriodo = computed(() => {
+  const costos = props.costos || []
+  if (!costos.length) return { total: null as number | null, porLead: null as number | null, porCompra: null as number | null }
+
+  const mesDesde = usaRango.value ? (fDesde.value || '0000-01') : (fMes.value !== 'todos' ? fMes.value : null)
+  const mesHasta = usaRango.value ? (fHasta.value || '9999-12') : (fMes.value !== 'todos' ? fMes.value : null)
+
+  const enPeriodo = costos.filter((c) => {
+    if (c.tipo === 'ventas') return false
+    const mes = String(c.mes || '').slice(0, 7)
+    if (!mes) return false
+    if (mesDesde && mes < mesDesde.slice(0, 7)) return false
+    if (mesHasta && mes > mesHasta.slice(0, 7)) return false
+    return true
+  })
+
+  if (!enPeriodo.length) return { total: null, porLead: null, porCompra: null }
+
+  const total = enPeriodo.reduce((a, c) => a + Number(c.costo || 0), 0)
+  const leadsCount = barras.value[0]?.cantidad ?? 0
+  const comprasCount = barras.value[6]?.cantidad ?? 0
+
+  return {
+    total,
+    porLead: leadsCount ? total / leadsCount : null,
+    porCompra: comprasCount ? total / comprasCount : null,
+  }
+})
+
+// Sin símbolo de moneda: la inversión se carga en USD o PEN según la campaña
+// (igual que en Procedencia y Costos) y este cuadro suma ambas sin convertir.
+function fmtMoneda(v: number) {
+  return v.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 const conversionTotal = computed(() => {
   const leads = barras.value[0]?.cantidad ?? 0
@@ -311,7 +438,10 @@ function exportarCsv() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `funnel-tradecars-${fMes.value === 'todos' ? 'historico' : fMes.value}.csv`
+  const sufijo = usaRango.value
+    ? `${fDesde.value || 'inicio'}_a_${fHasta.value || 'hoy'}`
+    : (fMes.value === 'todos' ? 'historico' : fMes.value)
+  a.download = `funnel-tradecars-${sufijo}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -331,8 +461,28 @@ function exportarCsv() {
   max-width: 240px;
   flex: 0 1 210px;
 }
+.filtros-bar .filtro-fecha {
+  min-width: 150px;
+  max-width: 170px;
+  flex: 0 1 160px;
+}
 @media (max-width: 640px) {
-  .filtros-bar .filtro { max-width: none; flex: 1 1 100%; }
+  .filtros-bar .filtro,
+  .filtros-bar .filtro-fecha { max-width: none; flex: 1 1 100%; }
+}
+
+.sin-status-asesores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.costos-ref { margin-top: 4px; }
+.bloque-vacio-costos {
+  padding: 20px 4px;
+  font-size: 0.82rem;
+  color: var(--muted-foreground);
 }
 
 /* ── Embudo ── */

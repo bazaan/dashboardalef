@@ -169,6 +169,44 @@
             </div>
           </div>
 
+          <!-- ══════════ RESUMEN GENERAL DEL FUNNEL ══════════ -->
+          <!-- Panorama de TODOS los asesores y TODAS las campañas juntos, pedido
+               en la reunión del 26/08 para que sea lo primero que se vea al
+               entrar. El detalle por asesor/campaña sigue en Funnel de Ventas. -->
+          <div class="chart-section">
+            <div class="chart-header">
+              <div class="chart-title-section">
+                <h2>Resumen del funnel de ventas</h2>
+                <div class="chart-subtitle">Histórico completo, todos los asesores y campañas juntos</div>
+              </div>
+              <button class="btn-primary" @click="activeView = 'funnel'">
+                <v-icon icon="mdi-filter-variant" size="16" /><span>Ver por asesor / campaña</span>
+              </button>
+            </div>
+            <div class="stats-grid mini">
+              <div class="stat-card">
+                <div class="stat-title">Leads totales</div>
+                <div class="stat-value">{{ resumenFunnelGeneral[0]?.cantidad ?? 0 }}</div>
+                <div class="stat-description">Todo el histórico</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-title">Compras concretadas</div>
+                <div class="stat-value" style="color:#16a34a;">{{ resumenFunnelGeneral[6]?.cantidad ?? 0 }}</div>
+                <div class="stat-description">Status CONCRETADA</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-title">Conversión total</div>
+                <div class="stat-value">{{ resumenConversionGeneral }}</div>
+                <div class="stat-description">Compras sobre leads</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-title">Citas asistidas</div>
+                <div class="stat-value">{{ resumenFunnelGeneral[5]?.cantidad ?? 0 }}</div>
+                <div class="stat-description">de {{ resumenFunnelGeneral[4]?.cantidad ?? 0 }} agendadas</div>
+              </div>
+            </div>
+          </div>
+
           <div class="chart-section">
             <div class="chart-header">
               <div class="chart-title-section">
@@ -834,7 +872,7 @@
       <!-- ==========  VISTA: SETTINGS  ========== -->
       <!-- ==========  FUNNEL: MODULO 1 — EMBUDO  ========== -->
       <TradeCarsFunnelCompras v-else-if="activeView === 'funnel'"
-        :leads="funnelLeads" :asesores="asesoresNombres" @refresh="fetchFunnel" />
+        :leads="funnelLeads" :asesores="asesoresNombres" :costos="costosCampana" @refresh="fetchFunnel" />
 
       <!-- ==========  FUNNEL: MODULO 2 — TABLA DE LEADS  ========== -->
       <TradeCarsTablaLeadsFunnel v-else-if="activeView === 'funnel_leads'"
@@ -1698,6 +1736,14 @@ const loadingFunnel = ref(false)
 
 const asesoresNombres = computed(() =>
   asesores.value.filter(a => a.activo !== false).map(a => a.nombre))
+
+/** Embudo agregado (todos los asesores, todas las campañas) para el resumen del Inicio. */
+const resumenFunnelGeneral = computed(() => tcConstruirFunnel(funnelLeads.value))
+const resumenConversionGeneral = computed(() => {
+  const leads = resumenFunnelGeneral.value[0]?.cantidad ?? 0
+  const compras = resumenFunnelGeneral.value[6]?.cantidad ?? 0
+  return leads > 0 ? ((compras / leads) * 100).toFixed(1) + '%' : '—'
+})
 
 /**
  * Campañas que ya existen en la base de Trade Cars (BASE COMPRAS del asesor).

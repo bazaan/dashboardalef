@@ -210,6 +210,11 @@ export function tcConstruirFunnel(leads: TcLeadCrudo[]): TcBarra[] {
 export interface TcFiltros {
   mes?: string        // 'YYYY-MM' | 'todos'
   anio?: string       // 'YYYY'    | 'todos'
+  /** Rango de fechas (YYYY-MM-DD). Si vienen, pisan a `mes` — pedido explícito
+   *  del cliente en la reunión del 26/08 para poder cortar por semana o por
+   *  cualquier tramo, no solo por mes calendario. */
+  fechaDesde?: string
+  fechaHasta?: string
   asesor?: string     // 'todos'
   canal?: string      // 'todos'
   perfil?: string     // 'SI' | 'NO' | 'todos'
@@ -220,11 +225,16 @@ export interface TcFiltros {
 /** Aplica los filtros del dashboard sobre la fecha del funnel calculada. */
 export function tcFiltrar(leads: TcLeadCrudo[], f: TcFiltros): TcLeadCrudo[] {
   const buscar = tcNormalizar(f.buscar)
+  const usaRango = !!(f.fechaDesde || f.fechaHasta)
 
   return leads.filter((l) => {
     const fecha = tcFechaFunnel(l)
 
-    if (f.mes && f.mes !== 'todos') {
+    if (usaRango) {
+      if (!fecha) return false
+      if (f.fechaDesde && fecha < f.fechaDesde) return false
+      if (f.fechaHasta && fecha > f.fechaHasta) return false
+    } else if (f.mes && f.mes !== 'todos') {
       if (!fecha || fecha.slice(0, 7) !== f.mes) return false
     }
     if (f.anio && f.anio !== 'todos') {

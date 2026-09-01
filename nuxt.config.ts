@@ -29,6 +29,12 @@ export default defineNuxtConfig({
       healup: process.env.N8N_ID_HEALUP  // Se conecta con la variable del .env
     },
 
+    // Alef Loyalty Platform (tarjetas Apple/Google Wallet). Vive en VPS 2.
+    // Solo servidor: estas credenciales NUNCA deben exponerse al navegador.
+    loyaltyBaseUrl: process.env.LOYALTY_BASE_URL,
+    loyaltyEmail: process.env.LOYALTY_EMAIL,
+    loyaltyPassword: process.env.LOYALTY_PASSWORD,
+
     // --- Lado del Cliente (Público) ---
     public: {
       // Supabase lo hace automático, no toques nada aquí

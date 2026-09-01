@@ -10,13 +10,24 @@
         </p>
       </div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-        <button class="fid-btn-ghost" :disabled="cargando" @click="cargar">
+        <button v-if="vista === 'socios'" class="fid-btn-ghost" :disabled="cargando" @click="cargar">
           <v-icon icon="mdi-refresh" size="16" /> Recargar
         </button>
-        <button class="fid-btn-primary" @click="abrirAlta">+ Inscribir paciente</button>
+        <button v-if="vista === 'socios'" class="fid-btn-primary" @click="abrirAlta">+ Inscribir paciente</button>
       </div>
     </div>
 
+    <!-- PESTAÑAS -->
+    <div class="fid-tabs">
+      <button :class="['fid-tab', { activa: vista === 'socios' }]" @click="vista = 'socios'">Socios</button>
+      <button :class="['fid-tab', { activa: vista === 'config' }]" @click="vista = 'config'">
+        Configuración del programa
+      </button>
+    </div>
+
+    <HealupFidelizacionConfig v-if="vista === 'config'" />
+
+    <template v-else>
     <div v-if="error" class="fid-alert">
       <div style="font-weight:600;margin-bottom:0.25rem;">No se pudo cargar el programa</div>
       <div style="font-size:0.82rem;">{{ error }}</div>
@@ -132,6 +143,7 @@
         <span class="fid-td-muted">Página {{ page }} de {{ pages }} · {{ total }} socios</span>
         <button class="fid-btn-ghost" :disabled="page >= pages || cargando" @click="irA(page + 1)">Siguiente</button>
       </div>
+    </template>
     </template>
 
     <!-- ══════════ FICHA DEL SOCIO ══════════ -->
@@ -275,6 +287,9 @@ withDefaults(defineProps<{ empresaNombre?: string }>(), { empresaNombre: 'Healup
 
 /** Mismo tope que aplica la plataforma. */
 const MAX_PUNTOS = 5000
+
+/** 'socios' = padrón y operación diaria · 'config' = ajustes del programa. */
+const vista = ref<'socios' | 'config'>('socios')
 
 const cargando = ref(false)
 const guardando = ref(false)
@@ -476,6 +491,17 @@ onMounted(cargar)
 .fid-title { font-size: 1.25rem; font-weight: 700; color: var(--foreground); margin: 0; }
 .fid-subtitle { font-size: 0.82rem; color: var(--muted-foreground); margin: 0.2rem 0 0; }
 .fid-h3 { font-size: 0.95rem; font-weight: 600; color: var(--foreground); margin: 0; }
+
+.fid-tabs {
+  display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border, #e5e7eb);
+  margin-bottom: 1.25rem;
+}
+.fid-tab {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  padding: 0.55rem 0.9rem; font-size: 0.85rem; font-weight: 600;
+  color: var(--muted-foreground); cursor: pointer;
+}
+.fid-tab.activa { color: var(--foreground); border-bottom-color: var(--primary, #111827); }
 
 .fid-kpis {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

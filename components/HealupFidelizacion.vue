@@ -20,12 +20,16 @@
     <!-- PESTAÑAS -->
     <div class="fid-tabs">
       <button :class="['fid-tab', { activa: vista === 'socios' }]" @click="vista = 'socios'">Socios</button>
+      <button :class="['fid-tab', { activa: vista === 'avisos' }]" @click="vista = 'avisos'">
+        Avisos a socios
+      </button>
       <button :class="['fid-tab', { activa: vista === 'config' }]" @click="vista = 'config'">
         Configuración del programa
       </button>
     </div>
 
-    <HealupFidelizacionConfig v-if="vista === 'config'" />
+    <HealupFidelizacionCampanas v-if="vista === 'avisos'" />
+    <HealupFidelizacionConfig v-else-if="vista === 'config'" />
 
     <template v-else>
     <div v-if="error" class="fid-alert">
@@ -288,8 +292,8 @@ withDefaults(defineProps<{ empresaNombre?: string }>(), { empresaNombre: 'Healup
 /** Mismo tope que aplica la plataforma. */
 const MAX_PUNTOS = 5000
 
-/** 'socios' = padrón y operación diaria · 'config' = ajustes del programa. */
-const vista = ref<'socios' | 'config'>('socios')
+/** 'socios' = padrón y operación diaria · 'avisos' = campañas · 'config' = ajustes. */
+const vista = ref<'socios' | 'avisos' | 'config'>('socios')
 
 const cargando = ref(false)
 const guardando = ref(false)

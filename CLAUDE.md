@@ -250,7 +250,7 @@ Doble sistema para auditar acciones:
 | `HealupCatalogoProcedimientos.vue` | — | CRUD completo del catálogo `healup_procedures`. Agrupado por `grupo`, muestra precio sin/con IGV. Protege el ítem de consulta de ser eliminado |
 | `HealupGCalSync.vue` | — | Sincronización Google Calendar ↔ dashboard. Muestra eventos GCal del día, estado de sync, botón importar individual/masivo. Usa endpoint `/api/healup/gcal-events` |
 | `RemarketingPanel.vue` | `companyId`, `leadTablas: { wpp, fbig }` | Sistema de remarketing multi-tenant. 4 tabs: Pipeline (funnel), Leads (filtrable + envio individual/bulk), Campanas (CRUD + ejecucion), Templates (CRUD). Anti-spam por temperatura. Envio via Chatwoot WhatsApp. Integrado en los 11 dashboards |
-| `HealupFidelizacion.vue` | `empresaNombre` | Tarjetas de fidelizacion (Apple/Google Wallet). Metricas del programa, padron de socios paginado, alta de paciente con emision de tarjeta y suma de puntos. Habla con la **Alef Loyalty Platform** (servicio aparte en VPS 2) via `server/api/healup/fidelizacion*`. Menu: MARKETING → Fidelizacion |
+| `HealupFidelizacion.vue` | `empresaNombre` | Tarjetas de fidelizacion (Apple/Google Wallet). Metricas, **busqueda por DNI/nombre/correo/telefono sobre todo el padron** (resuelta en la plataforma con indices de trigramas, no en memoria), ficha del socio con saldo + movimientos + quien los cargo, edicion de DNI, alta con emision de tarjeta y suma de puntos con tope y atribucion. Habla con la **Alef Loyalty Platform** (VPS 2) via `server/api/healup/fidelizacion*`. Menu: MARKETING → Fidelizacion |
 | `Settings/SettingsView.vue` | `companyId`, `currentUser` | CRUD de usuarios + logs de auditoría. Todos los dashboards |
 
 ---

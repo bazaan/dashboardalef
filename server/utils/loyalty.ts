@@ -90,7 +90,7 @@ async function getToken(forzarNuevo = false): Promise<LoyaltyToken> {
  */
 export async function loyaltyFetch<T = any>(
   path: string,
-  opts: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: any; query?: Record<string, any> } = {},
+  opts: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: any; query?: Record<string, any> } = {},
 ): Promise<T> {
   const { baseUrl } = config()
 

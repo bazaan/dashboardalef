@@ -4,13 +4,22 @@
  * Suma puntos a la tarjeta de un paciente (una atención, una compra). Si no se
  * mandan puntos, la plataforma usa los que tenga configurados el programa.
  *
- * Body: { serial, points?, amount?, description? }
+ * Body: { serial, points?, amount?, description?, countVisit? }
  *
- * Manda una `idempotency_key` derivada del serial + minuto + monto para que un
- * doble clic (o un doble escaneo) no sume dos veces.
+ * Dos cosas importan acá:
+ *
+ * 1. **Atribución.** El dashboard entra a la plataforma con UNA cuenta compartida,
+ *    así que sin mandar `actor` todos los movimientos serían indistinguibles. Se
+ *    manda el correo del usuario del dashboard, tomado de SU SESIÓN — nunca del
+ *    body, que el cliente podría falsear.
+ * 2. **Idempotencia.** La clave se deriva de serial + minuto + monto, para que un
+ *    doble clic (o un doble escaneo) no sume dos veces.
  *
  * Requiere sesión Healup (admin, agente, o superadmin).
  */
+
+/** Mismo tope que la plataforma (`MAX_PUNTOS_POR_MOVIMIENTO`). */
+const MAX_PUNTOS = 5000
 
 export default defineEventHandler(async (event) => {
   const perfil = await requireHealupUser(event)
@@ -36,6 +45,14 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Los puntos deben ser un número entero mayor que cero',
       })
     }
+    // Mismo tope que aplica la plataforma. Se valida acá también para dar el
+    // mensaje antes de gastar una llamada de red.
+    if (points > MAX_PUNTOS) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Máximo ${MAX_PUNTOS} puntos por movimiento. Si de verdad corresponde más, regístralo en varios movimientos.`,
+      })
+    }
   }
 
   let amount: number | null = null
@@ -55,8 +72,12 @@ export default defineEventHandler(async (event) => {
     body: {
       points,
       amount,
-      description: String(body?.description || '').trim() || `Registrado desde el dashboard (${perfil.email})`,
+      description: String(body?.description || '').trim() || 'Registrado desde el dashboard',
       idempotency_key: idempotencyKey,
+      // De la sesión, no del body: el operador no puede hacerse pasar por otro.
+      actor: perfil.email,
+      // Un ajuste o corrección no cuenta como visita nueva.
+      count_visit: body?.countVisit !== false,
     },
   })
 

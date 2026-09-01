@@ -13,19 +13,15 @@
         <button class="fid-btn-ghost" :disabled="cargando" @click="cargar">
           <v-icon icon="mdi-refresh" size="16" /> Recargar
         </button>
-        <button class="fid-btn-primary" @click="abrirAlta">
-          + Inscribir paciente
-        </button>
+        <button class="fid-btn-primary" @click="abrirAlta">+ Inscribir paciente</button>
       </div>
     </div>
 
-    <!-- ERROR -->
     <div v-if="error" class="fid-alert">
       <div style="font-weight:600;margin-bottom:0.25rem;">No se pudo cargar el programa</div>
       <div style="font-size:0.82rem;">{{ error }}</div>
     </div>
 
-    <!-- CARGANDO (primera vez) -->
     <div v-else-if="cargando && !stats" class="fid-empty">
       <v-progress-circular indeterminate size="28" width="3" />
       <p style="margin:0.75rem 0 0;color:var(--muted-foreground);">Consultando la plataforma…</p>
@@ -61,8 +57,7 @@
         <div>
           <div class="fid-section-label">Alta desde el mostrador</div>
           <p class="fid-text" style="margin:0 0 0.5rem;">
-            El paciente escanea este enlace y su tarjeta se instala sola en el celular.
-            Sirve para el QR impreso de recepción.
+            El paciente escanea este enlace y su tarjeta se instala sola. Sirve para el QR de recepción.
           </p>
           <code class="fid-code">{{ urlAlta }}</code>
         </div>
@@ -71,28 +66,33 @@
         </button>
       </div>
 
-      <!-- SOCIOS -->
+      <!-- BUSCADOR -->
       <div class="fid-toolbar">
         <h3 class="fid-h3">Socios</h3>
-        <input
-          v-model="busqueda"
-          class="fid-input fid-input--search"
-          type="search"
-          placeholder="Buscar por nombre, correo o teléfono…"
-          @keyup.enter="cargar"
-        />
+        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+          <input
+            v-model="busqueda"
+            class="fid-input fid-input--search"
+            type="search"
+            placeholder="Buscar por DNI, nombre, correo o teléfono…"
+            @keyup.enter="buscar"
+          />
+          <button class="fid-btn-ghost" :disabled="cargando" @click="buscar">Buscar</button>
+          <button v-if="queryActiva" class="fid-btn-ghost" @click="limpiarBusqueda">Limpiar</button>
+        </div>
       </div>
 
-      <p v-if="filtradoLocal" class="fid-nota">
-        La búsqueda filtra solo los {{ socios.length }} registros de esta página, no el padrón completo.
+      <p v-if="queryActiva" class="fid-nota">
+        {{ total }} {{ total === 1 ? 'resultado' : 'resultados' }} para
+        «{{ queryActiva }}» en todo el padrón.
       </p>
 
       <div v-if="socios.length === 0" class="fid-empty">
         <div style="font-size:2.2rem;margin-bottom:0.6rem;">💳</div>
         <p style="color:var(--muted-foreground);margin:0 0 1rem;">
-          {{ busqueda ? 'Ningún socio coincide en esta página.' : 'Todavía no hay socios inscritos.' }}
+          {{ queryActiva ? 'Ningún socio coincide con esa búsqueda.' : 'Todavía no hay socios inscritos.' }}
         </p>
-        <button v-if="!busqueda" class="fid-btn-primary" @click="abrirAlta">Inscribir al primero</button>
+        <button v-if="!queryActiva" class="fid-btn-primary" @click="abrirAlta">Inscribir al primero</button>
       </div>
 
       <div v-else class="fid-tabla-wrap">
@@ -100,6 +100,7 @@
           <thead>
             <tr>
               <th>Socio</th>
+              <th>DNI</th>
               <th>Contacto</th>
               <th class="num">Puntos</th>
               <th class="num">Visitas</th>
@@ -109,18 +110,18 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in socios" :key="s.id">
+            <tr v-for="s in socios" :key="s.id" class="fid-fila" @click="abrirFicha(s)">
               <td>{{ s.name || '—' }}</td>
+              <td>
+                <span v-if="s.document_id">{{ s.document_id }}</span>
+                <span v-else class="fid-sin-dni" title="Sin DNI no se le puede buscar por documento">sin DNI</span>
+              </td>
               <td class="fid-td-muted">{{ s.email || s.phone || '—' }}</td>
               <td class="num"><strong>{{ s.points ?? 0 }}</strong></td>
               <td class="num">{{ s.visits ?? 0 }}</td>
               <td><span class="fid-nivel">{{ s.level || '—' }}</span></td>
               <td class="fid-td-muted">{{ formatFecha(s.last_visit) }}</td>
-              <td>
-                <button class="fid-btn-mini" title="Sumar puntos" @click="abrirPuntos(s)">
-                  + Puntos
-                </button>
-              </td>
+              <td><button class="fid-btn-mini" @click.stop="abrirFicha(s)">Ver ficha</button></td>
             </tr>
           </tbody>
         </table>
@@ -133,14 +134,109 @@
       </div>
     </template>
 
-    <!-- DIALOGO: INSCRIBIR -->
+    <!-- ══════════ FICHA DEL SOCIO ══════════ -->
+    <v-dialog v-model="dialogFicha" max-width="620" scrollable>
+      <div class="fid-dialog">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
+          <div>
+            <h3 class="fid-h3" style="margin:0;">{{ socioSel?.name || 'Socio' }}</h3>
+            <p class="fid-text" style="margin:0.2rem 0 0;">
+              {{ socioSel?.email || socioSel?.phone || 'sin contacto' }}
+            </p>
+          </div>
+          <button class="fid-btn-ghost" @click="dialogFicha = false">Cerrar</button>
+        </div>
+
+        <div v-if="cargandoFicha" class="fid-text" style="display:flex;align-items:center;gap:0.5rem;margin-top:1rem;">
+          <v-progress-circular indeterminate size="16" width="2" /> Cargando ficha…
+        </div>
+
+        <template v-else>
+          <!-- SALDO -->
+          <div class="fid-ficha-kpis">
+            <div><div class="fid-kpi-label">Puntos</div><div class="fid-kpi-value">{{ socioSel?.points ?? 0 }}</div></div>
+            <div><div class="fid-kpi-label">Visitas</div><div class="fid-kpi-value">{{ socioSel?.visits ?? 0 }}</div></div>
+            <div><div class="fid-kpi-label">Nivel</div><div class="fid-kpi-value" style="font-size:1.1rem;">{{ socioSel?.level || '—' }}</div></div>
+          </div>
+
+          <!-- DNI -->
+          <div class="fid-bloque">
+            <div class="fid-section-label">Documento de identidad</div>
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+              <input v-model="docEdit" class="fid-input" style="max-width:200px;" placeholder="DNI, CE o pasaporte" />
+              <button class="fid-btn-ghost" :disabled="guardando || docEdit === (socioSel?.document_id || '')" @click="guardarDoc">
+                {{ guardando ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </div>
+            <p class="fid-nota" style="margin:0.4rem 0 0;">
+              Sin DNI cargado, este socio no aparece al buscar por documento.
+            </p>
+            <div v-if="docError" class="fid-alert" style="margin-top:0.5rem;">{{ docError }}</div>
+            <div v-if="docOk" class="fid-ok" style="margin-top:0.5rem;">Documento actualizado.</div>
+          </div>
+
+          <!-- SUMAR PUNTOS -->
+          <div class="fid-bloque">
+            <div class="fid-section-label">Sumar puntos</div>
+            <div v-if="!serialSel" class="fid-alert">
+              Este socio no tiene tarjeta emitida, así que no se le pueden sumar puntos.
+            </div>
+            <template v-else>
+              <div class="fid-grid-puntos">
+                <div>
+                  <label class="fid-label">Puntos</label>
+                  <input v-model="puntos.points" class="fid-input" type="number" min="1" :max="MAX_PUNTOS"
+                    placeholder="Vacío = los del programa" />
+                </div>
+                <div>
+                  <label class="fid-label">Monto S/ (opcional)</label>
+                  <input v-model="puntos.amount" class="fid-input" type="number" min="0" step="0.01" />
+                </div>
+              </div>
+              <label class="fid-label">Motivo (opcional)</label>
+              <input v-model="puntos.description" class="fid-input" placeholder="Ej. Limpieza facial" />
+
+              <label class="fid-check">
+                <input v-model="puntos.countVisit" type="checkbox" />
+                <span>Contar como visita nueva <em>(desmarcar si es una corrección)</em></span>
+              </label>
+
+              <p class="fid-nota">Máximo {{ MAX_PUNTOS }} por movimiento. Queda registrado a tu nombre.</p>
+              <div v-if="puntosError" class="fid-alert" style="margin-bottom:0.5rem;">{{ puntosError }}</div>
+              <button class="fid-btn-primary" :disabled="guardando" @click="sumarPuntos">
+                {{ guardando ? 'Sumando…' : 'Sumar puntos' }}
+              </button>
+            </template>
+          </div>
+
+          <!-- MOVIMIENTOS -->
+          <div class="fid-bloque">
+            <div class="fid-section-label">Movimientos</div>
+            <div v-if="!movimientos.length" class="fid-text">Sin movimientos todavía.</div>
+            <div v-for="m in movimientos" :key="m.id" class="fid-mov">
+              <span class="fid-td-muted">{{ formatFecha(m.created_at) }}</span>
+              <span>
+                {{ m.description || m.type }}
+                <em v-if="m.actor" class="fid-actor">· {{ m.actor }}</em>
+              </span>
+              <strong :class="m.points < 0 ? 'fid-neg' : ''">{{ m.points > 0 ? '+' : '' }}{{ m.points }}</strong>
+            </div>
+          </div>
+        </template>
+      </div>
+    </v-dialog>
+
+    <!-- ══════════ INSCRIBIR ══════════ -->
     <v-dialog v-model="dialogAlta" max-width="460">
       <div class="fid-dialog">
         <h3 class="fid-h3" style="margin-top:0;">Inscribir paciente</h3>
         <p class="fid-text">Se emite su tarjeta y se le puede mandar el enlace para instalarla.</p>
 
         <label class="fid-label">Nombre</label>
-        <input v-model="alta.name" class="fid-input" type="text" placeholder="Nombre y apellido" />
+        <input v-model="alta.name" class="fid-input" placeholder="Nombre y apellido" />
+
+        <label class="fid-label">DNI</label>
+        <input v-model="alta.documentId" class="fid-input" placeholder="Documento de identidad" />
 
         <label class="fid-label">Correo</label>
         <input v-model="alta.email" class="fid-input" type="email" placeholder="paciente@correo.com" />
@@ -148,86 +244,24 @@
         <label class="fid-label">Teléfono</label>
         <input v-model="alta.phone" class="fid-input" type="tel" placeholder="+51 9xx xxx xxx" />
 
-        <p class="fid-nota" style="margin-top:0.5rem;">Hace falta al menos un correo o un teléfono.</p>
+        <p class="fid-nota" style="margin-top:0.5rem;">Hace falta al menos DNI, correo o teléfono.</p>
         <div v-if="altaError" class="fid-alert" style="margin-top:0.75rem;">{{ altaError }}</div>
 
         <div v-if="altaResultado" class="fid-ok">
           <div style="font-weight:600;margin-bottom:0.4rem;">{{ altaResultado.mensaje }}</div>
           <div v-if="altaResultado.applePassUrl" style="margin-bottom:0.4rem;">
-            <a :href="altaResultado.applePassUrl" target="_blank" rel="noopener" class="fid-link">
-              Descargar tarjeta (Apple Wallet)
-            </a>
-            <button class="fid-btn-mini" style="margin-left:0.5rem;" @click="copiar(altaResultado.applePassUrl)">
-              Copiar enlace
-            </button>
+            <a :href="altaResultado.applePassUrl" target="_blank" rel="noopener" class="fid-link">Descargar tarjeta (Apple Wallet)</a>
+            <button class="fid-btn-mini" style="margin-left:0.5rem;" @click="copiar(altaResultado.applePassUrl)">Copiar enlace</button>
           </div>
           <div v-if="altaResultado.googleWalletUrl">
-            <a :href="altaResultado.googleWalletUrl" target="_blank" rel="noopener" class="fid-link">
-              Agregar a Google Wallet
-            </a>
+            <a :href="altaResultado.googleWalletUrl" target="_blank" rel="noopener" class="fid-link">Agregar a Google Wallet</a>
           </div>
         </div>
 
         <div class="fid-dialog-acciones">
-          <button class="fid-btn-ghost" @click="dialogAlta = false">
-            {{ altaResultado ? 'Cerrar' : 'Cancelar' }}
-          </button>
+          <button class="fid-btn-ghost" @click="dialogAlta = false">{{ altaResultado ? 'Cerrar' : 'Cancelar' }}</button>
           <button v-if="!altaResultado" class="fid-btn-primary" :disabled="guardando" @click="enrolar">
             {{ guardando ? 'Emitiendo…' : 'Emitir tarjeta' }}
-          </button>
-        </div>
-      </div>
-    </v-dialog>
-
-    <!-- DIALOGO: SUMAR PUNTOS -->
-    <v-dialog v-model="dialogPuntos" max-width="420">
-      <div class="fid-dialog">
-        <h3 class="fid-h3" style="margin-top:0;">Sumar puntos</h3>
-        <p class="fid-text">
-          {{ socioSel?.name || 'Socio' }} · tiene {{ socioSel?.points ?? 0 }} puntos
-        </p>
-
-        <div v-if="cargandoSocio" class="fid-text" style="display:flex;align-items:center;gap:0.5rem;">
-          <v-progress-circular indeterminate size="16" width="2" /> Buscando su tarjeta…
-        </div>
-
-        <div v-else-if="!serialSel" class="fid-alert">
-          Este socio figura en el padrón pero no tiene una tarjeta emitida, así que no se le
-          pueden sumar puntos todavía.
-        </div>
-
-        <template v-else>
-        <label class="fid-label">Puntos</label>
-        <input v-model="puntos.points" class="fid-input" type="number" min="1" step="1"
-          placeholder="Vacío = los que define el programa" />
-
-        <label class="fid-label">Monto de la atención (opcional)</label>
-        <input v-model="puntos.amount" class="fid-input" type="number" min="0" step="0.01" placeholder="S/" />
-
-        <label class="fid-label">Descripción (opcional)</label>
-        <input v-model="puntos.description" class="fid-input" type="text" placeholder="Ej. Limpieza facial" />
-        </template>
-
-        <div v-if="movimientos.length" style="margin-top:1rem;">
-          <div class="fid-section-label">Últimos movimientos</div>
-          <div v-for="m in movimientos.slice(0, 5)" :key="m.id" class="fid-mov">
-            <span class="fid-td-muted">{{ formatFecha(m.created_at) }}</span>
-            <span>{{ m.description || m.type }}</span>
-            <strong :class="m.points < 0 ? 'fid-neg' : ''">{{ m.points > 0 ? '+' : '' }}{{ m.points }}</strong>
-          </div>
-        </div>
-
-        <div v-if="puntosError" class="fid-alert" style="margin-top:0.75rem;">{{ puntosError }}</div>
-
-        <div class="fid-dialog-acciones">
-          <button class="fid-btn-ghost" @click="dialogPuntos = false">Cancelar</button>
-          <button
-            v-if="serialSel"
-            class="fid-btn-primary"
-            :disabled="guardando || cargandoSocio"
-            @click="sumarPuntos"
-          >
-            {{ guardando ? 'Sumando…' : 'Sumar' }}
           </button>
         </div>
       </div>
@@ -237,11 +271,10 @@
 </template>
 
 <script setup lang="ts">
-const props = withDefaults(defineProps<{
-  empresaNombre?: string
-}>(), {
-  empresaNombre: 'Healup',
-})
+withDefaults(defineProps<{ empresaNombre?: string }>(), { empresaNombre: 'Healup' })
+
+/** Mismo tope que aplica la plataforma. */
+const MAX_PUNTOS = 5000
 
 const cargando = ref(false)
 const guardando = ref(false)
@@ -253,24 +286,27 @@ const socios = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)
 const pages = ref(1)
-const filtradoLocal = ref(false)
 const urlAlta = ref('')
 const busqueda = ref('')
+const queryActiva = ref('')
 
-const dialogAlta = ref(false)
-const alta = ref({ name: '', email: '', phone: '' })
-const altaError = ref('')
-const altaResultado = ref<any>(null)
-
-const dialogPuntos = ref(false)
+const dialogFicha = ref(false)
+const cargandoFicha = ref(false)
 const socioSel = ref<any>(null)
 const serialSel = ref<string | null>(null)
-const cargandoSocio = ref(false)
 const movimientos = ref<any[]>([])
-const puntos = ref<{ points: string | number; amount: string | number; description: string }>({
-  points: '', amount: '', description: '',
+const docEdit = ref('')
+const docError = ref('')
+const docOk = ref(false)
+const puntos = ref<{ points: string | number; amount: string | number; description: string; countVisit: boolean }>({
+  points: '', amount: '', description: '', countVisit: true,
 })
 const puntosError = ref('')
+
+const dialogAlta = ref(false)
+const alta = ref({ name: '', documentId: '', email: '', phone: '' })
+const altaError = ref('')
+const altaResultado = ref<any>(null)
 
 function mensajeDeError(e: any): string {
   return e?.data?.statusMessage || e?.data?.message || e?.statusMessage || e?.message || 'Error inesperado'
@@ -281,14 +317,13 @@ async function cargar() {
   error.value = ''
   try {
     const res = await $fetch<any>('/api/healup/fidelizacion', {
-      query: { page: page.value, limit: 50, q: busqueda.value || undefined },
+      query: { page: page.value, limit: 50, q: queryActiva.value || undefined },
     })
     stats.value = res.stats
     socios.value = res.socios || []
     total.value = res.total || 0
     pages.value = res.pages || 1
     page.value = res.page || page.value
-    filtradoLocal.value = Boolean(res.filtradoLocal)
     urlAlta.value = res.urlAlta || ''
   } catch (e: any) {
     error.value = mensajeDeError(e)
@@ -297,65 +332,72 @@ async function cargar() {
   }
 }
 
+function buscar() {
+  queryActiva.value = busqueda.value.trim()
+  page.value = 1
+  cargar()
+}
+
+function limpiarBusqueda() {
+  busqueda.value = ''
+  queryActiva.value = ''
+  page.value = 1
+  cargar()
+}
+
 function irA(n: number) {
   page.value = n
   cargar()
 }
 
-function abrirAlta() {
-  alta.value = { name: '', email: '', phone: '' }
-  altaError.value = ''
-  altaResultado.value = null
-  dialogAlta.value = true
-}
-
-async function enrolar() {
-  altaError.value = ''
-  if (!alta.value.email.trim() && !alta.value.phone.trim()) {
-    altaError.value = 'Hace falta al menos un correo o un teléfono.'
-    return
-  }
-  guardando.value = true
-  try {
-    altaResultado.value = await $fetch<any>('/api/healup/fidelizacion-enrolar', {
-      method: 'POST',
-      body: alta.value,
-    })
-    await cargar()
-  } catch (e: any) {
-    altaError.value = mensajeDeError(e)
-  } finally {
-    guardando.value = false
-  }
-}
-
-async function abrirPuntos(s: any) {
-  socioSel.value = s
-  serialSel.value = null
+async function abrirFicha(s: any) {
+  socioSel.value = { ...s }
+  serialSel.value = s.serial_number || null
+  docEdit.value = s.document_id || ''
   movimientos.value = []
-  puntos.value = { points: '', amount: '', description: '' }
+  docError.value = ''
+  docOk.value = false
   puntosError.value = ''
-  dialogPuntos.value = true
+  puntos.value = { points: '', amount: '', description: '', countVisit: true }
+  dialogFicha.value = true
 
-  // El serial de la tarjeta no viene en el listado: se pide al abrir la ficha.
-  cargandoSocio.value = true
+  cargandoFicha.value = true
   try {
-    const det = await $fetch<any>('/api/healup/fidelizacion-socio', {
-      query: { customerId: s.id },
-    })
-    serialSel.value = det.serial
+    const det = await $fetch<any>('/api/healup/fidelizacion-socio', { query: { customerId: s.id } })
+    if (det.socio) socioSel.value = { ...socioSel.value, ...det.socio }
+    serialSel.value = det.serial || serialSel.value
     movimientos.value = det.movimientos || []
+    docEdit.value = det.socio?.document_id || docEdit.value
   } catch (e: any) {
     puntosError.value = mensajeDeError(e)
   } finally {
-    cargandoSocio.value = false
+    cargandoFicha.value = false
+  }
+}
+
+async function guardarDoc() {
+  docError.value = ''
+  docOk.value = false
+  guardando.value = true
+  try {
+    const res = await $fetch<any>('/api/healup/fidelizacion-socio', {
+      method: 'PATCH',
+      body: { customerId: socioSel.value.id, documentId: docEdit.value.trim() },
+    })
+    if (res.socio) socioSel.value = { ...socioSel.value, ...res.socio }
+    docOk.value = true
+    await cargar()
+  } catch (e: any) {
+    docError.value = mensajeDeError(e)
+  } finally {
+    guardando.value = false
   }
 }
 
 async function sumarPuntos() {
   puntosError.value = ''
   if (!serialSel.value) {
-    puntosError.value = 'Este socio no tiene una tarjeta emitida.'
+    puntosError.value = 'Este socio no tiene tarjeta emitida.'
     return
   }
   guardando.value = true
@@ -367,12 +409,40 @@ async function sumarPuntos() {
         points: puntos.value.points === '' ? undefined : Number(puntos.value.points),
         amount: puntos.value.amount === '' ? undefined : Number(puntos.value.amount),
         description: puntos.value.description || undefined,
+        countVisit: puntos.value.countVisit,
       },
     })
-    dialogPuntos.value = false
+    await abrirFicha({ ...socioSel.value, serial_number: serialSel.value })
     await cargar()
   } catch (e: any) {
     puntosError.value = mensajeDeError(e)
+  } finally {
+    guardando.value = false
+  }
+}
+
+function abrirAlta() {
+  alta.value = { name: '', documentId: '', email: '', phone: '' }
+  altaError.value = ''
+  altaResultado.value = null
+  dialogAlta.value = true
+}
+
+async function enrolar() {
+  altaError.value = ''
+  if (!alta.value.email.trim() && !alta.value.phone.trim() && !alta.value.documentId.trim()) {
+    altaError.value = 'Hace falta al menos DNI, correo o teléfono.'
+    return
+  }
+  guardando.value = true
+  try {
+    altaResultado.value = await $fetch<any>('/api/healup/fidelizacion-enrolar', {
+      method: 'POST',
+      body: alta.value,
+    })
+    await cargar()
+  } catch (e: any) {
+    altaError.value = mensajeDeError(e)
   } finally {
     guardando.value = false
   }
@@ -453,7 +523,10 @@ onMounted(cargar)
 .fid-tabla td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border, #e5e7eb); color: var(--foreground); }
 .fid-tabla tr:last-child td { border-bottom: none; }
 .fid-tabla .num { text-align: right; }
+.fid-fila { cursor: pointer; }
+.fid-fila:hover { background: var(--muted, #f7f7f8); }
 .fid-td-muted { color: var(--muted-foreground); }
+.fid-sin-dni { font-size: 0.72rem; color: var(--muted-foreground); font-style: italic; }
 .fid-nivel {
   font-size: 0.72rem; background: var(--muted, #f4f4f5); color: var(--foreground);
   padding: 2px 8px; border-radius: 10px;
@@ -495,7 +568,6 @@ onMounted(cargar)
   background: transparent; color: var(--foreground); border: 1px solid var(--border, #e5e7eb);
   border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.75rem; cursor: pointer; white-space: nowrap;
 }
-.fid-btn-mini:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .fid-label {
   display: block; font-size: 0.75rem; font-weight: 600;
@@ -506,20 +578,37 @@ onMounted(cargar)
   padding: 0.5rem 0.7rem; font-size: 0.85rem; color: var(--foreground);
   background: var(--background, #fff);
 }
-.fid-input--search { width: min(320px, 100%); }
+.fid-input--search { width: min(340px, 100%); }
+.fid-check {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8rem; color: var(--muted-foreground); margin: 0.75rem 0;
+}
+.fid-check em { font-style: normal; opacity: 0.8; }
 
-.fid-dialog {
-  background: var(--card, #fff); border-radius: 12px; padding: 1.25rem;
+.fid-dialog { background: var(--card, #fff); border-radius: 12px; padding: 1.25rem; }
+.fid-dialog-acciones { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+
+.fid-ficha-kpis {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;
+  margin: 1rem 0; padding: 0.85rem; background: var(--muted, #f7f7f8);
+  border-radius: var(--radius, 10px);
 }
-.fid-dialog-acciones {
-  display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem;
+.fid-bloque {
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding-top: 1rem; margin-top: 1rem;
 }
+.fid-grid-puntos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
 .fid-mov {
   display: grid; grid-template-columns: auto 1fr auto; gap: 0.6rem;
-  align-items: center; font-size: 0.78rem; padding: 0.35rem 0;
+  align-items: center; font-size: 0.78rem; padding: 0.4rem 0;
   border-bottom: 1px solid var(--border, #e5e7eb);
 }
 .fid-mov:last-child { border-bottom: none; }
+.fid-actor { font-style: normal; color: var(--muted-foreground); font-size: 0.72rem; }
 .fid-neg { color: #dc2626; }
+
+@media (max-width: 600px) {
+  .fid-grid-puntos, .fid-ficha-kpis { grid-template-columns: 1fr; }
+}
 </style>

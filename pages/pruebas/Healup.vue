@@ -72,6 +72,11 @@
             <v-icon icon="mdi-bullhorn" size="18" />
             <span>Remarketing</span>
           </button>
+          <button :class="['nav-item', { active: activeView === 'fidelizacion' }]"
+            @click="activeView = 'fidelizacion'">
+            <v-icon icon="mdi-wallet-membership" size="18" />
+            <span>Fidelización</span>
+          </button>
         </div>
 
         <div class="nav-section">
@@ -4643,6 +4648,11 @@
         company-id="healup"
         :lead-tablas="{ wpp: 'GeneralBDwppHEALUP', fbig: 'GeneralBDfbigHEALUP' }"
       />
+
+      <!-- ==========  VISTA: FIDELIZACIÓN (tarjetas Apple/Google Wallet)  ========== -->
+      <div v-if="activeView === 'fidelizacion'" class="view-container">
+        <HealupFidelizacion empresa-nombre="Healup" />
+      </div>
 
       <!-- ==========  VISTA: REPORTE DIARIO  ========== -->
       <div v-if="activeView === 'reporte'" class="view-container">

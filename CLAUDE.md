@@ -250,6 +250,8 @@ Doble sistema para auditar acciones:
 | `HealupCatalogoProcedimientos.vue` | — | CRUD completo del catálogo `healup_procedures`. Agrupado por `grupo`, muestra precio sin/con IGV. Protege el ítem de consulta de ser eliminado |
 | `HealupGCalSync.vue` | — | Sincronización Google Calendar ↔ dashboard. Muestra eventos GCal del día, estado de sync, botón importar individual/masivo. Usa endpoint `/api/healup/gcal-events` |
 | `RemarketingPanel.vue` | `companyId`, `leadTablas: { wpp, fbig }` | Sistema de remarketing multi-tenant. 4 tabs: Pipeline (funnel), Leads (filtrable + envio individual/bulk), Campanas (CRUD + ejecucion), Templates (CRUD). Anti-spam por temperatura. Envio via Chatwoot WhatsApp. Integrado en los 11 dashboards |
+| `HealupFidelizacionConfig.vue` | — | Pestaña "Configuracion del programa" dentro de Fidelizacion. El cliente edita: puntos por visita y por sol, **escalera de niveles** (nombre + umbral, hasta 8; el primero siempre arranca en 0), descripcion de la tarjeta, 3 colores y **subida del logo** que va dentro del pase. Incluye **previsualizacion** del pase, aviso de contraste bajo y simulacion de cuanto suma una atencion. Los niveles ya NO estan escritos a mano en el codigo de la plataforma |
+| `HealupFidelizacion.vue` | `empresaNombre` | Tarjetas de fidelizacion (Apple/Google Wallet). Metricas, **busqueda por DNI/nombre/correo/telefono sobre todo el padron** (resuelta en la plataforma con indices de trigramas, no en memoria), ficha del socio con saldo + movimientos + quien los cargo, edicion de DNI, alta con emision de tarjeta y suma de puntos con tope y atribucion. Habla con la **Alef Loyalty Platform** (VPS 2) via `server/api/healup/fidelizacion*`. Menu: MARKETING → Fidelizacion |
 | `Settings/SettingsView.vue` | `companyId`, `currentUser` | CRUD de usuarios + logs de auditoría. Todos los dashboards |
 
 ---
@@ -701,6 +703,10 @@ ANTHROPIC_API_KEY=              # Claude API para agent-chat
 OPENAI_API_KEY=                 # Whisper transcripcion de voz
 # Remarketing (Chatwoot WhatsApp)
 CHATWOOT_API_TOKEN=             # Token API Chatwoot para envio de mensajes remarketing
+# Fidelizacion — Alef Loyalty Platform (servicio aparte, VPS 2). SOLO servidor.
+LOYALTY_BASE_URL=               # https://loyalty.alef.company
+LOYALTY_EMAIL=                  # Usuario del dashboard de loyalty (define el negocio: su business_id sale del token)
+LOYALTY_PASSWORD=               # Contrasena de ese usuario. Nunca exponer al navegador
 # Envío Diario de pacientes agendados (Herramientas Healup → n8n → WhatsApp gerente)
 N8N_WEBHOOK_HEALUP_AGENDAMIENTO_DIARIO=   # URL del webhook n8n que recibe el JSON diario
 HEALUP_AGENDAMIENTO_CRON_KEY=             # Clave compartida entre la Netlify Scheduled Function y el endpoint Nuxt

@@ -1074,6 +1074,45 @@ PIOLA_COLOR_ACENTO=              # default #e2564a
 PIOLA_CUENTA_DETRACCION=         # cuenta del Banco de la Nación, se imprime en la factura
 ```
 
+### Reunión del 31/08/2026 — lo acordado (migración `sql/piola_reunion_31ago.sql`)
+
+Participaron Edson Polo y Raysa Cucho (finanzas/gerencia), Héctor Córdova, Julio Zumaeta y
+Sebastián Ávalos (director estratégico). **Correr una vez `sql/piola_reunion_31ago.sql`**, que es
+idempotente y va DESPUÉS de `sql/piola.sql`.
+
+| Qué pidieron | Dónde quedó |
+|---|---|
+| Visor de supervisor del tareo | Pestaña **Equipo** en `PiolaMiEspacio.vue`. El endpoint ya servía `?vista=tablero\|mes` y `?email=`, gateado por `rrhh.view`; sólo faltaba exponerlo |
+| Adjuntar varios documentos a un movimiento (factura **+ constancia de detracción**) | Tabla `piola_adjuntos` (polimórfica) + `server/api/piola/adjuntos.post.ts` + `components/Piola/PiolaAdjuntos.vue` |
+| Numeración propia del tipo de gasto (2 = combustible, 62 = Oana) | `piola_expense_categories.codigo` con índice único parcial. Se elige y se filtra por número en todo el módulo |
+| Importar 30-40 movimientos pegando desde Excel | `importar_movimientos` / `deshacer_importacion` / `listar_importaciones` + `piola_import_batches`. Diálogo con previsualización en `PiolaContabilidad.vue` |
+| Módulo de registro de clientes (contrato, condiciones, anexos, ficha RUC) | `PiolaClientes.vue` + `clientes.post.ts`. Nav: **Comercial → Clientes** |
+| Al elegir el cliente en la factura, que se autocomplete todo | Desplegable + `buscar_por_ruc` contra `piola_clientes` |
+| Alertas por WhatsApp en cada movimiento y cada cobro | `server/utils/piola-alertas.ts` → `dispararAlertaInmediata()`. Tipos `movimiento_registrado` y `cobro_registrado` en `piola_alert_settings` |
+| Finanzas **solo** para Edson y Raysa | Se revocó `contabilidad`/`facturacion` del rol *Comercial / CRM*, que los tenía y contradecía el acuerdo |
+| Desglosar el cumplimiento por tipo de contenido (7 videos + 7 piezas ≠ "14") | `piola_tipos_contenido` + `piola_compromisos` + vista `piola_cumplimiento_tipo` |
+| Áreas, responsable por entregable y enlaces Dropbox/Drive/publicado | Columnas nuevas en `piola_deliverables` + filtros y vista "Por responsable" |
+| Botón para repetir el mes sin rellenar todo | `clonar_periodo`, idempotente vía `piola_deliverables.origen_id` |
+| Boletas de pago **y** recibos por honorarios con su voucher | `piola_payslips.tipo` (`planilla`/`honorarios`) + `rxh_numero`, `rxh_retencion` (4.ª cat., 8 %), `voucher_url` |
+| Rol para Sebastián (aprueba entregables, cero finanzas) | Rol **Dirección Estratégica** |
+
+**Lo que el cliente RECHAZÓ — no reimplementarlo:**
+
+- **SUNAT**: Edson dijo *"eso no lo vamos a hacer, nosotros solo vamos a vaciar información aquí"*.
+  El autocompletado por RUC es contra `piola_clientes`, **no** contra ninguna API externa.
+- **Contrato adjunto en cada factura**: Raysa lo propuso, Edson lo rechazó (*"mucho trabajo
+  operativo"*). El contrato vive en el módulo de clientes.
+- **Numeración automática de facturas**: ya tienen serie y número avanzados. Es ingreso manual.
+- **API de Dropbox**: quedó como *investigación* de Roberto, no como compromiso. Lo acordado y lo
+  implementado es el **enlace fijo** a la carpeta.
+
+**Ya existía y no había que tocarlo:** el pago recurrente de contratos que pidió Héctor
+(`pago_mensual` + `dia_pago` + `generar_cobro`, con índice único `(contrato_id, periodo_cobro)` que
+impide cobrar dos veces el mismo mes) y el método de pago por defecto en transferencia.
+
+**Pendiente del cliente:** el diseño de la boleta de pago (quedaron en mandarlo). Hasta que llegue,
+se usa la plantilla HTML que ya existía, adaptada para honorarios.
+
 ### Pendientes del cliente (bloquean cierre, no desarrollo)
 
 **Logo — resuelto el 28/08.** Llegó `LOGO_BL@2x.png` (el bocadillo "HAZLO"), recortado y en

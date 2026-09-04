@@ -310,3 +310,94 @@ export async function persistirYEnviar(supabase: any, alertas: AlertaGenerada[])
     alertas: nuevas,
   }
 }
+
+/* ══════════════════ Alertas inmediatas (reunión 31/08/2026) ══════════════════ */
+
+/**
+ * Avisa por WhatsApp en el momento en que algo pasa, sin esperar al cron.
+ *
+ * Todo lo de arriba es PREVENTIVO ("esto vence en N días") y lo genera el cron
+ * una vez al día. Edson pidió lo contrario: enterarse en el acto de cada
+ * movimiento y de cada cobro ("cada vez que hay un movimiento… ahí les llega la
+ * notificación"), así que estas las dispara el endpoint que hizo el registro.
+ *
+ * `fecha_objetivo` va en NULL a propósito. El UNIQUE de `piola_alerts` es
+ * (tipo, related_table, related_id, fecha_objetivo) y en Postgres dos NULL no
+ * chocan entre sí; con una fecha real, registrar dos pagos el mismo día contra
+ * la misma cuenta haría que el segundo aviso no se guardara nunca.
+ *
+ * NUNCA lanza ni propaga un error: el aviso es un extra sobre el registro que
+ * lo disparó. Si el webhook está caído o `N8N_WEBHOOK_PIOLA_ALERTAS` no existe,
+ * el movimiento ya quedó guardado — y eso es lo que no se puede perder.
+ */
+export async function dispararAlertaInmediata(
+  supabase: any,
+  opts: {
+    tipo: 'movimiento_registrado' | 'cobro_registrado' | (string & {})
+    titulo: string
+    mensaje: string
+    related_table?: string | null
+    related_id?: number | null
+  },
+): Promise<{ ok: boolean; motivo?: string; alerta_id?: number }> {
+  try {
+    const { data: cfg } = await supabase
+      .from('piola_alert_settings').select('*').eq('tipo', opts.tipo).maybeSingle()
+
+    if (!cfg) return { ok: false, motivo: `La alerta '${opts.tipo}' no está configurada` }
+    if (!cfg.activo) return { ok: false, motivo: 'La alerta está desactivada' }
+
+    // Sin destinatarios no hay a quién avisar: guardar la fila sólo llenaría el
+    // historial de avisos que nunca salieron de la base.
+    const destinatarios: string[] = Array.isArray(cfg.destinatarios)
+      ? cfg.destinatarios.map((d: any) => String(d).trim()).filter(Boolean)
+      : []
+    if (!destinatarios.length) return { ok: false, motivo: 'La alerta no tiene destinatarios' }
+
+    const { data: alerta, error } = await supabase.from('piola_alerts').insert({
+      tipo: opts.tipo,
+      related_table: opts.related_table ?? null,
+      related_id: opts.related_id ?? null,
+      titulo: opts.titulo,
+      mensaje: opts.mensaje,
+      fecha_objetivo: null,
+      dias_antes: 0,
+      canal: cfg.canal,
+      destinatarios,
+      estado: 'pendiente',
+      inmediata: true,
+    }).select('id').single()
+
+    if (error || !alerta) {
+      console.error('[piola/alertas] no se pudo guardar la alerta inmediata:', error?.message)
+      return { ok: false, motivo: error?.message || 'no se pudo guardar la alerta' }
+    }
+
+    // El canal se manda al webhook pero el envío es siempre por WhatsApp, igual
+    // que en `persistirYEnviar`: n8n es quien decide qué hacer con 'correo'.
+    const envio = await enviarWhatsappPiola({
+      evento: 'piola.alerta_inmediata',
+      empresa: 'Piola',
+      fecha: hoyLima(),
+      tipo: opts.tipo,
+      titulo: opts.titulo,
+      canal: cfg.canal,
+      destinatarios,
+      mensaje_whatsapp: opts.mensaje,
+      alerta: { id: alerta.id, ...opts },
+    })
+
+    await supabase.from('piola_alerts').update(
+      envio.ok
+        ? { estado: 'enviada', enviado_at: new Date().toISOString(), respuesta: envio.respuesta ?? null }
+        : { estado: 'error', error_message: envio.error || `HTTP ${envio.status}` },
+    ).eq('id', alerta.id)
+
+    return envio.ok
+      ? { ok: true, alerta_id: alerta.id }
+      : { ok: false, alerta_id: alerta.id, motivo: envio.error || `HTTP ${envio.status}` }
+  } catch (e: any) {
+    console.error('[piola/alertas] excepción en la alerta inmediata:', e?.message)
+    return { ok: false, motivo: e?.message || 'error inesperado' }
+  }
+}

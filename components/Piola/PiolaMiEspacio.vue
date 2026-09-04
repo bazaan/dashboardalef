@@ -96,6 +96,9 @@
           <button :class="['tab', { active: tab === 'historial' }]" @click="tab = 'historial'">Mi historial</button>
           <button :class="['tab', { active: tab === 'vacaciones' }]" @click="tab = 'vacaciones'">Mis vacaciones</button>
           <button :class="['tab', { active: tab === 'boletas' }]" @click="tab = 'boletas'">Mis boletas</button>
+          <button v-if="puedeVerEquipo" :class="['tab', { active: tab === 'equipo' }]" @click="tab = 'equipo'">
+            <v-icon icon="mdi-account-supervisor" size="15" start /> Equipo
+          </button>
         </div>
 
         <v-card v-if="tab === 'historial'" flat class="custom-data-table">
@@ -184,8 +187,116 @@
             </template>
           </v-data-table>
         </v-card>
+
+        <!-- ══════════ VISOR DE SUPERVISOR ══════════ -->
+        <!-- Raysa preguntó si cada persona ve solo lo suyo o si alguien puede ver
+             el listado de todos. Acá está ese "todos": el mismo endpoint de tareo
+             ya aceptaba ?vista=tablero / ?vista=mes / ?email=, gateado por RR.HH.;
+             lo único que faltaba era exponerlo. -->
+        <div v-else-if="tab === 'equipo'">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">En jornada ahora</span></div>
+              <div class="stat-value" style="color:#2e9e5b;">{{ equipo.resumen?.en_jornada || 0 }}</div>
+              <div class="stat-description">de {{ equipo.resumen?.total || 0 }} colaboradores activos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">En break</span></div>
+              <div class="stat-value" style="color:#d98324;">{{ equipo.resumen?.en_break || 0 }}</div>
+              <div class="stat-description">El break no cuenta como hora efectiva</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Jornada cerrada</span></div>
+              <div class="stat-value" style="color:#5b8def;">{{ equipo.resumen?.cerrada || 0 }}</div>
+              <div class="stat-description">Ya marcaron salida hoy</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Sin marcar</span></div>
+              <div class="stat-value" style="color:#e2564a;">{{ equipo.resumen?.sin_marcar || 0 }}</div>
+              <div class="stat-description">Todavía no inician jornada</div>
+            </div>
+          </div>
+
+          <v-card flat class="custom-data-table mt-4">
+            <v-card-title class="table-search-bar">
+              <span class="table-title">Tablero en vivo · {{ fechaCorta(equipo.fecha) }}</span>
+              <v-spacer />
+              <v-btn size="small" variant="text" prepend-icon="mdi-refresh"
+                :loading="cargandoEquipo" @click="cargarEquipo">Actualizar</v-btn>
+            </v-card-title>
+            <v-data-table :headers="headersEquipo" :items="equipo.filas || []" class="elevation-0"
+              no-data-text="No hay colaboradores activos registrados" :items-per-page="25">
+              <template v-slot:item.estado="{ item }">
+                <span class="estado-chip" :class="'e-' + item.estado">{{ etiquetaTareo(item.estado) }}</span>
+              </template>
+              <template v-slot:item.check_in="{ item }">{{ horaLima(item.check_in) }}</template>
+              <template v-slot:item.check_out="{ item }">{{ horaLima(item.check_out) }}</template>
+              <template v-slot:item.break_minutes="{ item }">{{ minutosAHoras(item.break_minutes) }}</template>
+              <template v-slot:item.worked_minutes="{ item }">
+                <strong>{{ minutosAHoras(item.worked_minutes) }}</strong>
+              </template>
+              <template v-slot:item.acciones="{ item }">
+                <v-btn size="x-small" variant="text" prepend-icon="mdi-history"
+                  @click="verHistorialDe(item)">Ver historial</v-btn>
+              </template>
+            </v-data-table>
+          </v-card>
+
+          <!-- Acumulado del mes por persona -->
+          <v-card flat class="custom-data-table mt-4">
+            <v-card-title class="table-search-bar">
+              <span class="table-title">Acumulado del mes por colaborador</span>
+              <v-spacer />
+              <v-text-field v-model="rangoEquipo.desde" type="date" label="Desde" density="compact"
+                hide-details variant="outlined" style="max-width:165px" @update:model-value="cargarMesEquipo" />
+              <v-text-field v-model="rangoEquipo.hasta" type="date" label="Hasta" density="compact"
+                hide-details variant="outlined" style="max-width:165px" @update:model-value="cargarMesEquipo" />
+            </v-card-title>
+            <v-data-table :headers="headersMesEquipo" :items="mesEquipo" class="elevation-0"
+              no-data-text="Sin marcaciones en el rango" :items-per-page="25">
+              <template v-slot:item.horas="{ item }"><strong>{{ item.horas }} h</strong></template>
+              <template v-slot:item.faltas="{ item }">
+                <span :class="{ 'texto-alerta': item.faltas > 0 }">{{ item.faltas }}</span>
+              </template>
+            </v-data-table>
+          </v-card>
+        </div>
       </div>
     </div>
+
+    <!-- Historial de un colaborador puntual -->
+    <v-dialog v-model="dlgHistorial.abierto" max-width="900">
+      <v-card v-if="dlgHistorial.abierto">
+        <v-card-title class="pt-4">
+          Historial de {{ dlgHistorial.nombre }}
+          <div style="font-size:12.5px; opacity:.6; font-weight:400;">
+            {{ dlgHistorial.datos.resumen?.dias || 0 }} días ·
+            {{ dlgHistorial.datos.resumen?.horas || 0 }} horas efectivas en el rango
+          </div>
+        </v-card-title>
+        <v-card-text>
+          <v-data-table :headers="headersHistorial" :items="dlgHistorial.datos.registros || []"
+            class="elevation-0" no-data-text="Sin marcaciones" :items-per-page="31">
+            <template v-slot:item.fecha="{ item }">{{ fechaCorta(item.fecha) }}</template>
+            <template v-slot:item.check_in="{ item }">{{ horaLima(item.check_in) }}</template>
+            <template v-slot:item.check_out="{ item }">{{ horaLima(item.check_out) }}</template>
+            <template v-slot:item.break_minutes="{ item }">{{ minutosAHoras(item.break_minutes) }}</template>
+            <template v-slot:item.worked_minutes="{ item }">{{ minutosAHoras(item.worked_minutes) }}</template>
+            <template v-slot:item.estado="{ item }">
+              <span class="estado-chip" :class="'s-' + item.estado">{{ item.estado }}</span>
+            </template>
+            <template v-slot:item.editado_por="{ item }">
+              <v-icon v-if="item.editado_por" icon="mdi-pencil" size="13"
+                :title="'Corregido por ' + item.editado_por" style="opacity:.6" />
+            </template>
+          </v-data-table>
+        </v-card-text>
+        <v-card-actions style="padding: 8px 20px 18px;">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgHistorial.abierto = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <PiolaVisorPdf v-model="visor.abierto" :src="visor.src" :titulo="visor.titulo" />
   </div>
@@ -201,7 +312,8 @@
  * ?vista=mias y el endpoint filtra por su correo.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { PEN, fechaCorta, horaLima, minutosAHoras, urlDocumento } from '@/composables/usePiola'
+import { PEN, fechaCorta, horaLima, minutosAHoras, urlDocumento, periodoActual, hoyISO } from '@/composables/usePiola'
+import { piolaCan } from '@/utils/permissions'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
 
 const client = useSupabaseClient()
@@ -371,6 +483,89 @@ const headersBoletas = [
   { title: '', key: 'acciones', sortable: false },
 ]
 
+/* ══════════ Visor de supervisor ══════════
+ *
+ * Raysa: "¿eso se podría hacer por persona, o solamente Edson vería un listado
+ * ahí grande de cada persona?" → Roberto: "voy a añadir también un visor de
+ * supervisor para que él pueda revisar a todos".
+ *
+ * El endpoint GET /api/piola/tareo ya servía las tres vistas y ya exigía
+ * `rrhh.view` para cualquiera que no sea la propia; acá solo se expone. El
+ * `piolaCan` de abajo es COSMÉTICO — decide si se pinta la pestaña. Quien
+ * llame el endpoint a mano sin permiso igual recibe 403 del servidor.
+ */
+const puedeVerEquipo = computed(() => piolaCan(props.perfil?.permisos, 'rrhh', 'view'))
+
+const equipo = ref<any>({})
+const cargandoEquipo = ref(false)
+const mesEquipo = ref<any[]>([])
+const rangoEquipo = ref({ desde: `${periodoActual()}-01`, hasta: hoyISO() })
+const dlgHistorial = ref<any>({ abierto: false, nombre: '', datos: {} })
+
+const etiquetaTareo = (e: string) => ({
+  en_jornada: 'En jornada',
+  en_break: 'En break',
+  jornada_cerrada: 'Cerrada',
+  sin_marcar: 'Sin marcar',
+}[e] || e)
+
+async function cargarEquipo() {
+  if (!puedeVerEquipo.value) return
+  cargandoEquipo.value = true
+  try { equipo.value = await $fetch<any>('/api/piola/tareo', { params: { vista: 'tablero' } }) }
+  catch (e: any) {
+    emit('notify', { text: e?.data?.statusMessage || 'No se pudo cargar el tablero', color: 'error' })
+  } finally { cargandoEquipo.value = false }
+}
+
+async function cargarMesEquipo() {
+  if (!puedeVerEquipo.value) return
+  try {
+    const res = await $fetch<any>('/api/piola/tareo', {
+      params: { vista: 'mes', desde: rangoEquipo.value.desde, hasta: rangoEquipo.value.hasta },
+    })
+    // El endpoint agrupa por correo y no trae el nombre: se completa con el
+    // tablero, que sí lo tiene, para no pedir la tabla de colaboradores aparte.
+    const nombres = new Map<string, string>(
+      (equipo.value.filas || []).map((f: any) => [String(f.email).toLowerCase(), f.nombre]),
+    )
+    mesEquipo.value = (res.resumen || []).map((r: any) => ({
+      ...r, nombre: nombres.get(String(r.email).toLowerCase()) || r.email,
+    }))
+  } catch { mesEquipo.value = [] }
+}
+
+async function verHistorialDe(fila: any) {
+  dlgHistorial.value = { abierto: true, nombre: fila.nombre || fila.email, datos: {} }
+  try {
+    dlgHistorial.value.datos = await $fetch<any>('/api/piola/tareo', {
+      params: { vista: 'mi', email: fila.email, desde: rangoEquipo.value.desde, hasta: rangoEquipo.value.hasta },
+    })
+  } catch (e: any) {
+    emit('notify', { text: e?.data?.statusMessage || 'No se pudo cargar el historial', color: 'error' })
+    dlgHistorial.value.abierto = false
+  }
+}
+
+const headersEquipo = [
+  { title: 'Colaborador', key: 'nombre' },
+  { title: 'Cargo', key: 'cargo' },
+  { title: 'Estado', key: 'estado' },
+  { title: 'Entrada', key: 'check_in' },
+  { title: 'Salida', key: 'check_out' },
+  { title: 'Break', key: 'break_minutes' },
+  { title: 'Efectivas hoy', key: 'worked_minutes' },
+  { title: '', key: 'acciones', sortable: false },
+]
+
+const headersMesEquipo = [
+  { title: 'Colaborador', key: 'nombre' },
+  { title: 'Días con marcación', key: 'dias' },
+  { title: 'Horas efectivas', key: 'horas' },
+  { title: 'Faltas', key: 'faltas' },
+  { title: 'Incompletos', key: 'incompletos' },
+]
+
 /* ── Antigüedad legible ── */
 const antiguedadTexto = computed(() => {
   const dias = Number(w.value.antiguedad_dias || 0)
@@ -387,6 +582,12 @@ onMounted(async () => {
   intervalo = setInterval(actualizarReloj, 1000)
   tareo.value = props.perfil?.tareo_hoy || null
   await Promise.all([cargarHistorial(), cargarVacaciones(), cargarBoletas()])
+  // El tablero se pide después: alimenta los nombres del acumulado mensual,
+  // así que este orden importa.
+  if (puedeVerEquipo.value) {
+    await cargarEquipo()
+    await cargarMesEquipo()
+  }
 })
 
 onUnmounted(() => { if (intervalo) clearInterval(intervalo) })
@@ -438,6 +639,14 @@ onUnmounted(() => { if (intervalo) clearInterval(intervalo) })
 .s-falta { background: rgba(226, 86, 74, .13); color: #e2564a; }
 .s-vacaciones { background: rgba(139, 92, 246, .14); color: #8b5cf6; }
 .s-feriado, .s-licencia { background: rgba(128, 128, 128, .16); color: #888; }
+
+/* Estados del tablero en vivo del supervisor */
+.e-en_jornada { background: rgba(46, 158, 91, .14); color: #2e9e5b; }
+.e-en_break { background: rgba(242, 166, 59, .16); color: #d98324; }
+.e-jornada_cerrada { background: rgba(91, 141, 239, .14); color: #5b8def; }
+.e-sin_marcar { background: rgba(226, 86, 74, .13); color: #e2564a; }
+
+.texto-alerta { color: #e2564a; font-weight: 600; }
 
 @media (max-width: 800px) {
   .marcador-botones { flex-direction: column; }

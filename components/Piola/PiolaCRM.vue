@@ -656,7 +656,7 @@ onMounted(cargar)
   display: flex; gap: 14px; overflow-x: auto; padding-bottom: 12px; align-items: flex-start;
 }
 .kanban-col {
-  flex: 0 0 258px; background: var(--card-bg, rgba(128, 128, 128, .06));
+  flex: 0 0 258px; background: rgba(128, 128, 128, .06);
   border: 1px solid rgba(128, 128, 128, .18); border-radius: 12px; padding: 12px;
 }
 .kanban-head {
@@ -673,7 +673,11 @@ onMounted(cargar)
 .kanban-vacio { font-size: 12px; opacity: .4; text-align: center; padding: 18px 0; }
 
 .lead-card {
-  background: var(--bg, #fff); border: 1px solid rgba(128, 128, 128, .2); border-radius: 9px;
+  /* surface/on-surface del tema Vuetify: la tarjeta sigue al modo claro/oscuro.
+     Antes usaba var(--bg, #fff), y --bg no existe en el proyecto: en modo oscuro
+     quedaba un recuadro blanco con el texto claro encima, ilegible. */
+  background: rgb(var(--v-theme-surface)); color: rgb(var(--v-theme-on-surface));
+  border: 1px solid rgba(128, 128, 128, .2); border-radius: 9px;
   padding: 10px 11px; cursor: pointer; transition: transform .12s, box-shadow .12s;
 }
 .lead-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, .1); }

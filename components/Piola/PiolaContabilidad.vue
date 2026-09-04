@@ -11,6 +11,9 @@
         <button v-if="puedeCrear" class="btn-warning" @click="abrirNuevo('egreso')">
           <v-icon icon="mdi-minus" size="16" /><span>Egreso</span>
         </button>
+        <v-btn v-if="puedeCrear" variant="tonal" size="small" @click="abrirImportacion">
+          <v-icon icon="mdi-microsoft-excel" start /> Importar desde Excel
+        </v-btn>
       </div>
     </header>
 
@@ -94,8 +97,13 @@
               density="compact" hide-details variant="outlined" clearable class="filtro filtro-buscar" />
             <v-select v-model="fTipo" :items="['todos', 'ingreso', 'egreso']" density="compact" hide-details
               variant="outlined" label="Tipo" class="filtro" />
-            <v-select v-model="fCategoria" :items="opcionesCategoriaFiltro" density="compact" hide-details
-              variant="outlined" label="Categoría" class="filtro" />
+            <!-- Autocomplete y no select: escribiendo "62" se llega al tipo de gasto
+                 por su número, que es como lo tiene memorizado Edson. -->
+            <v-autocomplete v-model="fCategoria" :items="opcionesCategoriaFiltro" density="compact"
+              hide-details variant="outlined" label="Categoría" class="filtro" auto-select-first />
+            <v-text-field v-model="fCodigo" type="number" min="0" label="N.º de gasto"
+              placeholder="62" density="compact" hide-details variant="outlined" clearable
+              class="filtro filtro-codigo" />
           </div>
           <v-data-table :headers="headersTx" :items="movimientosFiltrados" :loading="cargando" class="elevation-0"
             no-data-text="Sin movimientos en este periodo" :items-per-page="25">
@@ -179,9 +187,13 @@
           <v-alert type="success" variant="tonal" density="compact" class="mb-4">
             Las categorías son <b>carpetas y subcarpetas</b>, sin límite de niveles, y se administran desde aquí:
             agregar el gasto operativo N.º 31 no requiere una nueva reunión con desarrollo.
+            El <b>N.º</b> es la numeración del flujo de caja (2 = combustible, 5 = publicidad,
+            62 = Oana): con él se elige y se filtra el tipo de gasto en todo el módulo.
           </v-alert>
 
           <div v-if="puedeEditar" class="cat-nueva">
+            <v-text-field v-model="nuevaCat.codigo" type="number" min="0" label="N.º"
+              density="compact" hide-details variant="outlined" @keyup.enter="crearCategoria" />
             <v-text-field v-model="nuevaCat.nombre" label="Nombre de la categoría" density="compact"
               hide-details variant="outlined" @keyup.enter="crearCategoria" />
             <v-select v-model="nuevaCat.parent_id" :items="opcionesPadre" label="Dentro de (opcional)"
@@ -197,20 +209,24 @@
               <v-icon :icon="c.nivel === 0 ? 'mdi-folder' : 'mdi-subdirectory-arrow-right'" size="16"
                 :style="{ opacity: c.nivel === 0 ? .8 : .5 }" />
               <template v-if="editandoCat === c.id">
+                <v-text-field v-model="codigoEditado" type="number" min="0" label="N.º" density="compact"
+                  hide-details variant="outlined" style="max-width:100px;"
+                  @keyup.enter="renombrarCategoria(c)" />
                 <v-text-field v-model="nombreEditado" density="compact" hide-details variant="outlined"
                   style="max-width:280px;" @keyup.enter="renombrarCategoria(c)" />
                 <v-btn size="x-small" color="primary" variant="flat" @click="renombrarCategoria(c)">Guardar</v-btn>
                 <v-btn size="x-small" variant="text" @click="editandoCat = null">Cancelar</v-btn>
               </template>
               <template v-else>
+                <span v-if="codigoDe(c.id) !== null" class="arbol-codigo">{{ codigoDe(c.id) }}</span>
                 <span class="arbol-nombre" :class="{ inactiva: !c.activo }">{{ c.nombre }}</span>
                 <v-chip size="x-small" variant="tonal" class="ml-1">{{ c.tipo }}</v-chip>
                 <span class="arbol-monto">{{ PEN(montoCategoria(c.id)) }}</span>
                 <div class="arbol-acciones" v-if="puedeEditar">
                   <v-btn icon="mdi-plus" size="x-small" variant="text" title="Agregar subcategoría"
                     @click="nuevaCat.parent_id = c.id" />
-                  <v-btn icon="mdi-pencil" size="x-small" variant="text" title="Renombrar"
-                    @click="editandoCat = c.id; nombreEditado = c.nombre" />
+                  <v-btn icon="mdi-pencil" size="x-small" variant="text" title="Renombrar o numerar"
+                    @click="abrirEdicionCategoria(c)" />
                   <v-btn :icon="c.activo ? 'mdi-eye-off' : 'mdi-eye'" size="x-small" variant="text"
                     :title="c.activo ? 'Desactivar' : 'Reactivar'" @click="alternarCategoria(c)" />
                   <v-btn v-if="puedeEliminar" icon="mdi-delete" size="x-small" variant="text" color="error"
@@ -270,8 +286,9 @@
               density="compact" hide-details variant="outlined" @update:model-value="recalcularVencimiento" />
             <v-text-field v-model="movimiento.concepto" label="Concepto *" density="compact"
               hide-details variant="outlined" class="col-2" />
-            <v-select v-model="movimiento.category_id" :items="opcionesCategoriaForm" label="Categoría"
-              density="compact" hide-details variant="outlined" />
+            <v-autocomplete v-model="movimiento.category_id" :items="opcionesCategoriaForm"
+              label="Categoría (tipo de gasto)" density="compact" hide-details variant="outlined"
+              clearable auto-select-first />
             <v-select v-if="movimiento.tipo === 'ingreso'" v-model="movimiento.cliente_id"
               :items="opcionesCliente" label="Cliente" density="compact" hide-details
               variant="outlined" clearable />
@@ -362,6 +379,16 @@
             label="Comprobante / documento (PDF)"
             @error="(m: string) => emit('notify', { text: m, color: 'error' })" />
 
+          <!-- El comprobante de arriba sigue siendo el documento principal; acá van
+               los demás: constancia de detracción, voucher, anexos. -->
+          <div class="form-section-title" style="margin-top:18px;">
+            Otros documentos
+            <span v-if="totalAdjuntos" class="contador-adjuntos">{{ totalAdjuntos }}</span>
+          </div>
+          <PiolaAdjuntos entidad="transaction" :entidad_id="movimiento.id || null"
+            :disabled="!puedeEditar" :perfil="perfil"
+            @notify="(p: any) => emit('notify', p)" @cambio="(n: number) => totalAdjuntos = n" />
+
           <v-checkbox v-model="movimiento.proyectado" color="primary" density="compact" hide-details
             label="Es una proyección (aún no ocurrió)" class="mt-2" />
 
@@ -372,6 +399,121 @@
           <v-spacer />
           <v-btn variant="text" @click="movimiento = null">Cancelar</v-btn>
           <v-btn color="primary" variant="flat" :loading="guardando" @click="guardarMovimiento">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ══════════ DIÁLOGO: IMPORTAR DESDE EXCEL ══════════ -->
+    <v-dialog v-model="importAbierto" max-width="1100" scrollable>
+      <v-card>
+        <v-card-title class="pt-4">Importar movimientos desde Excel</v-card-title>
+
+        <!-- ── Resultado de la importación ── -->
+        <v-card-text v-if="resultado">
+          <v-alert :type="resultado.errores.length ? 'warning' : 'success'" variant="tonal" density="compact">
+            Se registraron <b>{{ resultado.ok }}</b> movimiento(s).
+            <span v-if="resultado.errores.length">
+              {{ resultado.errores.length }} fila(s) quedaron fuera.
+            </span>
+          </v-alert>
+
+          <v-table v-if="resultado.errores.length" density="compact" class="tabla-import mt-3">
+            <thead><tr><th style="width:70px;">Fila</th><th>Motivo</th></tr></thead>
+            <tbody>
+              <tr v-for="(e, i) in resultado.errores" :key="i">
+                <td>{{ e.fila }}</td>
+                <td>{{ e.motivo }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+
+          <v-alert v-if="resultado.batch_id" type="info" variant="tonal" density="compact" class="mt-3">
+            ¿Pegaste el bloque equivocado? Se puede revertir el lote completo mientras no se
+            hayan registrado pagos contra esos movimientos.
+          </v-alert>
+        </v-card-text>
+
+        <!-- ── Pegar y previsualizar ── -->
+        <v-card-text v-else>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+            Copia las filas desde Excel y pégalas aquí tal cual. El orden de las columnas es:
+            <b>Fecha · Tipo (ingreso / egreso) · Concepto · N.º de gasto · Categoría · Importe</b>.
+            La fecha va <b>sin hora</b> y en formato peruano (día primero); la forma de pago se
+            registra como transferencia bancaria. Si la primera fila son los títulos, se ignora sola.
+          </v-alert>
+
+          <div class="import-barra">
+            <v-btn size="small" variant="tonal" @click="copiarPlantilla">
+              <v-icon icon="mdi-content-copy" start /> Copiar plantilla de ejemplo
+            </v-btn>
+            <v-btn size="small" variant="text" :disabled="!pegado" @click="pegado = ''">Limpiar</v-btn>
+            <v-spacer />
+            <v-chip v-if="filas.length" size="small" variant="tonal" color="success">
+              {{ filasValidas.length }} válida(s)
+            </v-chip>
+            <v-chip v-if="filasInvalidas.length" size="small" variant="tonal" color="error">
+              {{ filasInvalidas.length }} con error
+            </v-chip>
+            <v-chip v-if="filasConAviso.length" size="small" variant="tonal" color="warning">
+              {{ filasConAviso.length }} con aviso
+            </v-chip>
+          </div>
+
+          <v-textarea v-model="pegado" class="import-textarea" variant="outlined" hide-details
+            rows="7" spellcheck="false"
+            placeholder="01/09/2026	egreso	Combustible camioneta	2	Movilidad	120.00" />
+
+          <div v-if="filas.length" class="tabla-import-wrap">
+            <v-table density="compact" class="tabla-import">
+              <thead>
+                <tr>
+                  <th style="width:52px;">Fila</th>
+                  <th style="width:104px;">Fecha</th>
+                  <th style="width:88px;">Tipo</th>
+                  <th>Concepto</th>
+                  <th style="width:60px;">N.º</th>
+                  <th>Categoría</th>
+                  <th style="width:110px;" class="text-right">Importe</th>
+                  <th>Observación</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="f in filas" :key="f.linea"
+                  :class="{ 'fila-mala': !f.ok, 'fila-aviso': f.ok && !!f.aviso }">
+                  <td class="td-tenue">{{ f.linea }}</td>
+                  <td>{{ f.fecha ? fechaCorta(f.fecha) : '—' }}</td>
+                  <td>
+                    <v-chip v-if="f.tipo" size="x-small" variant="flat"
+                      :color="f.tipo === 'ingreso' ? 'success' : 'error'">{{ f.tipo }}</v-chip>
+                    <span v-else class="td-tenue">—</span>
+                  </td>
+                  <td class="td-concepto" :title="f.concepto">{{ f.concepto || '—' }}</td>
+                  <td>{{ f.codigo ?? '—' }}</td>
+                  <td class="td-concepto">{{ f.categoriaResuelta || f.categoria || '—' }}</td>
+                  <td class="text-right">{{ f.monto !== null ? PEN(f.monto) : '—' }}</td>
+                  <td class="td-motivo">{{ f.motivo || f.aviso || '' }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-btn v-if="resultado?.batch_id" color="error" variant="text" :loading="deshaciendo"
+            @click="deshacerImportacion">
+            <v-icon icon="mdi-undo-variant" start /> Deshacer esta importación
+          </v-btn>
+          <v-spacer />
+          <v-btn variant="text" @click="importAbierto = false">
+            {{ resultado ? 'Cerrar' : 'Cancelar' }}
+          </v-btn>
+          <v-btn v-if="resultado" color="primary" variant="flat" @click="abrirImportacion">
+            Importar otro bloque
+          </v-btn>
+          <v-btn v-else color="primary" variant="flat" :loading="importandoFilas"
+            :disabled="!filasValidas.length" @click="importar">
+            Importar {{ filasValidas.length }} fila(s) válida(s)
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -805,14 +947,41 @@ async function eliminar(item: any) {
 }
 
 /* ══════════ CRUD de categorías jerárquicas ══════════ */
-const nuevaCat = ref<any>({ nombre: '', parent_id: null, tipo: 'egreso' })
+const nuevaCat = ref<any>({ nombre: '', parent_id: null, tipo: 'egreso', codigo: null })
 const guardandoCat = ref(false)
 const editandoCat = ref<number | null>(null)
 const nombreEditado = ref('')
+const codigoEditado = ref<any>(null)
+
+/**
+ * El N.º del tipo de gasto de Edson (2 = combustible, 62 = Oana). Vive en la
+ * categoría, no en el árbol aplanado, así que se busca en el catálogo crudo.
+ */
+function codigoDe(id: any): number | null {
+  const c = categorias.value.find((x: any) => x.id === id)
+  return c?.codigo ?? null
+}
+
+function abrirEdicionCategoria(c: any) {
+  editandoCat.value = c.id
+  nombreEditado.value = c.nombre
+  codigoEditado.value = codigoDe(c.id)
+}
+
+/** '' y null significan "sin número"; cualquier otra cosa tiene que ser entero. */
+function codigoNormalizado(v: any): number | null | undefined {
+  if (v === null || v === undefined || String(v).trim() === '') return null
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 0 ? n : undefined   // undefined = inválido
+}
 
 async function crearCategoria() {
   if (!nuevaCat.value.nombre?.trim()) {
     return emit('notify', { text: 'Escribe el nombre de la categoría', color: 'error' })
+  }
+  const codigo = codigoNormalizado(nuevaCat.value.codigo)
+  if (codigo === undefined) {
+    return emit('notify', { text: 'El N.º del tipo de gasto tiene que ser un entero', color: 'error' })
   }
   guardandoCat.value = true
   const { error } = await apiPiola('contabilidad', {
@@ -821,22 +990,29 @@ async function crearCategoria() {
     parent_id: nuevaCat.value.parent_id || null,
     tipo: nuevaCat.value.tipo,
     orden: categorias.value.length + 1,
+    codigo,
   })
   guardandoCat.value = false
-  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
+  // El servidor traduce el choque del índice único a "el número X ya lo usa Y",
+  // así que su mensaje se muestra tal cual en vez de uno genérico.
+  if (error) return emit('notify', { text: error.message, color: 'error' })
   emit('notify', 'Categoría agregada')
-  nuevaCat.value = { nombre: '', parent_id: null, tipo: 'egreso' }
+  nuevaCat.value = { nombre: '', parent_id: null, tipo: 'egreso', codigo: null }
   await cargar()
 }
 
 async function renombrarCategoria(c: any) {
   if (!nombreEditado.value.trim()) return
+  const codigo = codigoNormalizado(codigoEditado.value)
+  if (codigo === undefined) {
+    return emit('notify', { text: 'El N.º del tipo de gasto tiene que ser un entero', color: 'error' })
+  }
   const { error } = await apiPiola('contabilidad', {
-    accion: 'editar_categoria', id: c.id, nombre: nombreEditado.value.trim(),
+    accion: 'editar_categoria', id: c.id, nombre: nombreEditado.value.trim(), codigo,
   })
-  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
+  if (error) return emit('notify', { text: error.message, color: 'error' })
   editandoCat.value = null
-  emit('notify', 'Categoría renombrada')
+  emit('notify', 'Categoría actualizada')
   await cargar()
 }
 
@@ -894,6 +1070,243 @@ async function cambiarEstadoComision(item: any, estado: string) {
   }
 }
 
+/* ══════════════════ Importar movimientos desde Excel ══════════════════
+ *
+ * Edson Polo, reunión del 31/08/2026: "me gustaría importar información de un
+ * Excel… quiero copiar y pegar no más. A veces tenemos 30 movimientos, 40
+ * movimientos en una semana y estar metiéndole uno a uno es demasiada carga
+ * operativa."
+ *
+ * El parseo de acá es SOLO para la previsualización: el servidor vuelve a
+ * validar todo por su cuenta (y es él quien manda). Se duplica a propósito,
+ * porque el valor de la pantalla es que Edson vea qué filas van a fallar
+ * ANTES de mandarlas, no después.
+ *
+ * Orden de columnas, tal como lo maneja él en su hoja:
+ *   Fecha · Tipo · Concepto · N.º de gasto · Categoría · Importe
+ */
+const importAbierto = ref(false)
+const pegado = ref('')
+const importandoFilas = ref(false)
+const deshaciendo = ref(false)
+const resultado = ref<any>(null)
+
+const PLANTILLA_IMPORT = [
+  'Fecha\tTipo\tConcepto\tN.º de gasto\tCategoría\tImporte',
+  '01/09/2026\tegreso\tCombustible camioneta\t2\tMovilidad\t120.00',
+  '02/09/2026\tegreso\tPauta Meta setiembre\t5\tMarketing\t1450.00',
+  '03/09/2026\tingreso\tCuota mensual Vaca Loca\t\tVentas\t3000.00',
+].join('\n')
+
+function abrirImportacion() {
+  resultado.value = null
+  pegado.value = ''
+  importAbierto.value = true
+}
+
+async function copiarPlantilla() {
+  try {
+    await navigator.clipboard.writeText(PLANTILLA_IMPORT)
+    emit('notify', 'Plantilla copiada: pégala en Excel para ver el orden de las columnas')
+  } catch {
+    // Sin permiso de portapapeles (pasa en http o si el navegador lo bloquea):
+    // se deja en el textarea, que para el caso sirve igual.
+    pegado.value = PLANTILLA_IMPORT
+    emit('notify', 'El navegador bloqueó el portapapeles: te dejé la plantilla en el cuadro')
+  }
+}
+
+/** Fecha peruana (día primero) o ISO. Igual criterio que el servidor. */
+function parseFechaPegada(v: string): string | null {
+  const s = (v || '').trim()
+  if (!s) return null
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (m) {
+    const [, a, me, d] = m
+    return fechaValida(+a, +me, +d) ? `${a}-${pad(+me)}-${pad(+d)}` : null
+  }
+  m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/)
+  if (m) {
+    const d = +m[1], me = +m[2]
+    const a = m[3].length === 2 ? 2000 + +m[3] : +m[3]
+    return fechaValida(a, me, d) ? `${a}-${pad(me)}-${pad(d)}` : null
+  }
+  return null
+}
+const pad = (n: number) => String(n).padStart(2, '0')
+function fechaValida(a: number, m: number, d: number) {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false
+  const f = new Date(Date.UTC(a, m - 1, d))
+  return f.getUTCMonth() === m - 1 && f.getUTCDate() === d
+}
+
+/** "1,450.00" y "1450,00" son el mismo número escrito por dos Excel distintos. */
+function parseImportePegado(v: string): number | null {
+  let s = (v || '').replace(/[^\d,.\-]/g, '').trim()
+  if (!s) return null
+  const comas = (s.match(/,/g) || []).length
+  const puntos = (s.match(/\./g) || []).length
+  if (comas && puntos) {
+    // El separador decimal es el que aparece más a la derecha.
+    s = s.lastIndexOf(',') > s.lastIndexOf('.')
+      ? s.replace(/\./g, '').replace(',', '.')
+      : s.replace(/,/g, '')
+  } else if (comas === 1 && /,\d{1,2}$/.test(s)) {
+    s = s.replace(',', '.')
+  } else {
+    s = s.replace(/,/g, '')
+  }
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+const RE_TILDES = new RegExp('[\u0300-\u036f]', 'g')
+const sinTilde = (s: string) => (s || '').toLowerCase().normalize('NFD')
+  .replace(RE_TILDES, '').trim()
+
+const TIPOS_PEGADOS: Record<string, string> = {
+  ingreso: 'ingreso', ingresos: 'ingreso', entrada: 'ingreso', i: 'ingreso',
+  egreso: 'egreso', egresos: 'egreso', salida: 'egreso', gasto: 'egreso', e: 'egreso',
+}
+
+const filas = computed(() => {
+  const texto = pegado.value || ''
+  if (!texto.trim()) return [] as any[]
+
+  // Índices para resolver el número de gasto contra el catálogo real, que es
+  // lo que permite mostrarle a Edson el nombre de la categoría en la vista
+  // previa en vez de sólo el número que escribió.
+  const porCodigo = new Map<number, any>()
+  const porNombre = new Map<string, any[]>()
+  for (const c of categorias.value || []) {
+    if (c.codigo !== null && c.codigo !== undefined) porCodigo.set(Number(c.codigo), c)
+    const k = sinTilde(c.nombre)
+    porNombre.set(k, [...(porNombre.get(k) || []), c])
+  }
+
+  const lineas = texto.split(/\r?\n/)
+  const salida: any[] = []
+
+  for (let i = 0; i < lineas.length; i++) {
+    const cruda = lineas[i]
+    if (!cruda.trim()) continue
+
+    // Excel pega con TAB. El punto y coma es el separador de los CSV en es-PE.
+    const col = (cruda.includes('\t') ? cruda.split('\t') : cruda.split(';')).map(c => c.trim())
+    const [cFecha, cTipo, cConcepto, cCodigo, cCategoria, cImporte] = col
+
+    // Cabecera: se reconoce porque la fecha no es fecha y el texto dice "fecha".
+    if (i === 0 && !parseFechaPegada(cFecha) && sinTilde(cFecha).startsWith('fecha')) continue
+
+    const f: any = {
+      linea: i + 1,
+      fecha: parseFechaPegada(cFecha),
+      tipo: TIPOS_PEGADOS[sinTilde(cTipo)] || null,
+      concepto: (cConcepto || '').trim(),
+      codigo: (cCodigo || '').trim() === '' ? null : Number(String(cCodigo).trim()),
+      categoria: (cCategoria || '').trim(),
+      categoriaResuelta: '',
+      monto: parseImportePegado(cImporte),
+      ok: true, motivo: '', aviso: '',
+    }
+
+    if (col.length < 6) { f.ok = false; f.motivo = `Se esperaban 6 columnas y llegaron ${col.length}` }
+    else if (!f.fecha) { f.ok = false; f.motivo = 'Fecha vacía o ilegible (usa 01/09/2026)' }
+    else if (!f.tipo) { f.ok = false; f.motivo = `"${cTipo || '(vacío)'}" no es ingreso ni egreso` }
+    else if (!f.concepto) { f.ok = false; f.motivo = 'Falta el concepto' }
+    else if (f.monto === null) { f.ok = false; f.motivo = 'Importe vacío o ilegible' }
+    else if (f.monto < 0 && f.tipo !== 'egreso') { f.ok = false; f.motivo = 'Importe negativo en un ingreso' }
+    else if (!(Math.abs(f.monto) > 0)) { f.ok = false; f.motivo = 'El importe tiene que ser mayor que cero' }
+
+    // El egreso en negativo es redundante (el tipo ya lleva el signo), no un error.
+    if (f.ok && f.monto < 0) { f.monto = Math.abs(f.monto); f.aviso = 'Importe en negativo: se toma en positivo' }
+
+    // Categoría: primero por número, que es como Edson los identifica.
+    if (f.ok) {
+      if (f.codigo !== null) {
+        if (!Number.isInteger(f.codigo)) { f.ok = false; f.motivo = `El tipo de gasto "${cCodigo}" no es un número` }
+        else {
+          const cat = porCodigo.get(f.codigo)
+          if (!cat) { f.ok = false; f.motivo = `No existe ninguna categoría con el número ${f.codigo}` }
+          else f.categoriaResuelta = cat.nombre
+        }
+      } else if (f.categoria) {
+        const halladas = porNombre.get(sinTilde(f.categoria)) || []
+        if (!halladas.length) { f.ok = false; f.motivo = `No existe la categoría "${f.categoria}"` }
+        else if (halladas.length > 1) {
+          f.ok = false
+          f.motivo = `Hay ${halladas.length} categorías llamadas "${f.categoria}": usa el número`
+        } else f.categoriaResuelta = halladas[0].nombre
+      } else if (!f.aviso) {
+        f.aviso = 'Sin categoría: entra igual, pero no suma a ningún rubro'
+      }
+    }
+
+    salida.push(f)
+  }
+  return salida
+})
+
+const filasValidas = computed(() => filas.value.filter(f => f.ok))
+const filasInvalidas = computed(() => filas.value.filter(f => !f.ok))
+const filasConAviso = computed(() => filas.value.filter(f => f.ok && f.aviso))
+
+async function importar() {
+  if (!filasValidas.value.length) return
+  importandoFilas.value = true
+  try {
+    // Se mandan sólo las válidas, pero con su número de línea original: si el
+    // servidor rechaza alguna igual, el error apunta a la fila del Excel de
+    // Edson y no a la posición dentro del lote.
+    const { data, error } = await apiPiola<any>('contabilidad', {
+      accion: 'importar_movimientos',
+      origen: 'excel',
+      filas: filasValidas.value.map(f => ({
+        fila: f.linea,
+        fecha: f.fecha,
+        tipo: f.tipo,
+        concepto: f.concepto,
+        codigo: f.codigo,
+        categoria: f.codigo === null ? f.categoria : '',
+        importe: f.monto,
+      })),
+    })
+    if (error) return emit('notify', { text: error.message, color: 'error' })
+
+    resultado.value = {
+      ok: data?.filas_ok ?? 0,
+      errores: data?.errores || [],
+      batch_id: data?.batch_id || null,
+    }
+    emit('notify', `Importación lista: ${resultado.value.ok} movimiento(s) registrados`)
+    await cargar()
+  } finally {
+    importandoFilas.value = false
+  }
+}
+
+async function deshacerImportacion() {
+  const batchId = resultado.value?.batch_id
+  if (!batchId) return
+  if (!confirm('Se van a eliminar TODOS los movimientos de esta importación. ¿Continuar?')) return
+
+  deshaciendo.value = true
+  try {
+    const { error } = await apiPiola('contabilidad', {
+      accion: 'deshacer_importacion', batch_id: batchId,
+    })
+    // El servidor se niega si alguno ya tiene cobros registrados: borrarlos se
+    // llevaría el historial de pagos por CASCADE, en silencio.
+    if (error) return emit('notify', { text: error.message, color: 'error' })
+    emit('notify', 'Importación revertida')
+    importAbierto.value = false
+    resultado.value = null
+    await cargar()
+  } finally {
+    deshaciendo.value = false
+  }
+}
+
 onMounted(cargar)
 </script>
 
@@ -914,9 +1327,16 @@ onMounted(cargar)
 .barra-fill { height: 100%; background: linear-gradient(90deg, #e2564a, #f2a63b); }
 
 /* Árbol de categorías */
+/* 5 columnas desde que el N.º del tipo de gasto se pide al crear (31/08/2026) */
 .cat-nueva {
-  display: grid; grid-template-columns: 1.6fr 1.6fr 1fr auto; gap: 10px;
+  display: grid; grid-template-columns: 88px 1.6fr 1.4fr 1fr auto; gap: 10px;
   align-items: center; margin-bottom: 18px;
+}
+/* El número que Edson usa para identificar el rubro, delante del nombre */
+.arbol-codigo {
+  font-variant-numeric: tabular-nums; font-weight: 700; font-size: 11.5px;
+  background: rgba(128, 128, 128, .18); border-radius: 5px;
+  padding: 1px 6px; min-width: 26px; text-align: center;
 }
 .arbol { border: 1px solid rgba(128, 128, 128, .18); border-radius: 10px; overflow: hidden; }
 .arbol-fila {
@@ -970,9 +1390,42 @@ onMounted(cargar)
   font-size: 15px; color: #2e9e5b;
 }
 
+/* ── Importar movimientos desde Excel (reunión 31/08/2026) ── */
+.import-barra { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+
+/* Monoespaciada porque lo que se pega son columnas: alineadas se detecta a ojo
+   que una fila trae una columna de menos, que es el error más común al copiar. */
+.import-textarea :deep(textarea) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.55; white-space: pre; overflow-x: auto;
+}
+
+.tabla-import-wrap {
+  margin-top: 14px; max-height: 340px; overflow: auto;
+  border: 1px solid rgba(128, 128, 128, .2); border-radius: 8px;
+}
+.tabla-import { font-size: 12.5px; background: rgb(var(--v-theme-surface)); }
+.tabla-import :deep(th) {
+  position: sticky; top: 0; z-index: 1;
+  background: rgb(var(--v-theme-surface));
+  font-size: 11px; text-transform: uppercase; letter-spacing: .4px; opacity: .7;
+}
+.tabla-import :deep(td) { vertical-align: top; }
+
+/* Rojo = la fila no entra. Ámbar = entra, pero con una salvedad que conviene ver. */
+.tabla-import :deep(tr.fila-mala) > td { background: rgba(226, 86, 74, .10); }
+.tabla-import :deep(tr.fila-aviso) > td { background: rgba(242, 166, 59, .10); }
+
+.td-tenue { opacity: .5; font-variant-numeric: tabular-nums; }
+.td-concepto { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-motivo { font-size: 11.5px; opacity: .8; max-width: 280px; }
+.tabla-import :deep(tr.fila-mala) .td-motivo { color: #e2564a; }
+.tabla-import :deep(tr.fila-aviso) .td-motivo { color: #d98324; }
+
 @media (max-width: 800px) {
   .form-grid { grid-template-columns: 1fr; }
   .form-grid .col-2 { grid-column: span 1; }
   .totales-caja { max-width: none; }
+  .cat-nueva { grid-template-columns: 1fr; }
 }
 </style>

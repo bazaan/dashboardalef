@@ -96,6 +96,7 @@
         <PiolaMiEspacio v-else-if="activeView === 'mi_espacio'" :perfil="perfil"
           @notify="notify" @perfil-actualizado="cargarPerfil" />
         <PiolaCRM v-else-if="activeView === 'crm'" :perfil="perfil" @notify="notify" />
+        <PiolaClientes v-else-if="activeView === 'clientes'" :perfil="perfil" @notify="notify" />
         <PiolaContabilidad v-else-if="activeView === 'contabilidad'" :perfil="perfil" @notify="notify" />
         <PiolaFacturacion v-else-if="activeView === 'facturacion'" :perfil="perfil" @notify="notify" />
         <PiolaProduccion v-else-if="activeView === 'produccion'" :perfil="perfil" @notify="notify" />
@@ -127,6 +128,7 @@ import { isSuperAdmin, canAccessPiola, piolaCan, dashboards } from '@/utils/perm
 import PiolaHome from '@/components/Piola/PiolaHome.vue'
 import PiolaMiEspacio from '@/components/Piola/PiolaMiEspacio.vue'
 import PiolaCRM from '@/components/Piola/PiolaCRM.vue'
+import PiolaClientes from '@/components/Piola/PiolaClientes.vue'
 import PiolaContabilidad from '@/components/Piola/PiolaContabilidad.vue'
 import PiolaFacturacion from '@/components/Piola/PiolaFacturacion.vue'
 import PiolaProduccion from '@/components/Piola/PiolaProduccion.vue'
@@ -204,6 +206,10 @@ const SECCIONES = [
     label: 'Comercial',
     items: [
       { id: 'crm', icon: 'mdi-account-multiple-plus', label: 'Leads / Pipeline', modulo: 'crm' },
+      // Registro de clientes (reunión 31/08/2026). Edson pidió tener la ficha del
+      // cliente —contrato, condiciones, anexos, ficha RUC— en un módulo propio,
+      // para que al facturar sólo se elija del desplegable y todo se autocomplete.
+      { id: 'clientes', icon: 'mdi-briefcase-account', label: 'Clientes', modulo: 'crm' },
     ],
   },
   {

@@ -13,9 +13,18 @@
  *
  * El estado de la cuenta (pendiente → parcial → pagado) NO se toca desde acá:
  * lo recalcula el trigger `piola_recalcular_saldo()` al insertar o borrar el pago.
+ *
+ * Registrar dispara además el aviso inmediato por WhatsApp `cobro_registrado`
+ * (reunión 31/08/2026). Eliminar NO avisa: es una corrección, y avisarla haría
+ * que el equipo recibiera dos mensajes contradictorios por el mismo cobro.
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionPiola, exigirModulo, hoyLima } from '../../utils/piola'
+import { dispararAlertaInmediata } from '../../utils/piola-alertas'
+
+const money = (n: any) => `S/ ${Number(n || 0).toLocaleString('es-PE', {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+})}`
 
 export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
@@ -47,7 +56,7 @@ export default defineEventHandler(async (event) => {
 
     // El saldo real, recalculado ahora: es la única cifra en la que se confía.
     const { data: cuenta } = await supabase
-      .from('piola_transactions').select('id, monto, monto_pagado, estado, concepto')
+      .from('piola_transactions').select('id, tipo, monto, monto_pagado, estado, concepto')
       .eq('id', txId).maybeSingle()
     if (!cuenta) throw createError({ statusCode: 404, statusMessage: 'La cuenta no existe' })
     if (cuenta.estado === 'anulado') {
@@ -79,7 +88,33 @@ export default defineEventHandler(async (event) => {
     }).select('*').single()
     if (error) throw createError({ statusCode: 500, statusMessage: error.message })
 
-    return { ok: true, pago: data }
+    /* Aviso inmediato por WhatsApp (reunión 31/08/2026). Roberto: "cada vez que
+     * hay un movimiento… que se haya pagado, se haya hecho un registro… ahí les
+     * llega la notificación".
+     *
+     * Se espera el resultado porque en Netlify la función se congela al
+     * responder y una promesa suelta no llegaría a enviarse. La alerta nunca
+     * lanza: el pago ya está guardado y es lo único que no se puede perder. */
+    const esCobro = cuenta.tipo === 'ingreso'
+    const restante = Math.round(Math.max(saldo - monto - descuento, 0) * 100) / 100
+    const aviso = await dispararAlertaInmediata(supabase, {
+      tipo: 'cobro_registrado',
+      related_table: 'piola_pagos',
+      related_id: data?.id ?? null,
+      titulo: `${esCobro ? 'Cobro' : 'Pago'} de ${money(monto)} — ${cuenta.concepto}`,
+      mensaje: [
+        `${esCobro ? '💰' : '📤'} *${esCobro ? 'Cobro' : 'Pago'} registrado*`,
+        cuenta.concepto || '(sin concepto)',
+        `Monto: ${money(monto)}`,
+        descuento > 0 ? `Descuento: ${money(descuento)} (${motivo})` : '',
+        `Saldo pendiente: ${money(restante)}${restante <= 0 ? ' — cuenta saldada' : ''}`,
+        body?.payment_method ? `Método: ${body.payment_method}` : '',
+        body?.referencia ? `Operación: ${body.referencia}` : '',
+        `Registró: ${perfil.email}`,
+      ].filter(Boolean).join('\n'),
+    })
+
+    return { ok: true, pago: data, alerta: aviso }
   }
 
   /* ══════════ Eliminar un pago ══════════ */

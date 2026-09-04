@@ -17,7 +17,7 @@
             Vacaciones <span v-if="pendientesVac" class="badge">{{ pendientesVac }}</span>
           </button>
           <button v-if="esAdmin" :class="['tab', { active: tab === 'planilla' }]" @click="tab = 'planilla'">
-            Boletas y AFP
+            Boletas y honorarios
           </button>
         </div>
 
@@ -184,36 +184,102 @@
           </v-card>
         </div>
 
-        <!-- ══════════ BOLETAS Y AFP (solo Administrador) ══════════ -->
+        <!-- ══════════ BOLETAS, HONORARIOS Y AFP (solo Administrador) ══════════ -->
         <div v-else-if="tab === 'planilla' && esAdmin">
           <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-            <b>Visibilidad restringida:</b> boletas y descargo AFP solo los ve y genera un Administrador.
-            Las tasas usadas son de referencia — <b>Piola aún debe enviar sus modelos reales</b> de boleta
-            y de formato AFP para recrearlos como plantilla exacta.
+            <b>Visibilidad restringida:</b> boletas, recibos por honorarios y descargo AFP solo los ve
+            y genera un Administrador. Las tasas usadas son de referencia — <b>Piola aún debe enviar sus
+            modelos reales</b> de boleta y de formato AFP para recrearlos como plantilla exacta.
           </v-alert>
 
           <v-card flat class="custom-data-table" style="padding:18px;">
+            <!-- Doble función pedida el 31/08: planilla y honorarios en el mismo módulo -->
+            <div class="tipo-switch">
+              <button :class="['tipo-op', { activo: tipoDoc === 'planilla' }]" @click="cambiarTipo('planilla')">
+                <v-icon icon="mdi-file-document-outline" size="16" /> Boleta de planilla
+              </button>
+              <button :class="['tipo-op', { activo: tipoDoc === 'honorarios' }]" @click="cambiarTipo('honorarios')">
+                <v-icon icon="mdi-receipt-text-outline" size="16" /> Recibo por honorarios
+              </button>
+            </div>
+            <p class="tipo-ayuda">{{ ayudaTipo }}</p>
+
             <div class="planilla-form">
               <v-select v-model="periodoPlanilla" :items="periodos" label="Periodo" density="compact"
                 hide-details variant="outlined" />
-              <v-select v-model="colaboradorBoleta" :items="opcionesPlanilla" label="Colaborador"
-                density="compact" hide-details variant="outlined" clearable
-                hint="Vacío = todos los de planilla" persistent-hint />
-              <v-text-field v-model.number="ajustesBoleta.dias_trabajados" type="number" label="Días trabajados"
-                density="compact" hide-details variant="outlined" />
-              <v-text-field v-model.number="ajustesBoleta.otros_ingresos" type="number" label="Otros ingresos (S/)"
-                density="compact" hide-details variant="outlined" />
-              <v-text-field v-model.number="ajustesBoleta.descuento_renta" type="number" label="Renta 5.ª (S/)"
-                density="compact" hide-details variant="outlined" />
-              <v-text-field v-model.number="ajustesBoleta.otros_descuentos" type="number" label="Otros descuentos (S/)"
-                density="compact" hide-details variant="outlined" />
+              <v-select v-model="colaboradorBoleta" :items="opcionesColaborador"
+                :label="esRxh ? 'Prestador del servicio' : 'Colaborador'"
+                density="compact" hide-details variant="outlined" :clearable="!esRxh"
+                :hint="esRxh ? 'Obligatorio: el monto es de cada recibo' : 'Vacío = todos los de planilla'"
+                persistent-hint
+                no-data-text="No hay fichas con este tipo de contrato" />
+
+              <!-- ── Planilla: AFP, EsSalud, asignación familiar y días trabajados ── -->
+              <template v-if="!esRxh">
+                <v-text-field v-model.number="ajustesBoleta.dias_trabajados" type="number" label="Días trabajados"
+                  density="compact" hide-details variant="outlined" />
+                <v-text-field v-model.number="ajustesBoleta.otros_ingresos" type="number" label="Otros ingresos (S/)"
+                  density="compact" hide-details variant="outlined" />
+                <v-text-field v-model.number="ajustesBoleta.descuento_renta" type="number" label="Renta 5.ª (S/)"
+                  density="compact" hide-details variant="outlined" />
+                <v-text-field v-model.number="ajustesBoleta.otros_descuentos" type="number" label="Otros descuentos (S/)"
+                  density="compact" hide-details variant="outlined" />
+              </template>
+
+              <!-- ── Honorarios: nada de AFP ni EsSalud; sí retención de 4.ª ── -->
+              <template v-else>
+                <v-text-field v-model.number="recibo.monto_bruto" type="number" label="Monto del recibo (S/)"
+                  density="compact" hide-details variant="outlined" />
+                <v-text-field v-model="recibo.rxh_numero" label="N.º de recibo (SUNAT)" placeholder="E001-123"
+                  density="compact" hide-details variant="outlined" />
+                <v-text-field v-model.number="recibo.retencion_pct" type="number" label="Retención 4.ª (%)"
+                  :disabled="recibo.retencion_suspendida" density="compact" hide-details variant="outlined" />
+                <v-text-field v-model.number="recibo.otros_descuentos" type="number" label="Otros descuentos (S/)"
+                  density="compact" hide-details variant="outlined" />
+                <v-text-field v-model="recibo.pagado_at" type="date" label="Fecha de pago"
+                  density="compact" hide-details variant="outlined" />
+                <v-switch v-model="recibo.retencion_suspendida" color="primary" density="compact" hide-details
+                  label="Suspensión de retención vigente (0 %)" />
+              </template>
             </div>
+
+            <!-- Cuentas del recibo a la vista: es lo que se le transfiere -->
+            <div v-if="esRxh" class="resumen-rxh">
+              <div><span>Importe del recibo</span><strong>{{ PEN(totalesRxh.total) }}</strong></div>
+              <div>
+                <span>{{ recibo.retencion_suspendida ? 'Retención 4.ª (suspendida)' : `Retención 4.ª (${recibo.retencion_pct || 0} %)` }}</span>
+                <strong>− {{ PEN(totalesRxh.retencion) }}</strong>
+              </div>
+              <div v-if="recibo.otros_descuentos"><span>Otros descuentos</span><strong>− {{ PEN(recibo.otros_descuentos) }}</strong></div>
+              <div class="neto"><span>Neto a transferir</span><strong>{{ PEN(totalesRxh.neto) }}</strong></div>
+            </div>
+
+            <!-- Voucher: lo que Edson pidió guardar de cada RxH -->
+            <div v-if="esRxh" class="voucher-zona">
+              <div v-if="voucherPath" class="voucher-actual">
+                <v-icon icon="mdi-paperclip" size="18" />
+                <span class="voucher-nombre" :title="voucherPath">{{ nombreArchivo(voucherPath) }}</span>
+                <v-spacer />
+                <v-btn size="x-small" variant="text" icon="mdi-eye" title="Ver el voucher"
+                  @click="abrirVisor(voucherPath, 'Voucher del pago')" />
+                <v-btn size="x-small" variant="text" icon="mdi-close" color="error" title="Quitar"
+                  @click="voucherPath = ''" />
+              </div>
+              <v-file-input v-else label="Voucher del pago (PDF o imagen)"
+                accept="application/pdf,image/*" prepend-icon="" prepend-inner-icon="mdi-paperclip"
+                density="compact" variant="outlined" hide-details="auto" show-size clearable
+                :loading="subiendoVoucher" :disabled="subiendoVoucher"
+                @update:model-value="(v: any) => subirVoucher(v).then(p => { if (p) voucherPath = p })" />
+            </div>
+
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-              <v-btn color="primary" variant="flat" :loading="generandoBoletas" @click="generarBoletas(false)">
-                <v-icon icon="mdi-file-document-multiple" start /> Generar boletas
+              <v-btn color="primary" variant="flat" :loading="generandoBoletas" @click="generarDocumentos(false)">
+                <v-icon :icon="esRxh ? 'mdi-receipt-text-plus' : 'mdi-file-document-multiple'" start />
+                {{ esRxh ? 'Registrar recibo' : 'Generar boletas' }}
               </v-btn>
-              <v-btn color="primary" variant="tonal" :loading="generandoBoletas" @click="generarBoletas(true)">
-                <v-icon icon="mdi-email-fast" start /> Generar y enviar por correo
+              <v-btn color="primary" variant="tonal" :loading="generandoBoletas" @click="generarDocumentos(true)">
+                <v-icon icon="mdi-email-fast" start />
+                {{ esRxh ? 'Registrar y enviar por correo' : 'Generar y enviar por correo' }}
               </v-btn>
               <v-btn variant="tonal" :loading="generandoAfp" @click="generarAfp">
                 <v-icon icon="mdi-bank" start /> Generar descargo AFP
@@ -226,17 +292,50 @@
 
           <v-card flat class="custom-data-table mt-4">
             <v-card-title class="table-search-bar">
-              <span class="table-title">Boletas emitidas</span>
+              <span class="table-title">Pagos al equipo</span>
               <v-spacer />
+              <div class="tipo-switch chico">
+                <button v-for="f in filtrosTipo" :key="f.value"
+                  :class="['tipo-op', { activo: filtroTipo === f.value }]"
+                  @click="filtroTipo = f.value; cargarBoletas()">{{ f.title }}</button>
+              </div>
               <v-text-field v-model="buscarBoleta" prepend-inner-icon="mdi-magnify"
                 placeholder="Nombre o código…" density="compact" hide-details variant="outlined"
                 clearable style="max-width:260px;" @update:model-value="cargarBoletas" />
             </v-card-title>
             <v-data-table :headers="headersBoletas" :items="boletas" class="elevation-0"
-              no-data-text="Todavía no se han generado boletas" :items-per-page="25">
+              no-data-text="Todavía no se han generado documentos de pago" :items-per-page="25">
+              <template v-slot:item.tipo="{ item }">
+                <span class="estado-chip" :class="esHonorarios(item) ? 't-honorarios' : 't-planilla'">
+                  {{ esHonorarios(item) ? 'Honorarios' : 'Planilla' }}
+                </span>
+              </template>
+              <template v-slot:item.codigo="{ item }">
+                <div style="line-height:1.35">
+                  <div>{{ item.codigo }}</div>
+                  <div v-if="esHonorarios(item)" style="font-size:11px; opacity:.6">
+                    RxH {{ item.rxh_numero || 'sin n.º' }}
+                  </div>
+                </div>
+              </template>
               <template v-slot:item.total_ingresos="{ item }">{{ PEN(item.total_ingresos) }}</template>
-              <template v-slot:item.total_descuentos="{ item }">{{ PEN(item.total_descuentos) }}</template>
+              <template v-slot:item.total_descuentos="{ item }">
+                {{ PEN(item.total_descuentos) }}
+                <div v-if="esHonorarios(item) && Number(item.rxh_retencion) > 0" style="font-size:11px; opacity:.6">
+                  retención {{ PEN(item.rxh_retencion) }}
+                </div>
+              </template>
               <template v-slot:item.neto="{ item }"><strong>{{ PEN(item.neto) }}</strong></template>
+              <template v-slot:item.pago="{ item }">
+                <v-btn v-if="item.voucher_url" size="x-small" variant="text" color="success"
+                  prepend-icon="mdi-check-circle"
+                  :title="item.pagado_at ? 'Pagado el ' + fechaCorta(item.pagado_at) : 'Voucher adjunto'"
+                  @click="abrirVisor(item.voucher_url, `Voucher — ${item.colaborador_nombre}`)">
+                  {{ item.pagado_at ? fechaCorta(item.pagado_at) : 'Ver' }}
+                </v-btn>
+                <v-btn v-else size="x-small" variant="text" prepend-icon="mdi-upload"
+                  title="Adjuntar el voucher del pago" @click="abrirVoucher(item)">Adjuntar</v-btn>
+              </template>
               <template v-slot:item.enviado_at="{ item }">
                 <v-icon v-if="item.enviado_at" icon="mdi-check-circle" color="success" size="16"
                   :title="'Enviada el ' + fechaHora(item.enviado_at)" />
@@ -245,9 +344,11 @@
               <template v-slot:item.acciones="{ item }">
                 <v-btn v-if="item.pdf_url" icon="mdi-file-eye" size="x-small" variant="text"
                   title="Ver aquí mismo"
-                  @click="abrirVisor(item.pdf_url, `Boleta ${item.periodo} — ${item.colaborador_nombre}`)" />
+                  @click="abrirVisor(item.pdf_url, `${esHonorarios(item) ? 'Honorarios' : 'Boleta'} ${item.periodo} — ${item.colaborador_nombre}`)" />
                 <v-btn v-if="item.pdf_url" icon="mdi-download" size="x-small" variant="text"
                   title="Descargar" :href="urlDoc(item.pdf_url)" :download="item.codigo" />
+                <v-btn icon="mdi-cash-check" size="x-small" variant="text" title="Registrar el pago"
+                  @click="abrirVoucher(item)" />
                 <v-btn icon="mdi-email-fast" size="x-small" variant="text" title="Enviar por correo"
                   :loading="enviandoBoleta === item.id" @click="enviarBoleta(item)" />
               </template>
@@ -325,6 +426,53 @@
           <v-spacer />
           <v-btn variant="text" @click="ajuste = null">Cancelar</v-btn>
           <v-btn color="primary" variant="flat" :loading="guardandoAjuste" @click="guardarAjuste">Aplicar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ══════════ VOUCHER DEL PAGO ══════════ -->
+    <v-dialog :model-value="!!voucherDlg" max-width="540" @update:model-value="voucherDlg = null">
+      <v-card v-if="voucherDlg">
+        <v-card-title class="pt-4">Registrar el pago — {{ voucherDlg.colaborador_nombre }}</v-card-title>
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            El comprobante válido ante la SUNAT lo emite el prestador. Acá se guarda
+            <b>el voucher de la transferencia</b> y el n.º de su recibo.
+          </v-alert>
+
+          <div class="form-grid">
+            <v-text-field v-model="voucherDlg.rxh_numero" label="N.º de recibo (SUNAT)"
+              placeholder="E001-123" density="compact" hide-details variant="outlined"
+              :disabled="!esHonorarios(voucherDlg)" />
+            <v-text-field v-model="voucherDlg.pagado_at" type="date" label="Fecha de pago"
+              density="compact" hide-details variant="outlined" />
+          </div>
+
+          <div class="voucher-zona mt-3">
+            <div v-if="voucherDlg.voucher_url" class="voucher-actual">
+              <v-icon icon="mdi-paperclip" size="18" />
+              <span class="voucher-nombre" :title="voucherDlg.voucher_url">
+                {{ nombreArchivo(voucherDlg.voucher_url) }}
+              </span>
+              <v-spacer />
+              <v-btn size="x-small" variant="text" icon="mdi-eye" title="Ver el voucher"
+                @click="abrirVisor(voucherDlg.voucher_url, 'Voucher del pago')" />
+              <v-btn size="x-small" variant="text" icon="mdi-close" color="error" title="Quitar"
+                @click="voucherDlg.voucher_url = ''" />
+            </div>
+            <v-file-input v-else label="Voucher del pago (PDF o imagen)"
+              accept="application/pdf,image/*" prepend-icon="" prepend-inner-icon="mdi-paperclip"
+              density="compact" variant="outlined" hide-details="auto" show-size clearable
+              :loading="subiendoVoucher" :disabled="subiendoVoucher"
+              @update:model-value="(v: any) => subirVoucher(v).then(p => { if (p && voucherDlg) voucherDlg.voucher_url = p })" />
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="voucherDlg = null">Cancelar</v-btn>
+          <v-btn color="primary" variant="flat" :loading="guardandoVoucher" @click="guardarVoucher">
+            Guardar
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -579,29 +727,92 @@ async function guardarAjuste() {
   }
 }
 
-/* ══════════ Planilla: boletas y AFP ══════════ */
+/* ══════════ Pagos al equipo: boletas de planilla y recibos por honorarios ══════════
+ *
+ * Doble función pedida en la reunión del 31/08 (Edson: "también para asignar y
+ * poner los vouchers de los pagos de los recibos por honorarios"). Los dos tipos
+ * comparten tabla y pantalla, pero NO comparten campos: un recibo por honorarios
+ * no tiene AFP, ni EsSalud, ni asignación familiar, ni días trabajados. Esos
+ * campos se OCULTAN, no se muestran en cero, porque un cero afirma que se
+ * calcularon y dieron cero.
+ */
 const periodoPlanilla = ref(periodoActual())
 const colaboradorBoleta = ref<string | null>(null)
+const tipoDoc = ref<'planilla' | 'honorarios'>('planilla')
+const esRxh = computed(() => tipoDoc.value === 'honorarios')
+
 const ajustesBoleta = ref<any>({ dias_trabajados: 30, otros_ingresos: 0, descuento_renta: 0, otros_descuentos: 0 })
+/** Retención de 4.ª categoría: 8 % es la tasa SUNAT; 0 con constancia de suspensión. */
+const recibo = ref<any>({
+  monto_bruto: 0, rxh_numero: '', retencion_pct: 8,
+  retencion_suspendida: false, otros_descuentos: 0, pagado_at: '',
+})
+const voucherPath = ref('')
+
 const opcionesPlanilla = ref<any[]>([])
+const opcionesHonorarios = ref<any[]>([])
+const opcionesColaborador = computed(() => esRxh.value ? opcionesHonorarios.value : opcionesPlanilla.value)
+
+const ayudaTipo = computed(() => esRxh.value
+  ? 'Sin AFP, EsSalud ni asignación familiar. Solo retención de renta de 4.ª categoría y el voucher del pago. La lista muestra las fichas con contrato de honorarios.'
+  : 'Con AFP/ONP, aporte de EsSalud del empleador, asignación familiar y días trabajados. La lista muestra las fichas en planilla.')
+
+/** Mismo cálculo que hace el servidor, para que el admin vea el neto antes de emitir. */
+const totalesRxh = computed(() => {
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const total = r2(Number(recibo.value.monto_bruto) || 0)
+  const pct = recibo.value.retencion_suspendida ? 0 : (Number(recibo.value.retencion_pct) || 0)
+  const retencion = r2(total * pct / 100)
+  const otros = r2(Number(recibo.value.otros_descuentos) || 0)
+  return { total, retencion, neto: r2(total - retencion - otros) }
+})
+
 const boletas = ref<any[]>([])
 const reportesAfp = ref<any[]>([])
 const buscarBoleta = ref('')
+const filtroTipo = ref<'todos' | 'planilla' | 'honorarios'>('todos')
+const filtrosTipo = [
+  { value: 'todos', title: 'Todos' },
+  { value: 'planilla', title: 'Planilla' },
+  { value: 'honorarios', title: 'Honorarios' },
+]
 const generandoBoletas = ref(false)
 const generandoAfp = ref(false)
 const enviandoBoleta = ref<number | null>(null)
 const fechaLimitePago = ref<string | null>(null)
 
+/** Las filas de antes de la migración no tienen `tipo`: son todas de planilla. */
+const esHonorarios = (b: any) => b?.tipo === 'honorarios'
+
+function cambiarTipo(t: 'planilla' | 'honorarios') {
+  if (tipoDoc.value === t) return
+  tipoDoc.value = t
+  // Las listas de colaboradores no se cruzan: el email elegido para planilla no
+  // existe en honorarios y quedaría enviando un email fantasma al servidor.
+  colaboradorBoleta.value = null
+  voucherPath.value = ''
+  fechaLimitePago.value = null
+}
+
 async function cargarPlanilla() {
   const { data } = await client.from('piola_colaboradores')
-    .select('email, nombre').eq('tipo_contrato', 'planilla').eq('activo', true).order('nombre')
-  opcionesPlanilla.value = ((data as any[]) || []).map(c => ({ value: c.email, title: c.nombre }))
+    .select('email, nombre, tipo_contrato').eq('activo', true).order('nombre')
+  const filas = (data as any[]) || []
+  const aOpcion = (c: any) => ({ value: c.email, title: c.nombre })
+  opcionesPlanilla.value = filas.filter(c => c.tipo_contrato === 'planilla').map(aOpcion)
+  opcionesHonorarios.value = filas.filter(c => c.tipo_contrato === 'honorarios').map(aOpcion)
   await Promise.all([cargarBoletas(), cargarAfp()])
 }
 
 async function cargarBoletas() {
   try {
-    const res = await $fetch<any>('/api/piola/boletas', { params: { vista: 'todas', q: buscarBoleta.value || undefined } })
+    const res = await $fetch<any>('/api/piola/boletas', {
+      params: {
+        vista: 'todas',
+        tipo: filtroTipo.value === 'todos' ? undefined : filtroTipo.value,
+        q: buscarBoleta.value || undefined,
+      },
+    })
     boletas.value = res.boletas || []
   } catch { boletas.value = [] }
 }
@@ -613,31 +824,115 @@ async function cargarAfp() {
   } catch { reportesAfp.value = [] }
 }
 
-async function generarBoletas(enviar: boolean) {
+async function generarDocumentos(enviar: boolean) {
+  // Un recibo por honorarios es individual: el monto y el n.º de recibo son de
+  // esa persona. Emitir "para todos" repartiría el mismo importe entre gente
+  // que cobró cosas distintas.
+  if (esRxh.value && !colaboradorBoleta.value) {
+    return emit('notify', { text: 'Elige al prestador del servicio: el recibo por honorarios se emite uno por uno', color: 'warning' })
+  }
+  if (esRxh.value && !(Number(recibo.value.monto_bruto) > 0)) {
+    return emit('notify', { text: 'Falta el monto del recibo', color: 'warning' })
+  }
+
   generandoBoletas.value = true
   try {
     const ajustes: any = {}
-    if (colaboradorBoleta.value) ajustes[colaboradorBoleta.value] = { ...ajustesBoleta.value }
+    if (colaboradorBoleta.value) {
+      ajustes[colaboradorBoleta.value] = esRxh.value
+        ? { ...recibo.value, voucher_url: voucherPath.value || undefined }
+        : { ...ajustesBoleta.value }
+    }
 
-    const res = await $fetch<any>('/api/piola/boletas', {
-      method: 'POST',
-      body: {
-        accion: 'generar',
-        periodo: periodoPlanilla.value,
-        colaborador_email: colaboradorBoleta.value || undefined,
-        ajustes,
-        enviar,
-      },
+    const { data: res, error } = await apiPiola<any>('boletas', {
+      accion: 'generar',
+      tipo: tipoDoc.value,
+      periodo: periodoPlanilla.value,
+      colaborador_email: colaboradorBoleta.value || undefined,
+      ajustes,
+      enviar,
     })
+    if (error) return emit('notify', { text: error.message, color: 'error' })
+
     fechaLimitePago.value = res.fecha_limite_pago
+    const que = esRxh.value ? 'recibo(s) por honorarios' : 'boleta(s)'
     emit('notify', res.errores?.length
-      ? { text: `${res.generadas} boleta(s) generadas, con ${res.errores.length} error(es)`, color: 'warning' }
-      : `${res.generadas} boleta(s) generadas${enviar ? ' y enviadas' : ''}`)
+      ? { text: `${res.generadas} ${que} generados, con ${res.errores.length} error(es): ${res.errores[0]?.error}`, color: 'warning' }
+      : `${res.generadas} ${que} generados${enviar ? ' y enviados' : ''}`)
     await cargarBoletas()
-  } catch (e: any) {
-    emit('notify', { text: e?.data?.statusMessage || 'Error generando boletas', color: 'error' })
   } finally {
     generandoBoletas.value = false
+  }
+}
+
+/* ══════════ Voucher del pago ══════════ */
+const voucherDlg = ref<any>(null)
+const subiendoVoucher = ref(false)
+const guardandoVoucher = ref(false)
+
+const nombreArchivo = (p: any) =>
+  decodeURIComponent(String(p || '').split('/').pop() || 'archivo')
+
+/**
+ * Sube el voucher al bucket `piola-docs` y devuelve su PATH (no la URL pública):
+ * si mañana el bucket pasa a privado no hay que migrar ni una fila. Mismo patrón
+ * que PiolaSubirPdf, pero aceptando imágenes: un voucher de Yape o de una
+ * transferencia casi siempre es una captura, no un PDF.
+ */
+async function subirVoucher(valor: any): Promise<string | null> {
+  const file: File | null = Array.isArray(valor) ? (valor[0] ?? null) : (valor ?? null)
+  if (!file) return null
+
+  if (file.size > 10 * 1024 * 1024) {
+    emit('notify', { text: `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB; el máximo es 10 MB`, color: 'warning' })
+    return null
+  }
+
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5)
+  const ruta = `vouchers/${periodoPlanilla.value}/voucher-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+  subiendoVoucher.value = true
+  const { error } = await client.storage.from('piola-docs')
+    .upload(ruta, file, { contentType: file.type || 'application/octet-stream', upsert: false })
+  subiendoVoucher.value = false
+
+  if (error) {
+    emit('notify', { text: `No se pudo subir el voucher: ${error.message}`, color: 'error' })
+    return null
+  }
+  return ruta
+}
+
+function abrirVoucher(item: any) {
+  voucherDlg.value = {
+    id: item.id,
+    tipo: item.tipo,
+    colaborador_nombre: item.colaborador_nombre,
+    rxh_numero: item.rxh_numero || '',
+    pagado_at: String(item.pagado_at || '').slice(0, 10),
+    voucher_url: item.voucher_url || '',
+  }
+}
+
+async function guardarVoucher() {
+  const v = voucherDlg.value
+  guardandoVoucher.value = true
+  try {
+    const { error } = await apiPiola('boletas', {
+      accion: 'voucher',
+      id: v.id,
+      // Vacío = se desvincula el voucher; el archivo se queda en el bucket.
+      quitar: !v.voucher_url,
+      voucher_url: v.voucher_url || null,
+      rxh_numero: v.rxh_numero || null,
+      pagado_at: v.pagado_at || null,
+    })
+    if (error) return emit('notify', { text: error.message, color: 'error' })
+    emit('notify', 'Pago registrado')
+    voucherDlg.value = null
+    await cargarBoletas()
+  } finally {
+    guardandoVoucher.value = false
   }
 }
 
@@ -670,12 +965,14 @@ async function generarAfp() {
 }
 
 const headersBoletas = [
+  { title: 'Tipo', key: 'tipo' },
   { title: 'Código', key: 'codigo' },
   { title: 'Colaborador', key: 'colaborador_nombre' },
   { title: 'Periodo', key: 'periodo' },
   { title: 'Ingresos', key: 'total_ingresos' },
   { title: 'Descuentos', key: 'total_descuentos' },
   { title: 'Neto', key: 'neto' },
+  { title: 'Pago', key: 'pago', sortable: false },
   { title: 'Enviada', key: 'enviado_at' },
   { title: '', key: 'acciones', sortable: false },
 ]
@@ -711,6 +1008,12 @@ onMounted(cargarTodo)
   display: inline-block; padding: 3px 9px; border-radius: 999px;
   font-size: 11.5px; font-weight: 600; white-space: nowrap;
 }
+
+/* Boleta de planilla vs. recibo por honorarios (reunión 31/08/2026).
+   Edson pidió "doble función" en el mismo módulo, así que la lista mezcla los
+   dos: sin color no se distingue de un vistazo cuál es cuál. */
+.t-planilla { background: rgba(91, 141, 239, .16); color: #5b8def; }
+.t-honorarios { background: rgba(139, 92, 246, .16); color: #8b5cf6; }
 .e-en_jornada, .s-completo { background: rgba(46, 158, 91, .14); color: #2e9e5b; }
 .e-en_break { background: rgba(242, 166, 59, .16); color: #d98324; }
 .e-jornada_cerrada { background: rgba(91, 141, 239, .14); color: #5b8def; }

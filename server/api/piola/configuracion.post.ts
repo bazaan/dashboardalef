@@ -10,6 +10,7 @@
  *   { accion: 'rol_crear',           nombre }
  *   { accion: 'rol_eliminar',        id }
  *   { accion: 'permiso_set',         role_id, module, campo, valor }
+ *   { accion: 'acceso_set',          grupo, emails[], activo? }   ← lista blanca
  *
  * DOS NIVELES, y el de arriba es más estricto que lo que había:
  *
@@ -250,6 +251,59 @@ export default defineEventHandler(async (event) => {
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
 
     return { ok: true, permiso: data }
+  }
+
+  /* ══════════ Lista blanca de acceso por módulo (setiembre) ══════════ */
+  if (accion === 'acceso_set') {
+    /*
+     * Administrador, por la misma razón que los permisos: quien pueda editar
+     * esta lista puede agregarse a sí mismo a Finanzas. Es el mismo agujero de
+     * "un permiso que sirve para ampliarse el permiso", solo que por correo.
+     */
+    exigirAdmin(perfil, 'la lista de acceso a los módulos restringidos')
+
+    const grupo = String(body?.grupo || '').trim()
+    if (!grupo) throw createError({ statusCode: 400, statusMessage: 'Falta el grupo de acceso' })
+
+    const { data: actual } = await supabase.from('piola_modulo_acceso')
+      .select('*').eq('grupo', grupo).maybeSingle()
+    if (!actual) throw createError({ statusCode: 404, statusMessage: `No existe el grupo de acceso "${grupo}"` })
+
+    const patch: Record<string, any> = { updated_by: perfil.email, updated_at: new Date().toISOString() }
+
+    if ('emails' in body) {
+      if (!Array.isArray(body.emails)) {
+        throw createError({ statusCode: 400, statusMessage: 'Los correos deben venir como lista' })
+      }
+      // Normalizados y sin repetir: la comparación en el guard es exacta, y
+      // 'Raysa@…' con mayúscula dejaría a la persona afuera sin motivo visible.
+      const emails = [...new Set(body.emails
+        .map((e: any) => String(e || '').trim().toLowerCase())
+        .filter((e: string) => e))]
+      const invalido = emails.find((e: string) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e))
+      if (invalido) throw createError({ statusCode: 400, statusMessage: `Correo inválido: ${invalido}` })
+      patch.emails = emails
+    }
+    if ('activo' in body) patch.activo = !!body.activo
+    if ('modulos' in body && Array.isArray(body.modulos)) {
+      const modulos = body.modulos.map((m: any) => String(m))
+      const desconocido = modulos.find((m: string) => !(PIOLA_MODULES as readonly string[]).includes(m))
+      if (desconocido) throw createError({ statusCode: 400, statusMessage: `Módulo desconocido: ${desconocido}` })
+      patch.modulos = modulos
+    }
+
+    const { data, error } = await supabase.from('piola_modulo_acceso')
+      .update(patch).eq('grupo', grupo).select('*').single()
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    return {
+      ok: true,
+      acceso: data,
+      // Fallar cerrado es correcto, pero conviene decirlo en voz alta
+      aviso: data.activo && !(data.emails || []).length
+        ? `El grupo "${grupo}" quedó activo y sin correos: solo el Administrador podrá entrar a esos módulos.`
+        : null,
+    }
   }
 
   throw createError({ statusCode: 400, statusMessage: `Acción desconocida: ${accion}` })

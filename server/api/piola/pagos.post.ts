@@ -16,6 +16,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionPiola, exigirModulo, hoyLima } from '../../utils/piola'
+import { notificarEvento } from '../../utils/piola-alertas'
 
 export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
@@ -78,6 +79,18 @@ export default defineEventHandler(async (event) => {
       registrado_por: perfil.email,
     }).select('*').single()
     if (error) throw createError({ statusCode: 500, statusMessage: error.message })
+
+    await notificarEvento(supabase, {
+      evento: 'pago_registrado',
+      related_table: 'piola_pagos',
+      related_id: data.id,
+      monto,
+      titulo: `Pago de S/ ${monto.toFixed(2)} — ${cuenta.concepto}`,
+      mensaje: `💳 *Pago registrado*\n${cuenta.concepto}\n`
+        + `Monto: S/ ${monto.toFixed(2)}${descuento ? ` (+ S/ ${descuento.toFixed(2)} de descuento)` : ''}\n`
+        + `Saldo anterior: S/ ${saldo.toFixed(2)} → S/ ${Math.max(saldo - monto - descuento, 0).toFixed(2)}`,
+      actor: perfil.email,
+    })
 
     return { ok: true, pago: data }
   }

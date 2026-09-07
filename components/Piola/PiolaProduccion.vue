@@ -32,8 +32,13 @@
           <div class="filtros-bar">
             <v-select v-model="fCliente" :items="opcionesClienteFiltro" density="compact" hide-details
               variant="outlined" label="Marca" class="filtro" />
+            <v-select v-model="fArea" :items="opcionesAreaFiltro" density="compact" hide-details
+              variant="outlined" label="Área" class="filtro" />
+            <v-select v-model="fTipo" :items="opcionesTipoFiltro" density="compact" hide-details
+              variant="outlined" label="Tipo de contenido" class="filtro" />
             <v-select v-model="fResponsable" :items="opcionesResponsableFiltro" density="compact" hide-details
-              variant="outlined" label="Responsable" class="filtro" />
+              variant="outlined" label="Responsable" class="filtro"
+              hint="Incluye a quien esté asignado, no solo al dueño" persistent-hint />
           </div>
 
           <div class="kanban">
@@ -43,9 +48,22 @@
                 <span class="kanban-count">{{ porEstado(estado.value).length }}</span>
               </div>
               <div class="kanban-body">
-                <div v-for="e in porEstado(estado.value)" :key="e.id" class="ent-card" @click="detalle = { ...e }">
+                <div v-for="e in porEstado(estado.value)" :key="e.id" class="ent-card" @click="abrirEntregable(e)">
+                  <div class="ent-tags">
+                    <v-chip v-if="e.tipo_contenido" size="x-small" variant="tonal" label>
+                      <v-icon :icon="iconoTipo(e.tipo_contenido)" size="11" start />
+                      {{ nombreTipo(e.tipo_contenido) }}
+                    </v-chip>
+                    <span v-if="e.area_codigo" class="ent-area"
+                      :style="{ background: colorArea(e.area_codigo) }">{{ nombreArea(e.area_codigo) }}</span>
+                  </div>
                   <div class="ent-titulo">{{ e.titulo }}</div>
                   <div class="ent-cliente">{{ nombreCliente(e.cliente_id) }}</div>
+                  <div v-if="equipoDe(e.id).length" class="ent-equipo">
+                    <span v-for="a in equipoDe(e.id)" :key="a.id" :title="a.colaborador_email">
+                      {{ iniciales(a.colaborador_email) }}
+                    </span>
+                  </div>
                   <div class="ent-pie">
                     <span :class="{ 'texto-alerta': atrasado(e) }">
                       <v-icon :icon="atrasado(e) ? 'mdi-alert-circle' : 'mdi-calendar'" size="12" />
@@ -53,8 +71,13 @@
                     </span>
                     <span v-if="e.cantidad > 1" class="ent-cant">×{{ e.cantidad }}</span>
                   </div>
-                  <div v-if="e.drive_url" class="ent-drive">
-                    <v-icon icon="mdi-google-drive" size="12" /> Drive
+                  <div v-if="e.drive_url || e.dropbox_url || e.publicado_url" class="ent-enlaces">
+                    <a v-if="e.drive_url" :href="e.drive_url" target="_blank" title="Google Drive"
+                      @click.stop><v-icon icon="mdi-google-drive" size="14" /></a>
+                    <a v-if="e.dropbox_url" :href="e.dropbox_url" target="_blank" title="Dropbox"
+                      @click.stop><v-icon icon="mdi-dropbox" size="14" /></a>
+                    <a v-if="e.publicado_url" :href="e.publicado_url" target="_blank" title="Publicado"
+                      @click.stop><v-icon icon="mdi-web-check" size="14" /></a>
                   </div>
                 </div>
                 <div v-if="!porEstado(estado.value).length" class="kanban-vacio">Nada aquí</div>
@@ -64,9 +87,43 @@
         </div>
 
         <!-- ══════════ CUMPLIMIENTO POR MARCA ══════════ -->
-        <v-card v-else-if="tab === 'cumplimiento'" flat class="custom-data-table">
+        <div v-else-if="tab === 'cumplimiento'">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            El total suelto ("8 de 10") escondía lo que importa: pueden ser 8 gráficas y 0 videos.
+            Abajo, el detalle <b>por tipo de contenido</b> de cada marca — el compromiso por tipo se
+            carga en la ficha del cliente (módulo Clientes y contratos).
+          </v-alert>
+
+          <!-- Desglose por tipo -->
+          <v-card flat class="custom-data-table mb-4">
+            <v-card-title class="table-search-bar">
+              <span class="table-title">Por tipo de contenido — {{ periodo }}</span>
+            </v-card-title>
+            <v-data-table :headers="headersPorTipo" :items="cumplimientoPorTipo" class="elevation-0"
+              no-data-text="Sin compromisos por tipo cargados todavía" :items-per-page="25">
+              <template v-slot:item.tipo="{ item }">
+                <v-icon :icon="iconoTipo(item.codigo)" size="14" class="mr-1" />
+                {{ item.tipo }}
+              </template>
+              <template v-slot:item.cumplimiento="{ item }">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <div class="barra">
+                    <div class="barra-fill" :style="{
+                      width: Math.min(100, item.cumplimiento) + '%',
+                      background: item.cumplimiento >= 100 ? '#2e9e5b' : item.cumplimiento >= 60 ? '#f2a63b' : '#e2564a',
+                    }" />
+                  </div>
+                  <span style="font-size:12.5px; min-width:48px; font-weight:600;">
+                    {{ item.comprometidos ? item.cumplimiento + ' %' : '—' }}
+                  </span>
+                </div>
+              </template>
+            </v-data-table>
+          </v-card>
+
+        <v-card flat class="custom-data-table">
           <v-card-title class="table-search-bar">
-            <span class="table-title">Compromiso mensual vs. entregado — {{ periodo }}</span>
+            <span class="table-title">Total por marca — {{ periodo }}</span>
           </v-card-title>
           <v-data-table :headers="headersCumplimiento" :items="cumplimiento" class="elevation-0"
             no-data-text="Sin clientes activos" :items-per-page="25">
@@ -85,6 +142,7 @@
             </template>
           </v-data-table>
         </v-card>
+        </div>
 
         <!-- ══════════ MARCAS / CLIENTES ══════════ -->
         <v-card v-else-if="tab === 'marcas'" flat class="custom-data-table">
@@ -103,6 +161,13 @@
             </template>
             <template v-slot:item.entregados="{ item }">
               {{ entregadosDe(item.id) }}
+            </template>
+            <template v-slot:item.carpetas="{ item }">
+              <a v-for="c in carpetasDe(item.id)" :key="c.id" :href="c.url" target="_blank"
+                class="carpeta-chip" :title="c.nombre" @click.stop>
+                <v-icon :icon="c.proveedor === 'dropbox' ? 'mdi-dropbox' : 'mdi-google-drive'" size="14" />
+              </a>
+              <span v-if="!carpetasDe(item.id).length" style="opacity:.35">—</span>
             </template>
           </v-data-table>
         </v-card>
@@ -148,6 +213,11 @@
               variant="outlined" class="col-2" />
             <v-select v-model="detalle.cliente_id" :items="opcionesCliente" label="Marca / cliente *"
               density="compact" hide-details variant="outlined" />
+            <v-select v-model="detalle.tipo_contenido" :items="opcionesTipo" label="Tipo de contenido"
+              density="compact" hide-details variant="outlined" clearable
+              @update:model-value="autocompletarArea" />
+            <v-select v-model="detalle.area_codigo" :items="opcionesArea" label="Área"
+              density="compact" hide-details variant="outlined" clearable />
             <v-select v-model="detalle.service_id" :items="opcionesServicio" label="Servicio"
               density="compact" hide-details variant="outlined" clearable />
             <v-text-field v-model.number="detalle.cantidad" type="number" label="Cantidad de piezas"
@@ -156,13 +226,56 @@
               hide-details variant="outlined" />
             <v-text-field v-model="detalle.fecha_compromiso" type="date" label="Fecha de compromiso"
               density="compact" hide-details variant="outlined" />
-            <v-select v-model="detalle.responsable_email" :items="opcionesResponsable" label="Responsable"
-              density="compact" hide-details variant="outlined" clearable />
             <v-select v-model="detalle.estado" :items="ESTADOS_ENTREGABLE" label="Estado"
               density="compact" hide-details variant="outlined" />
+          </div>
+
+          <!-- ── Equipo asignado ── -->
+          <div class="form-section-title">Equipo</div>
+          <p class="hint">
+            El <b>responsable</b> es el dueño del entregable. Debajo van los demás con su rol:
+            quien lo diseña y quien lo edita casi nunca son la misma persona.
+          </p>
+          <div class="form-grid">
+            <v-select v-model="detalle.responsable_email" :items="opcionesResponsable"
+              label="Responsable del entregable" density="compact" hide-details variant="outlined" clearable />
+          </div>
+          <div v-for="(a, i) in detalle.asignaciones" :key="i" class="asig-fila">
+            <v-select v-model="a.colaborador_email" :items="opcionesResponsable" label="Colaborador"
+              density="compact" hide-details variant="outlined" />
+            <v-select v-model="a.rol" :items="ROLES_PRODUCCION" label="Rol" density="compact"
+              hide-details variant="outlined" style="max-width:200px" />
+            <v-btn icon="mdi-close" size="x-small" variant="text" @click="detalle.asignaciones.splice(i, 1)" />
+          </div>
+          <v-btn size="small" variant="tonal" class="mt-1"
+            @click="detalle.asignaciones.push({ colaborador_email: null, rol: 'disenador' })">
+            <v-icon icon="mdi-account-plus" start /> Asignar a alguien
+          </v-btn>
+
+          <!-- ── Enlaces externos ── -->
+          <div class="form-section-title" style="margin-top:20px;">Material y publicación</div>
+          <p class="hint">
+            Tres enlaces distintos a propósito: dónde se trabaja, dónde está el respaldo y dónde
+            quedó publicado. Las carpetas fijas de cada marca se cargan en su ficha de cliente.
+          </p>
+          <div v-if="carpetasDe(detalle.cliente_id).length" class="carpetas-marca">
+            <span>Carpetas de la marca:</span>
+            <a v-for="c in carpetasDe(detalle.cliente_id)" :key="c.id" :href="c.url" target="_blank">
+              <v-icon :icon="c.proveedor === 'dropbox' ? 'mdi-dropbox' : 'mdi-google-drive'" size="13" />
+              {{ c.nombre }}
+            </a>
+          </div>
+          <div class="form-grid">
             <v-text-field v-model="detalle.drive_url" label="Enlace de Google Drive" density="compact"
               hide-details variant="outlined" prepend-inner-icon="mdi-google-drive" />
+            <v-text-field v-model="detalle.dropbox_url" label="Enlace de Dropbox" density="compact"
+              hide-details variant="outlined" prepend-inner-icon="mdi-dropbox" />
+            <v-text-field v-model="detalle.publicado_url" label="Enlace de lo publicado"
+              density="compact" hide-details variant="outlined" prepend-inner-icon="mdi-web-check" />
+            <v-text-field v-model="detalle.fecha_publicacion" type="date" label="Fecha de publicación"
+              density="compact" hide-details variant="outlined" />
           </div>
+
           <v-textarea v-model="detalle.descripcion" label="Descripción" rows="2" density="compact"
             hide-details variant="outlined" class="mt-3" />
           <v-textarea v-model="detalle.observaciones" label="Observaciones de Dirección" rows="2"

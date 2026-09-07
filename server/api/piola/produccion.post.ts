@@ -2,13 +2,24 @@
  * POST /api/piola/produccion — entregables, marcas y catálogo de servicios (§6)
  *
  * Body:
- *   { accion: 'guardar_entregable', id?, titulo, cliente_id, ... }
+ *   { accion: 'guardar_entregable', id?, titulo, cliente_id, tipo_contenido?, area_codigo?,
+ *     drive_url?, dropbox_url?, publicado_url?, asignaciones?: [{colaborador_email, rol}] }
  *   { accion: 'aprobar_entregable', id }
  *   { accion: 'eliminar_entregable', id }
  *   { accion: 'guardar_cliente', id?, nombre, ... }
  *   { accion: 'servicio_crear', nombre, categoria?, precio_referencial?, orden? }
  *   { accion: 'servicio_actualizar', id, activo? }
  *   { accion: 'servicio_eliminar', id }
+ *
+ * DESGLOSE POR TIPO DE CONTENIDO (setiembre): el entregable declara QUÉ es
+ * (video, pieza gráfica, guion…) y de qué área sale. Sin eso, "8 de 10 piezas"
+ * escondía lo que importa: pueden ser 8 gráficas y 0 videos, con el compromiso
+ * cumplido en el papel e incumplido en los hechos.
+ *
+ * RESPONSABLES: `responsable_email` se conserva (es el dueño del entregable),
+ * y las asignaciones por rol —diseñador, editor, guionista— van en
+ * `piola_deliverable_asignaciones`, porque quien arma y quien cierra rara vez
+ * son la misma persona.
  *
  * LA APROBACIÓN DE DIRECCIÓN ES EL PUNTO. `aprobado_por` y `aprobado_at` los
  * pone el servidor con la sesión verificada y la hora del servidor: el campo
@@ -21,6 +32,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionPiola, exigirModulo, exigirAlguno, hoyLima } from '../../utils/piola'
+import { notificarEvento } from '../../utils/piola-alertas'
 
 const texto = (v: any) => {
   const s = v === null || v === undefined ? '' : String(v).trim()
@@ -67,14 +79,67 @@ export default defineEventHandler(async (event) => {
       estado,
       responsable_email: texto(body?.responsable_email),
       observaciones: texto(body?.observaciones),
+      // Tres enlaces distintos y no uno solo: la carpeta de trabajo, el
+      // respaldo y lo ya publicado responden preguntas distintas.
       drive_url: texto(body?.drive_url),
+      dropbox_url: texto(body?.dropbox_url),
+      publicado_url: texto(body?.publicado_url),
+      fecha_publicacion: texto(body?.fecha_publicacion),
+      tipo_contenido: texto(body?.tipo_contenido),
+      area_codigo: texto(body?.area_codigo),
       updated_at: new Date().toISOString(),
     }
+    if (!id) fila.created_by = perfil.email
 
     const res = id
       ? await supabase.from('piola_deliverables').update(fila).eq('id', id).select('*').single()
       : await supabase.from('piola_deliverables').insert(fila).select('*').single()
     if (res.error) throw createError({ statusCode: 400, statusMessage: res.error.message })
+
+    /*
+     * Asignaciones: la pantalla manda el equipo COMPLETO del entregable, así
+     * que se reemplaza el set (borrar + insertar). Un upsert dejaría pegada a
+     * la persona que se acaba de sacar del entregable.
+     */
+    if (Array.isArray(body?.asignaciones)) {
+      await supabase.from('piola_deliverable_asignaciones')
+        .delete().eq('deliverable_id', res.data.id)
+
+      const equipo = body.asignaciones
+        .filter((a: any) => texto(a?.colaborador_email))
+        .map((a: any) => ({
+          deliverable_id: res.data.id,
+          colaborador_email: String(a.colaborador_email).trim().toLowerCase(),
+          rol: texto(a?.rol) || 'responsable',
+          area_codigo: texto(a?.area_codigo),
+          asignado_por: perfil.email,
+        }))
+      // Dos filas iguales (misma persona, mismo rol) chocarían con el UNIQUE
+      const vistos = new Set<string>()
+      const unicas = equipo.filter((a: any) => {
+        const k = `${a.colaborador_email}|${a.rol}`
+        if (vistos.has(k)) return false
+        vistos.add(k)
+        return true
+      })
+      if (unicas.length) {
+        const { error } = await supabase.from('piola_deliverable_asignaciones').insert(unicas)
+        if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+      }
+    }
+
+    if (!id) {
+      await notificarEvento(supabase, {
+        evento: 'entregable_creado',
+        related_table: 'piola_deliverables',
+        related_id: res.data.id,
+        titulo: `Nuevo entregable: ${res.data.titulo}`,
+        mensaje: `🎬 *Entregable creado*\n${res.data.titulo}\n`
+          + `Periodo: ${res.data.periodo || '—'} · Compromiso: ${res.data.fecha_compromiso || 'sin fecha'}\n`
+          + `Responsable: ${res.data.responsable_email || 'sin asignar'}`,
+        actor: perfil.email,
+      })
+    }
 
     return { ok: true, entregable: res.data }
   }
@@ -93,6 +158,15 @@ export default defineEventHandler(async (event) => {
       updated_at: new Date().toISOString(),
     }).eq('id', id).select('*').single()
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    await notificarEvento(supabase, {
+      evento: 'entregable_aprobado',
+      related_table: 'piola_deliverables',
+      related_id: data.id,
+      titulo: `Aprobado: ${data.titulo}`,
+      mensaje: `✅ *Entregable aprobado por Dirección*\n${data.titulo}\nPeriodo: ${data.periodo || '—'}`,
+      actor: perfil.email,
+    })
 
     return { ok: true, entregable: data }
   }
@@ -189,6 +263,104 @@ export default defineEventHandler(async (event) => {
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
 
     return { ok: true }
+  }
+
+  /* ══════════ Catálogo de tipos de contenido y áreas ══════════ */
+  if (accion === 'tipo_contenido_guardar') {
+    const id = Number(body?.id) || null
+    exigirAlguno(perfil, ['produccion', 'configuracion'], id ? 'edit' : 'create')
+
+    const nombre = texto(body?.nombre)
+    if (!nombre) throw createError({ statusCode: 400, statusMessage: 'El tipo de contenido necesita un nombre' })
+
+    // El código es la clave que referencian entregables y compromisos: se
+    // deriva del nombre al crear y NO se cambia después, para no dejar
+    // huérfanas las filas que ya lo apuntan.
+    const fila: Record<string, any> = {
+      nombre,
+      area_codigo: texto(body?.area_codigo),
+      unidad: texto(body?.unidad) || 'pieza',
+      icono: texto(body?.icono),
+      orden: numero(body?.orden) ?? 0,
+    }
+    if ('activo' in body) fila.activo = !!body.activo
+
+    if (!id) {
+      fila.codigo = texto(body?.codigo)
+        || nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+             .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30)
+      if (!fila.codigo) throw createError({ statusCode: 400, statusMessage: 'No se pudo derivar un código del nombre' })
+    }
+
+    const res = id
+      ? await supabase.from('piola_tipos_contenido').update(fila).eq('id', id).select('*').single()
+      : await supabase.from('piola_tipos_contenido').insert(fila).select('*').single()
+    if (res.error) {
+      if (/duplicate key/i.test(res.error.message)) {
+        throw createError({ statusCode: 409, statusMessage: `Ya existe un tipo de contenido con el código "${fila.codigo}"` })
+      }
+      throw createError({ statusCode: 400, statusMessage: res.error.message })
+    }
+
+    return { ok: true, tipo: res.data }
+  }
+
+  if (accion === 'tipo_contenido_eliminar') {
+    exigirAlguno(perfil, ['produccion', 'configuracion'], 'delete')
+
+    const id = Number(body?.id)
+    if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el tipo de contenido' })
+
+    /*
+     * No se borra si hay entregables usándolo: la FK es ON DELETE SET NULL, así
+     * que borrarlo dejaría el histórico sin tipo y el cumplimiento por tipo del
+     * mes pasado cambiaría solo. Se desactiva, que además lo saca del selector.
+     */
+    const { data: tipo } = await supabase.from('piola_tipos_contenido')
+      .select('codigo').eq('id', id).maybeSingle()
+    if (tipo) {
+      const { count } = await supabase.from('piola_deliverables')
+        .select('id', { count: 'exact', head: true }).eq('tipo_contenido', tipo.codigo)
+      if (count) {
+        await supabase.from('piola_tipos_contenido').update({ activo: false }).eq('id', id)
+        return {
+          ok: true, desactivado: true,
+          aviso: `${count} entregable(s) usan ese tipo: se desactivó en vez de borrarse.`,
+        }
+      }
+    }
+
+    const { error } = await supabase.from('piola_tipos_contenido').delete().eq('id', id)
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+    return { ok: true, desactivado: false }
+  }
+
+  if (accion === 'area_guardar') {
+    const id = Number(body?.id) || null
+    exigirAlguno(perfil, ['produccion', 'configuracion'], id ? 'edit' : 'create')
+
+    const nombre = texto(body?.nombre)
+    if (!nombre) throw createError({ statusCode: 400, statusMessage: 'El área necesita un nombre' })
+
+    const fila: Record<string, any> = {
+      nombre,
+      color: texto(body?.color) || '#8e8e8e',
+      descripcion: texto(body?.descripcion),
+      orden: numero(body?.orden) ?? 0,
+    }
+    if ('activo' in body) fila.activo = !!body.activo
+    if (!id) {
+      fila.codigo = texto(body?.codigo)
+        || nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+             .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30)
+    }
+
+    const res = id
+      ? await supabase.from('piola_produccion_areas').update(fila).eq('id', id).select('*').single()
+      : await supabase.from('piola_produccion_areas').insert(fila).select('*').single()
+    if (res.error) throw createError({ statusCode: 400, statusMessage: res.error.message })
+
+    return { ok: true, area: res.data }
   }
 
   throw createError({ statusCode: 400, statusMessage: `Acción desconocida: ${accion}` })

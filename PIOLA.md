@@ -111,6 +111,29 @@ Va al final a propósito: hace `CREATE OR REPLACE` de funciones de la parte 3.
 No hace falta recrear los triggers: apuntan a la función por nombre y toman la versión
 nueva solos.
 
+### Parte 5 — Pedidos de setiembre
+
+Cinco bloques, todos idempotentes como el resto:
+
+1. **`piola_documentos` — varios adjuntos por entidad.** Antes cada cosa tenía *una* columna
+   de archivo (`invoices.pdf_url`, `contratos.contrato_pdf`). Una factura real llega con la
+   factura, la constancia de detracción y el contrato que la respalda: tres archivos, una
+   sola columna. Tabla polimórfica (`entidad` + `entidad_id`, sin FK porque apunta a nueve
+   tablas) con un trigger que limpia los adjuntos cuando muere el dueño. `path` guarda la
+   ruta dentro del bucket, no la URL: si `piola-docs` pasa a privado, no se migra ni una fila.
+2. **Numeración manual de facturas.** `piola_invoices.numeracion_manual` + `contrato_id` +
+   `origen` + `periodo_facturado`. No hay integración con SUNAT: la serie y el número se
+   escriben a mano para calzar con la numeración que Piola ya venía usando.
+3. **Importación de Excel.** `piola_import_plantillas` (el mapeo de columnas de Edson Polo se
+   guarda y se reusa) y `piola_import_lotes`. Cada movimiento importado queda marcado con
+   `import_lote_id`, `import_hash` y `import_fila`: el hash es lo que evita importar dos veces
+   la misma fila, y el lote es lo que permite **revertir una importación entera**.
+4. **Módulo `clientes`** separado de `facturacion`, con su `CHECK` y el sembrado de permisos.
+5. **`piola_modulo_acceso` — Finanzas para dos personas.** Lista blanca por correo *encima*
+   de los permisos por rol. Un rol no alcanzaba: el rol se hereda, y basta que alguien más
+   quede con «Contabilidad» marcado. **Falla cerrado** a propósito — si la restricción está
+   activa y la lista quedó vacía, el módulo queda solo para el Administrador.
+
 ---
 
 ## 2. El código: qué se agregó
@@ -136,6 +159,19 @@ Ninguno es un módulo nuevo del sidebar: entran como pestañas de los módulos q
 Expediente dentro de RR. HH.; Config. financiera dentro de Configuración; Reportes
 financieros y Auditoría dentro de Reportes).
 
+**Setiembre agrega tres más:**
+
+```
+├── PiolaClientes.vue             Clientes y contratos — ÚNICO módulo nuevo del sidebar
+├── PiolaDocumentos.vue           Adjuntos múltiples (se embebe en facturas, contratos, clientes)
+└── PiolaImportarExcel.vue        Importación de movimientos (pestaña de Contabilidad)
+```
+
+`PiolaClientes` sí es un módulo propio del sidebar (`clientes`, en la sección Comercial) y
+lleva `PiolaContratos` adentro como pestaña: el registro de clientes y sus contratos se
+separó de Facturación porque Finanzas quedó restringida a dos personas y el expediente del
+cliente lo necesitan comercial y producción todos los días.
+
 ### Endpoints nuevos (10)
 
 Todos `POST /api/piola/<nombre>`, todos con verificación de permisos.
@@ -152,6 +188,16 @@ Todos `POST /api/piola/<nombre>`, todos con verificación de permisos.
 | `contratos` | Contratos de cliente y adendas |
 | `presupuestos` | Presupuesto vs. ejecutado |
 | `reportes` | Configuración de reportes programados y alertas |
+
+**Setiembre agrega seis:**
+
+| Endpoint | Qué cubre |
+|---|---|
+| `clientes` | Ficha del cliente, consulta de RUC, compromisos y enlaces externos |
+| `documentos` | Alta, edición y borrado de los adjuntos de cualquier entidad |
+| `importar` | Analizar / confirmar un Excel, plantillas de mapeo y revertir un lote |
+| `honorarios` (`.post` + `.get`) | Recibos por honorarios: generar, editar, pagar, enviar |
+| `GET ruc` | Autocompletado del cliente por RUC |
 
 ### Otros cambios
 
@@ -296,6 +342,8 @@ Nada de esto bloquea desarrollo: todo quedó **parametrizable**, no hardcodeado.
 | Lista de gastos operativos con su jerarquía | Tabla `piola_expense_categories`, CRUD en la UI |
 | Fórmula exacta de comisiones de Héctor | `calcularComision()` en `server/utils/piola.ts` |
 | Modelos reales de boleta y formato AFP | `TASAS` en `server/utils/piola-planilla.ts` |
+| **Diseño estandarizado de boleta y de recibo por honorarios** (lo deben enviar Edson Polo y Raysa Cucho) | `htmlBoleta()` / `htmlReciboHonorarios()` en `server/utils/piola-planilla.ts`. Hoy salen con un diseño provisional y la UI lo avisa |
+| **Si la API abierta de Dropbox sirve para avisar subidas** (falta investigarlo) | Mientras tanto, Producción ya guarda **enlaces fijos** a las carpetas de Dropbox/Drive por entregable, que era el fallback acordado |
 | Lista de usuarios (nombre + correo + rol) | `dashboardlogin` + `piola_colaboradores` |
 | Catálogo completo de servicios | Tabla `piola_services`, CRUD en la UI |
 | Antigüedad de cada colaborador | `piola_colaboradores.fecha_ingreso` |
@@ -305,7 +353,10 @@ Nada de esto bloquea desarrollo: todo quedó **parametrizable**, no hardcodeado.
 
 - Renombrar columnas de `piola_leads`
 - Meter una librería de PDF
-- TikTok Ads, multi-moneda, reemplazar Syscon, Dropbox, múltiples cuentas publicitarias
+- TikTok Ads, multi-moneda, reemplazar Syscon, múltiples cuentas publicitarias
+- **Dropbox/Drive por API** (webhooks de subida): queda pendiente de investigar si la API
+  abierta lo permite. Lo que sí está hecho es el fallback acordado — columnas de enlace
+  externo (Dropbox, Drive y contenido publicado) en cada entregable de Producción.
   (la tabla `piola_meta_metrics` está creada esperando la conexión con Meta)
 
 ---

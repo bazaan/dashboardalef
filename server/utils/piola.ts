@@ -87,6 +87,38 @@ export interface PerfilPiola {
   esAdmin: boolean
   /** { modulo: {can_view, can_create, can_edit, can_delete}, __admin: bool } */
   permisos: Record<string, any>
+  /** Módulos que este correo NO puede tocar por lista blanca (piola_modulo_acceso) */
+  modulosVedados: string[]
+}
+
+/**
+ * Lista blanca por correo, ENCIMA de los permisos por rol (setiembre).
+ *
+ * Piola pidió que Finanzas la vean dos personas concretas. Un rol no alcanza:
+ * el rol se hereda, y basta que alguien más quede con "Contabilidad" marcado.
+ *
+ * FALLA CERRADO a propósito: si la restricción está activa y la lista quedó
+ * vacía, el módulo queda solo para el Administrador. Es la dirección segura del
+ * error — deja gente afuera, no adentro — y el Administrador siempre puede
+ * recargar los correos desde Configuración.
+ */
+export async function modulosVedadosPara(
+  supabase: any, email: string, esAdmin: boolean
+): Promise<string[]> {
+  if (esAdmin) return []
+  const { data, error } = await supabase
+    .from('piola_modulo_acceso').select('grupo, modulos, emails, activo').eq('activo', true)
+  // Si la tabla todavía no existe (SQL sin correr), no se inventa una restricción
+  if (error || !data?.length) return []
+
+  const yo = String(email || '').trim().toLowerCase()
+  const vedados = new Set<string>()
+  for (const g of data) {
+    const permitidos = (g.emails || []).map((e: any) => String(e || '').trim().toLowerCase())
+    if (permitidos.includes(yo)) continue
+    for (const m of g.modulos || []) vedados.add(String(m))
+  }
+  return [...vedados]
 }
 
 /**
@@ -143,6 +175,11 @@ export async function verificarSesionPiola(event: H3Event, supabase: any): Promi
     permisos.home = { module: 'home', can_view: true, can_create: false, can_edit: false, can_delete: false }
   }
 
+  // La lista blanca se aplica sobre el mapa de permisos: así el menú tampoco
+  // ofrece un módulo que el servidor va a negar.
+  const modulosVedados = await modulosVedadosPara(supabase, perfil.email, esAdmin)
+  for (const m of modulosVedados) delete permisos[m]
+
   return {
     email: perfil.email,
     rolGlobal,
@@ -150,6 +187,7 @@ export async function verificarSesionPiola(event: H3Event, supabase: any): Promi
     rolPiola: colaborador?.rol?.nombre || (esAdmin ? 'Administrador' : null),
     esAdmin,
     permisos,
+    modulosVedados,
   }
 }
 
@@ -160,6 +198,14 @@ export function exigirModulo(
   accion: 'view' | 'create' | 'edit' | 'delete' = 'view'
 ): void {
   if (perfil.esAdmin) return
+  // La lista blanca gana sobre el rol: el rol dice qué se puede hacer, la lista
+  // dice quién. Va antes del checklist para que el mensaje sea el correcto.
+  if (perfil.modulosVedados?.includes(module)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: `El módulo ${module} está restringido a las personas autorizadas en Configuración`,
+    })
+  }
   const p = perfil.permisos[module]
   if (!p || p[`can_${accion}`] !== true) {
     throw createError({ statusCode: 403, statusMessage: `Sin permiso de ${accion} en el módulo ${module}` })
@@ -184,7 +230,8 @@ export function exigirAlguno(
   accion: 'view' | 'create' | 'edit' | 'delete' = 'view'
 ): void {
   if (perfil.esAdmin) return
-  const puede = modulos.some(m => perfil.permisos[m]?.[`can_${accion}`] === true)
+  const puede = modulos.some(m =>
+    !perfil.modulosVedados?.includes(m) && perfil.permisos[m]?.[`can_${accion}`] === true)
   if (!puede) exigirModulo(perfil, modulos[0], accion)
 }
 

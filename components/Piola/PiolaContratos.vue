@@ -55,6 +55,14 @@
         </template>
         <template v-slot:item.importe_pagado="{ item }">{{ PEN(item.importe_pagado) }}</template>
         <template v-slot:item.modalidad_pago="{ item }">{{ etiquetaModalidad(item.modalidad_pago) }}</template>
+        <template v-slot:item.recurrente="{ item }">
+          <v-chip v-if="item.facturacion_recurrente" size="x-small" variant="tonal"
+            :color="progVencidas(item.id).length ? 'error' : 'info'">
+            {{ etiquetaFrecuencia(item.frecuencia) }}
+            <span v-if="progVencidas(item.id).length">· {{ progVencidas(item.id).length }} vencida(s)</span>
+          </v-chip>
+          <span v-else style="opacity:.35">—</span>
+        </template>
         <template v-slot:item.adendas="{ item }">
           <v-chip v-if="adendasDe(item.id).length" size="x-small" variant="tonal">
             {{ adendasDe(item.id).length }}
@@ -95,16 +103,58 @@
                 maxlength="11" :rules="[ruleRucOpcional]" hint="11 dígitos" persistent-hint />
             </div>
 
+            <div class="form-grid" style="margin-top:12px;">
+              <v-text-field v-model="edicion.codigo" label="Código del contrato" density="compact"
+                hide-details variant="outlined" placeholder="CT-2026-014" />
+              <v-select v-model="edicion.estado" :items="ESTADOS_CONTRATO" label="Estado"
+                density="compact" hide-details variant="outlined" />
+              <v-text-field v-model="edicion.descripcion" label="Servicio contratado"
+                density="compact" hide-details variant="outlined" class="col-2"
+                placeholder="Community management + 4 videos al mes" />
+            </div>
+
             <div class="form-section-title" style="margin-top:18px;">Vigencia y pago</div>
             <div class="form-grid">
               <v-text-field v-model="edicion.fecha_inicio" type="date" label="Fecha de inicio"
                 density="compact" hide-details variant="outlined" />
               <v-text-field v-model="edicion.fecha_cierre" type="date" label="Fecha de cierre"
                 density="compact" variant="outlined" :rules="[ruleRangoFechas]" />
+              <v-text-field v-model.number="edicion.monto_total" type="number" min="0"
+                label="Monto total del contrato (S/)" density="compact" hide-details variant="outlined" />
               <v-text-field v-model.number="edicion.importe_pagado" type="number" min="0"
                 label="Importe pagado (S/)" density="compact" hide-details variant="outlined" />
               <v-select v-model="edicion.modalidad_pago" :items="MODALIDADES_PAGO"
                 label="Modalidad de pago" density="compact" hide-details variant="outlined" clearable />
+              <v-select v-model="edicion.responsable_email" :items="opcionesResponsable"
+                label="Responsable del contrato" density="compact" hide-details variant="outlined" clearable />
+            </div>
+
+            <!-- ── Facturación recurrente ── -->
+            <div class="form-section-title" style="margin-top:18px;">Facturación recurrente</div>
+            <v-checkbox v-model="edicion.facturacion_recurrente" color="primary" density="compact"
+              hide-details label="Facturar automáticamente durante la vigencia del contrato" />
+            <p v-if="edicion.facturacion_recurrente" class="hint-recurrente">
+              Se programan las facturas de todo el periodo y se avisa antes de que toque cada una.
+              Se generan como <b>borrador</b>: el sistema las deja listas, la emisión a SUNAT la
+              dispara una persona.
+            </p>
+            <div v-if="edicion.facturacion_recurrente" class="form-grid">
+              <v-select v-model="edicion.frecuencia" :items="FRECUENCIAS_CONTRATO" label="Cada"
+                density="compact" hide-details variant="outlined" />
+              <v-text-field v-model.number="edicion.monto_periodico" type="number" min="0"
+                label="Monto por factura (S/, con IGV)" density="compact" hide-details variant="outlined" />
+              <v-text-field v-model.number="edicion.dia_facturacion" type="number" min="1" max="28"
+                label="Día del mes" density="compact" variant="outlined"
+                hint="Tope 28: el 30 no existe en febrero" persistent-hint />
+              <v-text-field v-model="edicion.serie_factura" label="Serie a usar" density="compact"
+                hide-details variant="outlined" placeholder="F001" />
+              <v-checkbox v-model="edicion.con_detraccion" color="primary" density="compact"
+                hide-details label="Con detracción" />
+              <v-text-field v-model.number="edicion.detraccion_pct" type="number"
+                label="% de detracción" density="compact" hide-details variant="outlined"
+                :disabled="!edicion.con_detraccion" />
+              <v-checkbox v-model="edicion.renovacion_automatica" color="primary" density="compact"
+                hide-details label="Se renueva automáticamente" class="col-2" />
             </div>
 
             <div class="form-section-title" style="margin-top:18px;">Documento</div>
@@ -137,11 +187,38 @@
         <v-card-text>
           <div class="detalle-campos">
             <div><span>RUC</span><strong>{{ detalle.ruc || '—' }}</strong></div>
+            <div><span>Código</span><strong>{{ detalle.codigo || '—' }}</strong></div>
             <div><span>Inicio</span><strong>{{ fechaCorta(detalle.fecha_inicio) }}</strong></div>
             <div><span>Cierre</span><strong>{{ fechaCorta(detalle.fecha_cierre) }}</strong></div>
+            <div><span>Monto total</span><strong>{{ PEN(detalle.monto_total) }}</strong></div>
             <div><span>Importe pagado</span><strong>{{ PEN(detalle.importe_pagado) }}</strong></div>
             <div><span>Modalidad</span><strong>{{ etiquetaModalidad(detalle.modalidad_pago) }}</strong></div>
             <div><span>Con adendas</span><strong>{{ PEN(totalConAdendas(detalle)) }}</strong></div>
+          </div>
+
+          <div v-if="detalle.descripcion" class="notas-caja">{{ detalle.descripcion }}</div>
+
+          <!-- ── Facturación recurrente del contrato ── -->
+          <div v-if="detalle.facturacion_recurrente" class="recurrente-caja">
+            <div class="recurrente-head">
+              <v-icon icon="mdi-calendar-sync" size="18" />
+              <span>
+                Factura {{ etiquetaFrecuencia(detalle.frecuencia) }} de
+                <strong>{{ PEN(detalle.monto_periodico) }}</strong>, el día {{ detalle.dia_facturacion }}
+              </span>
+              <v-spacer />
+              <v-btn v-if="puedeEditar" size="x-small" variant="tonal"
+                @click="programarRecurrentes(detalle)">
+                <v-icon icon="mdi-calendar-plus" start size="14" /> Reprogramar
+              </v-btn>
+            </div>
+            <div class="recurrente-nums">
+              <span><strong>{{ progDe(detalle.id, 'pendiente').length }}</strong> pendientes</span>
+              <span><strong>{{ progDe(detalle.id, 'generada').length }}</strong> generadas</span>
+              <span v-if="progVencidas(detalle.id).length" class="texto-alerta">
+                <strong>{{ progVencidas(detalle.id).length }}</strong> vencidas sin facturar
+              </span>
+            </div>
           </div>
 
           <div v-if="detalle.notas" class="notas-caja">{{ detalle.notas }}</div>
@@ -158,6 +235,13 @@
               :download="nombreDe(detalle.contrato_pdf)">
               <v-icon icon="mdi-download" start /> Descargar
             </v-btn>
+          </div>
+
+          <div style="margin-top:16px;">
+            <PiolaDocumentos entidad="contrato" :entidad-id="detalle.id"
+              titulo="Anexos y documentos legales" tipo-por-defecto="anexo" carpeta="contratos"
+              :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+              @notify="(p: any) => emit('notify', p)" />
           </div>
 
           <v-divider class="my-5" />
@@ -244,31 +328,46 @@
 
 <script setup lang="ts">
 /**
- * Contratos y adendas — pestaña del módulo Facturación (reunión 19/08).
+ * Contratos y adendas — pestaña del módulo Clientes y contratos.
  *
- * No es un módulo aparte: vive dentro de PiolaFacturacion.vue y usa su mismo
- * permiso `facturacion`, por eso recibe los flags ya calculados por props en
- * vez de volver a consultarlos.
+ * MUDANZA (setiembre): vivía dentro de Facturación y usaba el permiso
+ * `facturacion`. Ahora vive en el módulo `clientes`, porque el contrato es la
+ * relación con el cliente y no el cobro — y porque Finanzas quedó restringida
+ * a dos personas, así que dejarlo adentro habría dejado a comercial y a
+ * producción sin sus propios contratos. Los flags de permiso siguen llegando
+ * por props: los calcula el módulo que lo contiene.
  *
- * Un contrato tiene N adendas (piola_adendas, ON DELETE CASCADE). Los PDF se
- * guardan como path del bucket `piola-docs` y se abren con el visor embebido,
- * nunca en pestaña nueva.
+ * Un contrato tiene N adendas (piola_adendas, ON DELETE CASCADE) y N documentos
+ * (piola_documentos). Los PDF se guardan como path del bucket `piola-docs` y se
+ * abren con el visor embebido, nunca en pestaña nueva.
+ *
+ * FACTURACIÓN RECURRENTE: si el contrato la tiene marcada, al guardar se
+ * programan las facturas de toda su vigencia. Se generan como BORRADOR — la
+ * automatización deja el comprobante listo, la emisión la dispara una persona.
  */
 import { ref, computed, onMounted } from 'vue'
+import { piolaCan } from '@/utils/permissions'
 import {
-  PEN, PEN_CORTO, fechaCorta, hoyISO, urlDocumento, MODALIDADES_PAGO, traerTodo, apiPiola,
+  PEN, PEN_CORTO, fechaCorta, hoyISO, urlDocumento, MODALIDADES_PAGO,
+  FRECUENCIAS_CONTRATO, ESTADOS_CONTRATO, traerTodo, apiPiola,
 } from '@/composables/usePiola'
 import { useFormRules } from '@/composables/rules'
 import PiolaSubirPdf from './PiolaSubirPdf.vue'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
+import PiolaDocumentos from './PiolaDocumentos.vue'
 
 const props = defineProps<{
   perfil: any
   puedeCrear: boolean
   puedeEditar: boolean
   puedeEliminar: boolean
+  /** Lista ya cargada por el módulo contenedor; si no llega, se carga acá. */
+  clientes?: any[]
 }>()
-const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
+const emit = defineEmits<{ (e: 'notify', payload: any): void; (e: 'cambio'): void }>()
+
+/** Generar los borradores recurrentes es facturar: es otro permiso. */
+const puedeFacturar = computed(() => piolaCan(props.perfil?.permisos, 'facturacion', 'create'))
 
 const client = useSupabaseClient()
 const { ruleRuc } = useFormRules()
@@ -286,25 +385,39 @@ const OPCIONES_ESTADO = [
   { value: 'vigente', title: 'Vigentes' },
   { value: 'por_vencer', title: 'Por vencer' },
   { value: 'vencido', title: 'Vencidos' },
+  { value: 'renovado', title: 'Renovados' },
+  { value: 'anulado', title: 'Anulados' },
   { value: 'sin_fecha', title: 'Sin fecha de cierre' },
 ]
 
 /* ══════════ Carga ══════════ */
 async function cargar() {
   cargando.value = true
-  const [c, a, cl] = await Promise.all([
+  const [c, a, cl, pr] = await Promise.all([
     traerTodo(() => client.from('piola_contratos').select('*')
       .order('fecha_inicio', { ascending: false }).order('id')),
     traerTodo(() => client.from('piola_adendas').select('*')
       .order('fecha', { ascending: false }).order('id')),
-    client.from('piola_clientes').select('id, nombre, razon_social, ruc').eq('activo', true).order('nombre'),
+    props.clientes?.length
+      ? Promise.resolve({ data: props.clientes, error: null })
+      : client.from('piola_clientes').select('id, nombre, razon_social, ruc').eq('activo', true).order('nombre'),
+    traerTodo(() => client.from('piola_facturas_programadas')
+      .select('contrato_id, periodo, estado, monto, fecha_programada').order('id')),
   ])
   if (c.error) emit('notify', { text: `Error cargando contratos: ${c.error.message}`, color: 'error' })
   contratos.value = (c.data as any[]) || []
   adendas.value = (a.data as any[]) || []
   clientes.value = (cl.data as any[]) || []
+  programadas.value = (pr.data as any[]) || []
   cargando.value = false
+
+  const { data: col } = await client.from('piola_colaboradores')
+    .select('email, nombre').eq('activo', true).order('nombre')
+  colaboradores.value = (col as any[]) || []
 }
+
+const programadas = ref<any[]>([])
+const programadasDe = (contratoId: any) => programadas.value.filter(p => p.contrato_id === contratoId)
 
 /* ══════════ Derivados ══════════ */
 const opcionesCliente = computed(() => clientes.value.map(c => ({ value: c.id, title: c.nombre })))
@@ -314,6 +427,9 @@ const etiquetaModalidad = (v: any) =>
 
 /** Vigente / por vencer (30 días) / vencido, calculado contra la fecha de cierre. */
 function estadoContrato(c: any): string {
+  // Un contrato anulado o ya renovado lo dice su propio estado: la fecha de
+  // cierre no puede desmentirlo (un renovado sigue teniendo cierre pasado).
+  if (c?.estado === 'anulado' || c?.estado === 'renovado' || c?.estado === 'borrador') return c.estado
   if (!c?.fecha_cierre) return 'sin_fecha'
   const cierre = String(c.fecha_cierre).slice(0, 10)
   const hoy = hoyISO()
@@ -323,9 +439,11 @@ function estadoContrato(c: any): string {
 }
 const textoEstado = (e: string) => ({
   vigente: 'Vigente', por_vencer: 'Por vencer', vencido: 'Vencido', sin_fecha: 'Sin fecha',
+  anulado: 'Anulado', renovado: 'Renovado', borrador: 'Borrador',
 }[e] || e)
 const colorEstado = (e: string) => ({
   vigente: 'success', por_vencer: 'warning', vencido: 'error', sin_fecha: 'grey',
+  anulado: 'grey', renovado: 'info', borrador: 'grey',
 }[e] || 'grey')
 
 const vigentes = computed(() => contratos.value.filter(c => ['vigente', 'por_vencer'].includes(estadoContrato(c))))
@@ -338,6 +456,19 @@ function totalConAdendas(c: any): number {
   return Number(c.importe_pagado || 0)
     + adendasDe(c.id).reduce((s, a) => s + Number(a.importe || 0), 0)
 }
+
+const etiquetaFrecuencia = (v: any) =>
+  FRECUENCIAS_CONTRATO.find(f => f.value === v)?.title || v || 'mensual'
+
+const progDe = (contratoId: any, estado: string) =>
+  programadasDe(contratoId).filter(p => p.estado === estado)
+const progVencidas = (contratoId: any) => progDe(contratoId, 'pendiente')
+  .filter(p => String(p.fecha_programada).slice(0, 10) <= hoyISO())
+
+/** Responsables posibles: los colaboradores activos. */
+const colaboradores = ref<any[]>([])
+const opcionesResponsable = computed(() =>
+  colaboradores.value.map(c => ({ value: c.email, title: c.nombre })))
 
 const contratosFiltrados = computed(() => {
   let lista = contratos.value
@@ -357,6 +488,7 @@ const headers = [
   { title: 'Cierre', key: 'fecha_cierre' },
   { title: 'Importe pagado', key: 'importe_pagado' },
   { title: 'Modalidad', key: 'modalidad_pago' },
+  { title: 'Recurrente', key: 'recurrente', sortable: false },
   { title: 'Adendas', key: 'adendas', sortable: false },
   { title: 'Estado', key: 'estado', sortable: false },
   { title: 'Contrato', key: 'contrato_pdf', sortable: false },
@@ -391,9 +523,15 @@ const guardando = ref(false)
 
 function abrirNuevo() {
   edicion.value = {
-    cliente_id: null, nombre_cliente: '', ruc: '',
+    cliente_id: null, nombre_cliente: '', ruc: '', codigo: '', descripcion: '',
     fecha_inicio: hoyISO(), fecha_cierre: '', importe_pagado: 0,
+    estado: 'vigente', monto_total: null, monto_periodico: null,
     modalidad_pago: 'mensual', contrato_pdf: null, notas: '',
+    // La recurrencia viene APAGADA: encenderla programa facturas de toda la
+    // vigencia, y eso no puede pasar por omisión al cargar un contrato viejo.
+    facturacion_recurrente: false, frecuencia: 'mensual', dia_facturacion: 1,
+    con_detraccion: true, detraccion_pct: 12, detraccion_codigo: '', serie_factura: 'F001',
+    renovacion_automatica: false, responsable_email: null,
   }
 }
 
@@ -427,20 +565,50 @@ async function guardarContrato() {
     cliente_id: e.cliente_id || null,
     nombre_cliente: String(e.nombre_cliente).trim(),
     ruc: String(e.ruc || '').trim() || null,
+    codigo: e.codigo || null,
+    descripcion: e.descripcion || null,
+    estado: e.estado || 'vigente',
     fecha_inicio: e.fecha_inicio || null,
     fecha_cierre: e.fecha_cierre || null,
     importe_pagado: Number(e.importe_pagado || 0),
+    monto_total: e.monto_total ?? null,
+    monto_periodico: e.monto_periodico ?? null,
     modalidad_pago: e.modalidad_pago || null,
+    facturacion_recurrente: !!e.facturacion_recurrente,
+    frecuencia: e.frecuencia || 'mensual',
+    dia_facturacion: Number(e.dia_facturacion || 1),
+    con_detraccion: e.con_detraccion !== false,
+    detraccion_pct: Number(e.detraccion_pct ?? 12),
+    detraccion_codigo: e.detraccion_codigo || null,
+    serie_factura: e.serie_factura || null,
+    renovacion_automatica: !!e.renovacion_automatica,
+    responsable_email: e.responsable_email || null,
     contrato_pdf: e.contrato_pdf || null,
     notas: e.notas || null,
   }
-  const res = await apiPiola('contratos', { accion: 'guardar', id: e.id || null, ...fila })
+  const res = await apiPiola<any>('contratos', { accion: 'guardar', id: e.id || null, ...fila })
   guardando.value = false
 
   if (res.error) return emit('notify', { text: `Error guardando: ${res.error.message}`, color: 'error' })
-  emit('notify', e.id ? 'Contrato actualizado' : 'Contrato registrado')
+  emit('notify', res.data?.programadas
+    ? `${e.id ? 'Contrato actualizado' : 'Contrato registrado'} · ${res.data.programadas} factura(s) programada(s)`
+    : (e.id ? 'Contrato actualizado' : 'Contrato registrado'))
   edicion.value = null
   await cargar()
+  emit('cambio')
+}
+
+/** Rearma el calendario tras extender la vigencia. No pisa las ya generadas. */
+async function programarRecurrentes(c: any) {
+  const { data, error } = await apiPiola<any>('contratos', {
+    accion: 'programar_recurrentes', contrato_id: c.id,
+  })
+  if (error) return emit('notify', { text: error.message, color: 'error' })
+  emit('notify', data.programadas
+    ? `${data.programadas} factura(s) programada(s)`
+    : 'El calendario ya estaba completo: no hacía falta programar nada')
+  await cargar()
+  emit('cambio')
 }
 
 async function eliminarContrato() {
@@ -456,6 +624,7 @@ async function eliminarContrato() {
   emit('notify', 'Contrato eliminado')
   cerrarDetalle()
   await cargar()
+  emit('cambio')
 }
 
 /* ══════════ Detalle y adendas ══════════ */
@@ -539,9 +708,21 @@ defineExpose({ cargar })
 .adenda-acciones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 .sin-adendas { font-size: 12.5px; opacity: .5; padding: 10px 0; }
+
+.form-grid .col-2 { grid-column: span 2; }
+.hint-recurrente { font-size: 11.5px; opacity: .6; line-height: 1.5; margin: 4px 0 10px; }
+
+.recurrente-caja {
+  margin-top: 14px; border: 1px solid rgba(74, 127, 226, .35);
+  background: rgba(74, 127, 226, .06); border-radius: 10px; padding: 11px 14px;
+}
+.recurrente-head { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.recurrente-nums { display: flex; gap: 18px; margin-top: 7px; font-size: 12px; opacity: .75; }
 .texto-alerta { color: #e2564a; font-weight: 600; }
 
 @media (max-width: 800px) {
   .form-grid { grid-template-columns: 1fr; }
+  .form-grid .col-2 { grid-column: span 1; }
+  .recurrente-nums { flex-wrap: wrap; gap: 10px; }
 }
 </style>

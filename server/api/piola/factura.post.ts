@@ -6,11 +6,21 @@
  *
  * Body:
  *   { accion: 'emitir', cliente_id?, cliente:{...}, items:[{descripcion,cantidad,valor_unitario,unidad?}],
- *     serie?, numero?, fecha_emision?, fecha_vencimiento?,
+ *     serie?, numero?, numeracion_manual?, contrato_id?, periodo_facturado?, programada_id?,
+ *     fecha_emision?, fecha_vencimiento?,
  *     con_detraccion?, detraccion_pct?, detraccion_codigo?, observaciones? }
- *   { accion: 'marcar_pagada', id }   → además crea el ingreso en flujo de caja
+ *   { accion: 'emitir_borrador', id }  → manda al PSE una factura ya guardada
+ *   { accion: 'marcar_pagada', id }    → además crea el ingreso en flujo de caja
  *   { accion: 'anular', id, motivo }
  *   { accion: 'enviar', id, email }
+ *   { accion: 'siguiente_numero', tipo_comprobante?, serie? }  → correlativo sugerido
+ *
+ * NUMERACIÓN MANUAL (setiembre): Piola ya tiene una numeración corriendo fuera
+ * del sistema, así que la serie y el número se pueden escribir a mano. El
+ * sistema SUGIERE el siguiente correlativo, no lo impone; lo que sí sigue
+ * impidiendo repetir un número es el UNIQUE (tipo_comprobante, serie, numero)
+ * de la tabla, que ahora se traduce a un 409 legible en vez de un error de
+ * Postgres crudo.
  *
  * CONEXIÓN SUNAT: se emite por el PSE de Alef (PSE.PE / NubeFact), igual que
  * el resto del grupo. Piola todavía no está dada de alta en el reseller: hasta
@@ -25,6 +35,7 @@ import {
 } from '../../utils/piola'
 import { htmlFactura } from '../../utils/piola-factura'
 import { subirDocumento } from '../../utils/piola-planilla'
+import { notificarEvento } from '../../utils/piola-alertas'
 import { esRucValido } from '../../../composables/rules'
 
 /** 'YYYY-MM-DD' → 'DD-MM-YYYY' (formato que exige NubeFact). */
@@ -40,6 +51,16 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const accion = String(body?.accion || 'emitir')
+
+  /* ══════════ Correlativo sugerido para la serie elegida ══════════ */
+  if (accion === 'siguiente_numero') {
+    const tipo = Number(body?.tipo_comprobante || 1)
+    const serie = String(body?.serie || (tipo === 1 ? 'F001' : 'B001')).toUpperCase()
+    const { data: ultima } = await supabase.from('piola_invoices')
+      .select('numero').eq('tipo_comprobante', tipo).eq('serie', serie)
+      .order('numero', { ascending: false }).limit(1).maybeSingle()
+    return { ok: true, serie, numero: Number(ultima?.numero || 0) + 1, ultimo: Number(ultima?.numero || 0) }
+  }
 
   /* ══════════ Marcar pagada → alimenta el flujo de caja (§5) ══════════ */
   if (accion === 'marcar_pagada') {
@@ -77,6 +98,18 @@ export default defineEventHandler(async (event) => {
       }).select('*').single()
       transaccion = tx
     }
+
+    await notificarEvento(supabase, {
+      evento: 'factura_pagada',
+      related_table: 'piola_invoices',
+      related_id: inv.id,
+      monto: Number(inv.con_detraccion ? inv.neto_a_pagar || inv.total : inv.total),
+      titulo: `Factura ${inv.serie}-${inv.numero} cobrada`,
+      mensaje: `💵 *Factura cobrada*\n${inv.serie}-${inv.numero} — ${inv.cliente_nombre || 'cliente'}\n`
+        + `Cobrado: S/ ${Number(inv.con_detraccion ? inv.neto_a_pagar || inv.total : inv.total).toFixed(2)}`
+        + (inv.con_detraccion ? `\nDetracción de S/ ${inv.detraccion_monto} al Banco de la Nación` : ''),
+      actor: perfil.email,
+    })
 
     return { ok: true, factura: actualizada, transaccion }
   }
@@ -154,9 +187,27 @@ export default defineEventHandler(async (event) => {
 
   const totales = calcularTotales(items, { conDetraccion, detraccionPct })
 
-  // Correlativo: MAX(numero) + 1 para ese tipo y serie
+  /*
+   * Numeración. El número puede venir escrito a mano (Piola arrastra una
+   * numeración anterior al sistema) o calcularse como MAX + 1.
+   *
+   * Cuando viene a mano se comprueba ANTES de emitir que no exista: si no, el
+   * choque salta como un error de índice único de Postgres después de haber
+   * mandado el comprobante al PSE — quedaría emitido en SUNAT y sin guardar acá.
+   */
+  const numeracionManual = !!body?.numeracion_manual && Number(body?.numero) > 0
   let numero = Number(body?.numero || 0)
-  if (!numero) {
+
+  if (numeracionManual) {
+    const { data: choque } = await supabase.from('piola_invoices')
+      .select('id, estado').eq('tipo_comprobante', tipo).eq('serie', serie).eq('numero', numero).maybeSingle()
+    if (choque) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `El comprobante ${serie}-${numero} ya existe (estado: ${choque.estado}). Usá otro número.`,
+      })
+    }
+  } else if (!numero) {
     const { data: ultima } = await supabase.from('piola_invoices')
       .select('numero').eq('tipo_comprobante', tipo).eq('serie', serie)
       .order('numero', { ascending: false }).limit(1).maybeSingle()
@@ -183,6 +234,12 @@ export default defineEventHandler(async (event) => {
     detraccion_monto: totales.detraccion_monto,
     neto_a_pagar: totales.neto_a_pagar,
     items,
+    numeracion_manual: numeracionManual,
+    contrato_id: Number(body?.contrato_id) || null,
+    periodo_facturado: body?.periodo_facturado || null,
+    origen: body?.programada_id ? 'recurrente' : 'manual',
+    cliente_email: cliente.email || null,
+    cliente_direccion: cliente.direccion || null,
     notas: body?.observaciones || null,
     created_by: perfil.email,
   }
@@ -269,6 +326,47 @@ export default defineEventHandler(async (event) => {
     await supabase.from('piola_invoices').update({ pdf_url: url }).eq('id', guardada.id)
     guardada.pdf_url = url
   }
+
+  /* ── Si venía de una factura programada, se cierra el círculo ── */
+  if (body?.programada_id) {
+    await supabase.from('piola_facturas_programadas').update({
+      estado: 'generada',
+      invoice_id: guardada.id,
+      generada_at: new Date().toISOString(),
+      generada_por: perfil.email,
+    }).eq('id', Number(body.programada_id))
+  }
+
+  /* ── Documentos que acompañan al comprobante (constancia de detracción,
+       contrato, orden de compra). Llegan ya subidos al bucket. ── */
+  const adjuntos = Array.isArray(body?.documentos) ? body.documentos : []
+  if (adjuntos.length) {
+    await supabase.from('piola_documentos').insert(adjuntos
+      .filter((d: any) => d?.path)
+      .map((d: any) => ({
+        entidad: 'factura',
+        entidad_id: guardada.id,
+        tipo: d.tipo || 'otro',
+        nombre: d.nombre || String(d.path).split('/').pop(),
+        path: d.path,
+        mime: d.mime || null,
+        tamano_bytes: Number(d.tamano_bytes) || null,
+        subido_por: perfil.email,
+      })))
+  }
+
+  await notificarEvento(supabase, {
+    evento: 'factura_emitida',
+    related_table: 'piola_invoices',
+    related_id: guardada.id,
+    monto: totales.total,
+    titulo: `${fila.estado === 'borrador' ? 'Borrador' : 'Factura'} ${serie}-${numero}`,
+    mensaje: `🧾 *${fila.estado === 'borrador' ? 'Comprobante en borrador' : 'Comprobante emitido'}*\n`
+      + `${serie}-${numero} — ${fila.cliente_nombre}\n`
+      + `Total: S/ ${totales.total.toFixed(2)}`
+      + (conDetraccion ? `\nNeto a cobrar: S/ ${totales.neto_a_pagar.toFixed(2)} (detracción ${detraccionPct} %)` : ''),
+    actor: perfil.email,
+  })
 
   return {
     ok: true,

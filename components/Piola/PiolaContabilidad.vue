@@ -67,10 +67,17 @@
           <button :class="['tab', { active: tab === 'flujo' }]" @click="tab = 'flujo'">Flujo mes a mes</button>
           <button :class="['tab', { active: tab === 'categorias' }]" @click="tab = 'categorias'">Categorías</button>
           <button :class="['tab', { active: tab === 'comisiones' }]" @click="tab = 'comisiones'">Comisiones</button>
+          <button :class="['tab', { active: tab === 'importar' }]" @click="tab = 'importar'">
+            <v-icon icon="mdi-microsoft-excel" size="15" /> Importar
+          </button>
         </div>
 
+        <!-- ══════════ IMPORTAR DESDE EXCEL ══════════ -->
+        <PiolaImportarExcel v-if="tab === 'importar'" :perfil="perfil"
+          @notify="(p: any) => emit('notify', p)" @importado="cargar" />
+
         <!-- ══════════ CUENTAS POR COBRAR / POR PAGAR ══════════ -->
-        <PiolaCuentas v-if="tab === 'cobrar'" :perfil="perfil" tipo="ingreso"
+        <PiolaCuentas v-else-if="tab === 'cobrar'" :perfil="perfil" tipo="ingreso"
           :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
           @notify="(p: any) => emit('notify', p)" @cambio="cargar" />
         <PiolaCuentas v-else-if="tab === 'pagar'" :perfil="perfil" tipo="egreso"
@@ -179,6 +186,8 @@
           <v-alert type="success" variant="tonal" density="compact" class="mb-4">
             Las categorías son <b>carpetas y subcarpetas</b>, sin límite de niveles, y se administran desde aquí:
             agregar el gasto operativo N.º 31 no requiere una nueva reunión con desarrollo.
+            Cada una lleva su <b>leyenda numerada</b> (6, 6.2, 6.2.1) para poder decir "el gasto 6.2"
+            y que todos entiendan lo mismo; si se deja vacía, se asigna la siguiente libre.
           </v-alert>
 
           <div v-if="puedeEditar" class="cat-nueva">
@@ -188,6 +197,9 @@
               density="compact" hide-details variant="outlined" clearable />
             <v-select v-model="nuevaCat.tipo" :items="['egreso', 'ingreso', 'ambos']" label="Tipo"
               density="compact" hide-details variant="outlined" />
+            <v-text-field v-model="nuevaCat.codigo" label="Leyenda" density="compact" variant="outlined"
+              placeholder="auto" hint="Vacío = la siguiente libre" persistent-hint
+              @keyup.enter="crearCategoria" />
             <v-btn color="primary" variant="flat" :loading="guardandoCat" @click="crearCategoria">Agregar</v-btn>
           </div>
 
@@ -197,12 +209,15 @@
               <v-icon :icon="c.nivel === 0 ? 'mdi-folder' : 'mdi-subdirectory-arrow-right'" size="16"
                 :style="{ opacity: c.nivel === 0 ? .8 : .5 }" />
               <template v-if="editandoCat === c.id">
+                <v-text-field v-model="codigoEditado" density="compact" hide-details variant="outlined"
+                  label="Leyenda" style="max-width:110px;" @keyup.enter="renombrarCategoria(c)" />
                 <v-text-field v-model="nombreEditado" density="compact" hide-details variant="outlined"
                   style="max-width:280px;" @keyup.enter="renombrarCategoria(c)" />
                 <v-btn size="x-small" color="primary" variant="flat" @click="renombrarCategoria(c)">Guardar</v-btn>
                 <v-btn size="x-small" variant="text" @click="editandoCat = null">Cancelar</v-btn>
               </template>
               <template v-else>
+                <span v-if="codigoDe(c.id)" class="arbol-codigo">{{ codigoDe(c.id) }}</span>
                 <span class="arbol-nombre" :class="{ inactiva: !c.activo }">{{ c.nombre }}</span>
                 <v-chip size="x-small" variant="tonal" class="ml-1">{{ c.tipo }}</v-chip>
                 <span class="arbol-monto">{{ PEN(montoCategoria(c.id)) }}</span>
@@ -210,7 +225,7 @@
                   <v-btn icon="mdi-plus" size="x-small" variant="text" title="Agregar subcategoría"
                     @click="nuevaCat.parent_id = c.id" />
                   <v-btn icon="mdi-pencil" size="x-small" variant="text" title="Renombrar"
-                    @click="editandoCat = c.id; nombreEditado = c.nombre" />
+                    @click="editandoCat = c.id; nombreEditado = c.nombre; codigoEditado = codigoDe(c.id) || ''" />
                   <v-btn :icon="c.activo ? 'mdi-eye-off' : 'mdi-eye'" size="x-small" variant="text"
                     :title="c.activo ? 'Desactivar' : 'Reactivar'" @click="alternarCategoria(c)" />
                   <v-btn v-if="puedeEliminar" icon="mdi-delete" size="x-small" variant="text" color="error"
@@ -400,6 +415,7 @@ import {
 import PiolaCuentas from './PiolaCuentas.vue'
 import PiolaCaja from './PiolaCaja.vue'
 import PiolaPresupuestos from './PiolaPresupuestos.vue'
+import PiolaImportarExcel from './PiolaImportarExcel.vue'
 import PiolaSubirPdf from './PiolaSubirPdf.vue'
 import type { ApexOptions } from 'apexcharts'
 
@@ -805,7 +821,11 @@ async function eliminar(item: any) {
 }
 
 /* ══════════ CRUD de categorías jerárquicas ══════════ */
-const nuevaCat = ref<any>({ nombre: '', parent_id: null, tipo: 'egreso' })
+const nuevaCat = ref<any>({ nombre: '', parent_id: null, tipo: 'egreso', codigo: '' })
+const codigoEditado = ref('')
+
+/** Leyenda numerada de la categoría ('6.2'). Vive en la fila cruda, no en la plana. */
+const codigoDe = (id: any) => categorias.value.find((c: any) => c.id === id)?.codigo || ''
 const guardandoCat = ref(false)
 const editandoCat = ref<number | null>(null)
 const nombreEditado = ref('')
@@ -820,23 +840,30 @@ async function crearCategoria() {
     nombre: nuevaCat.value.nombre.trim(),
     parent_id: nuevaCat.value.parent_id || null,
     tipo: nuevaCat.value.tipo,
+    // Vacío = que el servidor calcule la siguiente leyenda libre del padre
+    codigo: nuevaCat.value.codigo?.trim() || null,
     orden: categorias.value.length + 1,
   })
   guardandoCat.value = false
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   emit('notify', 'Categoría agregada')
-  nuevaCat.value = { nombre: '', parent_id: null, tipo: 'egreso' }
+  nuevaCat.value = { nombre: '', parent_id: null, tipo: 'egreso', codigo: '' }
   await cargar()
 }
 
 async function renombrarCategoria(c: any) {
   if (!nombreEditado.value.trim()) return
   const { error } = await apiPiola('contabilidad', {
-    accion: 'editar_categoria', id: c.id, nombre: nombreEditado.value.trim(),
+    accion: 'editar_categoria',
+    id: c.id,
+    nombre: nombreEditado.value.trim(),
+    // Vacía se guarda como NULL: una categoría sin leyenda es válida, y el
+    // índice único ignora los nulos (si no, la segunda sin leyenda chocaría).
+    codigo: codigoEditado.value.trim() || null,
   })
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
   editandoCat.value = null
-  emit('notify', 'Categoría renombrada')
+  emit('notify', 'Categoría actualizada')
   await cargar()
 }
 
@@ -915,8 +942,8 @@ onMounted(cargar)
 
 /* Árbol de categorías */
 .cat-nueva {
-  display: grid; grid-template-columns: 1.6fr 1.6fr 1fr auto; gap: 10px;
-  align-items: center; margin-bottom: 18px;
+  display: grid; grid-template-columns: 1.6fr 1.6fr 1fr .7fr auto; gap: 10px;
+  align-items: start; margin-bottom: 18px;
 }
 .arbol { border: 1px solid rgba(128, 128, 128, .18); border-radius: 10px; overflow: hidden; }
 .arbol-fila {
@@ -924,6 +951,11 @@ onMounted(cargar)
   border-bottom: 1px solid rgba(128, 128, 128, .12); font-size: 13.5px;
 }
 .arbol-fila:last-child { border-bottom: none; }
+.arbol-codigo {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; font-weight: 700; opacity: .7;
+  background: rgba(128, 128, 128, .15); border-radius: 5px; padding: 1px 6px;
+}
 .arbol-fila:hover { background: rgba(128, 128, 128, .06); }
 .arbol-nombre { font-weight: 500; }
 .arbol-nombre.inactiva { opacity: .45; text-decoration: line-through; }

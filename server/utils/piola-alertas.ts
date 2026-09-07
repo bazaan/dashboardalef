@@ -12,6 +12,12 @@
  *   lead_sin_seguimiento   leads abiertos sin interacción en N días
  *   entregable_por_vencer  entregables con fecha de compromiso cerca y sin entregar
  *   comision_por_pagar     comisiones pendientes cuya fecha de pago (15) se acerca
+ *   factura_programada     recurrentes de contrato que toca emitir
+ *   contrato_cliente_por_vencer  contratos de cliente cerca de su fecha de cierre
+ *
+ * Los dos tipos EVENTUALES (movimiento_financiero, registro_sistema) no se
+ * generan acá: no miran el futuro sino el presente, y los dispara el endpoint
+ * que hace el registro. Ver notificarEvento() al final de este archivo.
  *
  * Cada alerta es única por (tipo, tabla, id, fecha_objetivo): correr el motor
  * dos veces el mismo día no duplica avisos ni re-envía WhatsApps.
@@ -190,7 +196,152 @@ export async function generarAlertas(supabase: any, hoy = hoyLima()): Promise<Al
     }
   }
 
+  /* ── Facturas recurrentes programadas que toca emitir ── */
+  const cProg = cfg('factura_programada')
+  if (cProg) {
+    const limite = sumarDias(hoy, cProg.dias_antes)
+    const { data: programadas } = await supabase.from('piola_facturas_programadas')
+      .select('id, periodo, fecha_programada, concepto, monto, contrato:piola_contratos(nombre_cliente)')
+      .eq('estado', 'pendiente')
+      .lte('fecha_programada', limite)
+
+    for (const p of programadas || []) {
+      const fecha = String(p.fecha_programada).slice(0, 10)
+      const dias = diasEntre(hoy, fecha)
+      alertas.push(base(cProg, {
+        related_table: 'piola_facturas_programadas', related_id: p.id,
+        fecha_objetivo: fecha,
+        titulo: `Facturar a ${(p as any).contrato?.nombre_cliente || 'cliente'} (${p.periodo})`,
+        mensaje: `🔁 *Factura recurrente por emitir*\n`
+          + `${(p as any).contrato?.nombre_cliente || 'Cliente'} — periodo ${p.periodo}\n`
+          + `${p.concepto || 'Servicios del contrato'}\n`
+          + `Monto: ${money(p.monto)}\n`
+          + (dias < 0 ? `Debía emitirse el ${fecha} (hace ${Math.abs(dias)} día(s))`
+                      : `Programada para el ${fecha} (en ${dias} día(s))`),
+      }))
+    }
+  }
+
+  /* ── Contratos de CLIENTE por vencer (los de colaborador van arriba) ── */
+  const cConCli = cfg('contrato_cliente_por_vencer')
+  if (cConCli) {
+    const limite = sumarDias(hoy, cConCli.dias_antes)
+    const { data: contratos } = await supabase.from('piola_contratos')
+      .select('id, nombre_cliente, fecha_cierre, monto_periodico, renovacion_automatica, estado')
+      .eq('estado', 'vigente')
+      .not('fecha_cierre', 'is', null)
+      .gte('fecha_cierre', hoy).lte('fecha_cierre', limite)
+
+    for (const c of contratos || []) {
+      const fecha = String(c.fecha_cierre).slice(0, 10)
+      const dias = diasEntre(hoy, fecha)
+      alertas.push(base(cConCli, {
+        related_table: 'piola_contratos', related_id: c.id,
+        fecha_objetivo: fecha,
+        titulo: `Contrato de ${c.nombre_cliente} vence en ${dias} día(s)`,
+        mensaje: `📑 *Contrato de cliente por vencer*\n${c.nombre_cliente}\n`
+          + `Vence: ${fecha} (en ${dias} día(s))\n`
+          + (c.renovacion_automatica
+              ? 'Tiene renovación automática marcada: confirmar condiciones.'
+              : 'Sin renovación automática: si sigue, hay que firmar adenda o contrato nuevo.'),
+      }))
+    }
+  }
+
   return alertas
+}
+
+/* ══════════════════ Avisos por evento (setiembre) ══════════════════ */
+
+/** Eventos que puede avisar el sistema, agrupados por el tipo que los configura. */
+export const EVENTOS_MOVIMIENTO = [
+  'movimiento_creado', 'movimiento_editado', 'movimiento_eliminado',
+  'pago_registrado', 'factura_emitida', 'factura_pagada', 'factura_anulada',
+  'caja_abierta', 'caja_cerrada', 'importacion',
+] as const
+
+export const EVENTOS_REGISTRO = [
+  'cliente_creado', 'contrato_creado', 'contrato_vencido',
+  'entregable_creado', 'entregable_aprobado', 'colaborador_creado',
+  'recibo_honorarios_generado',
+] as const
+
+export interface EventoPiola {
+  /** Uno de EVENTOS_MOVIMIENTO o EVENTOS_REGISTRO */
+  evento: string
+  titulo: string
+  mensaje: string
+  related_table?: string
+  related_id?: number
+  /** Para el filtro `monto_minimo`: sin monto, el aviso siempre pasa. */
+  monto?: number
+  actor?: string
+}
+
+/**
+ * Avisa por WhatsApp que algo se registró — un movimiento, un pago, un cliente.
+ *
+ * A diferencia del cron, esto corre DENTRO del request que hizo el registro, así
+ * que:
+ *   • NUNCA lanza. Un webhook caído no puede tumbar el alta que ya se guardó:
+ *     el movimiento existe, el aviso es lo secundario.
+ *   • No deduplica por (tipo, tabla, id, fecha) como el cron: dos movimientos
+ *     distintos del mismo día son dos avisos distintos. Por eso el registro va
+ *     con related_id propio y fecha_objetivo = hoy solo como referencia.
+ *
+ * ⚠️ Meta solo entrega mensajes de PLANTILLA fuera de la ventana de 24 h. Estos
+ * avisos son, por definición, no solicitados: el flujo de n8n que los recibe
+ * tiene que mandarlos como plantilla aprobada o se pierden en silencio.
+ */
+export async function notificarEvento(supabase: any, ev: EventoPiola): Promise<void> {
+  try {
+    const esMovimiento = (EVENTOS_MOVIMIENTO as readonly string[]).includes(ev.evento)
+    const tipo = esMovimiento ? 'movimiento_financiero' : 'registro_sistema'
+
+    const { data: cfg } = await supabase.from('piola_alert_settings')
+      .select('*').eq('tipo', tipo).eq('activo', true).maybeSingle()
+    if (!cfg) return
+
+    const eventos: string[] = cfg.eventos || []
+    if (eventos.length && !eventos.includes(ev.evento)) return
+    // El filtro por monto solo aplica a lo que tiene monto
+    if (ev.monto !== undefined && Number(cfg.monto_minimo || 0) > Math.abs(Number(ev.monto || 0))) return
+
+    const fila = {
+      tipo,
+      related_table: ev.related_table || null,
+      related_id: ev.related_id ?? null,
+      titulo: ev.titulo,
+      mensaje: ev.mensaje + (ev.actor ? `\nRegistrado por: ${ev.actor}` : ''),
+      fecha_objetivo: hoyLima(),
+      dias_antes: 0,
+      canal: cfg.canal,
+      destinatarios: cfg.destinatarios || [],
+      estado: 'pendiente',
+    }
+
+    const { data: alerta } = await supabase.from('piola_alerts').insert(fila).select('*').single()
+
+    const envio = await enviarWhatsappPiola({
+      evento: `piola.${ev.evento}`,
+      empresa: 'Piola',
+      fecha: hoyLima(),
+      total: 1,
+      mensaje_whatsapp: fila.mensaje,
+      alertas: alerta ? [alerta] : [fila],
+    })
+
+    if (alerta) {
+      await supabase.from('piola_alerts').update(
+        envio.ok
+          ? { estado: 'enviada', enviado_at: new Date().toISOString(), respuesta: envio.respuesta ?? null }
+          : { estado: 'error', error_message: envio.error || `HTTP ${envio.status}` }
+      ).eq('id', alerta.id)
+    }
+  } catch (e: any) {
+    // El aviso es accesorio: si falla, se pierde el aviso, no la operación.
+    console.error('[piola/notificarEvento]', ev.evento, e?.message || e)
+  }
 }
 
 /**

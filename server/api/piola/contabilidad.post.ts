@@ -5,9 +5,14 @@
  *   { accion: 'guardar_movimiento', id?, tipo, fecha, concepto, subtotal, descuento,
  *     impuestos_sel: string[], ...campos }
  *   { accion: 'eliminar_movimiento', id }
- *   { accion: 'crear_categoria', nombre, parent_id?, tipo }
- *   { accion: 'editar_categoria', id, nombre?, activo? }
+ *   { accion: 'crear_categoria', nombre, parent_id?, tipo, codigo? }
+ *   { accion: 'editar_categoria', id, nombre?, activo?, codigo? }
  *   { accion: 'eliminar_categoria', id }
+ *
+ * LEYENDA NUMERADA (setiembre): cada categoría puede llevar un `codigo` ('6',
+ * '6.2') para poder decir "el gasto 6.2" y que todos entiendan lo mismo. Si no
+ * se manda, se calcula el siguiente libre dentro del padre: la numeración no
+ * se lleva a mano en una hoja aparte.
  *
  * LOS IMPORTES LOS CALCULA EL SERVIDOR, no la pantalla. El cliente manda
  * `subtotal`, `descuento` y los CÓDIGOS de impuesto marcados; acá se leen las
@@ -27,6 +32,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionPiola, exigirModulo, hoyLima } from '../../utils/piola'
+import { notificarEvento } from '../../utils/piola-alertas'
 import { calcularTotalesMovimiento } from '../../../composables/usePiola'
 
 const TIPOS = ['ingreso', 'egreso']
@@ -49,6 +55,39 @@ const numero = (v: any) => {
   if (v === null || v === undefined || v === '') return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Siguiente leyenda libre dentro del padre: '7' en la raíz, '6.4' bajo '6'.
+ *
+ * Se numera por el MAYOR usado y no por la cantidad de hermanas: si se borró la
+ * 6.2, la próxima es la 6.4 y no una 6.3 que ya existió y quedó en movimientos
+ * viejos. Reusar una leyenda es peor que saltearla.
+ */
+async function siguienteCodigo(supabase: any, parentId: number | null): Promise<string | null> {
+  const base = { data: null as any }
+  if (parentId) {
+    const { data } = await supabase.from('piola_expense_categories')
+      .select('codigo').eq('id', parentId).maybeSingle()
+    base.data = data
+    if (!data?.codigo) return null          // el padre no numera: la hija tampoco
+  }
+
+  let query = supabase.from('piola_expense_categories').select('codigo')
+  query = parentId ? query.eq('parent_id', parentId) : query.is('parent_id', null)
+  const { data: hermanas } = await query
+
+  const prefijo = parentId ? `${base.data.codigo}.` : ''
+  let max = 0
+  for (const h of hermanas || []) {
+    if (!h.codigo) continue
+    const resto = prefijo ? String(h.codigo).slice(prefijo.length) : String(h.codigo)
+    // Solo cuenta el último tramo, y solo si es un número entero
+    if (prefijo && !String(h.codigo).startsWith(prefijo)) continue
+    const n = Number(resto)
+    if (Number.isInteger(n) && n > max) max = n
+  }
+  return `${prefijo}${max + 1}`
 }
 
 export default defineEventHandler(async (event) => {
@@ -132,6 +171,18 @@ export default defineEventHandler(async (event) => {
       : await supabase.from('piola_transactions').insert(fila).select('*').single()
     if (res.error) throw createError({ statusCode: 400, statusMessage: res.error.message })
 
+    await notificarEvento(supabase, {
+      evento: id ? 'movimiento_editado' : 'movimiento_creado',
+      related_table: 'piola_transactions',
+      related_id: res.data.id,
+      monto: t.total,
+      titulo: `${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de S/ ${t.total.toFixed(2)}`,
+      mensaje: `${tipo === 'ingreso' ? '🟢' : '🔴'} *${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} `
+        + `${id ? 'editado' : 'registrado'}*\n${concepto}\n`
+        + `Monto: S/ ${t.total.toFixed(2)}\nFecha: ${fila.fecha}`,
+      actor: perfil.email,
+    })
+
     return { ok: true, movimiento: res.data, totales: t }
   }
 
@@ -153,8 +204,25 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    const { data: previo } = await supabase.from('piola_transactions')
+      .select('tipo, concepto, monto, fecha').eq('id', id).maybeSingle()
+
     const { error } = await supabase.from('piola_transactions').delete().eq('id', id)
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    if (previo) {
+      await notificarEvento(supabase, {
+        evento: 'movimiento_eliminado',
+        related_table: 'piola_transactions',
+        related_id: id,
+        monto: Number(previo.monto || 0),
+        titulo: `Movimiento eliminado: ${previo.concepto}`,
+        mensaje: `🗑️ *Movimiento eliminado*\n${previo.concepto}\n`
+          + `${previo.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de S/ ${Number(previo.monto || 0).toFixed(2)} `
+          + `del ${previo.fecha}`,
+        actor: perfil.email,
+      })
+    }
 
     return { ok: true }
   }
@@ -166,13 +234,23 @@ export default defineEventHandler(async (event) => {
     const nombre = texto(body?.nombre)
     if (!nombre) throw createError({ statusCode: 400, statusMessage: 'La categoría necesita un nombre' })
 
+    const parentId = numero(body?.parent_id)
+    const codigo = texto(body?.codigo) || await siguienteCodigo(supabase, parentId)
+
     const { data, error } = await supabase.from('piola_expense_categories').insert({
       nombre,
-      parent_id: numero(body?.parent_id),
+      parent_id: parentId,
       tipo: texto(body?.tipo) || 'egreso',
       orden: numero(body?.orden) ?? 0,
+      codigo,
     }).select('*').single()
-    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+    if (error) {
+      // El índice único de `codigo` es lo único que impide dos "6.2" distintas
+      if (/idx_piola_cat_codigo|duplicate key/i.test(error.message)) {
+        throw createError({ statusCode: 409, statusMessage: `La leyenda "${codigo}" ya está usada por otra categoría` })
+      }
+      throw createError({ statusCode: 400, statusMessage: error.message })
+    }
 
     return { ok: true, categoria: data }
   }
@@ -190,12 +268,26 @@ export default defineEventHandler(async (event) => {
       patch.nombre = nombre
     }
     if ('activo' in body) patch.activo = !!body.activo
+    if ('codigo' in body) patch.codigo = texto(body.codigo)
+    if ('parent_id' in body) patch.parent_id = numero(body.parent_id)
+    if ('tipo' in body) patch.tipo = texto(body.tipo) || 'egreso'
     if (!Object.keys(patch).length) {
       throw createError({ statusCode: 400, statusMessage: 'No hay nada que cambiar' })
     }
 
+    // Una categoría no puede colgar de sí misma: sería un ciclo y el árbol
+    // dejaría de pintarse entero, sin error visible.
+    if (patch.parent_id === id) {
+      throw createError({ statusCode: 400, statusMessage: 'Una categoría no puede ser su propia categoría padre' })
+    }
+
     const { error } = await supabase.from('piola_expense_categories').update(patch).eq('id', id)
-    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+    if (error) {
+      if (/idx_piola_cat_codigo|duplicate key/i.test(error.message)) {
+        throw createError({ statusCode: 409, statusMessage: `La leyenda "${patch.codigo}" ya está usada por otra categoría` })
+      }
+      throw createError({ statusCode: 400, statusMessage: error.message })
+    }
 
     return { ok: true }
   }

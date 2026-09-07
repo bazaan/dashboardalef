@@ -282,6 +282,7 @@ const MODULOS = [
   { id: 'home', label: 'Dashboard' },
   { id: 'mi_espacio', label: 'Mi espacio' },
   { id: 'crm', label: 'CRM Comercial' },
+  { id: 'clientes', label: 'Clientes y contratos' },
   { id: 'contabilidad', label: 'Contabilidad' },
   { id: 'facturacion', label: 'Facturación' },
   { id: 'produccion', label: 'Producción' },

@@ -76,6 +76,10 @@ export default defineEventHandler(async (event) => {
     rol_piola: perfil.rolPiola,
     es_admin: perfil.esAdmin,
     permisos: perfil.permisos,
+    // Módulos que la lista blanca de Configuración le niega a este correo, aunque
+    // su rol los tenga marcados. La pantalla los usa para explicar la ausencia
+    // en vez de dejar un menú que se acorta sin motivo visible.
+    modulos_vedados: perfil.modulosVedados,
     colaborador: perfil.colaborador
       ? {
           ...perfil.colaborador,

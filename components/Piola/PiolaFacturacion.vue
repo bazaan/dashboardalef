@@ -2,27 +2,12 @@
   <div class="view-container">
     <header class="top-header">
       <h1>Facturación</h1>
-      <button v-if="puedeCrear && tab === 'comprobantes'" class="btn-primary" @click="abrirNueva">
+      <button v-if="puedeCrear" class="btn-primary" @click="abrirNueva">
         <v-icon icon="mdi-file-document-plus" size="16" /><span>Nueva factura</span>
       </button>
     </header>
 
     <div class="content-area">
-      <!-- Contratos vive acá dentro, como pestaña, no como módulo aparte -->
-      <div class="table-tabs mb-4">
-        <button :class="['tab', { active: tab === 'comprobantes' }]" @click="tab = 'comprobantes'">
-          <v-icon icon="mdi-receipt-text-outline" size="15" /> Comprobantes
-        </button>
-        <button :class="['tab', { active: tab === 'contratos' }]" @click="tab = 'contratos'">
-          <v-icon icon="mdi-file-sign" size="15" /> Contratos y adendas
-        </button>
-      </div>
-
-      <PiolaContratos v-if="tab === 'contratos'" :perfil="perfil" :puede-crear="puedeCrear"
-        :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
-        @notify="(p: any) => emit('notify', p)" />
-
-      <template v-else>
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-header"><span class="stat-title">Emitidas este mes</span></div>
@@ -41,6 +26,16 @@
           </div>
           <div class="stat-value">{{ vencidas.length }}</div>
           <div class="stat-description">Pasaron su fecha de vencimiento</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-title">Borradores</span>
+            <div v-if="borradores.length" class="stat-change down">sin emitir</div>
+          </div>
+          <div class="stat-value">{{ borradores.length }}</div>
+          <div class="stat-description">
+            {{ recurrentesEnBorrador }} de contratos recurrentes
+          </div>
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-title">Detracciones del mes</span></div>
@@ -87,7 +82,6 @@
           </template>
         </v-data-table>
       </v-card>
-      </template>
     </div>
 
     <!-- ══════════ NUEVA FACTURA ══════════ -->
@@ -111,13 +105,34 @@
           <div class="form-section-title" style="margin-top:18px;">Comprobante</div>
           <div class="form-grid">
             <v-select v-model.number="nueva.tipo_comprobante" :items="[{ value: 1, title: 'Factura' }, { value: 2, title: 'Boleta' }]"
-              label="Tipo" density="compact" hide-details variant="outlined" />
-            <v-text-field v-model="nueva.serie" label="Serie" density="compact" hide-details variant="outlined" />
+              label="Tipo" density="compact" hide-details variant="outlined"
+              @update:model-value="onSerieCambia" />
+            <v-select v-model="nueva.serie" :items="opcionesSerie" label="Serie" density="compact"
+              hide-details variant="outlined" editable
+              @update:model-value="onSerieCambia" />
+            <div class="numero-fila">
+              <v-text-field v-model.number="nueva.numero" type="number" min="1" label="Número"
+                density="compact" hide-details variant="outlined"
+                :disabled="!nueva.numeracion_manual" :loading="buscandoNumero" />
+              <v-tooltip location="top" text="Escribir el número a mano para calzar con la numeración que Piola ya tiene fuera del sistema">
+                <template #activator="{ props: tp }">
+                  <v-checkbox v-bind="tp" v-model="nueva.numeracion_manual" color="primary"
+                    density="compact" hide-details label="Manual" @update:model-value="onManualCambia" />
+                </template>
+              </v-tooltip>
+            </div>
+            <v-select v-model="nueva.contrato_id" :items="opcionesContrato" label="Contrato que respalda"
+              density="compact" hide-details variant="outlined" clearable
+              @update:model-value="autocompletarContrato" />
             <v-text-field v-model="nueva.fecha_emision" type="date" label="Fecha de emisión"
               density="compact" hide-details variant="outlined" />
             <v-text-field v-model="nueva.fecha_vencimiento" type="date" label="Fecha de vencimiento"
               density="compact" hide-details variant="outlined" />
           </div>
+          <p v-if="!nueva.numeracion_manual" class="hint-num">
+            El sistema propone {{ nueva.serie }}-{{ nueva.numero || '…' }} (último emitido:
+            {{ ultimoNumero || 'ninguno' }}). Marcá <b>Manual</b> para escribir otro número.
+          </p>
 
           <div class="form-section-title" style="margin-top:18px;">Ítems</div>
           <div v-for="(it, i) in nueva.items" :key="i" class="item-fila">
@@ -209,6 +224,15 @@
           <v-alert v-if="detalle.estado === 'error'" type="error" variant="tonal" density="compact" class="mt-4">
             {{ mensajeError(detalle) }}
           </v-alert>
+
+          <!-- Varios documentos por comprobante: la factura, la constancia de
+               detracción y el contrato que la respalda son tres papeles. -->
+          <div class="mt-5">
+            <PiolaDocumentos entidad="factura" :entidad-id="detalle.id"
+              titulo="Documentos del comprobante" tipo-por-defecto="constancia_detraccion"
+              carpeta="facturas" :puede-editar="puedeEditar" :puede-eliminar="puedeEliminar"
+              @notify="(p: any) => emit('notify', p)" />
+          </div>
         </v-card-text>
         <v-card-actions style="flex-wrap:wrap; gap:8px; padding: 12px 20px 18px;">
           <v-btn v-if="detalle.pdf_url" variant="tonal" @click="abrirVisor(detalle)">
@@ -247,13 +271,23 @@
  *
  * Marcar una factura como pagada crea automáticamente el ingreso en el flujo
  * de caja, por el NETO realmente cobrado (total − detracción).
+ *
+ * CAMBIOS DE SETIEMBRE
+ * • Serie y número se pueden escribir A MANO: Piola arrastra una numeración
+ *   anterior al sistema y forzar el correlativo calculado obligaría a empezar
+ *   de cero. El sistema sugiere el siguiente; el UNIQUE de la tabla es lo que
+ *   impide repetir uno.
+ * • Cada comprobante puede llevar VARIOS documentos (la factura, la constancia
+ *   de detracción, el contrato) en vez de un solo archivo.
+ * • La factura se puede vincular al CONTRATO que la respalda.
+ * • Contratos y adendas se mudaron al módulo Clientes y contratos.
  */
 import { ref, computed, onMounted } from 'vue'
 import { piolaCan } from '@/utils/permissions'
 import { PEN, PEN_CORTO, fechaCorta, periodoActual, hoyISO, urlDocumento, traerTodo} from '@/composables/usePiola'
 import { useFormRules } from '@/composables/rules'
-import PiolaContratos from './PiolaContratos.vue'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
+import PiolaDocumentos from './PiolaDocumentos.vue'
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
@@ -261,9 +295,6 @@ const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
 const client = useSupabaseClient()
 const periodo = periodoActual()
 const { ruleRuc } = useFormRules()
-
-/** 'comprobantes' | 'contratos' — Contratos es una pestaña de este módulo (19/08). */
-const tab = ref('comprobantes')
 
 const puedeCrear = computed(() => piolaCan(props.perfil?.permisos, 'facturacion', 'create'))
 const puedeEditar = computed(() => piolaCan(props.perfil?.permisos, 'facturacion', 'edit'))
@@ -285,21 +316,28 @@ const cargando = ref(false)
 const facturas = ref<any[]>([])
 const clientes = ref<any[]>([])
 const servicios = ref<any[]>([])
+const contratos = ref<any[]>([])
+const series = ref<any[]>([])
 const fBuscar = ref('')
 const fEstado = ref('todos')
 
 async function cargar() {
   cargando.value = true
-  const [f, c, s] = await Promise.all([
+  const [f, c, s, co, se] = await Promise.all([
     traerTodo(() => client.from('piola_invoices').select('*')
       .order('fecha_emision', { ascending: false }).order('id')),
     client.from('piola_clientes').select('*').eq('activo', true).order('nombre'),
     client.from('piola_services').select('*').eq('activo', true).order('orden'),
+    client.from('piola_contratos').select('*').order('fecha_cierre', { ascending: false }),
+    client.from('piola_series').select('*, tipo:piola_tipos_comprobante(codigo, codigo_sunat)')
+      .eq('activo', true),
   ])
   if (f.error) emit('notify', { text: `Error cargando comprobantes: ${f.error.message}`, color: 'error' })
   facturas.value = (f.data as any[]) || []
   clientes.value = (c.data as any[]) || []
   servicios.value = (s.data as any[]) || []
+  contratos.value = (co.data as any[]) || []
+  series.value = (se.data as any[]) || []
   cargando.value = false
 }
 
@@ -316,6 +354,10 @@ const pendientes = computed(() => facturas.value.filter(
   f => ['emitida', 'enviada', 'vencida'].includes(f.estado)))
 const porCobrar = computed(() => pendientes.value.reduce(
   (s, f) => s + Number(f.con_detraccion ? f.neto_a_pagar : f.total || 0), 0))
+
+const borradores = computed(() => facturas.value.filter(f => f.estado === 'borrador'))
+const recurrentesEnBorrador = computed(() =>
+  borradores.value.filter(f => f.origen === 'recurrente').length)
 
 const estaVencida = (f: any) =>
   ['emitida', 'enviada'].includes(f.estado) && f.fecha_vencimiento
@@ -354,6 +396,31 @@ const mensajeError = (f: any) => {
 const opcionesCliente = computed(() => clientes.value.map(c => ({ value: c.id, title: c.nombre })))
 const serviciosNombres = computed(() => servicios.value.map(s => s.nombre))
 
+/**
+ * Series disponibles: las del catálogo del tipo elegido, más las que ya se
+ * usaron en comprobantes reales. Lo segundo importa porque la numeración vieja
+ * de Piola puede traer series que nadie dio de alta en el catálogo.
+ */
+const opcionesSerie = computed(() => {
+  const tipo = Number(nueva.value?.tipo_comprobante || 1)
+  const delCatalogo = series.value
+    .filter(s => !s.tipo?.codigo_sunat || Number(s.tipo.codigo_sunat) === tipo)
+    .map(s => String(s.serie))
+  const usadas = facturas.value
+    .filter(f => Number(f.tipo_comprobante) === tipo)
+    .map(f => String(f.serie))
+  const base = tipo === 1 ? ['F001'] : ['B001']
+  return [...new Set([...delCatalogo, ...usadas, ...base])].sort()
+})
+
+const opcionesContrato = computed(() => contratos.value
+  .filter(c => c.estado !== 'anulado')
+  .map(c => ({
+    value: c.id,
+    title: `${c.codigo ? c.codigo + ' · ' : ''}${c.nombre_cliente}`
+      + (c.fecha_cierre ? ` (hasta ${fechaCorta(c.fecha_cierre)})` : ''),
+  })))
+
 const headers = [
   { title: 'Número', key: 'numero_completo', sortable: false },
   { title: 'Cliente', key: 'cliente_nombre' },
@@ -368,12 +435,21 @@ const headers = [
 const nueva = ref<any>(null)
 const emitiendo = ref(false)
 
+const buscandoNumero = ref(false)
+const ultimoNumero = ref<number | null>(null)
+
 function abrirNueva() {
   nueva.value = {
     cliente_id: null,
     cliente: { razon_social: '', ruc: '', email: '', direccion: '' },
     tipo_comprobante: 1,
     serie: 'F001',
+    numero: null,
+    // Apagado por defecto: el correlativo sugerido es lo correcto salvo que
+    // haya que calzar con la numeración vieja, y eso se decide a propósito.
+    numeracion_manual: false,
+    contrato_id: null,
+    periodo_facturado: null,
     fecha_emision: hoyISO(),
     fecha_vencimiento: '',
     items: [{ descripcion: '', cantidad: 1, valor_unitario: 0 }],
@@ -381,6 +457,71 @@ function abrirNueva() {
     detraccion_pct: 12,
     detraccion_codigo: '',
     observaciones: '',
+  }
+  sugerirNumero()
+}
+
+/**
+ * Pide el correlativo al servidor, que es quien mira la tabla entera.
+ *
+ * Calcularlo en la pantalla con las facturas ya cargadas parece equivalente y
+ * no lo es: la lista del navegador puede estar vieja, y dos personas emitiendo
+ * a la vez llegarían al mismo número.
+ */
+async function sugerirNumero() {
+  if (!nueva.value) return
+  buscandoNumero.value = true
+  try {
+    const res = await $fetch<any>('/api/piola/factura', {
+      method: 'POST',
+      body: {
+        accion: 'siguiente_numero',
+        tipo_comprobante: nueva.value.tipo_comprobante,
+        serie: nueva.value.serie,
+      },
+    })
+    ultimoNumero.value = res.ultimo || null
+    if (!nueva.value.numeracion_manual) nueva.value.numero = res.numero
+  } catch {
+    // Sin sugerencia se sigue pudiendo emitir: el servidor la calcula igual
+    ultimoNumero.value = null
+  } finally {
+    buscandoNumero.value = false
+  }
+}
+
+function onSerieCambia() {
+  if (nueva.value?.serie) nueva.value.serie = String(nueva.value.serie).toUpperCase()
+  // Al cambiar de tipo, la serie por defecto cambia con él
+  if (nueva.value && Number(nueva.value.tipo_comprobante) === 2 && nueva.value.serie === 'F001') {
+    nueva.value.serie = 'B001'
+  }
+  sugerirNumero()
+}
+
+function onManualCambia(v: any) {
+  // Al volver a automático se recupera la sugerencia: si no, quedaría pegado
+  // el número que la persona escribió a mano y se emitiría con él sin querer.
+  if (!v) sugerirNumero()
+}
+
+/** Al elegir contrato se traen sus condiciones: es el documento que manda. */
+function autocompletarContrato(id: any) {
+  const c = contratos.value.find(x => x.id === id)
+  if (!c || !nueva.value) return
+  if (c.cliente_id) {
+    nueva.value.cliente_id = c.cliente_id
+    autocompletarCliente(c.cliente_id)
+  } else if (c.nombre_cliente) {
+    nueva.value.cliente.razon_social = c.nombre_cliente
+    if (c.ruc) nueva.value.cliente.ruc = c.ruc
+  }
+  nueva.value.con_detraccion = c.con_detraccion !== false
+  if (c.detraccion_pct != null) nueva.value.detraccion_pct = Number(c.detraccion_pct)
+  if (c.detraccion_codigo) nueva.value.detraccion_codigo = c.detraccion_codigo
+  if (c.serie_factura) { nueva.value.serie = c.serie_factura; sugerirNumero() }
+  if (c.descripcion && nueva.value.items.length === 1 && !nueva.value.items[0].descripcion) {
+    nueva.value.items[0].descripcion = c.descripcion
   }
 }
 
@@ -428,6 +569,12 @@ async function emitir() {
   if (Number(n.tipo_comprobante) === 1 && !ruc) {
     return emit('notify', { text: 'Una factura necesita el RUC del cliente', color: 'error' })
   }
+  if (n.numeracion_manual && !(Number(n.numero) > 0)) {
+    return emit('notify', { text: 'Con numeración manual hay que escribir el número', color: 'error' })
+  }
+  if (!n.serie?.trim()) {
+    return emit('notify', { text: 'El comprobante necesita una serie', color: 'error' })
+  }
 
   emitiendo.value = true
   try {
@@ -439,6 +586,10 @@ async function emitir() {
         cliente: n.cliente,
         tipo_comprobante: n.tipo_comprobante,
         serie: n.serie,
+        numero: n.numeracion_manual ? Number(n.numero) : undefined,
+        numeracion_manual: n.numeracion_manual,
+        contrato_id: n.contrato_id || null,
+        periodo_facturado: n.periodo_facturado || null,
         fecha_emision: n.fecha_emision,
         fecha_vencimiento: n.fecha_vencimiento || null,
         items: n.items.filter((it: any) => it.descripcion),
@@ -525,6 +676,10 @@ onMounted(cargar)
   font-weight: 600; font-size: 13px; text-transform: uppercase;
   letter-spacing: .4px; opacity: .65; margin-bottom: 10px;
 }
+
+.numero-fila { display: flex; gap: 8px; align-items: center; }
+.numero-fila > :first-child { flex: 1; }
+.hint-num { font-size: 11.5px; opacity: .6; margin-top: 8px; }
 
 .item-fila { display: flex; gap: 10px; align-items: center; margin-bottom: 9px; }
 .item-fila > :first-child { flex: 2; }

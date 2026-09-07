@@ -259,6 +259,115 @@ export function sumarDiasISO(iso: string, dias: number): string {
   return dt.toISOString().slice(0, 10)
 }
 
+/* ══════════════════ Clientes, contratos y documentos ══════════════════ */
+
+/** Estados del contrato de cliente. */
+export const ESTADOS_CONTRATO = [
+  { value: 'borrador', title: 'Borrador', color: 'grey' },
+  { value: 'vigente', title: 'Vigente', color: 'success' },
+  { value: 'vencido', title: 'Vencido', color: 'error' },
+  { value: 'renovado', title: 'Renovado', color: 'info' },
+  { value: 'anulado', title: 'Anulado', color: 'grey' },
+]
+
+/** Cada cuánto se factura un contrato recurrente. */
+export const FRECUENCIAS_CONTRATO = [
+  { value: 'mensual', title: 'Mensual' },
+  { value: 'bimestral', title: 'Bimestral' },
+  { value: 'trimestral', title: 'Trimestral' },
+  { value: 'semestral', title: 'Semestral' },
+  { value: 'anual', title: 'Anual' },
+  { value: 'unico', title: 'Pago único' },
+]
+
+/**
+ * Tipos de documento adjunto (piola_documentos.tipo).
+ * Los `value` son los del CHECK de la tabla: cambiar uno acá sin cambiarlo allá
+ * hace fallar el insert con un error de constraint.
+ */
+export const TIPOS_DOCUMENTO = [
+  { value: 'factura', title: 'Factura', icon: 'mdi-receipt-text' },
+  { value: 'constancia_detraccion', title: 'Constancia de detracción', icon: 'mdi-bank-check' },
+  { value: 'contrato', title: 'Contrato', icon: 'mdi-file-sign' },
+  { value: 'anexo', title: 'Anexo', icon: 'mdi-paperclip-plus' },
+  { value: 'ficha_ruc', title: 'Ficha RUC', icon: 'mdi-card-account-details' },
+  { value: 'legal', title: 'Documento legal', icon: 'mdi-scale-balance' },
+  { value: 'comprobante', title: 'Comprobante de pago', icon: 'mdi-cash-check' },
+  { value: 'boleta', title: 'Boleta', icon: 'mdi-receipt' },
+  { value: 'recibo', title: 'Recibo', icon: 'mdi-note-text' },
+  { value: 'orden_compra', title: 'Orden de compra', icon: 'mdi-clipboard-list' },
+  { value: 'otro', title: 'Otro', icon: 'mdi-file-outline' },
+]
+
+export const etiquetaTipoDocumento = (v: any) =>
+  TIPOS_DOCUMENTO.find(t => t.value === v)?.title || 'Otro'
+
+/** Roles de producción para asignar responsables a un entregable. */
+export const ROLES_PRODUCCION = [
+  { value: 'responsable', title: 'Responsable' },
+  { value: 'disenador', title: 'Diseñador' },
+  { value: 'editor', title: 'Editor' },
+  { value: 'guionista', title: 'Guionista' },
+  { value: 'camarografo', title: 'Camarógrafo' },
+  { value: 'fotografo', title: 'Fotógrafo' },
+  { value: 'community', title: 'Community manager' },
+  { value: 'revisor', title: 'Revisión / Dirección' },
+]
+
+export const etiquetaRolProduccion = (v: any) =>
+  ROLES_PRODUCCION.find(r => r.value === v)?.title || v || 'Responsable'
+
+/** Estado de una factura recurrente programada. */
+export const ESTADOS_PROGRAMADA = [
+  { value: 'pendiente', title: 'Pendiente', color: 'warning' },
+  { value: 'generada', title: 'Generada', color: 'success' },
+  { value: 'omitida', title: 'Omitida', color: 'grey' },
+  { value: 'error', title: 'Error', color: 'error' },
+]
+
+/**
+ * Lee un archivo del navegador como base64 (sin el prefijo data:).
+ *
+ * Se usa para mandar el Excel al endpoint de importación. `readAsDataURL` y no
+ * `readAsText` porque un .xlsx es binario: leerlo como texto lo corrompe antes
+ * de que salga de la máquina.
+ */
+export function archivoABase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const r = String(reader.result || '')
+      resolve(r.slice(r.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
+ * Sube un archivo al bucket `piola-docs` y devuelve su path.
+ *
+ * Guarda el PATH y no la URL pública, igual que PiolaSubirPdf: si el bucket
+ * pasa a privado, no hay que migrar ni una fila. Acepta cualquier tipo de
+ * archivo (una constancia de detracción suele llegar escaneada como imagen).
+ */
+export async function subirArchivoPiola(
+  client: any, file: File, carpeta: string
+): Promise<{ path: string | null; error: string | null }> {
+  const extension = (file.name.match(/\.([a-zA-Z0-9]+)$/)?.[1] || 'bin').toLowerCase()
+  const base = file.name
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\.[a-zA-Z0-9]+$/, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-')
+    .slice(0, 60) || 'documento'
+  const ruta = `${carpeta}/${base}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`
+
+  const { error } = await client.storage.from('piola-docs')
+    .upload(ruta, file, { contentType: file.type || 'application/octet-stream', upsert: false })
+  if (error) return { path: null, error: error.message }
+  return { path: ruta, error: null }
+}
+
 export const ESTADOS_ENTREGABLE = [
   { value: 'en_produccion', title: 'En producción', color: 'info' },
   { value: 'en_revision', title: 'En revisión', color: 'warning' },

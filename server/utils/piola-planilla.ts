@@ -13,6 +13,10 @@
  * bucket `piola-docs`. Desde la UI se abren e imprimen a PDF (Ctrl/Cmd+P), y
  * por correo viajan como HTML. El proyecto no tiene librería de PDF y no se
  * agregó una dependencia solo para esto.
+ *
+ * Cubre las DOS formas de contratación de Piola:
+ *   • planilla   → boleta de pago con AFP/ONP y EsSalud   (calcularBoleta)
+ *   • honorarios → recibo por honorarios con renta de 4.ª (calcularHonorarios)
  */
 
 /* ══════════════════ Tasas y topes (Perú) ══════════════════ */
@@ -37,6 +41,13 @@ export const TASAS = {
   onp_pct: 13,
   /** EsSalud — aporte del EMPLEADOR, no se descuenta al colaborador */
   essalud_pct: 9,
+  /** Retención de renta de 4.ª categoría sobre el recibo por honorarios */
+  renta_4ta_pct: 8,
+  /**
+   * Tope mensual bajo el cual NO se retiene 4.ª categoría (SUNAT lo actualiza
+   * cada año junto con la UIT). Sobre este monto, retiene salvo suspensión.
+   */
+  renta_4ta_tope_mensual: 3901,
 }
 
 export interface EntradaBoleta {
@@ -312,6 +323,142 @@ export function htmlAfp(datos: {
     Base afecta acumulada: ${money(datos.total_afecto)}.<br>
     Generado por el dashboard de ${esc(MARCA.nombre)}${datos.generado_por ? ' · ' + esc(datos.generado_por) : ''}.
     Verificar contra el portal de cada AFP antes de declarar.
+  </div>
+</div></body></html>`
+}
+
+/* ══════════════════ Recibos por honorarios (4.ª categoría) ══════════════════ */
+
+export interface EntradaHonorarios {
+  monto_bruto?: number
+  /** Constancia de suspensión de retenciones vigente de SUNAT */
+  suspension_renta?: boolean
+  /** Sobrescribe la tasa (8 %) para un caso puntual */
+  retencion_pct?: number
+  otros_descuentos?: number
+  tasas?: Partial<typeof TASAS>
+}
+
+export interface HonorariosCalculados {
+  monto_bruto: number
+  retencion_pct: number
+  retencion_monto: number
+  otros_descuentos: number
+  neto: number
+  suspension_renta: boolean
+  motivo_sin_retencion: string | null
+}
+
+/**
+ * Calcula un recibo por honorarios.
+ *
+ * Tres razones para NO retener, y las tres se informan en vez de dejar un cero
+ * mudo: constancia de suspensión, monto bajo el tope mensual de SUNAT, o tasa
+ * puesta en cero a mano. Un recibo sin retención y sin motivo es exactamente lo
+ * que después nadie sabe explicarle al contador.
+ */
+export function calcularHonorarios(e: EntradaHonorarios): HonorariosCalculados {
+  const t = { ...TASAS, ...(e.tasas || {}) }
+  const bruto = r2(Number(e.monto_bruto || 0))
+  const pct = e.retencion_pct === undefined || e.retencion_pct === null
+    ? t.renta_4ta_pct : Number(e.retencion_pct)
+  const otros = r2(Number(e.otros_descuentos || 0))
+
+  let motivo: string | null = null
+  let retencion = 0
+
+  if (e.suspension_renta) {
+    motivo = 'Constancia de suspensión de retenciones vigente'
+  } else if (bruto <= t.renta_4ta_tope_mensual) {
+    motivo = `Monto por debajo del tope mensual de retención (S/ ${t.renta_4ta_tope_mensual})`
+  } else if (!pct) {
+    motivo = 'Retención en 0 % por indicación de administración'
+  } else {
+    retencion = r2(bruto * pct / 100)
+  }
+
+  return {
+    monto_bruto: bruto,
+    retencion_pct: retencion ? pct : 0,
+    retencion_monto: retencion,
+    otros_descuentos: otros,
+    neto: r2(bruto - retencion - otros),
+    suspension_renta: !!e.suspension_renta,
+    motivo_sin_retencion: motivo,
+  }
+}
+
+/**
+ * Recibo por honorarios con el branding de Piola.
+ *
+ * OJO: NO reemplaza al recibo electrónico. El RH lo emite el colaborador desde
+ * SUNAT y su numeración es de él; acá se registra (serie y número a mano) y se
+ * imprime el documento interno de pago. Confundir los dos sería emitir un
+ * comprobante tributario a nombre de otra persona.
+ */
+export function htmlReciboHonorarios(datos: {
+  colaborador: any
+  periodo: string
+  codigo: string
+  fecha_emision?: string
+  serie?: string | null
+  numero?: string | null
+  descripcion?: string | null
+  calc: HonorariosCalculados
+  generado_por?: string
+}): string {
+  const c = datos.colaborador || {}
+  const k = datos.calc
+  const rh = [datos.serie, datos.numero].filter(Boolean).join('-')
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>Recibo por honorarios ${esc(datos.codigo)}</title><style>${BASE_CSS}</style></head><body>
+<div class="doc">
+  ${cabecera('Recibo por honorarios', datos.periodo)}
+  <div class="grid">
+    <div class="campo"><span>Colaborador</span><strong>${esc(c.nombre)}</strong></div>
+    <div class="campo"><span>Código interno</span><strong>${esc(datos.codigo)}</strong></div>
+    <div class="campo"><span>RUC / DNI</span><strong>${esc(c.ruc || c.dni || '—')}</strong></div>
+    <div class="campo"><span>N.º de recibo (SUNAT)</span><strong>${esc(rh || 'pendiente')}</strong></div>
+    <div class="campo"><span>Cargo</span><strong>${esc(c.cargo || '—')}</strong></div>
+    <div class="campo"><span>Fecha de emisión</span><strong>${esc(String(datos.fecha_emision || '').slice(0, 10) || '—')}</strong></div>
+  </div>
+
+  <table>
+    <thead><tr><th>Concepto</th><th class="n">Monto</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>${esc(datos.descripcion || `Servicios profesionales — ${datos.periodo}`)}</td>
+        <td class="n">${money(k.monto_bruto)}</td>
+      </tr>
+      <tr><td><strong>Monto bruto</strong></td><td class="n"><strong>${money(k.monto_bruto)}</strong></td></tr>
+    </tbody>
+  </table>
+
+  <table>
+    <thead><tr><th>Descuentos</th><th class="n">Monto</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Retención de renta de 4.ª categoría${k.retencion_pct ? ` (${k.retencion_pct} %)` : ''}
+          ${k.motivo_sin_retencion ? `<br><small style="opacity:.6">${esc(k.motivo_sin_retencion)}</small>` : ''}</td>
+        <td class="n">${money(k.retencion_monto)}</td>
+      </tr>
+      ${k.otros_descuentos ? `<tr><td>Otros descuentos</td><td class="n">${money(k.otros_descuentos)}</td></tr>` : ''}
+      <tr><td><strong>Total descuentos</strong></td>
+          <td class="n"><strong>${money(k.retencion_monto + k.otros_descuentos)}</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="tot"><span>Neto a pagar</span><span>${money(k.neto)}</span></div>
+
+  <div class="firmas">
+    <div class="firma">${esc(MARCA.nombre)} — Pagador</div>
+    <div class="firma">${esc(c.nombre)} — Perceptor</div>
+  </div>
+
+  <div class="pie">
+    Documento interno de pago generado por el dashboard de ${esc(MARCA.nombre)}${datos.generado_por ? ' · ' + esc(datos.generado_por) : ''}.<br>
+    <b>No sustituye al recibo por honorarios electrónico</b>, que emite el perceptor desde SUNAT.
   </div>
 </div></body></html>`
 }

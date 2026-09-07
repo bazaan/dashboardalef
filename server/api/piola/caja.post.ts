@@ -20,6 +20,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionPiola, exigirModulo } from '../../utils/piola'
+import { notificarEvento } from '../../utils/piola-alertas'
 
 const TIPOS = ['ingreso', 'egreso', 'transferencia', 'retiro']
 
@@ -144,6 +145,21 @@ export default defineEventHandler(async (event) => {
       observaciones: body?.observaciones || sesion.observaciones || null,
     }).eq('id', sesion.id).select('*').single()
     if (error) throw createError({ statusCode: 500, statusMessage: error.message })
+
+    await notificarEvento(supabase, {
+      evento: 'caja_cerrada',
+      related_table: 'piola_caja_sesiones',
+      related_id: sesion.id,
+      monto: saldoFinal,
+      titulo: diferencia ? `Caja cerrada con diferencia de S/ ${diferencia.toFixed(2)}` : 'Caja cerrada cuadrada',
+      mensaje: `🧮 *Cierre de caja*\n`
+        + `Saldo del sistema: S/ ${saldoFinal.toFixed(2)}\n`
+        + `Saldo contado: S/ ${contado.toFixed(2)}\n`
+        + (diferencia
+            ? `⚠️ Diferencia: S/ ${diferencia.toFixed(2)} (${diferencia > 0 ? 'sobrante' : 'faltante'})`
+            : '✅ Sin diferencia'),
+      actor: perfil.email,
+    })
 
     // La pantalla anuncia la diferencia con ESTE número, no con el suyo.
     return { ok: true, sesion: data, saldo_final: saldoFinal, diferencia }

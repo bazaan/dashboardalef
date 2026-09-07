@@ -1837,3 +1837,842 @@ END $$;
 --            THEN '"■■■"'::jsonb ELSE v END)
 --          FROM jsonb_each(datos_despues) AS e(k, v)) END
 --  WHERE tabla = 'piola_colaboradores';
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════════════
+--
+--   PARTE 5 de 5 — REQUERIMIENTOS DE LA REUNIÓN DE SETIEMBRE
+--
+--   A. Finanzas
+--      A1. Varios documentos por factura      → piola_documentos (polimórfica)
+--      A2. Serie y número manuales            → piola_invoices.numeracion_manual
+--      A3. Importación desde Excel            → piola_import_plantillas / _lotes
+--      A4. Leyenda numerada de categorías     → piola_expense_categories.codigo
+--      A5. Finanzas solo para 2 personas      → piola_modulo_acceso
+--
+--   B. Clientes y contratos — MÓDULO NUEVO
+--      B1. Módulo 'clientes'                  → CHECK de piola_role_permissions
+--      B2. Ficha de cliente con datos SUNAT   → piola_clientes se amplía
+--      B3. Contratos ↔ facturas               → piola_invoices.contrato_id
+--      B4. Facturación recurrente             → piola_facturas_programadas
+--
+--   C. Producción
+--      C1. Cumplimiento por tipo de contenido → piola_tipos_contenido,
+--                                               piola_cliente_compromisos
+--      C2. Responsables por entregable        → piola_deliverable_asignaciones
+--      C3. Áreas (producción/guiones/rodajes) → piola_produccion_areas
+--      C4. Enlaces externos                   → deliverables + piola_enlaces_carpetas
+--
+--   D. RR. HH.
+--      D1. Recibos por honorarios             → piola_recibos_honorarios (SENSIBLE)
+--
+--   E. Alertas
+--      E1. Avisos de movimientos y registros  → piola_alert_settings se amplía
+--
+--   Idempotente como el resto del archivo: se puede correr las veces que haga
+--   falta, sobre una base vacía o sobre una donde ya corrió.
+--
+-- ══════════════════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════════════
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- A1. DOCUMENTOS ADJUNTOS — varios por entidad
+--
+-- Antes cada cosa tenía UNA columna de archivo (invoices.pdf_url,
+-- contratos.contrato_pdf, transactions.documento_adjunto). Una factura real
+-- llega con la factura, la constancia de detracción y el contrato que la
+-- respalda: tres archivos, una sola columna.
+--
+-- Tabla polimórfica en vez de tres tablas hermanas: el adjunto no tiene lógica
+-- propia, solo cuelga de algo. `entidad` + `entidad_id` es la referencia; NO
+-- hay FK porque apunta a seis tablas distintas — la limpieza va por el trigger
+-- de más abajo, que borra los documentos cuando muere el dueño.
+--
+-- `path` guarda la ruta DENTRO del bucket piola-docs, no la URL pública: si el
+-- bucket pasa a privado, no hay que migrar ni una fila (mismo criterio que
+-- contratos en la parte 2).
+-- ══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.piola_documentos (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  entidad       TEXT NOT NULL CHECK (entidad IN (
+                  'factura','contrato','adenda','movimiento','cliente',
+                  'colaborador','recibo_honorarios','lead','entregable')),
+  entidad_id    BIGINT NOT NULL,
+  -- Qué es el documento. La UI agrupa por acá.
+  tipo          TEXT NOT NULL DEFAULT 'otro' CHECK (tipo IN (
+                  'factura','constancia_detraccion','contrato','anexo','ficha_ruc',
+                  'legal','comprobante','boleta','recibo','orden_compra','otro')),
+  nombre        TEXT NOT NULL,                    -- nombre visible (el original del archivo)
+  path          TEXT NOT NULL,                    -- ruta en el bucket piola-docs
+  mime          TEXT,
+  tamano_bytes  BIGINT,
+  descripcion   TEXT,
+  subido_por    TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_piola_docs_entidad
+  ON public.piola_documentos (entidad, entidad_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_piola_docs_tipo ON public.piola_documentos (tipo);
+
+COMMENT ON TABLE public.piola_documentos IS
+  'Adjuntos (N por entidad). entidad+entidad_id es una referencia polimórfica sin FK: '
+  'la limpieza al borrar el dueño la hace trg_piola_docs_limpiar_*.';
+
+/*
+ * Limpieza de huérfanos: cuando se borra la factura, el contrato o el
+ * movimiento, sus adjuntos dejan de tener sentido. Sin esto quedarían filas
+ * apuntando a un id reutilizable — y una factura nueva heredaría los papeles
+ * de una borrada.
+ *
+ * Borra la FILA, no el archivo del bucket: eso es un proceso aparte y
+ * deliberado (mismo criterio que PiolaSubirPdf al quitar un adjunto).
+ */
+CREATE OR REPLACE FUNCTION public.piola_documentos_limpiar()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM public.piola_documentos
+   WHERE entidad = TG_ARGV[0] AND entidad_id = OLD.id;
+  RETURN OLD;
+END $$ LANGUAGE plpgsql;
+
+DO $$
+DECLARE
+  par TEXT[];
+  pares TEXT[][] := ARRAY[
+    ARRAY['piola_invoices','factura'],
+    ARRAY['piola_contratos','contrato'],
+    ARRAY['piola_adendas','adenda'],
+    ARRAY['piola_transactions','movimiento'],
+    ARRAY['piola_clientes','cliente'],
+    ARRAY['piola_colaboradores','colaborador'],
+    ARRAY['piola_deliverables','entregable']
+  ];
+BEGIN
+  FOREACH par SLICE 1 IN ARRAY pares LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS trg_piola_docs_limpiar ON public.%I', par[1]);
+    EXECUTE format(
+      'CREATE TRIGGER trg_piola_docs_limpiar AFTER DELETE ON public.%I
+         FOR EACH ROW EXECUTE FUNCTION public.piola_documentos_limpiar(%L)',
+      par[1], par[2]);
+  END LOOP;
+END $$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- A2. FACTURAS — serie y número manuales, y vínculo con el contrato
+--
+-- Piola ya tiene una numeración corriendo fuera del sistema. Forzar el
+-- correlativo calculado obligaría a empezar de cero o a inventar series
+-- paralelas, así que el número se puede escribir a mano; el UNIQUE
+-- (tipo_comprobante, serie, numero) que ya existía es lo que impide repetirlo.
+-- ══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.piola_invoices
+  ADD COLUMN IF NOT EXISTS numeracion_manual BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS contrato_id       BIGINT,
+  ADD COLUMN IF NOT EXISTS origen            TEXT NOT NULL DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS periodo_facturado TEXT,          -- 'YYYY-MM' de la recurrente
+  ADD COLUMN IF NOT EXISTS cliente_email     TEXT,
+  ADD COLUMN IF NOT EXISTS cliente_direccion TEXT;
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_invoices
+    ADD CONSTRAINT piola_inv_contrato_fk
+    FOREIGN KEY (contrato_id) REFERENCES public.piola_contratos(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_table THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_invoices
+    ADD CONSTRAINT piola_inv_origen_chk
+    CHECK (origen IN ('manual','recurrente','importado','pse')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE INDEX IF NOT EXISTS idx_piola_inv_contrato ON public.piola_invoices (contrato_id);
+
+COMMENT ON COLUMN public.piola_invoices.numeracion_manual IS
+  'TRUE = la serie y el número los escribió una persona para calzar con la numeración '
+  'que Piola ya tiene fuera del sistema. FALSE = correlativo sugerido por el sistema.';
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- A3. IMPORTACIÓN DE MOVIMIENTOS DESDE EXCEL
+--
+-- El archivo de Edson Polo tiene su propia estructura y su propia
+-- nomenclatura, y va a cambiar. Por eso el mapeo columna → campo es DATO, no
+-- código: se guarda como plantilla y se reusa. Cuando la hoja cambie de forma,
+-- se edita la plantilla desde la UI y no hay que tocar nada más.
+--
+-- `mapeo` = { "columna del Excel": "campo del sistema", ... }
+-- `opciones` = { fila_encabezado, formato_fecha, decimal, signo_egreso, ... }
+-- ══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.piola_import_plantillas (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  nombre      TEXT NOT NULL UNIQUE,
+  tipo        TEXT NOT NULL DEFAULT 'movimientos' CHECK (tipo IN ('movimientos')),
+  descripcion TEXT,
+  mapeo       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  opciones    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  activo      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by  TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.piola_import_lotes (
+  id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  plantilla_id      BIGINT REFERENCES public.piola_import_plantillas(id) ON DELETE SET NULL,
+  archivo_nombre    TEXT,
+  hoja              TEXT,
+  filas_total       INT NOT NULL DEFAULT 0,
+  filas_importadas  INT NOT NULL DEFAULT 0,
+  filas_duplicadas  INT NOT NULL DEFAULT 0,
+  filas_error       INT NOT NULL DEFAULT 0,
+  monto_total       NUMERIC(14,2) NOT NULL DEFAULT 0,
+  estado            TEXT NOT NULL DEFAULT 'importado'
+                    CHECK (estado IN ('importado','parcial','error','revertido')),
+  detalle           JSONB NOT NULL DEFAULT '{}'::jsonb,   -- errores fila a fila
+  importado_por     TEXT,
+  revertido_por     TEXT,
+  revertido_at      TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_piola_import_lotes_fecha
+  ON public.piola_import_lotes (created_at DESC);
+
+/*
+ * Trazabilidad y anti-duplicado.
+ *
+ * `import_hash` es la huella de la fila del Excel (fecha+concepto+monto+doc).
+ * El índice único parcial es lo que hace que re-subir el mismo archivo no
+ * duplique la contabilidad: la segunda pasada choca y se cuenta como
+ * duplicada, en vez de sumar todo dos veces sin que nadie lo note.
+ */
+ALTER TABLE public.piola_transactions
+  ADD COLUMN IF NOT EXISTS import_lote_id BIGINT REFERENCES public.piola_import_lotes(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS import_hash    TEXT,
+  ADD COLUMN IF NOT EXISTS import_fila    INT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_piola_tx_import_hash
+  ON public.piola_transactions (import_hash) WHERE import_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_piola_tx_import_lote
+  ON public.piola_transactions (import_lote_id);
+
+-- Plantilla base con la nomenclatura habitual de una hoja de caja peruana.
+-- Es un PUNTO DE PARTIDA editable, no la verdad: al cargar el archivo real de
+-- Edson se corrige el mapeo desde la pantalla y queda guardado.
+INSERT INTO public.piola_import_plantillas (nombre, descripcion, mapeo, opciones)
+SELECT
+  'Formato Edson Polo',
+  'Mapeo inicial para la hoja de movimientos de administración. Ajustable desde la UI.',
+  jsonb_build_object(
+    'FECHA', 'fecha',
+    'CONCEPTO', 'concepto',
+    'DETALLE', 'concepto',
+    'TIPO', 'tipo',
+    'CATEGORIA', 'categoria',
+    'CATEGORÍA', 'categoria',
+    'INGRESO', 'monto_ingreso',
+    'EGRESO', 'monto_egreso',
+    'IMPORTE', 'monto',
+    'MONTO', 'monto',
+    'PROVEEDOR', 'proveedor',
+    'CLIENTE', 'cliente',
+    'RUC', 'ruc',
+    'DOCUMENTO', 'documento_numero',
+    'SERIE', 'documento_serie',
+    'N° DOC', 'documento_numero',
+    'MEDIO DE PAGO', 'payment_method',
+    'OBSERVACIONES', 'notas'
+  ),
+  jsonb_build_object(
+    'fila_encabezado', 1,
+    'formato_fecha', 'auto',
+    'decimal', '.',
+    'signo_egreso', 'columna',
+    'crear_categorias', TRUE
+  )
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.piola_import_plantillas p WHERE p.nombre = 'Formato Edson Polo'
+);
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- A4. LEYENDA NUMERADA DE CATEGORÍAS
+--
+-- El requerimiento es poder decir "gasto 4.2" y que todos entiendan lo mismo.
+-- El código es TEXTO, no un entero: la jerarquía se numera '4', '4.2', '4.2.1'
+-- y eso no es un número. Único cuando existe, opcional cuando no —
+-- las categorías viejas siguen siendo válidas sin código.
+-- ══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.piola_expense_categories
+  ADD COLUMN IF NOT EXISTS codigo TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_piola_cat_codigo
+  ON public.piola_expense_categories (lower(codigo)) WHERE codigo IS NOT NULL;
+
+COMMENT ON COLUMN public.piola_expense_categories.codigo IS
+  'Leyenda numerada, ej. "4" / "4.2". Texto y no entero porque la numeración es jerárquica.';
+
+-- Numeración de las categorías raíz sembradas en la parte 1 (solo si no la tienen)
+UPDATE public.piola_expense_categories c SET codigo = v.codigo
+FROM (VALUES
+  ('Impuestos','1'), ('Movilidad','2'), ('Planilla','3'), ('Servicios','4'),
+  ('Producción','5'), ('Marketing','6'), ('Administrativos','7'),
+  ('Ventas','8'), ('Otros ingresos','9')
+) AS v(nombre, codigo)
+WHERE c.nombre = v.nombre AND c.parent_id IS NULL AND c.codigo IS NULL
+  AND NOT EXISTS (SELECT 1 FROM public.piola_expense_categories x
+                   WHERE lower(x.codigo) = lower(v.codigo));
+
+-- Subcategorías de la parte 1
+UPDATE public.piola_expense_categories c SET codigo = v.codigo
+FROM (VALUES
+  ('Impuesto a la renta','Impuestos','1.1'),
+  ('IGV','Impuestos','1.2'),
+  ('Pasajes','Movilidad','2.1'),
+  ('Combustible','Movilidad','2.2')
+) AS v(nombre, padre, codigo)
+JOIN public.piola_expense_categories p ON p.nombre = v.padre AND p.parent_id IS NULL
+WHERE c.nombre = v.nombre AND c.parent_id = p.id AND c.codigo IS NULL
+  AND NOT EXISTS (SELECT 1 FROM public.piola_expense_categories x
+                   WHERE lower(x.codigo) = lower(v.codigo));
+
+-- Las que pidió el cliente por nombre (combustible ya existe arriba)
+INSERT INTO public.piola_expense_categories (nombre, parent_id, tipo, orden, codigo)
+SELECT v.nombre, p.id, 'egreso', v.orden, v.codigo
+FROM (VALUES
+  ('Publicidad',     'Marketing', 1, '6.1'),
+  ('Merchandising',  'Marketing', 2, '6.2'),
+  ('Redes sociales', 'Marketing', 3, '6.3')
+) AS v(nombre, padre, orden, codigo)
+JOIN public.piola_expense_categories p ON p.nombre = v.padre AND p.parent_id IS NULL
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.piola_expense_categories c WHERE c.nombre = v.nombre AND c.parent_id = p.id
+) AND NOT EXISTS (
+  SELECT 1 FROM public.piola_expense_categories x WHERE lower(x.codigo) = lower(v.codigo)
+);
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- A5. FINANZAS RESTRINGIDA A PERSONAS CONCRETAS
+--
+-- Los permisos por rol siguen valiendo, pero encima va una lista blanca por
+-- correo: aunque un rol tenga marcado 'contabilidad', si la persona no está en
+-- la lista no entra. Es lo que pidió Piola — "solo Edson y Raysa" — y un rol
+-- compartido no lo garantiza: basta que alguien herede ese rol.
+--
+-- FALLA CERRADO: si la lista queda vacía y la restricción está activa, solo
+-- pasa el Administrador. Es la dirección segura del error — se queda gente
+-- afuera, no se cuela nadie adentro — y el Administrador siempre puede
+-- recargar la lista desde Configuración.
+-- ══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.piola_modulo_acceso (
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  -- Grupo lógico, no el módulo suelto: 'finanzas' cubre contabilidad + facturación
+  grupo        TEXT NOT NULL UNIQUE,
+  modulos      TEXT[] NOT NULL DEFAULT '{}',
+  emails       TEXT[] NOT NULL DEFAULT '{}',
+  descripcion  TEXT,
+  activo       BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_by   TEXT,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.piola_modulo_acceso IS
+  'Lista blanca por correo ENCIMA de los permisos por rol. Si activo y el correo no está, '
+  'se niega el acceso aunque el rol lo permita. El Administrador nunca se bloquea.';
+
+INSERT INTO public.piola_modulo_acceso (grupo, modulos, emails, descripcion, activo)
+SELECT 'finanzas',
+       ARRAY['contabilidad','facturacion'],
+       ARRAY['administracion@piola.com','raysa@agenciapiola.com'],
+       'Solo Edson Polo y Raysa Cucho (más el Administrador) entran a Finanzas.',
+       TRUE
+WHERE NOT EXISTS (SELECT 1 FROM public.piola_modulo_acceso m WHERE m.grupo = 'finanzas');
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- B1. MÓDULO NUEVO 'clientes'
+--
+-- Clientes y contratos dejan de ser una pestaña de Facturación y pasan a ser
+-- un módulo propio: son cosas distintas y las toca gente distinta —
+-- justamente ahora que Finanzas queda restringida a dos personas, dejar los
+-- contratos adentro dejaría al equipo comercial sin acceso a su propio
+-- expediente de clientes.
+--
+-- El CHECK de piola_role_permissions.module se recrea para admitirlo.
+-- ══════════════════════════════════════════════════════════════════════════
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_role_permissions
+    DROP CONSTRAINT IF EXISTS piola_role_permissions_module_check;
+  ALTER TABLE public.piola_role_permissions
+    ADD CONSTRAINT piola_role_permissions_module_check
+    CHECK (module IN (
+      'home','crm','clientes','contabilidad','facturacion','produccion',
+      'rrhh','reportes','configuracion','mi_espacio'));
+END $$;
+
+-- Quién ve el módulo nuevo. Comercial y Producción trabajan con las marcas
+-- todos los días; Contabilidad lo lee para saber contra qué contrato factura.
+INSERT INTO public.piola_role_permissions (role_id, module, can_view, can_create, can_edit, can_delete)
+SELECT r.id, 'clientes', p.v, p.c, p.e, p.d
+FROM public.piola_roles r
+JOIN (VALUES
+  ('Administrador',            TRUE, TRUE,  TRUE,  TRUE),
+  ('Comercial / CRM',          TRUE, TRUE,  TRUE,  FALSE),
+  ('Contabilidad',             TRUE, FALSE, FALSE, FALSE),
+  ('Operaciones / Producción', TRUE, FALSE, TRUE,  FALSE)
+) AS p(rol, v, c, e, d) ON p.rol = r.nombre
+ON CONFLICT (role_id, module) DO NOTHING;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- B2. FICHA DE CLIENTE — datos que devuelve la consulta por RUC
+--
+-- Se guardan para no depender del servicio externo cada vez que se abre la
+-- ficha: la consulta por RUC autocompleta, pero el dato queda nuestro.
+-- ══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.piola_clientes
+  ADD COLUMN IF NOT EXISTS tipo_documento     TEXT NOT NULL DEFAULT 'RUC',
+  ADD COLUMN IF NOT EXISTS numero_documento   TEXT,
+  ADD COLUMN IF NOT EXISTS nombre_comercial   TEXT,
+  ADD COLUMN IF NOT EXISTS estado_sunat       TEXT,       -- ACTIVO / BAJA DE OFICIO…
+  ADD COLUMN IF NOT EXISTS condicion_sunat    TEXT,       -- HABIDO / NO HABIDO
+  ADD COLUMN IF NOT EXISTS direccion_fiscal   TEXT,
+  ADD COLUMN IF NOT EXISTS distrito           TEXT,
+  ADD COLUMN IF NOT EXISTS provincia          TEXT,
+  ADD COLUMN IF NOT EXISTS departamento       TEXT,
+  ADD COLUMN IF NOT EXISTS ruc_consultado_at  TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS ruc_datos          JSONB,
+  ADD COLUMN IF NOT EXISTS condicion_pago_id  BIGINT REFERENCES public.piola_condiciones_pago(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS created_by         TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_piola_clientes_ruc ON public.piola_clientes (ruc);
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- B3/B4. CONTRATOS: vigencia, recurrencia y facturas programadas
+--
+-- El contrato ya guardaba fecha_inicio y fecha_cierre. Lo que faltaba era el
+-- QUÉ se factura cada mes de esa vigencia. Con eso, el sistema puede
+-- adelantarse: programa las facturas de todo el periodo del contrato y avisa.
+--
+-- Genera BORRADORES, nunca emite sola. Una factura emitida sin que nadie la
+-- mire es un documento tributario con la firma de la empresa: la automatización
+-- llega hasta dejarla lista.
+-- ══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.piola_contratos
+  ADD COLUMN IF NOT EXISTS codigo                 TEXT,
+  ADD COLUMN IF NOT EXISTS descripcion            TEXT,
+  ADD COLUMN IF NOT EXISTS estado                 TEXT NOT NULL DEFAULT 'vigente',
+  ADD COLUMN IF NOT EXISTS monto_total            NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS monto_periodico        NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS moneda                 TEXT NOT NULL DEFAULT 'PEN',
+  ADD COLUMN IF NOT EXISTS facturacion_recurrente BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS frecuencia             TEXT NOT NULL DEFAULT 'mensual',
+  ADD COLUMN IF NOT EXISTS dia_facturacion        INT NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS con_detraccion         BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS detraccion_pct         NUMERIC(5,2) DEFAULT 12,
+  ADD COLUMN IF NOT EXISTS detraccion_codigo      TEXT,
+  ADD COLUMN IF NOT EXISTS serie_factura          TEXT,
+  ADD COLUMN IF NOT EXISTS renovacion_automatica  BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS responsable_email      TEXT,
+  ADD COLUMN IF NOT EXISTS created_by             TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_contratos
+    ADD CONSTRAINT piola_contratos_estado_chk
+    CHECK (estado IN ('borrador','vigente','vencido','renovado','anulado')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_contratos
+    ADD CONSTRAINT piola_contratos_frecuencia_chk
+    CHECK (frecuencia IN ('mensual','bimestral','trimestral','semestral','anual','unico')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_contratos
+    ADD CONSTRAINT piola_contratos_dia_chk
+    CHECK (dia_facturacion BETWEEN 1 AND 28) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+COMMENT ON COLUMN public.piola_contratos.dia_facturacion IS
+  'Día del mes en que toca facturar. Tope 28 a propósito: el 30 no existe en febrero '
+  'y el 31 no existe en la mitad de los meses.';
+
+CREATE TABLE IF NOT EXISTS public.piola_facturas_programadas (
+  id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  contrato_id      BIGINT NOT NULL REFERENCES public.piola_contratos(id) ON DELETE CASCADE,
+  cliente_id       BIGINT REFERENCES public.piola_clientes(id) ON DELETE SET NULL,
+  periodo          TEXT NOT NULL,                       -- 'YYYY-MM'
+  fecha_programada DATE NOT NULL,
+  concepto         TEXT,
+  monto            NUMERIC(12,2) NOT NULL DEFAULT 0,
+  estado           TEXT NOT NULL DEFAULT 'pendiente'
+                   CHECK (estado IN ('pendiente','generada','omitida','error')),
+  invoice_id       BIGINT REFERENCES public.piola_invoices(id) ON DELETE SET NULL,
+  generada_at      TIMESTAMPTZ,
+  generada_por     TEXT,
+  error_message    TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (contrato_id, periodo)
+);
+
+CREATE INDEX IF NOT EXISTS idx_piola_fprog_pendientes
+  ON public.piola_facturas_programadas (estado, fecha_programada);
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- C. PRODUCCIÓN — tipos de contenido, áreas, responsables y enlaces
+--
+-- El cumplimiento por marca decía "8 de 10 piezas" y esa cifra escondía lo que
+-- importa: pueden ser 8 piezas gráficas y 0 videos con el compromiso cumplido
+-- en el papel e incumplido en los hechos. El compromiso pasa a ser POR TIPO.
+-- ══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.piola_produccion_areas (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  codigo      TEXT NOT NULL UNIQUE,
+  nombre      TEXT NOT NULL,
+  color       TEXT NOT NULL DEFAULT '#8e8e8e',
+  descripcion TEXT,
+  activo      BOOLEAN NOT NULL DEFAULT TRUE,
+  orden       INT NOT NULL DEFAULT 0
+);
+
+INSERT INTO public.piola_produccion_areas (codigo, nombre, color, orden)
+SELECT v.codigo, v.nombre, v.color, v.orden
+FROM (VALUES
+  ('produccion', 'Producción',  '#e2564a', 1),
+  ('guiones',    'Guiones',     '#f2a63b', 2),
+  ('rodajes',    'Rodajes',     '#4a7fe2', 3),
+  ('diseno',     'Diseño',      '#7c5ce2', 4),
+  ('edicion',    'Edición',     '#2e9e5b', 5),
+  ('community',  'Community',   '#e25c9e', 6)
+) AS v(codigo, nombre, color, orden)
+WHERE NOT EXISTS (SELECT 1 FROM public.piola_produccion_areas a WHERE a.codigo = v.codigo);
+
+CREATE TABLE IF NOT EXISTS public.piola_tipos_contenido (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  codigo      TEXT NOT NULL UNIQUE,
+  nombre      TEXT NOT NULL,
+  area_codigo TEXT REFERENCES public.piola_produccion_areas(codigo) ON DELETE SET NULL,
+  unidad      TEXT NOT NULL DEFAULT 'pieza',
+  icono       TEXT,
+  activo      BOOLEAN NOT NULL DEFAULT TRUE,
+  orden       INT NOT NULL DEFAULT 0
+);
+
+INSERT INTO public.piola_tipos_contenido (codigo, nombre, area_codigo, unidad, icono, orden)
+SELECT v.codigo, v.nombre, v.area, v.unidad, v.icono, v.orden
+FROM (VALUES
+  ('video',        'Video',            'produccion', 'video',   'mdi-video',            1),
+  ('reel',         'Reel',             'produccion', 'video',   'mdi-cellphone-play',   2),
+  ('pieza_grafica','Pieza gráfica',    'diseno',     'pieza',   'mdi-image-multiple',   3),
+  ('carrusel',     'Carrusel',         'diseno',     'pieza',   'mdi-view-carousel',    4),
+  ('guion',        'Guion',            'guiones',    'guion',   'mdi-script-text',      5),
+  ('rodaje',       'Rodaje',           'rodajes',    'jornada', 'mdi-movie-open',       6),
+  ('fotografia',   'Fotografía',       'produccion', 'sesión',  'mdi-camera',           7),
+  ('branding',     'Branding',         'diseno',     'entrega', 'mdi-palette',          8),
+  ('copy',         'Copy / redacción', 'community',  'pieza',   'mdi-text-box',         9)
+) AS v(codigo, nombre, area, unidad, icono, orden)
+WHERE NOT EXISTS (SELECT 1 FROM public.piola_tipos_contenido t WHERE t.codigo = v.codigo);
+
+-- Compromiso mensual POR TIPO de contenido. `piola_clientes.compromiso_mensual`
+-- se conserva como total histórico: las marcas que aún no tienen desglose
+-- siguen midiéndose con él.
+CREATE TABLE IF NOT EXISTS public.piola_cliente_compromisos (
+  id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  cliente_id        BIGINT NOT NULL REFERENCES public.piola_clientes(id) ON DELETE CASCADE,
+  tipo_contenido    TEXT NOT NULL REFERENCES public.piola_tipos_contenido(codigo) ON DELETE CASCADE,
+  cantidad_mensual  NUMERIC(10,2) NOT NULL DEFAULT 0,
+  notas             TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (cliente_id, tipo_contenido)
+);
+
+-- Un entregable puede tener varios responsables con roles distintos: el
+-- diseñador que lo arma y el editor que lo cierra no son la misma persona, y
+-- `responsable_email` (que se conserva) solo alcanza para uno.
+CREATE TABLE IF NOT EXISTS public.piola_deliverable_asignaciones (
+  id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  deliverable_id    BIGINT NOT NULL REFERENCES public.piola_deliverables(id) ON DELETE CASCADE,
+  colaborador_email TEXT NOT NULL,
+  rol               TEXT NOT NULL DEFAULT 'responsable',
+  area_codigo       TEXT REFERENCES public.piola_produccion_areas(codigo) ON DELETE SET NULL,
+  asignado_por      TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (deliverable_id, colaborador_email, rol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_piola_asig_colab
+  ON public.piola_deliverable_asignaciones (lower(colaborador_email));
+
+ALTER TABLE public.piola_deliverables
+  ADD COLUMN IF NOT EXISTS tipo_contenido    TEXT REFERENCES public.piola_tipos_contenido(codigo) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS area_codigo       TEXT REFERENCES public.piola_produccion_areas(codigo) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS dropbox_url       TEXT,
+  ADD COLUMN IF NOT EXISTS publicado_url     TEXT,
+  ADD COLUMN IF NOT EXISTS fecha_publicacion DATE,
+  ADD COLUMN IF NOT EXISTS created_by        TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_piola_deliv_tipo ON public.piola_deliverables (tipo_contenido, periodo);
+CREATE INDEX IF NOT EXISTS idx_piola_deliv_area ON public.piola_deliverables (area_codigo);
+
+/*
+ * Carpetas fijas por marca. La integración con la API de Dropbox queda
+ * pendiente de que Piola confirme la app y las credenciales; mientras tanto el
+ * enlace directo a la carpeta resuelve el 90 % del caso — que es llegar al
+ * material sin preguntarle a nadie. Cuando lleguen las credenciales, esta
+ * misma tabla guarda el folder_id y no hay que rehacer la UI.
+ */
+CREATE TABLE IF NOT EXISTS public.piola_enlaces_carpetas (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  cliente_id  BIGINT REFERENCES public.piola_clientes(id) ON DELETE CASCADE,
+  proveedor   TEXT NOT NULL DEFAULT 'drive' CHECK (proveedor IN ('drive','dropbox','otro')),
+  nombre      TEXT NOT NULL,
+  url         TEXT NOT NULL,
+  folder_id   TEXT,                                -- para la futura API
+  activo      BOOLEAN NOT NULL DEFAULT TRUE,
+  orden       INT NOT NULL DEFAULT 0,
+  created_by  TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_piola_enlaces_cliente ON public.piola_enlaces_carpetas (cliente_id);
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- D1. RECIBOS POR HONORARIOS (§7.5)
+--
+-- El colaborador de recibo por honorarios NO tiene boleta: tiene un RH con
+-- retención de renta de 4.ª categoría (8 %), que se suspende con la
+-- constancia de suspensión de SUNAT. El número del recibo lo emite el
+-- colaborador en SUNAT, así que acá se REGISTRA, no se inventa.
+--
+-- Tabla SENSIBLE: sin policy para anon, igual que boletas y AFP. La lee y la
+-- escribe solo el endpoint con verificación de rol.
+-- ══════════════════════════════════════════════════════════════════════════
+
+-- El colaborador de honorarios necesita su propio RUC (emite el RH a su nombre)
+-- y su constancia de suspensión, si la tiene. `honorarios_monto` es el pactado
+-- mensual: el equivalente al sueldo_bruto de los de planilla.
+ALTER TABLE public.piola_colaboradores
+  ADD COLUMN IF NOT EXISTS ruc                TEXT,
+  ADD COLUMN IF NOT EXISTS honorarios_monto   NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS suspension_renta   BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS rh_serie           TEXT;
+
+CREATE TABLE IF NOT EXISTS public.piola_recibos_honorarios (
+  id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  codigo             TEXT NOT NULL UNIQUE,
+  colaborador_email  TEXT NOT NULL,
+  colaborador_nombre TEXT,
+  colaborador_ruc    TEXT,
+  periodo            TEXT NOT NULL,                -- 'YYYY-MM'
+  fecha_emision      DATE NOT NULL DEFAULT CURRENT_DATE,
+  -- Numeración del RH que el colaborador emite en SUNAT (E001-123). Manual.
+  serie              TEXT,
+  numero             TEXT,
+  descripcion        TEXT,
+  monto_bruto        NUMERIC(12,2) NOT NULL DEFAULT 0,
+  retencion_pct      NUMERIC(5,2) NOT NULL DEFAULT 8,
+  retencion_monto    NUMERIC(12,2) NOT NULL DEFAULT 0,
+  suspension_renta   BOOLEAN NOT NULL DEFAULT FALSE,
+  otros_descuentos   NUMERIC(12,2) NOT NULL DEFAULT 0,
+  neto               NUMERIC(12,2) NOT NULL DEFAULT 0,
+  estado             TEXT NOT NULL DEFAULT 'pendiente'
+                     CHECK (estado IN ('pendiente','pagado','anulado')),
+  fecha_pago         DATE,
+  transaction_id     BIGINT REFERENCES public.piola_transactions(id) ON DELETE SET NULL,
+  pdf_url            TEXT,
+  detalle            JSONB NOT NULL DEFAULT '{}'::jsonb,
+  generado_por       TEXT,
+  enviado_at         TIMESTAMPTZ,
+  enviado_a          TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (colaborador_email, periodo)
+);
+
+CREATE INDEX IF NOT EXISTS idx_piola_rh_periodo ON public.piola_recibos_honorarios (periodo DESC);
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- E1. ALERTAS DE MOVIMIENTOS Y REGISTROS
+--
+-- Las alertas de la parte 1 miran el FUTURO (lo que vence). Estas miran el
+-- PRESENTE: avisan cuando algo se registra. Comparten tabla porque comparten
+-- destino, historial y pantalla; lo que cambia es que no tienen días de
+-- anticipación y sí un monto mínimo, para que el canal no se llene de avisos
+-- de S/ 20.
+--
+-- ⚠️ VENTANA DE 24 h DE WHATSAPP: fuera de una conversación abierta, Meta solo
+-- entrega PLANTILLAS aprobadas. Estos avisos son no solicitados por definición,
+-- así que el flujo de n8n tiene que mandarlos como plantilla; si manda texto
+-- libre, se pierden en silencio.
+-- ══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.piola_alert_settings
+  ADD COLUMN IF NOT EXISTS eventos      TEXT[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS monto_minimo NUMERIC(12,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS descripcion_larga TEXT;
+
+DO $$ BEGIN
+  ALTER TABLE public.piola_alert_settings DROP CONSTRAINT IF EXISTS piola_alert_settings_tipo_check;
+  ALTER TABLE public.piola_alert_settings
+    ADD CONSTRAINT piola_alert_settings_tipo_check
+    CHECK (tipo IN ('factura_por_vencer','factura_por_emitir','contrato_por_renovar',
+                    'lead_sin_seguimiento','entregable_por_vencer','comision_por_pagar',
+                    'movimiento_financiero','registro_sistema','factura_programada',
+                    'contrato_cliente_por_vencer'));
+END $$;
+
+INSERT INTO public.piola_alert_settings (tipo, descripcion, dias_antes, canal, eventos, monto_minimo)
+SELECT v.tipo, v.descripcion, v.dias, 'whatsapp', v.eventos, v.monto
+FROM (VALUES
+  ('movimiento_financiero',
+   'Aviso al registrar ingresos, egresos, pagos y facturas',
+   0,
+   ARRAY['movimiento_creado','movimiento_eliminado','pago_registrado','factura_emitida','factura_pagada','caja_cerrada','importacion'],
+   0::numeric),
+  ('registro_sistema',
+   'Aviso al registrar clientes, contratos, entregables y colaboradores',
+   0,
+   ARRAY['cliente_creado','contrato_creado','entregable_creado','colaborador_creado'],
+   0::numeric),
+  ('factura_programada',
+   'Facturas recurrentes de contrato listas para emitirse',
+   3,
+   ARRAY[]::text[],
+   0::numeric),
+  ('contrato_cliente_por_vencer',
+   'Contratos de cliente próximos a vencer',
+   15,
+   ARRAY[]::text[],
+   0::numeric)
+) AS v(tipo, descripcion, dias, eventos, monto)
+WHERE NOT EXISTS (SELECT 1 FROM public.piola_alert_settings a WHERE a.tipo = v.tipo);
+
+-- `piola_alerts.tipo` no tenía CHECK, así que los tipos nuevos entran solos.
+-- El evento concreto viaja en `related_table`/`related_id`, que ya existían.
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- RLS de las tablas nuevas — mismo patrón del resto del archivo:
+--   operativas → anon CRUD (las escrituras van por endpoint igual)
+--   sensibles  → SOLO service_role
+-- ══════════════════════════════════════════════════════════════════════════
+
+DO $$
+DECLARE
+  t TEXT;
+  operativas TEXT[] := ARRAY[
+    'piola_documentos','piola_import_plantillas','piola_import_lotes',
+    'piola_modulo_acceso','piola_facturas_programadas',
+    'piola_produccion_areas','piola_tipos_contenido','piola_cliente_compromisos',
+    'piola_deliverable_asignaciones','piola_enlaces_carpetas'
+  ];
+  sensibles TEXT[] := ARRAY['piola_recibos_honorarios'];
+BEGIN
+  FOREACH t IN ARRAY operativas || sensibles LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('DROP POLICY IF EXISTS "service_all_%s" ON public.%I', t, t);
+    EXECUTE format(
+      'CREATE POLICY "service_all_%s" ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true)',
+      t, t);
+  END LOOP;
+
+  FOREACH t IN ARRAY operativas LOOP
+    EXECUTE format('DROP POLICY IF EXISTS "anon_all_%s" ON public.%I', t, t);
+    EXECUTE format(
+      'CREATE POLICY "anon_all_%s" ON public.%I FOR ALL TO anon USING (true) WITH CHECK (true)',
+      t, t);
+  END LOOP;
+
+  FOREACH t IN ARRAY sensibles LOOP
+    EXECUTE format('DROP POLICY IF EXISTS "anon_all_%s" ON public.%I', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS "anon_select_%s" ON public.%I', t, t);
+  END LOOP;
+END $$;
+
+/*
+ * `piola_modulo_acceso` es legible por anon como el resto de las operativas:
+ * la pantalla necesita saber si el módulo está restringido para no ofrecer un
+ * botón que va a dar 403. No es un secreto — es una lista de correos de
+ * trabajo — y la decisión real la toma el servidor en cada endpoint.
+ * Escribirla, en cambio, exige Administrador (configuracion.post.ts).
+ */
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- Auditoría de las tablas nuevas que mueven plata o accesos
+-- ══════════════════════════════════════════════════════════════════════════
+
+DO $$
+DECLARE
+  t TEXT;
+  auditar TEXT[] := ARRAY[
+    'piola_modulo_acceso','piola_facturas_programadas','piola_import_lotes',
+    'piola_cliente_compromisos','piola_enlaces_carpetas'
+  ];
+BEGIN
+  FOREACH t IN ARRAY auditar LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS trg_piola_audit ON public.%I', t);
+    EXECUTE format(
+      'CREATE TRIGGER trg_piola_audit AFTER INSERT OR UPDATE OR DELETE ON public.%I '
+      'FOR EACH ROW EXECUTE FUNCTION public.piola_auditoria_trigger()', t);
+  END LOOP;
+END $$;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- Verificación de la parte 5
+-- ══════════════════════════════════════════════════════════════════════════
+
+DO $$
+DECLARE
+  faltan TEXT := '';
+  t TEXT;
+  nuevas TEXT[] := ARRAY[
+    'piola_documentos','piola_import_plantillas','piola_import_lotes','piola_modulo_acceso',
+    'piola_facturas_programadas','piola_produccion_areas','piola_tipos_contenido',
+    'piola_cliente_compromisos','piola_deliverable_asignaciones','piola_enlaces_carpetas',
+    'piola_recibos_honorarios'
+  ];
+  n_emails INT;
+BEGIN
+  FOREACH t IN ARRAY nuevas LOOP
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = t) THEN
+      faltan := faltan || ' ' || t;
+    END IF;
+  END LOOP;
+
+  IF faltan <> '' THEN
+    RAISE WARNING '⚠️  Faltan tablas de la parte 5:%', faltan;
+  ELSE
+    RAISE NOTICE '✓ Parte 5: las 11 tablas nuevas existen.';
+  END IF;
+
+  SELECT COALESCE(array_length(emails, 1), 0) INTO n_emails
+    FROM public.piola_modulo_acceso WHERE grupo = 'finanzas';
+  IF COALESCE(n_emails, 0) = 0 THEN
+    RAISE NOTICE '⚠️  Finanzas está restringida y SIN correos: solo entra el Administrador.';
+  ELSE
+    RAISE NOTICE '✓ Finanzas restringida a % correo(s) + Administrador.', n_emails;
+  END IF;
+END $$;

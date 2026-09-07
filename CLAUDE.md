@@ -739,8 +739,12 @@ Los demás dashboards usan los roles globales (`superadmin`/`admin`/`agente`). P
 - `piola_roles` + `piola_role_permissions` (módulo × ver/crear/editar/eliminar)
 - `piola_colaboradores` — ficha del colaborador (rol, contrato, antigüedad, AFP, % comisión).
   El **login sigue en `dashboardlogin`**; se enlazan por email.
-- Módulos: `home`, `mi_espacio`, `crm`, `contabilidad`, `facturacion`, `produccion`, `rrhh`,
-  `reportes`, `configuracion`. `home` y `mi_espacio` los ve todo el mundo.
+- Módulos: `home`, `mi_espacio`, `crm`, `clientes`, `contabilidad`, `facturacion`, `produccion`,
+  `rrhh`, `reportes`, `configuracion`. `home` y `mi_espacio` los ve todo el mundo.
+- **Al agregar un módulo hay que tocar CUATRO lugares:** `PIOLA_MODULES` (`utils/permissions.ts`),
+  el `CHECK` de `piola_role_permissions.module` (`sql/piola.sql`), la lista `MODULOS` de
+  `PiolaConfiguracion.vue` y el menú `SECCIONES` de `pages/pruebas/Piola.vue`. Si falta el
+  último, el módulo existe y funciona pero **no aparece en el sidebar**.
 - Superadmin de Alef y admins sin ficha entran como Administrador de Piola.
 - `piolaCan(permisos, modulo, accion)` en `utils/permissions.ts` arma el menú (solo cosmético);
   `exigirModulo()` / `exigirAdmin()` en `server/utils/piola.ts` son los que realmente protegen.
@@ -752,6 +756,9 @@ Los demás dashboards usan los roles globales (`superadmin`/`admin`/`agente`). P
 | `Piola/PiolaHome.vue` | KPIs + widgets personales (vacaciones, antigüedad, contrato) |
 | `Piola/PiolaMiEspacio.vue` | Marcación de jornada/breaks, historial, vacaciones y boletas propias |
 | `Piola/PiolaCRM.vue` | Kanban + tabla de leads, historial de interacciones, conversión a cliente |
+| `Piola/PiolaClientes.vue` | **Clientes y contratos** — ficha con autocompletado por RUC, contratos (lleva `PiolaContratos` como pestaña), compromisos y enlaces externos |
+| `Piola/PiolaDocumentos.vue` | Adjuntos múltiples por entidad. Se embebe en facturas, contratos y clientes |
+| `Piola/PiolaImportarExcel.vue` | Importación de movimientos desde Excel (pestaña de Contabilidad) |
 | `Piola/PiolaContabilidad.vue` | Ingresos/egresos, flujo de caja, **CRUD de categorías jerárquicas**, comisiones |
 | `Piola/PiolaFacturacion.vue` | Emisión con detracción, histórico, cobro → flujo de caja |
 | `Piola/PiolaProduccion.vue` | Entregables por marca, aprobación de Dirección, cumplimiento mensual |
@@ -786,6 +793,11 @@ Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplan
 | POST | `/api/piola/contratos` | Contratos de cliente y adendas |
 | POST | `/api/piola/presupuestos` | Presupuesto vs. ejecutado |
 | POST | `/api/piola/reportes` | Configuración de reportes programados y alertas |
+| POST | `/api/piola/clientes` | Ficha del cliente, consulta de RUC, compromisos y enlaces externos |
+| POST | `/api/piola/documentos` | Adjuntos de cualquier entidad (`registrar`/`actualizar`/`eliminar`) |
+| POST | `/api/piola/importar` | Excel: `analizar`, `confirmar`, plantillas de mapeo y `revertir_lote` |
+| GET/POST | `/api/piola/honorarios` | Recibos por honorarios. **Solo Administrador** (o `?vista=mias`) |
+| GET | `/api/piola/ruc` | Autocompletado del cliente por RUC |
 
 ### Reglas que NO son obvias
 
@@ -821,6 +833,21 @@ Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplan
   honorarios no devengan. El saldo se calcula siempre al vuelo desde `fecha_ingreso`; no se guarda.
 - **`piola_payslips`, `piola_afp_reports` y `piola_commissions` NO tienen policy para `anon`**
   (a diferencia del resto del proyecto). Solo se leen por endpoint con verificación de rol.
+- **Finanzas está restringida por lista blanca de correos**, no por rol: `piola_modulo_acceso`
+  (grupo `finanzas` = `contabilidad` + `facturacion`) manda **encima** de `piola_role_permissions`.
+  Un rol se hereda; basta que alguien más quede con «Contabilidad» marcado. **Falla cerrado**: si
+  la restricción está activa y la lista de correos quedó vacía, entra solo el Administrador.
+  `verificarSesionPiola()` borra los módulos vedados del mapa `permisos` antes de mandarlo al
+  navegador, así que el menú los oculta sin lógica extra en el cliente.
+- **La numeración de facturas es manual, no hay integración con SUNAT.** `numeracion_manual`
+  deja escribir serie y número a mano para calzar con la numeración que Piola ya usaba.
+- **Una fila importada de Excel se reconoce por `import_hash`** (evita duplicados) y se agrupa
+  por `import_lote_id`, que es lo que permite revertir una importación entera. Borrar el lote
+  sin revertirlo deja los movimientos huérfanos: la FK es `ON DELETE SET NULL`.
+- **Boleta ≠ recibo por honorarios.** `piola_payslips` es para `tipo_contrato='planilla'` y
+  `piola_recibos_honorarios` para `'honorarios'`; ninguna de las dos tiene policy para `anon`.
+  Marcar pagado un recibo registra el egreso **por el neto**, no por el bruto: la retención de
+  4.ª no sale de la caja en ese momento.
 - **Detracción activada por defecto** al facturar: el ~98 % de las facturas de Piola la llevan.
   Marcar pagada crea el ingreso por el **neto** (total − detracción), no por el total.
 - **Categorías de gasto jerárquicas** (`parent_id` auto-referencial, n niveles) con CRUD en la UI:

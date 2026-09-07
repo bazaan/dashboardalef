@@ -19,6 +19,9 @@
           <button v-if="esAdmin" :class="['tab', { active: tab === 'planilla' }]" @click="tab = 'planilla'">
             Boletas y AFP
           </button>
+          <button v-if="esAdmin" :class="['tab', { active: tab === 'honorarios' }]" @click="tab = 'honorarios'">
+            Recibos por honorarios
+          </button>
         </div>
 
         <!-- ══════════ TAREO EN VIVO ══════════ -->
@@ -269,6 +272,97 @@
                   @click="abrirVisor(item.pdf_url, `Descargo AFP ${item.periodo}`)" />
                 <v-btn v-if="item.pdf_url" icon="mdi-download" size="x-small" variant="text"
                   title="Descargar" :href="urlDoc(item.pdf_url)" :download="`afp-${item.periodo}`" />
+              </template>
+            </v-data-table>
+          </v-card>
+        </div>
+
+        <!-- ══════════ RECIBOS POR HONORARIOS ══════════ -->
+        <div v-else-if="tab === 'honorarios' && esAdmin">
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+            <b>Visibilidad restringida:</b> los recibos por honorarios solo los ve y genera un Administrador.
+            Aplica únicamente a los colaboradores con <b>tipo de contrato «honorarios»</b>; el monto sale de
+            la ficha (<code>honorarios_monto</code>) salvo que se indique otro acá abajo.
+            El diseño es provisional — <b>Piola aún debe enviar su modelo real de recibo</b>.
+          </v-alert>
+
+          <v-card flat class="custom-data-table" style="padding:18px;">
+            <div class="planilla-form">
+              <v-select v-model="periodoRh" :items="periodos" label="Periodo" density="compact"
+                hide-details variant="outlined" />
+              <v-select v-model="colaboradorRh" :items="opcionesHonorarios" label="Colaborador"
+                density="compact" hide-details variant="outlined" clearable
+                hint="Vacío = todos los de honorarios" persistent-hint />
+              <v-text-field v-model="fechaEmisionRh" type="date" label="Fecha de emisión"
+                density="compact" hide-details variant="outlined" />
+              <v-text-field v-model.number="ajustesRh.monto_bruto" type="number" label="Monto bruto (S/)"
+                density="compact" hide-details variant="outlined"
+                hint="Vacío = el pactado en la ficha" persistent-hint />
+              <v-text-field v-model="ajustesRh.serie" label="Serie del recibo" density="compact"
+                hide-details variant="outlined" placeholder="E001" />
+              <v-text-field v-model="ajustesRh.numero" label="Número" density="compact"
+                hide-details variant="outlined" placeholder="Correlativo del RH" />
+              <v-text-field v-model.number="ajustesRh.otros_descuentos" type="number"
+                label="Otros descuentos (S/)" density="compact" hide-details variant="outlined" />
+              <v-checkbox v-model="ajustesRh.suspension_renta" label="Con suspensión de 4.ª"
+                density="compact" hide-details
+                title="Si está suspendida, no se retiene el 8 %" />
+            </div>
+            <v-text-field v-model="ajustesRh.descripcion" label="Descripción del servicio"
+              density="compact" hide-details variant="outlined" class="mt-3"
+              placeholder="Servicios profesionales — periodo" />
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+              <v-btn color="primary" variant="flat" :loading="generandoRh" @click="generarHonorarios(false)">
+                <v-icon icon="mdi-receipt-text" start /> Generar recibos
+              </v-btn>
+              <v-btn color="primary" variant="tonal" :loading="generandoRh" @click="generarHonorarios(true)">
+                <v-icon icon="mdi-email-fast" start /> Generar y enviar por correo
+              </v-btn>
+              <v-chip v-if="ajustesRh.serie || ajustesRh.numero" size="small" variant="tonal" color="info">
+                Serie y número se guardan tal cual se escriben
+              </v-chip>
+            </div>
+          </v-card>
+
+          <v-card flat class="custom-data-table mt-4">
+            <v-card-title class="table-search-bar">
+              <span class="table-title">Recibos emitidos</span>
+              <v-spacer />
+              <v-select v-model="estadoRh" :items="ESTADOS_RH" label="Estado" density="compact"
+                hide-details variant="outlined" style="max-width:170px;"
+                @update:model-value="cargarHonorarios" />
+              <v-text-field v-model="buscarRh" prepend-inner-icon="mdi-magnify"
+                placeholder="Nombre, código o número…" density="compact" hide-details variant="outlined"
+                clearable style="max-width:260px; margin-left:10px;" @update:model-value="cargarHonorarios" />
+            </v-card-title>
+            <v-data-table :headers="headersHonorarios" :items="recibos" class="elevation-0"
+              no-data-text="Todavía no se han generado recibos por honorarios" :items-per-page="25">
+              <template v-slot:item.comprobante="{ item }">
+                <span v-if="item.serie || item.numero">{{ [item.serie, item.numero].filter(Boolean).join('-') }}</span>
+                <span v-else style="opacity:.4">—</span>
+              </template>
+              <template v-slot:item.monto_bruto="{ item }">{{ PEN(item.monto_bruto) }}</template>
+              <template v-slot:item.retencion_monto="{ item }">
+                <span v-if="item.suspension_renta" style="opacity:.6" title="Con suspensión de 4.ª">Suspendida</span>
+                <span v-else>{{ PEN(item.retencion_monto) }}</span>
+              </template>
+              <template v-slot:item.neto="{ item }"><strong>{{ PEN(item.neto) }}</strong></template>
+              <template v-slot:item.estado="{ item }">
+                <v-chip size="x-small" variant="tonal" :color="COLOR_RH[item.estado] || 'grey'">
+                  {{ item.estado }}
+                </v-chip>
+              </template>
+              <template v-slot:item.acciones="{ item }">
+                <v-btn v-if="item.pdf_url" icon="mdi-file-eye" size="x-small" variant="text"
+                  title="Ver aquí mismo"
+                  @click="abrirVisor(item.pdf_url, `Recibo ${item.periodo} — ${item.colaborador_nombre}`)" />
+                <v-btn v-if="item.pdf_url" icon="mdi-download" size="x-small" variant="text"
+                  title="Descargar" :href="urlDoc(item.pdf_url)" :download="item.codigo" />
+                <v-btn v-if="item.estado === 'pendiente'" icon="mdi-cash-check" size="x-small" variant="text"
+                  title="Marcar pagado y registrar el egreso"
+                  :loading="pagandoRh === item.id" @click="marcarPagadoRh(item)" />
+                <v-btn icon="mdi-email-fast" size="x-small" variant="text" title="Enviar por correo"
+                  :loading="enviandoRh === item.id" @click="enviarRecibo(item)" />
               </template>
             </v-data-table>
           </v-card>
@@ -669,6 +763,140 @@ async function generarAfp() {
   }
 }
 
+/* ══════════ Recibos por honorarios ══════════
+ * Espejo de las boletas, pero contra piola_recibos_honorarios: los de planilla
+ * cobran con boleta y los de recibo por honorarios con RH. La retención de 4.ª
+ * la calcula el servidor (calcularHonorarios): acá nadie escribe el neto.
+ */
+const ESTADOS_RH = [
+  { value: 'todos', title: 'Todos' },
+  { value: 'pendiente', title: 'Pendientes' },
+  { value: 'pagado', title: 'Pagados' },
+  { value: 'anulado', title: 'Anulados' },
+]
+const COLOR_RH: Record<string, string> = {
+  pendiente: 'warning', pagado: 'success', anulado: 'error',
+}
+
+const periodoRh = ref(periodoActual())
+const colaboradorRh = ref<string | null>(null)
+const fechaEmisionRh = ref(hoyISO())
+const ajustesRh = ref<any>({
+  monto_bruto: null, serie: '', numero: '', descripcion: '',
+  otros_descuentos: 0, suspension_renta: false,
+})
+const opcionesHonorarios = ref<any[]>([])
+const recibos = ref<any[]>([])
+const buscarRh = ref('')
+const estadoRh = ref('todos')
+const generandoRh = ref(false)
+const enviandoRh = ref<number | null>(null)
+const pagandoRh = ref<number | null>(null)
+
+async function cargarHonorarios() {
+  try {
+    const res = await $fetch<any>('/api/piola/honorarios', {
+      params: {
+        vista: 'todas',
+        q: buscarRh.value || undefined,
+        estado: estadoRh.value !== 'todos' ? estadoRh.value : undefined,
+      },
+    })
+    recibos.value = res.recibos || []
+  } catch { recibos.value = [] }
+}
+
+async function cargarOpcionesHonorarios() {
+  const { data } = await client.from('piola_colaboradores')
+    .select('email, nombre').eq('tipo_contrato', 'honorarios').eq('activo', true).order('nombre')
+  opcionesHonorarios.value = ((data as any[]) || []).map(c => ({ value: c.email, title: c.nombre }))
+}
+
+async function generarHonorarios(enviar: boolean) {
+  generandoRh.value = true
+  try {
+    // Los ajustes van por colaborador: sin uno elegido, se usa lo pactado en
+    // cada ficha y no se pisa a todo el equipo con la misma cifra.
+    const a = ajustesRh.value
+    const ajustes: any = {}
+    if (colaboradorRh.value) {
+      ajustes[colaboradorRh.value] = {
+        monto_bruto: a.monto_bruto || undefined,
+        serie: a.serie || undefined,
+        numero: a.numero || undefined,
+        descripcion: a.descripcion || undefined,
+        otros_descuentos: a.otros_descuentos || 0,
+        suspension_renta: !!a.suspension_renta,
+      }
+    }
+
+    const res = await $fetch<any>('/api/piola/honorarios', {
+      method: 'POST',
+      body: {
+        accion: 'generar',
+        periodo: periodoRh.value,
+        colaborador_email: colaboradorRh.value || undefined,
+        fecha_emision: fechaEmisionRh.value || undefined,
+        ajustes,
+        enviar,
+      },
+    })
+    emit('notify', res.errores?.length
+      ? { text: `${res.generados || 0} recibo(s) generados, con ${res.errores.length} error(es): ${res.errores[0]?.error || ''}`, color: 'warning' }
+      : `${res.generados || 0} recibo(s) generados${enviar ? ' y enviados' : ''}`)
+    await cargarHonorarios()
+  } catch (e: any) {
+    emit('notify', { text: e?.data?.statusMessage || 'Error generando los recibos', color: 'error' })
+  } finally {
+    generandoRh.value = false
+  }
+}
+
+async function enviarRecibo(item: any) {
+  enviandoRh.value = item.id
+  try {
+    const res = await $fetch<any>('/api/piola/honorarios', {
+      method: 'POST', body: { accion: 'enviar', id: item.id },
+    })
+    emit('notify', `Recibo enviado a ${res.enviado_a}`)
+    await cargarHonorarios()
+  } catch (e: any) {
+    emit('notify', { text: e?.data?.statusMessage || 'Error enviando', color: 'error' })
+  } finally {
+    enviandoRh.value = null
+  }
+}
+
+async function marcarPagadoRh(item: any) {
+  pagandoRh.value = item.id
+  try {
+    const res = await $fetch<any>('/api/piola/honorarios', {
+      method: 'POST',
+      body: { accion: 'marcar_pagado', id: item.id, registrar_egreso: true },
+    })
+    emit('notify', res.transaccion
+      ? `Recibo pagado — egreso de ${PEN(item.neto)} registrado en el flujo de caja`
+      : 'Recibo marcado como pagado')
+    await cargarHonorarios()
+  } catch (e: any) {
+    emit('notify', { text: e?.data?.statusMessage || 'Error marcando el pago', color: 'error' })
+  } finally {
+    pagandoRh.value = null
+  }
+}
+
+const headersHonorarios = [
+  { title: 'Código', key: 'codigo' },
+  { title: 'Colaborador', key: 'colaborador_nombre' },
+  { title: 'Periodo', key: 'periodo' },
+  { title: 'Recibo', key: 'comprobante', sortable: false },
+  { title: 'Bruto', key: 'monto_bruto' },
+  { title: 'Retención 4.ª', key: 'retencion_monto' },
+  { title: 'Neto', key: 'neto' },
+  { title: 'Estado', key: 'estado' },
+  { title: '', key: 'acciones', sortable: false },
+]
+
 const headersBoletas = [
   { title: 'Código', key: 'codigo' },
   { title: 'Colaborador', key: 'colaborador_nombre' },
@@ -694,6 +922,8 @@ async function cargarTodo() {
     cargarMes(),
     cargarVacaciones(),
     esAdmin.value ? cargarPlanilla() : Promise.resolve(),
+    esAdmin.value ? cargarOpcionesHonorarios() : Promise.resolve(),
+    esAdmin.value ? cargarHonorarios() : Promise.resolve(),
   ])
 }
 

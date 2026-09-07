@@ -20,8 +20,14 @@ export const dashboards = [
 
 // Módulos del dashboard Piola (§2 de la especificación). El acceso a cada uno
 // se resuelve contra piola_role_permissions; 'home' y 'mi_espacio' son de todos.
+// 'clientes' (clientes y contratos) se separó de 'facturacion' en setiembre:
+// Finanzas quedó restringida a dos personas y el expediente de clientes lo
+// necesitan comercial y producción todos los días.
+// Al agregar un módulo hay que tocar TRES lugares además de acá: el CHECK de
+// piola_role_permissions.module (sql/piola.sql), la lista MODULOS de
+// PiolaConfiguracion.vue y el menú de pages/pruebas/Piola.vue.
 export const PIOLA_MODULES = [
-    'home', 'crm', 'contabilidad', 'facturacion', 'produccion',
+    'home', 'crm', 'clientes', 'contabilidad', 'facturacion', 'produccion',
     'rrhh', 'reportes', 'configuracion', 'mi_espacio'
 ] as const
 

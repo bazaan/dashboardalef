@@ -11,6 +11,16 @@
   # deja aire para el resto del proceso.
   NODE_OPTIONS = "--max-old-space-size=6144"
   SECRETS_SCAN_OMIT_PATHS = ".netlify/functions-internal/server/chunks/nitro/nitro.mjs"
+  # SUPABASE_URL y SUPABASE_KEY son necesariamente públicas: el cliente de
+  # Supabase las usa en el navegador (la seguridad real la da RLS, no ocultar
+  # la URL). El escaneo de secretos las marca igual porque quedan en el
+  # bundle. Antes se excluía solo el chunk de Nitro donde aparecían
+  # (SECRETS_SCAN_OMIT_PATHS), pero Nitro reparte el código en chunks con
+  # nombres que cambian de build a build — cada vez que el grafo de server/
+  # cambia, el valor puede terminar en un chunk nuevo no cubierto por esa
+  # ruta fija y el deploy vuelve a fallar. Excluir por NOMBRE de variable es
+  # estable sin importar en qué archivo termine.
+  SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_KEY"
 
 # Las Scheduled Functions del proyecto:
 #

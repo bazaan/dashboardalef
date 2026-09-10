@@ -87,6 +87,13 @@ export interface PerfilPiola {
   esAdmin: boolean
   /** { modulo: {can_view, can_create, can_edit, can_delete}, __admin: bool } */
   permisos: Record<string, any>
+  /**
+   * Módulos con lista blanca por persona (`piola_modulo_acceso`) donde ESTE
+   * email no está incluido. Reunión 07/09/2026 (00:15:54): el CRM se
+   * restringe a 3 personas puntuales, no a un rol — Comercial/CRM en general
+   * sigue viendo el resto de sus módulos con normalidad.
+   */
+  modulosBloqueados: string[]
 }
 
 /**
@@ -143,6 +150,34 @@ export async function verificarSesionPiola(event: H3Event, supabase: any): Promi
     permisos.home = { module: 'home', can_view: true, can_create: false, can_edit: false, can_delete: false }
   }
 
+  // Lista blanca por persona (00:15:54): un módulo sin fila reconocida no
+  // restringe a nadie. `esAdmin` igual pasa siempre (exigirModulo lo revisa
+  // primero), mismo criterio que el resto de Piola.
+  //
+  // `piola_modulo_acceso` YA EXISTÍA cuando se escribió esto: la creó la
+  // otra sesión que reconcilia `feat/mobile-adaptation` contra esta misma
+  // base, con una fila `grupo='finanzas'` para el candado de Contabilidad/
+  // Facturación del 31/08 (forma real: `grupo, modulos TEXT[], emails
+  // TEXT[], activo` — NO `modulo, email` como se asumió en un primer
+  // intento sin verificar en vivo, que rompió la migración). Sólo se leen
+  // acá los GRUPOS que este archivo sembró explícitamente: activar también
+  // el de 'finanzas' sería aplicar en código un candado ajeno, sobre datos
+  // que no sembramos nosotros (y que además tienen un correo que no calza
+  // con el dominio real de Edson — ver aviso en la migración).
+  const GRUPOS_ACCESO_RECONOCIDOS = ['crm']
+  const modulosBloqueados: string[] = []
+  if (!esAdmin) {
+    const { data: accesos } = await supabase
+      .from('piola_modulo_acceso').select('grupo, modulos, emails').eq('activo', true)
+      .in('grupo', GRUPOS_ACCESO_RECONOCIDOS)
+    const miEmail = perfil.email.toLowerCase()
+    for (const fila of accesos || []) {
+      const permitidos = new Set((fila.emails || []).map((e: any) => String(e).toLowerCase()))
+      if (permitidos.has(miEmail)) continue
+      for (const m of fila.modulos || []) modulosBloqueados.push(String(m))
+    }
+  }
+
   return {
     email: perfil.email,
     rolGlobal,
@@ -150,6 +185,7 @@ export async function verificarSesionPiola(event: H3Event, supabase: any): Promi
     rolPiola: colaborador?.rol?.nombre || (esAdmin ? 'Administrador' : null),
     esAdmin,
     permisos,
+    modulosBloqueados,
   }
 }
 
@@ -160,6 +196,12 @@ export function exigirModulo(
   accion: 'view' | 'create' | 'edit' | 'delete' = 'view'
 ): void {
   if (perfil.esAdmin) return
+  if (perfil.modulosBloqueados?.includes(module)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: `El módulo ${module} está restringido a un grupo específico de personas`,
+    })
+  }
   const p = perfil.permisos[module]
   if (!p || p[`can_${accion}`] !== true) {
     throw createError({ statusCode: 403, statusMessage: `Sin permiso de ${accion} en el módulo ${module}` })
@@ -309,10 +351,10 @@ export function calcularTotales(
 /**
  * Comisión = base_produccion × pct.
  *
- * Es deliberadamente simple y PARAMETRIZABLE: Piola aún no entregó la fórmula
- * exacta del acuerdo con Héctor (§12, pendiente bloqueante). El `pct` se
- * configura por colaborador (piola_colaboradores.comision_pct) y, cuando llegue
- * la fórmula, el único cambio será esta función.
+ * Sigue siendo un helper genérico a propósito: la fórmula del 07/09/2026
+ * (8 % cerrado / 4 % recomendado, ver comisiones.post.ts) la llama dos veces,
+ * una por cada tramo, en vez de tener la tasa fija escrita acá adentro —
+ * así un futuro tercer tipo de comisión no necesita tocar esta función.
  */
 export function calcularComision(baseProduccion: number, pct: number): number {
   return Math.round(Number(baseProduccion || 0) * Number(pct || 0) / 100 * 100) / 100

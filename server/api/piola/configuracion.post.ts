@@ -10,6 +10,7 @@
  *   { accion: 'rol_crear',           nombre }
  *   { accion: 'rol_eliminar',        id }
  *   { accion: 'permiso_set',         role_id, module, campo, valor }
+ *   { accion: 'mensaje_set',         clave, contenido }
  *
  * DOS NIVELES, y el de arriba es más estricto que lo que había:
  *
@@ -250,6 +251,28 @@ export default defineEventHandler(async (event) => {
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
 
     return { ok: true, permiso: data }
+  }
+
+  /**
+   * Reunión 07/09/2026 (00:17:58): texto del saludo automático de WhatsApp,
+   * editable acá para que n8n/Chatwoot lo pidan por API en vez de tenerlo
+   * hardcodeado en el workflow — Héctor todavía puede mandar la redacción
+   * final sin que haga falta un redeploy.
+   */
+  if (accion === 'mensaje_set') {
+    exigirModulo(perfil, 'configuracion', 'edit')
+
+    const clave = String(body?.clave || '').trim()
+    const contenido = String(body?.contenido || '').trim()
+    if (!clave) throw createError({ statusCode: 400, statusMessage: 'Falta la clave del mensaje' })
+    if (!contenido) throw createError({ statusCode: 400, statusMessage: 'El mensaje no puede quedar vacío' })
+
+    const { data, error } = await supabase.from('piola_mensajes').upsert({
+      clave, contenido, actualizado_por: perfil.email, updated_at: new Date().toISOString(),
+    }, { onConflict: 'clave' }).select('*').single()
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    return { ok: true, mensaje: data }
   }
 
   throw createError({ statusCode: 400, statusMessage: `Acción desconocida: ${accion}` })

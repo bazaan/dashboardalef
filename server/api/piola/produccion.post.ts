@@ -12,7 +12,7 @@
  *   ── reunión 31/08/2026 ──
  *   { accion: 'guardar_compromiso', cliente_id, tipo_contenido, periodo, cantidad, area_id?, notas? }
  *   { accion: 'eliminar_compromiso', id | (cliente_id + tipo_contenido + periodo) }
- *   { accion: 'guardar_tipo_contenido', id?, clave?, nombre, icono?, color?, orden?, activo? }
+ *   { accion: 'guardar_tipo_contenido', id?, codigo?, nombre, icono?, color?, orden?, activo? }
  *   { accion: 'eliminar_tipo_contenido', id }
  *   { accion: 'clonar_periodo', cliente_id?, periodo_origen, periodo_destino, incluir_entregables? }
  *
@@ -101,7 +101,7 @@ function exigirPeriodo(v: any, campo = 'periodo'): string {
  */
 async function exigirTipoContenido(supabase: any, clave: string) {
   const { data, error } = await supabase.from('piola_tipos_contenido')
-    .select('id, clave, nombre, activo').eq('clave', clave).maybeSingle()
+    .select('id, codigo, nombre, activo').eq('codigo', clave).maybeSingle()
   if (error) throw createError({ statusCode: 500, statusMessage: error.message })
   if (!data) {
     throw createError({
@@ -181,6 +181,9 @@ export default defineEventHandler(async (event) => {
       // Reunión 31/08/2026
       tipo_contenido: tipoContenido,
       area_id: numero(body?.area_id),
+      // Reunión 07/09/2026 (00:37:32): etapa del pipeline (guiones→…→diseño
+      // gráfico), distinta de `area_id` (área/departamento genérico).
+      area_produccion_id: numero(body?.area_produccion_id),
       dropbox_url: texto(body?.dropbox_url),
       publicado_url: texto(body?.publicado_url),
       updated_at: new Date().toISOString(),
@@ -381,34 +384,34 @@ export default defineEventHandler(async (event) => {
     }
 
     // La clave se deriva del nombre si no la mandan; en una edición se conserva.
-    const claveNueva = texto(body?.clave)
-      ? aClave(body.clave)
-      : (id ? actual.clave : aClave(nombre))
+    const claveNueva = texto(body?.codigo)
+      ? aClave(body.codigo)
+      : (id ? actual.codigo : aClave(nombre))
     if (!claveNueva) {
       throw createError({ statusCode: 400, statusMessage: 'No se pudo derivar una clave del nombre' })
     }
 
-    if (id && claveNueva !== actual.clave) {
+    if (id && claveNueva !== actual.codigo) {
       // `tipo_contenido` es TEXTO en entregables y compromisos, sin FK: renombrar
       // la clave los deja huérfanos en silencio (dejan de cruzar con su
       // compromiso y salen del cumplimiento). Sólo se permite si nadie la usa.
       const [{ count: entregables }, { count: compromisos }] = await Promise.all([
         supabase.from('piola_deliverables').select('id', { count: 'exact', head: true })
-          .eq('tipo_contenido', actual.clave),
+          .eq('tipo_contenido', actual.codigo),
         supabase.from('piola_compromisos').select('id', { count: 'exact', head: true })
-          .eq('tipo_contenido', actual.clave),
+          .eq('tipo_contenido', actual.codigo),
       ])
       const enUso = (entregables || 0) + (compromisos || 0)
       if (enUso) {
         throw createError({
           statusCode: 400,
-          statusMessage: `No se puede cambiar la clave "${actual.clave}": ${enUso} registro(s) la usan `
+          statusMessage: `No se puede cambiar la clave "${actual.codigo}": ${enUso} registro(s) la usan `
             + 'y quedarían fuera del cumplimiento. Cambia el nombre visible, que es el que se muestra.',
         })
       }
     }
 
-    const fila: Record<string, any> = { clave: claveNueva }
+    const fila: Record<string, any> = { codigo: claveNueva }
     if (nombre) fila.nombre = nombre
     else if (!id) fila.nombre = claveNueva
     if ('icono' in body) fila.icono = texto(body.icono)
@@ -436,14 +439,14 @@ export default defineEventHandler(async (event) => {
     if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el tipo de contenido a eliminar' })
 
     const { data: tipo } = await supabase.from('piola_tipos_contenido')
-      .select('id, clave, nombre').eq('id', id).maybeSingle()
+      .select('id, codigo, nombre').eq('id', id).maybeSingle()
     if (!tipo) throw createError({ statusCode: 404, statusMessage: 'El tipo de contenido no existe' })
 
     const [{ count: entregables }, { count: compromisos }] = await Promise.all([
       supabase.from('piola_deliverables').select('id', { count: 'exact', head: true })
-        .eq('tipo_contenido', tipo.clave),
+        .eq('tipo_contenido', tipo.codigo),
       supabase.from('piola_compromisos').select('id', { count: 'exact', head: true })
-        .eq('tipo_contenido', tipo.clave),
+        .eq('tipo_contenido', tipo.codigo),
     ])
     const enUso = (entregables || 0) + (compromisos || 0)
 
@@ -512,8 +515,8 @@ export default defineEventHandler(async (event) => {
     // Un tipo desactivado ya no se ofrece para entregables nuevos: tampoco tiene
     // sentido volver a comprometerlo el mes que viene. Se cuenta aparte para que
     // la pantalla lo pueda decir en vez de que desaparezca en silencio.
-    const { data: tipos } = await supabase.from('piola_tipos_contenido').select('clave, activo')
-    const tiposInactivos = new Set((tipos || []).filter((t: any) => t.activo === false).map((t: any) => t.clave))
+    const { data: tipos } = await supabase.from('piola_tipos_contenido').select('codigo, activo')
+    const tiposInactivos = new Set((tipos || []).filter((t: any) => t.activo === false).map((t: any) => t.codigo))
 
     // Lo mismo con las marcas dadas de baja: clonar su plan las resucita en el
     // tablero del mes nuevo. Sólo hace falta mirarlo cuando se clona todo.

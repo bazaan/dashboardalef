@@ -244,6 +244,23 @@
           <div v-else-if="!nuevaAdenda" class="sin-adendas">
             Este contrato todavía no tiene adendas.
           </div>
+
+          <v-divider class="my-5" />
+
+          <!--
+            Reunión 07/09/2026: "vamos a poner para que se adjunten múltiples
+            documentos... un máximo de cinco" — para anexos sueltos que no son
+            ni el contrato principal ni una adenda formal (poderes, actas, etc.).
+          -->
+          <div class="form-section-title">Otros documentos</div>
+          <PiolaAdjuntos entidad="contrato" :entidad-id="detalle.id" :max="5"
+            :disabled="!puedeEditar"
+            :tipos="[
+              { value: 'anexo', title: 'Anexo' },
+              { value: 'contrato', title: 'Contrato' },
+              { value: 'otro', title: 'Otro' },
+            ]"
+            @notify="(p: any) => emit('notify', p)" />
         </v-card-text>
 
         <v-card-actions style="padding: 12px 20px 18px; flex-wrap:wrap; gap:8px;">
@@ -286,6 +303,7 @@ import {
 import { useFormRules } from '@/composables/rules'
 import PiolaSubirPdf from './PiolaSubirPdf.vue'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
+import PiolaAdjuntos from './PiolaAdjuntos.vue'
 
 const props = defineProps<{
   perfil: any

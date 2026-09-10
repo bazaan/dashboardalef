@@ -211,10 +211,14 @@ export function canAccessPiola(session: UserSession | null): boolean {
 export function piolaCan(
     permisos: Record<string, any> | null | undefined,
     module: PiolaModule,
-    accion: 'view' | 'create' | 'edit' | 'delete' = 'view'
+    accion: 'view' | 'create' | 'edit' | 'delete' = 'view',
+    // Reunión 07/09/2026 (00:15:54): lista blanca por persona para un módulo
+    // puntual (CRM), independiente del rol. Viene de perfil.modulos_bloqueados.
+    bloqueados?: string[] | null,
 ): boolean {
     if (!permisos) return false
     if (permisos.__admin === true) return true
+    if (bloqueados?.includes(module)) return false
     const p = permisos[module]
     if (!p) return false
     return p[`can_${accion}`] === true

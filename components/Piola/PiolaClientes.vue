@@ -185,6 +185,19 @@
               <v-text-field v-model="ficha.detraccion_codigo" label="Código de bien/servicio SUNAT"
                 density="compact" variant="outlined" hide-details="auto"
                 hint="Ej: 022 servicios empresariales" persistent-hint />
+              <v-select v-model="ficha.detraccion_pagada" :items="OPCIONES_DETRACCION_PAGADA"
+                label="Detracción pagada (mes en curso)" density="compact" variant="outlined"
+                hide-details="auto"
+                :hint="ficha.detraccion_actualizada_at
+                  ? `Actualizado ${fechaCorta(ficha.detraccion_actualizada_at)}` : 'Se revisa mes a mes'"
+                persistent-hint />
+              <v-text-field v-model="ficha.fecha_inicio_contrato" type="date" label="Inicio de contrato"
+                density="compact" hide-details variant="outlined" />
+              <v-text-field v-model="ficha.fecha_fin_contrato" type="date" label="Fin de contrato"
+                density="compact" hide-details variant="outlined" />
+              <v-text-field v-model="ficha.dropbox_url" label="Carpeta de Dropbox/Drive (enlace)"
+                density="compact" variant="outlined" hide-details="auto"
+                hint="El cliente sube su contenido directo a esta carpeta" persistent-hint />
             </div>
             <v-textarea v-model="ficha.condiciones" label="Condiciones pactadas" rows="2"
               density="compact" hide-details variant="outlined" class="mt-3"
@@ -206,7 +219,7 @@
             <div class="adjuntos-bloque">
               <div class="adjuntos-titulo">
                 <v-icon icon="mdi-paperclip" size="16" />
-                <span>Contrato, anexos y DNI ({{ adjuntosFicha.length }})</span>
+                <span>Contrato, anexos y DNI ({{ adjuntosFicha.length }}/{{ MAX_ADJUNTOS_CLIENTE }})</span>
               </div>
 
               <div v-if="!ficha.id" class="adjuntos-vacio">
@@ -233,7 +246,10 @@
                   Este cliente todavía no tiene documentos adjuntos.
                 </div>
 
-                <div v-if="puedeEditar" class="adjunto-nuevo">
+                <div v-if="puedeEditar && adjuntosFicha.length >= MAX_ADJUNTOS_CLIENTE" class="adjuntos-vacio">
+                  Máximo de {{ MAX_ADJUNTOS_CLIENTE }} documentos alcanzado. Quita uno para adjuntar otro.
+                </div>
+                <div v-else-if="puedeEditar" class="adjunto-nuevo">
                   <v-select v-model="nuevoAdjunto.tipo_doc" :items="TIPOS_ADJUNTO_CLIENTE"
                     label="Tipo de documento" density="compact" hide-details variant="outlined"
                     style="max-width:220px;" />
@@ -391,6 +407,16 @@ const TIPOS_DOCUMENTO = [
 const CONDICIONES_PAGO = [
   'Contado', 'Crédito 7 días', 'Crédito 15 días', 'Crédito 30 días',
   'Crédito 45 días', 'Crédito 60 días', 'Adelanto 50 % + saldo',
+]
+
+/* Reunión 07/09/2026: "en clientes... un máximo de cinco documentos, no obligatorios". */
+const MAX_ADJUNTOS_CLIENTE = 5
+
+/* Reunión 07/09/2026 (00:21:45): null = todavía sin revisar este mes. */
+const OPCIONES_DETRACCION_PAGADA = [
+  { value: null, title: 'Sin revisar' },
+  { value: true, title: 'Sí, pagada' },
+  { value: false, title: 'No, pendiente' },
 ]
 
 /* Subconjunto del CHECK de `piola_adjuntos.tipo_doc` que aplica a un cliente. */
@@ -579,6 +605,8 @@ function abrirNuevo() {
     contacto: '', contacto_cargo: '', telefono: '', email: '', email_facturacion: '',
     direccion: '', direccion_fiscal: '', condicion_pago: null, condiciones: '', notas: '',
     detraccion_pct: null, detraccion_codigo: '', compromiso_mensual: 0,
+    detraccion_pagada: null, detraccion_actualizada_at: null,
+    fecha_inicio_contrato: '', fecha_fin_contrato: '', dropbox_url: '',
     ficha_ruc_pdf: null, activo: true,
   }
   nuevoAdjunto.value = { tipo_doc: 'contrato', path: null }
@@ -629,6 +657,10 @@ async function guardar() {
     ficha_ruc_pdf: f.ficha_ruc_pdf,
     detraccion_pct: f.detraccion_pct === '' ? null : f.detraccion_pct,
     detraccion_codigo: f.detraccion_codigo,
+    detraccion_pagada: f.detraccion_pagada,
+    fecha_inicio_contrato: f.fecha_inicio_contrato || null,
+    fecha_fin_contrato: f.fecha_fin_contrato || null,
+    dropbox_url: f.dropbox_url,
     compromiso_mensual: f.compromiso_mensual,
     notas: f.notas,
   })
@@ -702,7 +734,7 @@ async function registrarAdjunto() {
   // la fila, que va por endpoint porque `piola_adjuntos` no acepta escrituras
   // de `anon`.
   const { error } = await apiPiola('adjuntos', {
-    accion: 'guardar',
+    accion: 'agregar',
     entidad: 'cliente',
     entidad_id: ficha.value.id,
     tipo_doc: a.tipo_doc,

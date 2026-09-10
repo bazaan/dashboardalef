@@ -14,6 +14,7 @@
           <button :class="['tab', { active: tab === 'roles' }]" @click="tab = 'roles'">Roles y permisos</button>
           <button :class="['tab', { active: tab === 'etapas' }]" @click="tab = 'etapas'">Etapas del CRM</button>
           <button :class="['tab', { active: tab === 'pagos' }]" @click="tab = 'pagos'">Métodos de pago</button>
+          <button :class="['tab', { active: tab === 'mensajes' }]" @click="tab = 'mensajes'">Mensajes automáticos</button>
           <button :class="['tab', { active: tab === 'financiera' }]" @click="tab = 'financiera'">
             Configuración financiera
           </button>
@@ -170,6 +171,26 @@
           </div>
         </v-card>
 
+        <!-- ══════════ MENSAJES AUTOMÁTICOS ══════════ -->
+        <v-card v-else-if="tab === 'mensajes'" flat class="custom-data-table" style="padding:18px;">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Reunión 07/09/2026: Héctor pidió una respuesta automática al primer mensaje de
+            WhatsApp, para pedir el nombre antes de seguir la conversación. El disparo real vive
+            en n8n/Chatwoot (fuera del dashboard); esto solo guarda el texto para que n8n lo pida
+            en vez de tenerlo escrito adentro del workflow — así se puede cambiar la redacción sin
+            pedirle un redeploy a nadie.
+          </v-alert>
+
+          <v-textarea v-model="mensajeBienvenida" label="Saludo automático de WhatsApp (primer mensaje)"
+            rows="3" variant="outlined" :disabled="!puedeEditar"
+            hint="Ejemplo de Héctor: “Hola, ¿cómo estás? Soy Héctor Córdoba, coordinador comercial de Piola. ¿Con quién tengo el gusto?”"
+            persistent-hint />
+          <div style="display:flex; justify-content:flex-end; margin-top:10px;">
+            <v-btn v-if="puedeEditar" color="primary" variant="flat" :loading="guardandoMensaje"
+              @click="guardarMensajeBienvenida">Guardar</v-btn>
+          </div>
+        </v-card>
+
         <!-- ══════════ USUARIOS DEL SISTEMA (acceso al login) ══════════ -->
         <div v-else-if="tab === 'usuarios' && esAdmin">
           <v-alert type="info" variant="tonal" density="compact" class="mb-4">
@@ -214,7 +235,8 @@
             <v-text-field v-model="colaborador.fecha_fin_contrato" type="date" label="Fin de contrato"
               density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="colaborador.comision_pct" type="number"
-              label="% de comisión sobre lo que cierra" density="compact" hide-details variant="outlined" />
+              label="% de comisión (sin uso — desde 07/09/2026 es 8%/4% fijo, ver Contabilidad)"
+              density="compact" hide-details variant="outlined" />
           </div>
 
           <template v-if="colaborador.tipo_contrato === 'planilla'">
@@ -298,13 +320,14 @@ const metodos = ref<any[]>([])
 const leads = ref<any[]>([])
 
 async function cargar() {
-  const [c, r, p, e, m, l] = await Promise.all([
+  const [c, r, p, e, m, l, msg] = await Promise.all([
     client.from('piola_colaboradores').select('*').order('nombre'),
     client.from('piola_roles').select('*').order('id'),
     client.from('piola_role_permissions').select('*'),
     client.from('piola_lead_stages').select('*').order('orden'),
     client.from('piola_payment_methods').select('*').order('orden'),
     traerTodo(() => client.from('piola_leads').select('id, stage_id').order('id')),
+    client.from('piola_mensajes').select('contenido').eq('clave', 'bienvenida_whatsapp').maybeSingle(),
   ])
   colaboradores.value = (c.data as any[]) || []
   roles.value = (r.data as any[]) || []
@@ -312,6 +335,23 @@ async function cargar() {
   etapas.value = (e.data as any[]) || []
   metodos.value = (m.data as any[]) || []
   leads.value = (l.data as any[]) || []
+  mensajeBienvenida.value = (msg.data as any)?.contenido || ''
+}
+
+/* ══════════ Mensaje de bienvenida WhatsApp (reunión 07/09/2026) ══════════ */
+const mensajeBienvenida = ref('')
+const guardandoMensaje = ref(false)
+
+async function guardarMensajeBienvenida() {
+  const contenido = mensajeBienvenida.value.trim()
+  if (!contenido) return emit('notify', { text: 'El mensaje no puede quedar vacío', color: 'error' })
+  guardandoMensaje.value = true
+  const { error } = await apiPiola('configuracion', {
+    accion: 'mensaje_set', clave: 'bienvenida_whatsapp', contenido,
+  })
+  guardandoMensaje.value = false
+  if (error) return emit('notify', { text: `Error guardando: ${error.message}`, color: 'error' })
+  emit('notify', 'Mensaje de bienvenida actualizado')
 }
 
 const nombreRol = (id: any) => roles.value.find(r => r.id === id)?.nombre || '—'

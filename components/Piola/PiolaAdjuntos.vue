@@ -47,7 +47,11 @@
       <v-progress-linear v-if="cargando" indeterminate color="primary" height="3" rounded class="my-2" />
       <div v-else-if="!adjuntos.length" class="sin-adjuntos">Todavía no hay documentos adjuntos.</div>
 
-      <div v-if="!disabled" class="alta-adjunto">
+      <div v-if="!disabled && enTope" class="alta-hint">
+        Máximo de {{ max }} documentos alcanzado. Quita uno de la lista para poder adjuntar otro.
+      </div>
+
+      <div v-if="!disabled && !enTope" class="alta-adjunto">
         <v-select v-model="tipoNuevo" :items="tiposDisponibles" label="Tipo de documento"
           density="compact" hide-details variant="outlined" class="alta-tipo" />
         <div class="alta-archivo">
@@ -57,9 +61,10 @@
         </div>
       </div>
 
-      <div v-if="!disabled" class="alta-hint">
+      <div v-if="!disabled && !enTope" class="alta-hint">
         Se puede adjuntar más de un documento al mismo registro: la factura, la constancia de
-        detracción, el voucher del pago… Elige el tipo y sube el PDF; se agrega a la lista.
+        detracción, el voucher del pago…{{ max ? ` Máximo ${max}.` : '' }} Elige el tipo y sube el PDF;
+        se agrega a la lista.
       </div>
     </template>
 
@@ -102,6 +107,8 @@ const props = withDefaults(defineProps<{
   perfil?: any
   /** Tipos ofrecidos en el selector. Por defecto los que pidió Edson para finanzas. */
   tipos?: Array<{ value: string; title: string }>
+  /** Reunión 07/09/2026: contratos y clientes se limitan a 5 documentos. Sin tope por defecto. */
+  max?: number
 }>(), { disabled: false })
 
 const emit = defineEmits<{
@@ -143,6 +150,8 @@ const idEntidad = computed(() => {
   const n = Number(v)
   return v !== null && v !== '' && Number.isFinite(n) && n > 0 ? n : null
 })
+
+const enTope = computed(() => !!props.max && adjuntos.value.length >= props.max)
 
 const adjuntos = ref<any[]>([])
 const cargando = ref(false)

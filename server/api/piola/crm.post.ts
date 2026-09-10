@@ -27,7 +27,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { verificarSesionPiola, exigirModulo, exigirAlguno } from '../../utils/piola'
 
-const CAMPOS_TEXTO = ['email', 'empresa', 'fuente', 'owner_email', 'notas', 'proxima_accion']
+const CAMPOS_TEXTO = ['email', 'empresa', 'fuente', 'owner_email', 'notas', 'proxima_accion', 'tipo_comision']
 
 const texto = (v: any) => {
   const s = v === null || v === undefined ? '' : String(v).trim()

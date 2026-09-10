@@ -294,7 +294,6 @@ Nada de esto bloquea desarrollo: todo quedó **parametrizable**, no hardcodeado.
 | Falta | Dónde se configura cuando llegue |
 |---|---|
 | Lista de gastos operativos con su jerarquía | Tabla `piola_expense_categories`, CRUD en la UI |
-| Fórmula exacta de comisiones de Héctor | `calcularComision()` en `server/utils/piola.ts` |
 | Modelos reales de boleta y formato AFP | `TASAS` en `server/utils/piola-planilla.ts` |
 | Lista de usuarios (nombre + correo + rol) | `dashboardlogin` + `piola_colaboradores` |
 | Catálogo completo de servicios | Tabla `piola_services`, CRUD en la UI |

@@ -1055,6 +1055,33 @@ Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplan
   egreso puede estar aprobado y seguir "pendiente" de pago, o pagarse sin haber pasado por
   aprobación si el flujo de la empresa no lo exige — no es un estado más del ciclo pendiente →
   parcial → pagado, que sigue siendo dueño exclusivo del trigger.
+- **`piola_produccion_areas` tiene filas de DOS orígenes.** `guiones`/`produccion`/`edicion` +
+  las 3 que agregó el 07/09 (`grabacion`/`presentacion`/`diseno_grafico`, las confirmadas por
+  Sebastián) conviven con `rodajes`/`diseno`/`community`, un guess PRE-reunión que sembró la otra
+  sesión y que la reunión corrigió — esas 3 quedaron sin tocar (no es nuestra tabla) y el dropdown
+  de `PiolaProduccion.vue` las oculta filtrando por código, no por `activo`. Si alguien "limpia" la
+  tabla borrando/renombrando esas filas, ese filtro por código deja de tener sentido y se puede
+  simplificar a `activo=true` sin más.
+- **`piola_tipos_contenido` usa `codigo`, no `clave`, como columna real.** Ya hubo un bug en
+  producción por esto (07/09/2026): código escrito contra `clave` porque otra sesión corrió una
+  migración distinta directo contra la base compartida. Antes de tocar esta tabla, confirmar el
+  nombre de columna en vivo — no asumirlo por el código de otra rama.
+- **Restricción de módulo por PERSONA, no por rol:** `piola_modulo_acceso` es una lista blanca
+  aparte del sistema de roles. **Ojo:** la tabla NO la creó este trabajo — ya existía, creada por
+  la otra sesión que reconcilia `feat/mobile-adaptation` contra esta misma base, con una fila
+  `grupo='finanzas'` (candado de Contabilidad/Facturación del 31/08). Su forma real es
+  `(grupo TEXT, modulos TEXT[], emails TEXT[], activo, descripcion, updated_by, updated_at)` — nada
+  de `(modulo, email)` por fila, que fue lo que se asumió la primera vez sin verificar en vivo y
+  rompió la migración (mismo tipo de error que el de `piola_tipos_contenido.clave`, dos líneas
+  arriba). El código sólo aplica esto para `grupo IN ('crm')` (`GRUPOS_ACCESO_RECONOCIDOS` en
+  `exigirModulo()`/`verificarSesionPiola()`, `server/utils/piola.ts`) — deliberadamente NO lee la
+  fila `finanzas` de la otra sesión, para no activar en código un candado ajeno sobre datos que no
+  sembramos nosotros. **La fila `finanzas` además tiene `administracion@piola.com`**, que no calza
+  con el dominio real de Edson (`administracion@agenciapiola.com`, confirmado en `dashboardlogin`)
+  — probable typo de la otra sesión, sin tocar porque no es nuestra fila. Un `grupo` sin fila
+  reconocida no restringe a nadie; con fila, sólo esos `emails` entran a esos `modulos`
+  (`piolaCan()` en `utils/permissions.ts` aplica lo mismo para el menú). Administrador de Piola /
+  superadmin de Alef siempre pasa, igual que con los roles.
 
 ### Crons (Netlify Scheduled Functions)
 
@@ -1118,6 +1145,45 @@ impide cobrar dos veces el mismo mes) y el método de pago por defecto en transf
 
 **Pendiente del cliente:** el diseño de la boleta de pago (quedaron en mandarlo). Hasta que llegue,
 se usa la plantilla HTML que ya existía, adaptada para honorarios.
+
+### Reunión del 07/09/2026 — lo acordado (migración `sql/piola_reunion_07sep.sql`)
+
+Participaron Héctor Córdova, Edson Polo, Raysa Cucho y Sebastián Ávalos. **Correr una vez
+`sql/piola_reunion_07sep.sql`**, que es idempotente y va DESPUÉS de `sql/piola_reunion_31ago.sql`.
+
+| Qué pidieron | Dónde quedó |
+|---|---|
+| Saludo automático al primer mensaje de WhatsApp, para capturar el nombre | `piola_mensajes` (clave `bienvenida_whatsapp`, editable en **Configuración → Mensajes automáticos**). El disparo real vive en n8n/Chatwoot, fuera del dashboard — ver `referencia/n8n/piola-saludo-automatico-guia.md` |
+| Comisión: 8 % lead cerrado / 4 % lead recomendado, fija | `piola_leads.tipo_comision` (se clasifica a mano al marcar el lead ganado — el bot no distingue el origen) + `comisiones.post.ts` reescrito para calcular los dos tramos y sumarlos en una sola fila por colaborador/periodo |
+| Cliente: estado de detracción pagada + fechas de contrato | `piola_clientes.detraccion_pagada` / `detraccion_actualizada_at` / `fecha_inicio_contrato` / `fecha_fin_contrato` |
+| Cliente: enlace fijo de Dropbox/Drive | `piola_clientes.dropbox_url` — solo el link, sin integración con la API |
+| Cliente y contrato: hasta 5 documentos, no obligatorios | Tope de 5 en `adjuntos.post.ts` (`MAX_ADJUNTOS_POR_ENTIDAD`) para `entidad IN ('cliente','contrato')`. Contratos usa ahora también `PiolaAdjuntos.vue` |
+| Etapas reales de producción (Sebastián): Guiones→Producción→Grabación→Edición→Presentación→Diseño Gráfico | `piola_produccion_areas` (YA EXISTÍA, creada por la otra sesión con un guess pre-reunión — se agregaron sólo las 3 filas que faltaban, ver nota abajo) + `piola_deliverables.area_produccion_id`. Distinta de `piola_areas`, que sigue siendo el área/departamento genérico |
+| CRM restringido a Héctor, Edson y Raysa — nadie más lo ve en vivo | `piola_modulo_acceso` (lista blanca por persona, no por rol) + `exigirModulo()` en `server/utils/piola.ts` |
+
+**Dos bugs de producción encontrados y corregidos de paso** (no pedidos en la reunión, pero
+confirmados como errores activos al revisar el código para esta tarea, y el cliente pidió
+explícitamente "que todo esté perfecto para producción sin ningún error"):
+
+- `piola_tipos_contenido` vive en la base con la columna `codigo`; el código de
+  `produccion.post.ts` y `PiolaProduccion.vue` seguía escrito contra `clave` (probablemente por
+  una migración ajena corrida directo contra la base compartida) — el catálogo de tipos de
+  contenido daba error 500 en cada alta/edición. Corregido en ambos archivos.
+- La ficha de cliente (`PiolaClientes.vue`) mandaba `accion: 'guardar'` al adjuntar un documento,
+  pero `adjuntos.post.ts` solo reconoce `'agregar'` — el botón "Adjuntar" de "Contrato, anexos y
+  DNI" fallaba con 400 siempre. Corregido.
+
+**Confirmado como ya correcto, sin cambios:** los tipos de contenido (video, pieza gráfica, guion,
+carrusel) que ya existían en el catálogo — Sebastián y Rafaella los revisaron en la reunión y
+dijeron que están bien tal cual.
+
+**Explícitamente diferido, no se implementa:**
+
+- El dashboard propio de Sebastián por área de producción — Raysa le pidió que lo especifique él
+  mismo esta semana; se dejó lista la capa de datos (áreas y tipos), no una pantalla nueva.
+- Roles y permisos granulares — reunión interna aparte, la próxima semana.
+- La reconciliación con `feat/mobile-adaptation` — hay otra sesión trabajando en eso sobre la
+  misma base de datos; ver `sql/piola_reconciliacion_mobile.sql` (sin correr).
 
 ### Pendientes del cliente (bloquean cierre, no desarrollo)
 

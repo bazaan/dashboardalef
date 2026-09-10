@@ -174,6 +174,11 @@
               density="compact" hide-details variant="outlined" multiple chips closable-chips />
             <v-text-field v-model="detalle.proxima_accion" type="datetime-local" label="Próxima acción"
               density="compact" hide-details variant="outlined" />
+            <v-select v-if="esGanado(detalle.stage_id)" v-model="detalle.tipo_comision" :items="TIPOS_COMISION"
+              label="Comisión: ¿cerrado o recomendado? *" density="compact" variant="outlined"
+              :error="!detalle.tipo_comision"
+              :hint="!detalle.tipo_comision ? 'El bot de WhatsApp no distingue el origen: se clasifica a mano' : ''"
+              persistent-hint />
           </div>
           <v-textarea v-model="detalle.notas" label="Notas" rows="2" density="compact" hide-details
             variant="outlined" class="mt-3" />
@@ -260,6 +265,12 @@ const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
 
 const client = useSupabaseClient()
 const periodo = periodoActual()
+
+/* Reunión 07/09/2026 (00:30:15): 8% cerrado / 4% recomendado, fijo. */
+const TIPOS_COMISION = [
+  { value: 'cerrado', title: 'Cerrado (lead normal) — 8 %' },
+  { value: 'recomendado', title: 'Recomendado — 4 %' },
+]
 
 const puedeCrear = computed(() => piolaCan(props.perfil?.permisos, 'crm', 'create'))
 const puedeEditar = computed(() => piolaCan(props.perfil?.permisos, 'crm', 'edit'))
@@ -494,6 +505,16 @@ async function soltarEn(etapa: any) {
 
   Object.assign(lead, data?.patch || { stage_id: etapa.id })
   emit('notify', `Lead movido a "${etapa.nombre}"`)
+
+  // Reunión 07/09/2026 (00:30:15): un lead ganado necesita decir si la
+  // comisión es "cerrado" u "recomendado" — el bot no lo puede inferir solo.
+  // Arrastrarlo no pasa por el formulario, así que se abre el detalle para
+  // que se clasifique ahí mismo en vez de quedar en 0% hasta que alguien
+  // lo note en el cálculo de comisiones.
+  if (esGanado(etapa.id) && !lead.tipo_comision) {
+    await abrirDetalle(lead)
+    emit('notify', { text: 'Indica si el lead fue cerrado o recomendado para calcular su comisión', color: 'warning' })
+  }
 }
 
 /* ══════════ Detalle / edición ══════════ */
@@ -557,6 +578,7 @@ async function guardarLead() {
     servicios: d.servicios || [],
     notas: d.notas || null,
     proxima_accion: d.proxima_accion || null,
+    tipo_comision: d.tipo_comision || null,
     updated_at: new Date().toISOString(),
   }
 

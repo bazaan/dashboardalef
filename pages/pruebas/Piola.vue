@@ -95,7 +95,17 @@
         <PiolaHome v-if="activeView === 'home'" :perfil="perfil" @ir="activeView = $event" @notify="notify" />
         <PiolaMiEspacio v-else-if="activeView === 'mi_espacio'" :perfil="perfil"
           @notify="notify" @perfil-actualizado="cargarPerfil" />
-        <PiolaCRM v-else-if="activeView === 'crm'" :perfil="perfil" @notify="notify" />
+        <PiolaCRM v-else-if="activeView === 'crm' && veChats" :perfil="perfil" @notify="notify" />
+        <!--
+          Reunión 07/09/2026 (00:15:54): el CRM se restringe a 3 personas. El
+          menú ya no ofrece este item para el resto, pero `PiolaHome` puede
+          navegar por accesos directos (evento `ir`) sin pasar por el menú —
+          este `v-else-if` es el segundo candado, para que llegar acá igual
+          no muestre datos de leads.
+        -->
+        <v-alert v-else-if="activeView === 'crm'" type="warning" variant="tonal" class="ma-6">
+          El CRM está restringido a un grupo específico de personas.
+        </v-alert>
         <PiolaClientes v-else-if="activeView === 'clientes'" :perfil="perfil" @notify="notify" />
         <PiolaContabilidad v-else-if="activeView === 'contabilidad'" :perfil="perfil" @notify="notify" />
         <PiolaFacturacion v-else-if="activeView === 'facturacion'" :perfil="perfil" @notify="notify" />
@@ -243,11 +253,13 @@ const SECCIONES = [
 const seccionesVisibles = computed(() => SECCIONES
   .map(s => ({
     label: s.label,
-    items: s.items.filter(i => piolaCan(perfil.value?.permisos, i.modulo as any, 'view')),
+    items: s.items.filter(i =>
+      piolaCan(perfil.value?.permisos, i.modulo as any, 'view', perfil.value?.modulos_bloqueados)),
   }))
   .filter(s => s.items.length))
 
-const veConfiguracion = computed(() => piolaCan(perfil.value?.permisos, 'configuracion', 'view'))
+const veConfiguracion = computed(() =>
+  piolaCan(perfil.value?.permisos, 'configuracion', 'view', perfil.value?.modulos_bloqueados))
 
 /**
  * Sección Chats — Chatwoot, igual que en los demás dashboards.
@@ -259,7 +271,8 @@ const veConfiguracion = computed(() => piolaCan(perfil.value?.permisos, 'configu
  * enlace lleva al selector de cuentas de Chatwoot.
  */
 const chatwootAccount = ref<number | null>(null)
-const veChats = computed(() => piolaCan(perfil.value?.permisos, 'crm', 'view'))
+const veChats = computed(() =>
+  piolaCan(perfil.value?.permisos, 'crm', 'view', perfil.value?.modulos_bloqueados))
 
 const chatsItems = computed(() => {
   const base = 'https://chats.alef.company/app'

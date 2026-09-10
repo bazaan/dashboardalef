@@ -76,6 +76,7 @@ export default defineEventHandler(async (event) => {
     rol_piola: perfil.rolPiola,
     es_admin: perfil.esAdmin,
     permisos: perfil.permisos,
+    modulos_bloqueados: perfil.modulosBloqueados,
     colaborador: perfil.colaborador
       ? {
           ...perfil.colaborador,

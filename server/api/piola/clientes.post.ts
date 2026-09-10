@@ -63,6 +63,8 @@ const CAMPOS_TEXTO = [
   'razon_social', 'contacto', 'contacto_cargo', 'telefono', 'email',
   'email_facturacion', 'direccion', 'direccion_fiscal',
   'condiciones', 'condicion_pago', 'ficha_ruc_pdf', 'detraccion_codigo', 'notas',
+  // Reunión 07/09/2026 (00:21:45 / 00:41:12)
+  'fecha_inicio_contrato', 'fecha_fin_contrato', 'dropbox_url',
 ]
 
 const texto = (v: any) => {
@@ -165,6 +167,20 @@ export default defineEventHandler(async (event) => {
       patch.compromiso_mensual = Math.max(0, Math.trunc(numero(body.compromiso_mensual) ?? 0))
     }
     if ('activo' in body) patch.activo = !!body.activo
+
+    // Edson (00:21:45): "la detracción sí debemos llevar un control de eso mes
+    // a mes" — no se pidió un histórico aparte, así que basta con guardar
+    // cuándo se marcó por última vez. El timestamp solo se toca si el valor
+    // realmente CAMBIÓ: la ficha completa se reenvía en cada guardado (para no
+    // borrar lo que la pantalla no trae), así que comparar contra lo guardado
+    // evita que editar el teléfono, por ejemplo, "confirme" la detracción sin
+    // que nadie la haya revisado.
+    if ('detraccion_pagada' in body) {
+      const valor = body.detraccion_pagada === null ? null : !!body.detraccion_pagada
+      const previo = actual?.detraccion_pagada ?? null
+      patch.detraccion_pagada = valor
+      if (valor !== previo) patch.detraccion_actualizada_at = new Date().toISOString()
+    }
 
     if (!Object.keys(patch).length) {
       throw createError({ statusCode: 400, statusMessage: 'No hay nada que cambiar' })

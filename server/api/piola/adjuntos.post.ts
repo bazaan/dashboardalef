@@ -43,6 +43,17 @@ const TIPOS_DOC = [
   'constancia', 'dni', 'otro',
 ]
 
+/**
+ * Reunión 07/09/2026: "vamos a poner para que se adjunten múltiples documentos,
+ * ¿no? Un máximo de cinco" (Roberto, sobre contratos/adendas — Edson lo aceptó
+ * y el mismo tope aplica a la ficha de cliente). Sin tope, `entidad` y
+ * `entidad_id` no tienen ningún otro límite natural.
+ */
+const MAX_ADJUNTOS_POR_ENTIDAD: Partial<Record<Entidad, number>> = {
+  cliente: 5,
+  contrato: 5,
+}
+
 /** Dónde vive cada entidad: sirve para no dejar adjuntos colgando de una fila que no existe. */
 const TABLA_POR_ENTIDAD: Record<Entidad, string> = {
   transaction: 'piola_transactions',
@@ -147,6 +158,19 @@ export default defineEventHandler(async (event) => {
 
     const entidadId = Number(body?.entidad_id)
     if (!entidadId) throw createError({ statusCode: 400, statusMessage: 'Falta entidad_id' })
+
+    const tope = MAX_ADJUNTOS_POR_ENTIDAD[entidad]
+    if (tope) {
+      const { count } = await supabase.from('piola_adjuntos')
+        .select('id', { count: 'exact', head: true })
+        .eq('entidad', entidad).eq('entidad_id', entidadId)
+      if ((count || 0) >= tope) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `Ya tiene ${tope} documentos adjuntos, el máximo permitido. Quita uno antes de agregar otro.`,
+        })
+      }
+    }
 
     const path = pathBucket(body?.path)
     if (!path) {

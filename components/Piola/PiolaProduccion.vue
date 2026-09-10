@@ -73,6 +73,7 @@
                       {{ nombreTipo(e.tipo_contenido) }}
                     </span>
                     <span v-if="e.area_id" class="area-chip">{{ nombreArea(e.area_id) }}</span>
+                    <span v-if="e.area_produccion_id" class="area-chip">{{ nombreAreaProduccion(e.area_produccion_id) }}</span>
                   </div>
                   <div class="ent-pie">
                     <span :class="{ 'texto-alerta': atrasado(e) }">
@@ -267,7 +268,7 @@
             <v-data-table :headers="headersTipos" :items="tiposContenido" class="elevation-0"
               no-data-text="Sin tipos de contenido (¿falta correr la migración?)" :items-per-page="25">
               <template v-slot:item.nombre="{ item }">
-                <span class="etapa-chip" :style="chipTipo(item.clave)">
+                <span class="etapa-chip" :style="chipTipo(item.codigo)">
                   <v-icon v-if="item.icono" :icon="item.icono" size="13" start />{{ item.nombre }}
                 </span>
               </template>
@@ -336,6 +337,8 @@
               density="compact" hide-details variant="outlined" clearable />
             <v-select v-model="detalle.area_id" :items="opcionesArea" label="Área" density="compact"
               hide-details variant="outlined" clearable />
+            <v-select v-model="detalle.area_produccion_id" :items="opcionesAreaProduccion"
+              label="Etapa de producción" density="compact" hide-details variant="outlined" clearable />
             <v-select v-model="detalle.service_id" :items="opcionesServicio" label="Servicio"
               density="compact" hide-details variant="outlined" clearable />
             <v-text-field v-model.number="detalle.cantidad" type="number" label="Cantidad de piezas"
@@ -526,7 +529,7 @@
           <div class="form-grid">
             <v-text-field v-model="tipoDlg.nombre" label="Nombre *" density="compact" hide-details
               variant="outlined" @update:model-value="autoClave" />
-            <v-text-field v-model="tipoDlg.clave" label="Clave interna *" density="compact"
+            <v-text-field v-model="tipoDlg.codigo" label="Clave interna *" density="compact"
               variant="outlined" :disabled="!!tipoDlg.id" persistent-hint
               :hint="tipoDlg.id ? 'No se cambia: es la que enlaza entregables y compromisos'
                 : 'Se genera sola desde el nombre'" />
@@ -604,6 +607,8 @@ const servicios = ref<any[]>([])
 const colaboradores = ref<any[]>([])
 const tiposContenido = ref<any[]>([])
 const areas = ref<any[]>([])
+/** Etapas del pipeline (reunión 07/09/2026): guiones→…→diseño gráfico. Distinto de `areas`. */
+const areasProduccion = ref<any[]>([])
 const compromisos = ref<any[]>([])
 const cumplimientoFilas = ref<any[]>([])
 /** La migración de la reunión puede no estar corrida todavía: se avisa en vez de romper. */
@@ -616,7 +621,7 @@ const fTipo = ref<any>('todos')
 
 /* ══════════ Carga ══════════ */
 async function cargar() {
-  const [e, c, s, col, tc, ar] = await Promise.all([
+  const [e, c, s, col, tc, ar, arp] = await Promise.all([
     traerTodo(() => client.from('piola_deliverables').select('*')
       .order('fecha_compromiso', { ascending: true }).order('id')),
     client.from('piola_clientes').select('*').order('nombre'),
@@ -624,6 +629,7 @@ async function cargar() {
     client.from('piola_colaboradores').select('email, nombre').eq('activo', true).order('nombre'),
     client.from('piola_tipos_contenido').select('*').order('orden').order('id'),
     client.from('piola_areas').select('id, nombre').eq('activo', true).order('orden'),
+    client.from('piola_produccion_areas').select('id, codigo, nombre').eq('activo', true).order('orden'),
   ])
   if (e.error) emit('notify', { text: `Error cargando entregables: ${e.error.message}`, color: 'error' })
   entregables.value = (e.data as any[]) || []
@@ -632,6 +638,7 @@ async function cargar() {
   colaboradores.value = (col.data as any[]) || []
   tiposContenido.value = (tc.data as any[]) || []
   areas.value = (ar.data as any[]) || []
+  areasProduccion.value = (arp.data as any[]) || []
   if (tc.error) faltaMigracion.value = true
   await cargarPeriodo()
 }
@@ -658,6 +665,7 @@ watch(periodo, cargarPeriodo)
 /* ══════════ Derivados y etiquetas ══════════ */
 const nombreCliente = (id: any) => clientes.value.find(c => c.id === id)?.nombre || '—'
 const nombreArea = (id: any) => areas.value.find(a => a.id === id)?.nombre || '—'
+const nombreAreaProduccion = (id: any) => areasProduccion.value.find(a => a.id === id)?.nombre || '—'
 const nombreColaborador = (email: any) =>
   colaboradores.value.find(c => String(c.email).toLowerCase() === String(email).toLowerCase())?.nombre
   || email || 'Sin asignar'
@@ -670,7 +678,7 @@ const iniciales = (email: string) => {
     .map((p: string) => p[0]?.toUpperCase()).join('')
 }
 
-const tipoDe = (clave: any) => tiposContenido.value.find(t => t.clave === clave)
+const tipoDe = (clave: any) => tiposContenido.value.find(t => t.codigo === clave)
 const nombreTipo = (clave: any) => {
   if (!clave || clave === 'sin_clasificar') return 'Sin clasificar'
   return tipoDe(clave)?.nombre || String(clave)
@@ -702,13 +710,28 @@ const opcionesResponsable = computed(() =>
 const opcionesResponsableFiltro = computed(() =>
   [{ value: 'todos', title: 'Todos' }, ...opcionesResponsable.value])
 const opcionesArea = computed(() => areas.value.map(a => ({ value: a.id, title: a.nombre })))
+/**
+ * `piola_produccion_areas` la sembró otra sesión con un guess PRE-reunión
+ * ('rodajes', 'diseno', 'community') que Sebastián corrigió el 07/09
+ * (confirmó guiones/producción/grabación/edición/presentación/diseño
+ * gráfico, sin mencionar las otras tres). No se tocan esas filas viejas
+ * porque la tabla es de la otra sesión y `area_produccion_id` todavía no
+ * las referencia — se filtra acá para que el dropdown muestre exactamente
+ * lo que Sebastián confirmó, sin depender de que alguien limpie la tabla.
+ */
+const CODIGOS_AREA_PRODUCCION_CONFIRMADOS = [
+  'guiones', 'produccion', 'grabacion', 'edicion', 'presentacion', 'diseno_grafico',
+]
+const opcionesAreaProduccion = computed(() => areasProduccion.value
+  .filter(a => CODIGOS_AREA_PRODUCCION_CONFIRMADOS.includes(a.codigo))
+  .map(a => ({ value: a.id, title: a.nombre })))
 const opcionesAreaFiltro = computed(() => [
   { value: 'todas', title: 'Todas las áreas' },
   ...opcionesArea.value,
   { value: 'sin_area', title: 'Sin área' },
 ])
 const tiposActivos = computed(() => tiposContenido.value.filter(t => t.activo !== false))
-const opcionesTipo = computed(() => tiposActivos.value.map(t => ({ value: t.clave, title: t.nombre })))
+const opcionesTipo = computed(() => tiposActivos.value.map(t => ({ value: t.codigo, title: t.nombre })))
 const opcionesTipoFiltro = computed(() => [
   { value: 'todos', title: 'Todos los tipos' },
   ...opcionesTipo.value,
@@ -873,7 +896,7 @@ const headersServicios = [
 ]
 const headersTipos = [
   { title: 'Tipo', key: 'nombre' },
-  { title: 'Clave', key: 'clave' },
+  { title: 'Clave', key: 'codigo' },
   { title: 'Orden', key: 'orden' },
   { title: 'Estado', key: 'activo' },
   { title: '', key: 'acciones', sortable: false },
@@ -906,6 +929,7 @@ async function guardarEntregable() {
     titulo: d.titulo.trim(), cliente_id: d.cliente_id, service_id: d.service_id || null,
     cantidad: Number(d.cantidad || 1), periodo: d.periodo, descripcion: d.descripcion || null,
     tipo_contenido: d.tipo_contenido || null, area_id: d.area_id || null,
+    area_produccion_id: d.area_produccion_id || null,
     fecha_compromiso: d.fecha_compromiso || null,
     fecha_entrega: d.estado === 'entregado' ? (d.fecha_entrega || hoyISO()) : d.fecha_entrega || null,
     estado: d.estado, responsable_email: d.responsable_email || null,
@@ -1010,7 +1034,7 @@ async function sincronizarLineas() {
   }
 
   const existentes = (data as any[]) || []
-  const claves = tiposActivos.value.map(t => t.clave)
+  const claves = tiposActivos.value.map(t => t.codigo)
   // Un tipo desactivado con compromiso vigente se sigue mostrando: ocultarlo
   // borraría el número sin que nadie lo haya decidido.
   for (const c of existentes) if (!claves.includes(c.tipo_contenido)) claves.push(c.tipo_contenido)
@@ -1130,27 +1154,27 @@ function aClave(nombre: string) {
 function abrirTipo(item?: any) {
   tipoDlg.value = item
     ? { ...item }
-    : { nombre: '', clave: '', icono: 'mdi-shape-outline', color: '#3d6fe0',
+    : { nombre: '', codigo: '', icono: 'mdi-shape-outline', color: '#3d6fe0',
         orden: tiposContenido.value.length + 1, activo: true }
 }
 
 function autoClave() {
   // Solo al crear: cambiar la clave de un tipo existente dejaría huérfanos sus
   // entregables y compromisos, que la referencian por texto.
-  if (tipoDlg.value && !tipoDlg.value.id) tipoDlg.value.clave = aClave(tipoDlg.value.nombre)
+  if (tipoDlg.value && !tipoDlg.value.id) tipoDlg.value.codigo = aClave(tipoDlg.value.nombre)
 }
 
 async function guardarTipo() {
   const t = tipoDlg.value
   const nombre = String(t.nombre || '').trim()
-  const clave = aClave(t.clave || t.nombre)
+  const clave = aClave(t.codigo || t.nombre)
   if (!nombre || !clave) {
     return emit('notify', { text: 'El tipo necesita nombre y clave', color: 'error' })
   }
   guardandoTipo.value = true
   const res = await apiPiola('produccion', {
     accion: 'guardar_tipo_contenido', id: t.id || null,
-    clave, nombre, icono: t.icono || null, color: t.color || null,
+    codigo: clave, nombre, icono: t.icono || null, color: t.color || null,
     orden: Number(t.orden || 0), activo: t.activo !== false,
   })
   guardandoTipo.value = false
@@ -1162,7 +1186,7 @@ async function guardarTipo() {
 
 async function alternarTipo(t: any) {
   const res = await apiPiola('produccion', {
-    accion: 'guardar_tipo_contenido', id: t.id, clave: t.clave, nombre: t.nombre,
+    accion: 'guardar_tipo_contenido', id: t.id, codigo: t.codigo, nombre: t.nombre,
     icono: t.icono, color: t.color, orden: t.orden, activo: !t.activo,
   })
   if (res.error) return emit('notify', { text: `Error: ${res.error.message}`, color: 'error' })

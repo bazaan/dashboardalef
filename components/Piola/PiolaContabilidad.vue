@@ -242,10 +242,11 @@
 
         <!-- ══════════ COMISIONES ══════════ -->
         <v-card v-else-if="tab === 'comisiones'" flat class="custom-data-table">
-          <v-alert type="warning" variant="tonal" density="compact" class="ma-4 mb-2">
-            La <b>fórmula exacta del acuerdo con Héctor sigue pendiente</b> de Piola. Hoy se calcula
-            <code>producción cerrada × % del colaborador</code> (el % se configura en su ficha) y se programa
-            el pago para el <b>15 del mes siguiente</b>. Cuando llegue el documento se ajusta solo el cálculo.
+          <v-alert type="info" variant="tonal" density="compact" class="ma-4 mb-2">
+            Reunión 07/09/2026: <b>8 %</b> por lead <b>cerrado</b> (normal) y <b>4 %</b> por lead
+            <b>recomendado</b> — se clasifica a mano en el CRM al marcar el lead ganado, porque el bot de
+            WhatsApp no distingue el origen. Un lead ganado sin clasificar queda fuera del cálculo (avisa
+            al calcular). El pago se programa para el <b>15 del mes siguiente</b>.
           </v-alert>
           <div class="filtros-bar">
             <v-btn v-if="puedeEditar" color="primary" variant="flat" :loading="calculandoComisiones"

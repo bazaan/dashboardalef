@@ -93,6 +93,16 @@ function parseProcedure(raw: string): string {
   return first.replace(/./g, (c) => mapa[c] ?? c).replace(/[^\w\s]/g, ' ').trim()
 }
 
+/**
+ * El agente de IA a veces manda literalmente "0" en vez de dejar el campo vacío
+ * cuando el paciente no dio su DNI real en la conversación — se trata igual que
+ * vacío para no guardar ni mostrar un dato falso.
+ */
+function limpiarPlaceholder(v: string): string {
+  const s = (v ?? '').trim()
+  return s === '0' ? '' : s
+}
+
 /** "Channel::Instagram" → "Instagram"; "Facebook" → "Facebook". Default "Instagram". */
 function parseRedSocial(raw: string): string {
   const val = String(raw ?? '').trim()
@@ -164,7 +174,7 @@ export default defineEventHandler(async (event) => {
   const procedure_id = parseProcedure(tratamientos)
   // En IG/FB "numerotelefono" es un PSID de Messenger, no un teléfono: se guarda tal cual.
   const numero       = String(numerotelefono ?? '').trim()
-  const dniStr       = String(DNI ?? '')
+  const dniStr       = limpiarPlaceholder(String(DNI ?? ''))
   const igHandle     = String(nombre_ig ?? '').trim() || nombre_completo
 
   const results: Record<string, any> = {}

@@ -96,6 +96,16 @@ function normalizePhone(raw: string | number): string {
   return str
 }
 
+/**
+ * El agente de IA a veces manda literalmente "0" en vez de dejar el campo vacío
+ * cuando el paciente no dio su DNI o número real en la conversación de WhatsApp
+ * — se trata igual que vacío para no guardar ni mostrar un dato falso.
+ */
+function limpiarPlaceholder(v: string): string {
+  const s = (v ?? '').trim()
+  return s === '0' ? '' : s
+}
+
 // ── Handler principal ─────────────────────────────────────────────────────────
 
 export default defineEventHandler(async (event) => {
@@ -153,8 +163,8 @@ export default defineEventHandler(async (event) => {
   const date         = isoToDateStr(inicio_cita)
   const time         = isoToTimeStr(inicio_cita)
   const procedure_id = parseProcedure(tratamientos)
-  const phone        = normalizePhone(numerotelefono)
-  const dniStr       = String(DNI ?? '')
+  const phone        = limpiarPlaceholder(normalizePhone(numerotelefono))
+  const dniStr       = limpiarPlaceholder(String(DNI ?? ''))
 
   const results: Record<string, any> = {}
 

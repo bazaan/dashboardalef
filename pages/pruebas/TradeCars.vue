@@ -656,66 +656,12 @@
       </div>
 
       <!-- ==========  VISTA: COMPRAS  ========== -->
-      <div v-else-if="activeView === 'compras'" class="view-container">
-        <header class="top-header">
-          <h1>Compras / Tasaciones</h1>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <button class="btn-primary" @click="nuevaCompra"><v-icon icon="mdi-plus" size="16" /><span>Registrar compra</span></button>
-            <button class="btn-primary" @click="fetchCompras"><v-icon icon="mdi-refresh" size="16" /><span>Actualizar</span></button>
-          </div>
-        </header>
-        <div class="content-area">
-          <v-card flat class="custom-data-table">
-            <v-card-title class="table-search-bar">
-              <span class="table-title">Autos comprados ({{ compras.length }})</span>
-              <v-spacer />
-              <v-text-field v-model="searchCompras" prepend-inner-icon="mdi-magnify" placeholder="Buscar..."
-                density="compact" hide-details style="max-width: 240px;" />
-            </v-card-title>
-            <v-data-table :headers="headersCompras" :items="comprasFiltradas" :loading="loadingCompras"
-              class="elevation-0" no-data-text="No hay compras" :items-per-page="20">
-              <template v-slot:item.precio_compra="{ item }">{{ money(item.precio_compra) }}</template>
-              <template v-slot:item.precio_tasacion="{ item }">{{ money(item.precio_tasacion) }}</template>
-              <template v-slot:item.estado="{ item }">
-                <v-chip size="small" variant="tonal" style="text-transform: capitalize;">{{ item.estado }}</v-chip>
-              </template>
-              <template v-slot:item.acciones="{ item }">
-                <v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="eliminarCompra(item)" />
-              </template>
-            </v-data-table>
-          </v-card>
-        </div>
-
-        <v-dialog v-model="showCompraDialog" max-width="700" persistent>
-          <v-card v-if="compraForm">
-            <v-card-title class="pt-4">Registrar compra</v-card-title>
-            <v-card-text>
-              <div class="form-grid-2">
-                <v-text-field v-model="compraForm.proveedor_nombre" label="Vendedor (dueño) *" density="compact" hide-details />
-                <v-text-field v-model="compraForm.proveedor_telefono" label="Teléfono" density="compact" hide-details />
-                <v-text-field v-model="compraForm.marca" label="Marca" density="compact" hide-details />
-                <v-text-field v-model="compraForm.modelo" label="Modelo" density="compact" hide-details />
-                <v-text-field v-model.number="compraForm.anio" type="number" label="Año" density="compact" hide-details />
-                <v-text-field v-model="compraForm.placa" label="Placa" density="compact" hide-details />
-                <v-text-field v-model.number="compraForm.kilometraje" type="number" label="Kilometraje" density="compact" hide-details />
-                <v-text-field v-model.number="compraForm.precio_tasacion" type="number" label="Precio tasación (S/)" density="compact" hide-details />
-                <v-text-field v-model.number="compraForm.precio_compra" type="number" label="Precio compra (S/) *" density="compact" hide-details />
-                <v-select v-model="compraForm.estado" :items="['tasacion', 'negociacion', 'completada', 'descartada']" label="Estado" density="compact" hide-details />
-                <v-text-field v-model="compraForm.fecha_compra" type="date" label="Fecha" density="compact" hide-details />
-                <v-switch v-model="compraForm.tiene_deuda" label="Tiene deuda" color="warning" density="compact" hide-details inset />
-              </div>
-              <v-checkbox v-model="compraForm.crear_vehiculo" label="Agregar también al inventario de vehículos"
-                density="compact" hide-details class="mt-2" />
-              <v-textarea v-model="compraForm.notas" label="Notas" rows="2" density="compact" hide-details class="mt-3" auto-grow />
-            </v-card-text>
-            <v-card-actions>
-              <v-spacer />
-              <v-btn variant="text" @click="showCompraDialog = false">Cancelar</v-btn>
-              <v-btn color="primary" variant="flat" @click="guardarCompra">Guardar</v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-dialog>
-      </div>
+      <!-- "Compras" ahora muestra el histórico real de operaciones (14/09/2026) — ver
+           components/TradeCars/HistoricoComprasVentas.vue. Reemplaza la tabla vieja
+           `tradecars_compras` (casi sin uso, 0 filas) que sólo servía para registrar
+           tasaciones sueltas; esa tabla queda intacta en la base (el Tasador todavía
+           la consulta en resumen_precio_referencia) pero ya no tiene pantalla propia. -->
+      <HistoricoComprasVentas v-else-if="activeView === 'compras'" @notificar="notify" />
 
       <!-- ==========  VISTA: LEADS  ========== -->
       <div v-else-if="activeView === 'leads'" class="view-container">
@@ -1087,6 +1033,7 @@ import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessTradeCars, dashboards, tradecarsCan } from '@/utils/permissions'
 import RemarketingPanel from '@/components/RemarketingPanel.vue'
 import TradeCarsConfiguracion from '@/components/TradeCars/TradeCarsConfiguracion.vue'
+import HistoricoComprasVentas from '@/components/TradeCars/HistoricoComprasVentas.vue'
 
 const { logActivity } = useActivityLogger()
 
@@ -1648,85 +1595,6 @@ async function eliminarVenta(v: any) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   COMPRAS
-   ══════════════════════════════════════════════════════════════════════════ */
-const compras = ref<any[]>([])
-const loadingCompras = ref(false)
-const searchCompras = ref('')
-const showCompraDialog = ref(false)
-const compraForm = ref<any>(null)
-
-const comprasFiltradas = computed(() => {
-  if (!searchCompras.value) return compras.value
-  const q = searchCompras.value.toLowerCase()
-  return compras.value.filter(c => [c.proveedor_nombre, c.marca, c.modelo, c.placa]
-    .some(x => String(x ?? '').toLowerCase().includes(q)))
-})
-
-const headersCompras = [
-  { title: 'Fecha', key: 'fecha_compra' },
-  { title: 'Vendedor', key: 'proveedor_nombre' },
-  { title: 'Teléfono', key: 'proveedor_telefono' },
-  { title: 'Marca', key: 'marca' },
-  { title: 'Modelo', key: 'modelo' },
-  { title: 'Año', key: 'anio' },
-  { title: 'Placa', key: 'placa' },
-  { title: 'Tasación', key: 'precio_tasacion' },
-  { title: 'Compra', key: 'precio_compra' },
-  { title: 'Estado', key: 'estado' },
-  { title: '', key: 'acciones', sortable: false, width: 60 },
-]
-
-async function fetchCompras() {
-  loadingCompras.value = true
-  const { data, error } = await client.from('tradecars_compras').select('*').order('fecha_compra', { ascending: false })
-  if (error) notify('Error cargando compras: ' + error.message, 'error')
-  compras.value = data || []
-  loadingCompras.value = false
-}
-function nuevaCompra() {
-  compraForm.value = {
-    proveedor_nombre: '', proveedor_dni: '', proveedor_telefono: '',
-    marca: '', modelo: '', anio: null, placa: '', kilometraje: null,
-    precio_tasacion: null, precio_compra: null, tiene_deuda: false,
-    estado: 'completada', asesor: currentUser.value.full_name || '',
-    fecha_compra: new Date().toISOString().slice(0, 10), notas: '', crear_vehiculo: true,
-  }
-  showCompraDialog.value = true
-}
-async function guardarCompra() {
-  const f = compraForm.value
-  if (!f?.proveedor_nombre?.trim()) { notify('El vendedor es obligatorio', 'error'); return }
-  if (!f?.precio_compra) { notify('El precio de compra es obligatorio', 'error'); return }
-
-  const { crear_vehiculo, ...payload } = f
-  let vehiculo_id: string | null = null
-
-  // Si se pide, primero crea el vehículo en inventario
-  if (crear_vehiculo) {
-    const { data, error } = await (client.from('tradecars_vehiculos') as any).insert({
-      marca: f.marca, modelo: f.modelo, anio: f.anio, placa: f.placa, kilometraje: f.kilometraje,
-      precio_compra: f.precio_compra, estado: 'en_preparacion', tiene_deuda: !!f.tiene_deuda,
-      propietario_nombre: f.proveedor_nombre, fecha_ingreso: f.fecha_compra,
-    }).select('id').single()
-    if (error) { notify('Error creando el vehículo: ' + error.message, 'error'); return }
-    vehiculo_id = data?.id ?? null
-  }
-
-  const { error } = await (client.from('tradecars_compras') as any).insert({ ...payload, vehiculo_id })
-  if (error) { notify('Error guardando: ' + error.message, 'error'); return }
-  notify(crear_vehiculo ? 'Compra registrada y auto agregado al inventario' : 'Compra registrada')
-  showCompraDialog.value = false
-  await Promise.all([fetchCompras(), fetchVehiculos()])
-}
-async function eliminarCompra(c: any) {
-  if (!confirm('¿Eliminar esta compra?')) return
-  const { error } = await client.from('tradecars_compras').delete().eq('id', c.id)
-  if (error) { notify('Error eliminando: ' + error.message, 'error'); return }
-  notify('Compra eliminada'); await fetchCompras()
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
    LEADS
    ══════════════════════════════════════════════════════════════════════════ */
 const leadsWpp = ref<any[]>([])
@@ -2246,7 +2114,7 @@ const chartOptions = computed<ApexOptions>(() => ({
 async function refreshAll() {
   await Promise.all([
     fetchSolicitudes(), fetchClientes(), fetchVehiculos(),
-    fetchVentas(), fetchCompras(), fetchLeads(), fetchCitas(), fetchEgresos(),
+    fetchVentas(), fetchLeads(), fetchCitas(), fetchEgresos(),
     fetchFunnel(),
   ])
   notify('Datos actualizados')
@@ -2260,7 +2128,7 @@ onMounted(async () => {
   applyTheme()
   await Promise.all([
     fetchSolicitudes(), fetchClientes(), fetchVehiculos(),
-    fetchVentas(), fetchCompras(), fetchLeads(), fetchCitas(), fetchEgresos(),
+    fetchVentas(), fetchLeads(), fetchCitas(), fetchEgresos(),
     fetchFunnel(), fetchPerfilTC(),
   ])
 })

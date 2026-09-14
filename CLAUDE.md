@@ -633,8 +633,61 @@ resto queda vacío antes que inventarlo.
 
 **Guía para conectar el CRM:** `referencia/n8n/tradecars-funnel-guia.md` + el workflow
 importable `tradecars-funnel-workflow.json` (webhook Chatwoot → n8n → endpoint). El Code
-node traduce `Channel::Whatsapp` → `WhatsApp`, normaliza fechas epoch/ISO y **descarta los
-eventos sin clasificar**: Chatwoot dispara `conversation_updated` en cada mensaje.
+node traduce el canal por `inbox_id`, normaliza fechas epoch/ISO y **descarta los eventos
+sin clasificar**: Chatwoot dispara `conversation_updated` en cada mensaje.
+
+**Chatwoot usa UN solo custom attribute (`estado`), el endpoint sigue esperando DOS
+(`perfil_coincide` + `status`).** El 26/08 se documentó con dos campos separados; el 14/09
+Trade Cars lo simplificó en Chatwoot a un solo dropdown `estado` con los nombres de las 7
+etapas del embudo (`lead`, `cumple_politica`, `contactado`, `interesado`, `cita_agendada`,
+`cita_asistida`, `compra`), más una automatización de Chatwoot que le pone una etiqueta de
+color a juego (sólo cosmético — n8n no la lee). El endpoint **no cambió**, porque
+`perfil_coincide`/`status` son los que alimentan las columnas `GENERATED`
+`etapa`/`etapa_rank` y el trigger anti-regresión sobre miles de leads ya migrados — tocar
+eso para acomodar el nombre nuevo era el cambio más riesgoso posible por el beneficio más
+chico. La traducción `estado → (perfil_coincide, status)` vive sólo en el nodo **Armar
+payload** de n8n (tabla completa en el Paso 1b de la guía), verificada contra
+`utils/tradecarsFunnel.ts` para que cada valor caiga en su barra exacta. `lead` manda
+`perfil_coincide` vacío y no `"NO"` — `"NO"` es un rechazo definitivo (política de compra),
+`lead` es sólo "todavía sin calificar". La etiqueta `clientes` de Chatwoot no es una de las
+7 etapas y queda sin mapear a propósito — confirmado con el cliente (14/09) que por ahora
+eso se revisa a mano; si se selecciona, el nodo no manda nada, para no borrar por error una
+clasificación que el lead ya tenía.
+
+**La campaña ES el canal de origen — no hay (ni hace falta) un custom attribute `campana`
+en Chatwoot.** Decisión del cliente (14/09): el nodo deriva `campana` del mismo `inbox_id`
+que usa para `canal`, con una única excepción a propósito — el inbox 83 es `canal="Facebook"`
+(mismo criterio que el resto del proyecto para el filtro de canal) pero `campana="Messenger"`
+(así lo quiere ver el cliente en este reporte puntual). `"WEB"` queda reservado como quinto
+valor para cuando se conecte el formulario de la web (`server/api/tradecars/formulario.ts`)
+a este mismo campo — hoy ese endpoint escribe en `tradecars_solicitudes_venta`/`compra`, una
+tabla aparte, y no toca `tradecars_funnel_leads.campana` en absoluto.
+
+> ⚠️ **BUG REAL encontrado y corregido el 14/09/2026 en el nodo "Armar payload":
+> nunca leyó el payload real de Chatwoot.** El Webhook de n8n siempre entrega
+> `{ headers, params, query, body, webhookUrl, executionMode }` — el POST real
+> vive en `item.json.body`, nunca al nivel raíz de `item.json`. El Code node
+> (desde el 26/08, sin tocar esto hasta ahora) leía directo de `item.json` y
+> por eso **cada ejecución mandaba el payload completamente vacío**
+> (`conversation_id: null`, todos los strings `""`, `_enviar:false`), sin
+> ningún error visible en n8n — se veía "verde" igual. Se descubrió el 14/09
+> cuando el cliente probó en vivo poniendo `estado="lead"` a un contacto real y
+> el nodo salió en blanco pese a que el nodo **Webhook Chatwoot** sí mostraba
+> el payload correcto. Fix: `const c = raw.body ?? raw;` como primera línea
+> del loop, antes del ya existente `conv = c.conversation || c`. De paso se
+> agregó un fallback para `account_id` (`conv.messages?.[0]?.account_id`),
+> porque el payload real de Chatwoot no lo trae al nivel de la conversación,
+> sólo dentro de `messages[0]`. Verificado contra el payload real pineado por
+> el cliente (conversación 1858, inbox 83, `estado="interesado"`): con el fix
+> resuelve `canal="Facebook"`, `campana="Messenger"`, `perfil_coincide="SI"`,
+> `status="EN SEGUIMIENTO"`, `account_id=17`, `_enviar=true`. **Cualquier
+> workflow ya importado en n8n antes de esta fecha sigue con el bug** hasta
+> que alguien reemplace el código del nodo "Armar payload" a mano o reimporte
+> el JSON — ver el aviso al inicio de `tradecars-funnel-guia.md`. Mis propios
+> tests anteriores (`run_code_node.mjs` etc.) no lo detectaron porque mockeaban
+> `item.json` ya "desenvuelto" (plano, sin el sobre `{headers,body,...}` de
+> n8n) en vez de simular un Webhook real — lección para cualquier test futuro
+> de un Code node detrás de un Webhook trigger.
 
 **Pendiente del cliente:** definir la lista real de MOTIVO DE NO CITA (hay 8 sembrados de ejemplo).
 Los 4 asesores ya están cargados en `tradecars_asesores` y sus nombres coinciden con
@@ -648,9 +701,12 @@ Módulo de nav propio ("Tasador"), no un widget flotante como `HealupAgent`. Reu
 `OPENAI_API_KEY` (la misma que Whisper y el OCR de SGS). Diseño clave: **todo el loop de
 function calling corre en el servidor**, a diferencia de `HealupAgent` (que ejecuta los
 tools en el cliente y hace ping-pong con el navegador). El componente Vue sólo manda
-`{ messages: [{role, content}] }` en texto plano y recibe `{ reply: string }` — nunca ve
+`{ messages: [{role, content}] }` en texto plano y recibe `{ reply, propuestas }` — nunca ve
 `tool_calls` ni nombres de tabla, así que el bundle del navegador no expone el esquema
 interno.
+
+Hace **dos cosas distintas**: responde sobre el negocio (embudo, asesores, campañas, stock,
+ventas) y **le enseña al Agente Tasador que atiende WhatsApp** — ver la sección siguiente.
 
 **Prioridad de respuesta (pedido explícito del cliente):** primero las tablas propias de
 Trade Cars, recién si no hay dato interno cae al conocimiento general del modelo — y el
@@ -659,22 +715,205 @@ propios de este modelo..."). No hay búsqueda real en internet (no hay una API d
 configurada en el proyecto): el "segundo con internet" que pidió el cliente se resuelve con
 el conocimiento general de ChatGPT, no con navegación en vivo.
 
-**Tools (todas de sólo lectura, ninguna escribe en la BD):**
+**Tools de lectura:**
 
 | Tool | Qué consulta |
 |---|---|
-| `resumen_precio_referencia` | La principal para tasar. Cruza `tradecars_compras` (completadas) + `tradecars_funnel_leads` (negociaciones concretadas, `monto_mejorado`) para una marca/modelo y devuelve casos/mínimo/promedio/máximo |
+| `buscar_comparables_historicos` | `tradecars_data_historico_compras_ventas` — **los comparables reales que usa el Tasador de WhatsApp**. Es la fuente principal de cualquier tasación |
+| `consultar_precio_vehiculo_nuevo` | `tradecars_data_precios_vehiculos_nuevos` — precio del 0km, que funciona como techo |
+| `resumen_precio_referencia` | Cruza `tradecars_compras` (completadas) + `tradecars_funnel_leads` (negociaciones concretadas, `monto_mejorado`) y devuelve casos/mínimo/promedio/máximo |
+| `resumen_funnel` | Las 7 barras del embudo con filtros de fecha/asesor/canal. Cuenta con `head:true` en la base, no trae filas |
+| `metricas_por_asesor` | Compara asesores entre sí: leads, citas, compras, conversión y leads sin estado |
+| `costos_campanas` | `tradecars_campana_costos` cruzado con el embudo: inversión, costo por lead e inversión por compra |
+| `leads_sin_estado` | Leads con `etapa_rank < 0` — los que el asesor nunca marcó y quedan fuera del embudo |
 | `buscar_vehiculos_stock` | `tradecars_vehiculos` — inventario actual |
-| `buscar_compras_historicas` | `tradecars_compras` — detalle de compras (tasación vs precio final) |
 | `buscar_ventas_historicas` | `tradecars_ventas` — detalle de ventas + margen calculado |
-| `buscar_negociaciones_funnel` | `tradecars_funnel_leads` — propuesta inicial vs monto mejorado vs expectativa del cliente |
-| `buscar_solicitudes_venta` | `tradecars_solicitudes_venta` — lo que pidió el dueño en el formulario web, antes de negociar |
+| `buscar_negociaciones_funnel` | `tradecars_funnel_leads` — propuesta inicial vs monto mejorado vs expectativa |
+| `buscar_solicitudes_venta` | `tradecars_solicitudes_venta` — lo que pidió el dueño en el formulario web |
 
-Historial guardado en `localStorage` del navegador (`usePersistente`), no en Supabase: es
-apoyo de trabajo del asesor, no un registro que otros necesiten auditar.
+Historial de la conversación guardado en `localStorage` del navegador (`usePersistente`), no
+en Supabase: es apoyo de trabajo del asesor. Lo que **sí** se audita en base es cada cambio de
+configuración y cada ejecución del chat (`agent_tool_logs`, `tool_name='Tasador · Chat'`).
 
 **Variable de entorno opcional:** `TRADECARS_TASADOR_MODEL` (default `gpt-4o`, mismo patrón
 que `SGS_OCR_MODEL`).
+
+---
+
+### Enseñarle al Agente Tasador de WhatsApp — sistema de dos niveles
+
+Implementa lo acordado en la reunión del **26/08/2026**: que Trade Cars pueda "educar" al
+tasador sin poder romperlo.
+
+**La clave arquitectónica:** el Agente Tasador vive en n8n (workflow
+`TRADECARS | WHATSAPP | Agente Tasador`, id `iFeOCsDlZTxoWJmH`) pero **no tiene ni un número
+hardcodeado**. Su prompt tiene una regla absoluta: *"NUNCA hardcodear parámetros — SIEMPRE
+leerlos vía Tool 1 en cada tasación"*, y si esa tool falla devuelve
+`{ sin_datos: true, error: "configuracion_no_disponible" }` en vez de inventar defaults. Esa
+Tool 1 (`obtener_configuracion`, workflow `FNo6fnEj51kJm38i`) lee **tres tablas de Supabase**,
+que son exactamente las que el dashboard edita. No hay copia paralela ni redeploy: lo que un
+supervisor cambia entra en la siguiente tasación.
+
+| Tabla | Qué guarda |
+|---|---|
+| `tradecars_config_parametros_tasador` | Los **24 parámetros** de tasación (`clave`/`valor`), con `unidad`, `categoria`, `descripcion` y las barandas `minimo`/`maximo` |
+| `tradecars_config_reglas_marca_modelo` | Ajustes por marca/modelo: `tipo_ajuste` ∈ resta_usd / suma_usd / resta_pct / suma_pct / flag, con condiciones de año y GNV/GLP |
+| `tradecars_config_modelos_alta_rotacion` | Modelos donde el Tasador no descuenta preventivamente y cotiza en el extremo alto |
+| `tradecars_tasador_cambios` | Historial de todo cambio + las solicitudes derivadas a Alef |
+
+**Nivel 1 — lo cambia Trade Cars solo:** valores de los 24 parámetros, reglas por marca/modelo
+y alta rotación. El chat **propone** (tools `proponer_*`) y devuelve las propuestas en
+`{ propuestas }`; la UI las muestra como tarjetas y **sólo al confirmar** se llama a
+`POST /api/tradecars/tasador-config`, que valida contra `minimo`/`maximo` y deja auditoría.
+**El chat nunca escribe configuración por su cuenta** — ese es el punto de todo el diseño.
+
+**Nivel 2 — lo implementa Alef:** cambiar la lógica o el orden del cálculo, agregar una
+pregunta al flujo de conversación, cambiar el formato de salida, o crear un parámetro que hoy
+no existe. El chat lo deriva con `solicitar_cambio_a_alef` y queda en
+`tradecars_tasador_cambios` con `estado='pendiente_alef'`, visible en la pestaña Historial.
+Sólo un superadmin de Alef puede cerrarlo (`resolver_solicitud`).
+
+**Reglas que NO son obvias:**
+
+- **No se pueden crear claves de parámetro nuevas desde la UI.** El prompt lee un set fijo:
+  una clave inventada no cambiaría nada en la tasación real, así que el endpoint la rechaza y
+  sugiere una solicitud a Alef. Mismo criterio con los flags: el único que el prompt sabe
+  interpretar es `usar_tasa_km_generica`.
+- **Sólo `admin` y `superadmin` editan** (`puedeEditarTasador()` en `server/utils/tradecars.ts`).
+  Un asesor puede conversar y consultar, pero no tocar los números con los que la empresa
+  decide cuánto paga por un auto.
+- **El endpoint GET expone un bloque `salud`** que avisa si el Tasador no está en condiciones
+  de cotizar (sin parámetros, sin comparables o sin precios de 0km). Sin eso, el estado
+  "configurado pero incapaz de tasar" sólo se descubre en una conversación con un cliente real.
+- **`leerConfigTasador()` degrada a un set mínimo de columnas** si la migración todavía no se
+  corrió: las tablas ya existían en la base sin las columnas de auditoría, y pedirlas devuelve
+  400. Así el módulo abre igual y la UI puede avisar que falta correr el SQL.
+
+**Migración:** correr una vez `sql/tradecars_tasador_config.sql` (idempotente). Los 24
+parámetros, las 2 reglas y los 2 modelos de alta rotación **ya estaban cargados** por quien
+armó el Tasador, así que los `INSERT` no hacen nada: los valores y descripciones de ellos
+mandan. Lo que la migración sí aporta sobre esas filas es `minimo`/`maximo` —las barandas que
+usa el endpoint para rechazar un valor absurdo—, las policies de `anon`, y las tablas de
+historial e importaciones. **Los valores siguen pendientes de confirmación formal de Trade
+Cars** vía el cuestionario de 32 preguntas, que sigue sin responderse.
+
+> La migración usa la convención de auditoría que ya traían las tablas (`actualizado_en` /
+> `actualizado_por`) y elimina el juego paralelo en inglés que una versión anterior de este
+> mismo archivo había agregado. No volver a introducir `updated_at`/`updated_by` acá.
+
+> ⚠️ **CUIDADO AL DIAGNOSTICAR: `SUPABASE_KEY` NO es la service_role.** En `.env` conviven
+> `SUPABASE_KEY` (clave **publicable**, sujeta a RLS) y `SUPABASE_SERVICE_KEY` (JWT con
+> `role=service_role`, que es la que usa `serverSupabaseServiceRole()` y sí ignora RLS).
+>
+> Las tablas del Tasador tienen RLS sin policy para `anon`, así que **leerlas con
+> `SUPABASE_KEY` devuelve 0 filas sin ningún error**. El 11/09/2026 eso llevó a concluir que
+> estaban vacías y que el agente no podía cotizar; con la service_role key aparecieron
+> **1.305 comparables y 89 precios de 0km**. Antes de afirmar que una tabla de Trade Cars está
+> vacía, verificar con `SUPABASE_SERVICE_KEY`.
+
+---
+
+### Carga del histórico por Excel / CSV / PDF — `server/api/tradecars/tasador-datos.post.ts`
+
+Las dos tablas de datos del Tasador se llenan desde la pestaña **Datos** del módulo, sin scripts.
+
+| Acción | Qué hace |
+|---|---|
+| `analizar` | Lee el archivo, propone el mapeo de columnas y devuelve una vista previa **ya convertida** |
+| `importar` | Valida, convierte e inserta en lotes de 500, marcando cada fila con `import_batch_id` |
+| `deshacer` | Borra sólo las filas de esa carga (`DELETE WHERE import_batch_id = …`) |
+| `listar` | Últimas 30 importaciones |
+
+**El modelo sólo ve los encabezados y 3 filas de muestra**, nunca las ~9.000 filas de datos: su
+único trabajo es decidir "esta columna es el precio de venta". El traslado de los valores es
+determinista, así que el modelo no puede inventar un precio. La excepción es el PDF, donde no
+hay grilla que extraer de forma determinista: ahí sí se le pasa el texto y se le pide la tabla,
+con instrucción explícita de poner `null` antes que inventar.
+
+**Reglas que NO son obvias:**
+
+- **El punto es ambiguo en esta base.** Conviven `120.000` (ciento veinte mil, formato peruano)
+  y `11500.50` (formato inglés). La regla que los separa en `aNumero()` es la cantidad de
+  dígitos detrás del separador: **exactamente tres es miles, cualquier otra cantidad es
+  decimal**. Sin esa regla, un kilometraje de 120.000 entraba como 120 y un precio de 9.900
+  como 9.9 — los dos casos se detectaron probando con un Excel de muestra, no en revisión.
+- **La vista previa muestra los valores convertidos, no los crudos.** Es el único punto donde
+  alguien puede notar a tiempo que una columna se mapeó mal o que una fecha quedó invertida.
+- **Si un lote falla, se borra todo lo ya insertado de esa carga.** Una importación a medias es
+  peor que ninguna: el Tasador cotizaría con datos parciales sin que nadie lo sepa.
+- **Las fechas ambiguas se leen como dd/mm/yyyy**, que es el formato peruano.
+- `.xls` antiguo (BIFF) no se lee: hay que guardarlo como `.xlsx`. Un PDF escaneado tampoco,
+  porque no tiene capa de texto.
+- **`exceljs` y `unpdf` se importan de forma estática, no dinámica.** Con `await import()` el
+  loader ESM de Nitro en dev sobre Windows falla con *"Only URLs with a scheme in: file, data,
+  and node are supported… Received protocol 'c:'"*. Ya pasó una vez; no volver a cambiarlo a
+  import dinámico.
+
+---
+
+### Comparativo por asesor — `components/TradeCars/FunnelCompras.vue`
+
+Pedido del cliente el 14/09/2026 para que el embudo se parezca al reporte que ya usaban en
+Power BI: además del embudo agregado, una sección **"Comparativo por asesor"** con un
+selector de asesor (chips) y, para el asesor activo, su propio embudo de 7 barras +
+un desglose por campaña ("Campañas"). Reutiliza `tcConstruirFunnel()` sobre subconjuntos
+de `leadsFiltrados` — nunca puede contradecir al embudo de arriba, y respeta los mismos
+filtros de fecha/canal (el asesor lo elige aparte, con chips, no con el `<select>` de
+arriba).
+
+**El selector de asesor mezcla el catálogo con lo que hay realmente en los datos**
+(`asesoresParaComparar` = `tradecars_asesores` ∪ `asesor` distintos de los leads), igual que
+ya hacía `opcionesAsesor`. Esto expuso algo real: el histórico de 8.737 leads usa nombres
+abreviados (`JOSE F.` con 7.227 leads, `LUIS A.` con 1.284, `LUIS C.` con 225) que **no
+calzan** con los 4 nombres del catálogo (`tradecars_asesores`: Rodrigo Paredes, Jose Flores,
+Brado Alvarado, Gino Hurtado) — no hay ningún "Luis" en el catálogo. Sin reconciliar, el
+comparativo muestra 7 chips en vez de 4. Verificado contra la base real, no es un bug de este
+código: es un dato de origen sin normalizar, pendiente de que el cliente decida cómo
+mapearlo (¿"JOSE F." es el mismo "Jose Flores"? ¿A quién de los 4 se le asignan "LUIS A."
+y "LUIS C."?).
+
+**Las columnas de campaña son dinámicas, no fijas.** Se listan primero las 4 campañas
+reales confirmadas el 14/09 (WhatsApp, Instagram, TikTok, Messenger, más "WEB" si algún día
+tiene datos) que tenga ese asesor, y después cualquier otro valor de `campana` que aparezca
+en sus leads — el histórico trae nombres de campaña del Excel viejo (`VENDE TU AUTO`,
+`TIK TOK`, `LIMA REGULAR`, `NEOAUTO`…) que **no se fuerzan** a encajar en las 4 nuevas,
+para no perder ese historial ni inventar una equivalencia que nadie confirmó.
+
+---
+
+### Roles y permisos por módulo — `sql/tradecars_roles.sql` (14/09/2026)
+
+Mismo diseño que el de Piola (`piola_roles`/`piola_role_permissions`/`piola_colaboradores`),
+para que **qué módulos ve cada quien en el menú** dependa de su rol en
+`tradecars_colaboradores`, no del rol global de `dashboardlogin`. Tablas nuevas:
+`tradecars_roles`, `tradecars_role_permissions` (7 módulos: `home`, `funnel`, `comercial`,
+`operaciones`, `finanzas`, `tasador`, `configuracion`), `tradecars_colaboradores` (enlaza por
+`email` con `dashboardlogin`, igual que Piola — **no** crea accesos ni contraseñas).
+
+Sembrados 3 roles según los cargos reales que dio el cliente el 14/09: **Administrador**
+(acceso total), **Jefe de Compras**, **Asesor de Compras**, con un checklist de permisos de
+arranque razonable (editable desde la UI, no confirmado campo por campo con el cliente). Los
+9 colaboradores reales quedaron enlazados a su rol por email.
+
+**Diferencia real con Piola, para no prometer más de lo que esto hace:** en Piola TODA
+escritura pasa por un endpoint de `server/api/piola/` que llama `exigirModulo()`, así que el
+permiso se aplica dos veces (menú + servidor). Trade Cars sigue escribiendo la mayoría de sus
+tablas operativas DIRECTO desde el navegador contra Supabase (RLS abierta a `anon`, como
+estaba desde antes de este cambio) — no hay un endpoint de por medio que pueda volver a
+verificar. Este sistema controla lo que se pidió explícitamente: **qué ve** cada quien en el
+menú (`GET /api/tradecars/perfil` + `tradecarsCan()` en `utils/permissions.ts`). Lo que sí
+pasa por un endpoint propio y sí exige Administrador en el servidor
+(`exigirAdminTradeCars()`, `server/api/tradecars/configuracion.post.ts`) es la gestión de
+roles y colaboradores en sí — crear un rol, marcar un permiso, dar de alta a alguien.
+
+**Falla "abierto", nunca "cerrado".** `resolverPerfilTradeCars()` (`server/utils/tradecars.ts`)
+trata cualquier error al consultar `tradecars_colaboradores` (por ejemplo, la migración
+todavía no corrida) como "sistema de roles no configurado" y deja pasar como Administrador —
+Trade Cars ya tenía gente trabajando con el menú completo antes de este cambio, y una
+migración pendiente no puede dejarlos de golpe sin ver Funnel/Operaciones/Tasador. El
+frontend (`pages/pruebas/TradeCars.vue`, `puedeVer()`) tiene el mismo criterio como segunda
+red: sin `permisos` resuelto, se sigue viendo todo. Sólo se oculta un módulo cuando hay un
+rol real que explícitamente no lo incluye.
 
 ---
 
@@ -757,7 +996,12 @@ GATWICK_LLAMADA_DESTINO_FALLBACK=          # número(s) destino si gatwick_alert
 - **Permisos:** Siempre verificar rol en el servidor, el middleware solo protege navegación
 - **company_id:** Los valores en BD tienen capitalización inconsistente — `permissions.ts` hace lowercase + fuzzy match para normalizar
 - **PSE.PE tokens:** JWT hardcodeados en `server/api/pse/factura.post.ts` (no en `.env`) porque son por empresa
-- **Supabase Service Role Key:** La key en `.env` es `service_role` (no `anon`), tiene acceso total a la BD sin RLS
+- **Supabase — hay DOS keys y no son intercambiables:** `SUPABASE_KEY` es la clave
+  **publicable** y está sujeta a RLS; `SUPABASE_SERVICE_KEY` es el JWT con `role=service_role`
+  y es la que ignora RLS. `serverSupabaseServiceRole()` usa la segunda. Consultar una tabla con
+  RLS usando `SUPABASE_KEY` devuelve **0 filas sin error**, que es indistinguible de una tabla
+  vacía — ya causó un diagnóstico equivocado (ver el aviso en la sección del Tasador de Trade
+  Cars). Para inspeccionar datos a mano, usar siempre `SUPABASE_SERVICE_KEY`.
 
 ---
 

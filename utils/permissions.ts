@@ -224,6 +224,36 @@ export function piolaCan(
     return p[`can_${accion}`] === true
 }
 
+// Módulos del menú de Trade Cars (pedido del cliente el 14/09/2026: roles y
+// permisos por módulo, igual que Piola). 'home' lo ve todo el mundo — se
+// resuelve contra tradecars_role_permissions vía GET /api/tradecars/perfil.
+export const TRADECARS_MODULES = [
+    'home', 'funnel', 'comercial', 'operaciones', 'finanzas', 'tasador', 'configuracion'
+] as const
+
+export type TradeCarsModule = typeof TRADECARS_MODULES[number]
+
+/**
+ * ¿El usuario puede ver/operar un módulo del dashboard Trade Cars?
+ *
+ * Mismo patrón que piolaCan(): sólo pinta el menú. A diferencia de Piola,
+ * la mayoría de las tablas de Trade Cars todavía se escriben directo desde
+ * el navegador (RLS abierta a anon) — este permiso no es la única puerta,
+ * salvo para /api/tradecars/configuracion (roles y colaboradores), que sí
+ * lo vuelve a verificar en el servidor.
+ */
+export function tradecarsCan(
+    permisos: Record<string, any> | null | undefined,
+    module: TradeCarsModule,
+    accion: 'view' | 'create' | 'edit' | 'delete' = 'view',
+): boolean {
+    if (!permisos) return false
+    if (permisos.__admin === true) return true
+    const p = permisos[module]
+    if (!p) return false
+    return p[`can_${accion}`] === true
+}
+
 export function getDashboardPathByCompanyId(companyId: string | undefined | null): string {
     if (!companyId) return '/'
 

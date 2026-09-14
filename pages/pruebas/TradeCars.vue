@@ -90,6 +90,15 @@
             <span>Remarketing</span>
           </button>
         </div>
+
+        <div v-if="sistemaItems.length" class="nav-section">
+          <div class="nav-label">Sistema</div>
+          <button v-for="item in sistemaItems" :key="item.id"
+            :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
+            <v-icon :icon="item.icon" size="18" />
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -895,6 +904,10 @@
       <SettingsView v-else-if="activeView === 'settings'" company-id="tradecars"
         :current-user-role="currentUser?.role" />
 
+      <!-- ==========  ROLES Y PERMISOS (14/09/2026)  ========== -->
+      <TradeCarsConfiguracion v-else-if="activeView === 'roles'"
+        @notificar="notify" @perfil-actualizado="fetchPerfilTC" />
+
       <!-- ==========  VISTA: REMARKETING  ========== -->
       <RemarketingPanel v-else-if="activeView === 'remarketing'" company-id="tradecars"
         :lead-tablas="{ wpp: 'GeneralBDwppTRADECARS', fbig: 'GeneralBDfbigTRADECARS' }" />
@@ -1083,9 +1096,10 @@ import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
 import type { ApexOptions } from 'apexcharts'
-import { isSuperAdmin, canAccessTradeCars, dashboards } from '@/utils/permissions'
+import { isSuperAdmin, canAccessTradeCars, dashboards, tradecarsCan } from '@/utils/permissions'
 import SettingsView from '@/components/Settings/SettingsView.vue'
 import RemarketingPanel from '@/components/RemarketingPanel.vue'
+import TradeCarsConfiguracion from '@/components/TradeCars/TradeCarsConfiguracion.vue'
 
 const { logActivity } = useActivityLogger()
 
@@ -1112,6 +1126,32 @@ const dashTab = usePersistente('tradecars:dashTab', 'solicitudes')
 const snackbar = ref({ show: false, text: '', color: 'success' })
 function notify(text: string, color = 'success') { snackbar.value = { show: true, text, color } }
 
+/**
+ * Roles y permisos por módulo (14/09/2026) — ver sql/tradecars_roles.sql.
+ * Se resuelve una sola vez al entrar y decide qué secciones del menú se
+ * pintan. Mientras no llega la respuesta, `permisos` es null y `tradecarsCan`
+ * devuelve false para todo — así el menú no "parpadea" mostrando de más
+ * antes de saber el rol real.
+ */
+const perfilTC = ref<{ es_admin: boolean; permisos: Record<string, any> | null; rol_tradecars: string | null } | null>(null)
+async function fetchPerfilTC() {
+  try {
+    perfilTC.value = await $fetch('/api/tradecars/perfil')
+  } catch {
+    // El endpoint ya falla "abierto" (ver resolverPerfilTradeCars) si la
+    // migración de roles no se corrió; esto sólo cubre un error de red real.
+    // Ninguno de los dos casos debe ocultarle el menú a alguien que hoy ya
+    // lo ve completo — null se trata como "sin restricción" en puedeVer().
+    perfilTC.value = null
+  }
+}
+// Fail-open: sin `permisos` resuelto (perfil no cargó, o sin ficha de
+// colaborador todavía) se sigue viendo el menú completo, como siempre.
+// Sólo se oculta un módulo cuando hay un rol real que explícitamente no lo
+// incluye — nunca por una tabla que falta o una respuesta que no llegó.
+const puedeVer = (modulo: any) =>
+  !perfilTC.value?.permisos || tradecarsCan(perfilTC.value.permisos, modulo, 'view')
+
 /* ---------------- Tema ---------------- */
 const vuetifyTheme = useTheme()
 const isDark = computed(() => vuetifyTheme.global.current.value.dark)
@@ -1134,34 +1174,63 @@ function logout() {
 }
 
 /* ---------------- Menús ---------------- */
-const menuItems = [
-  { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard' },
-  { icon: 'mdi-form-select', label: 'Solicitudes Web', id: 'solicitudes' },
-  { icon: 'mdi-account-group', label: 'Clientes', id: 'clientes' },
-  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads' },
+// Cada item declara su `modulo` de tradecars_role_permissions (ver
+// sql/tradecars_roles.sql); puedeVer() decide si se pinta. 'dashboard' es
+// del módulo 'home', que todo colaborador ve siempre.
+const MENU_ITEMS_TODOS = [
+  { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard', modulo: 'home' },
+  { icon: 'mdi-form-select', label: 'Solicitudes Web', id: 'solicitudes', modulo: 'comercial' },
+  { icon: 'mdi-account-group', label: 'Clientes', id: 'clientes', modulo: 'comercial' },
+  { icon: 'mdi-chart-box', label: 'Leads', id: 'leads', modulo: 'comercial' },
 ]
-const funnelItems = [
-  { icon: 'mdi-filter-variant', label: 'Funnel de Compras', id: 'funnel' },
-  { icon: 'mdi-table-account', label: 'Tabla de Leads', id: 'funnel_leads' },
-  { icon: 'mdi-chart-timeline-variant', label: 'Análisis de Conversión', id: 'analisis' },
-  { icon: 'mdi-source-branch', label: 'Procedencia y Costos', id: 'procedencia' },
+const FUNNEL_ITEMS_TODOS = [
+  { icon: 'mdi-filter-variant', label: 'Funnel de Compras', id: 'funnel', modulo: 'funnel' },
+  { icon: 'mdi-table-account', label: 'Tabla de Leads', id: 'funnel_leads', modulo: 'funnel' },
+  { icon: 'mdi-chart-timeline-variant', label: 'Análisis de Conversión', id: 'analisis', modulo: 'funnel' },
+  { icon: 'mdi-source-branch', label: 'Procedencia y Costos', id: 'procedencia', modulo: 'funnel' },
 ]
-const operacionesItems = [
-  { icon: 'mdi-car-multiple', label: 'Vehículos', id: 'vehiculos' },
-  { icon: 'mdi-cash-register', label: 'Ventas', id: 'ventas' },
-  { icon: 'mdi-car-key', label: 'Compras', id: 'compras' },
-  { icon: 'mdi-calendar-blank', label: 'Agenda', id: 'calendario' },
+const OPERACIONES_ITEMS_TODOS = [
+  { icon: 'mdi-car-multiple', label: 'Vehículos', id: 'vehiculos', modulo: 'operaciones' },
+  { icon: 'mdi-cash-register', label: 'Ventas', id: 'ventas', modulo: 'operaciones' },
+  { icon: 'mdi-car-key', label: 'Compras', id: 'compras', modulo: 'operaciones' },
+  { icon: 'mdi-calendar-blank', label: 'Agenda', id: 'calendario', modulo: 'operaciones' },
 ]
-const finanzasItems = [
-  { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos' },
+const FINANZAS_ITEMS_TODOS = [
+  { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos', modulo: 'finanzas' },
 ]
-const tasadorItems = [
-  { icon: 'mdi-car-wrench', label: 'Tasador IA', id: 'tasador' },
+const TASADOR_ITEMS_TODOS = [
+  { icon: 'mdi-car-wrench', label: 'Tasador IA', id: 'tasador', modulo: 'tasador' },
 ]
+const SISTEMA_ITEMS_TODOS = [
+  { icon: 'mdi-account-cog', label: 'Roles y Permisos', id: 'roles', modulo: 'configuracion' },
+]
+
+const menuItems = computed(() => MENU_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
+const funnelItems = computed(() => FUNNEL_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
+const operacionesItems = computed(() => OPERACIONES_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
+const finanzasItems = computed(() => FINANZAS_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
+const tasadorItems = computed(() => TASADOR_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
+const sistemaItems = computed(() => SISTEMA_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
+
 const chatsItems = [
   { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'chatwoot', url: 'https://chats.alef.company/app/accounts/1/dashboard' },
 ]
 const navigateToChat = (url: string) => { if (url) window.open(url, '_blank') }
+
+/**
+ * Si la pestaña que quedó abierta (se recuerda entre sesiones, useVistaPersistente)
+ * ya no está en el menú del rol actual, vuelve a Dashboard. Sin esto, alguien a
+ * quien le acaban de quitar un módulo seguiría viendo su contenido con sólo no
+ * tocar el menú — el botón desaparece, pero la pantalla se queda.
+ */
+const TODOS_LOS_ITEMS = [
+  ...MENU_ITEMS_TODOS, ...FUNNEL_ITEMS_TODOS, ...OPERACIONES_ITEMS_TODOS,
+  ...FINANZAS_ITEMS_TODOS, ...TASADOR_ITEMS_TODOS, ...SISTEMA_ITEMS_TODOS,
+]
+watch(perfilTC, () => {
+  const item = TODOS_LOS_ITEMS.find(i => i.id === activeView.value)
+  if (item && !puedeVer(item.modulo)) activeView.value = 'dashboard'
+})
 
 /* ---------------- Constantes de negocio ---------------- */
 const ESTADOS_COMPRA  = ['nuevo', 'contactado', 'atendido', 'descartado']
@@ -2209,7 +2278,7 @@ onMounted(async () => {
   await Promise.all([
     fetchSolicitudes(), fetchClientes(), fetchVehiculos(),
     fetchVentas(), fetchCompras(), fetchLeads(), fetchCitas(), fetchEgresos(),
-    fetchFunnel(),
+    fetchFunnel(), fetchPerfilTC(),
   ])
 })
 </script>

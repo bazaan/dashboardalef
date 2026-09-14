@@ -1,5 +1,5 @@
 {
-  "name": "TRADE CARS - Funnel de compras (CRM -> Dashboard)",
+  "name": "Trade Cars — Funnel desde Chatwoot",
   "nodes": [
     {
       "parameters": {
@@ -7,22 +7,28 @@
         "path": "tradecars-funnel",
         "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "id": "webhook-chatwoot",
       "name": "Webhook Chatwoot",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-260, 300],
+      "position": [
+        0,
+        0
+      ],
       "webhookId": "tradecars-funnel"
     },
     {
       "parameters": {
-        "jsCode": "// Traduce el evento de Chatwoot al formato que espera el endpoint del funnel.\n// Se hace en un Code node y no en expresiones sueltas para que quede en un\n// solo lugar legible: si Chatwoot cambia el shape del payload, se toca aqui.\n\nconst salida = [];\n\nfor (const item of $input.all()) {\n  const c = item.json || {};\n\n  // Segun la version, Chatwoot manda la conversacion en la raiz o anidada\n  const conv  = c.conversation || c;\n  const attrs = conv.custom_attributes || c.custom_attributes || {};\n  const meta  = conv.meta || c.meta || {};\n\n  // \"Channel::Whatsapp\" -> \"WhatsApp\" (lo que muestra el filtro del dashboard)\n  const CANALES = {\n    'Channel::Whatsapp':    'WhatsApp',\n    'Channel::Instagram':   'Instagram',\n    'Channel::FacebookPage':'Facebook',\n    'Channel::Tiktok':      'TikTok',\n    'Channel::Api':         'API',\n    'Channel::WebWidget':   'Web',\n    'Channel::Email':       'Email',\n  };\n\n  // Chatwoot manda las fechas como epoch en segundos o como ISO, segun el campo\n  const aFecha = (v) => {\n    if (v === null || v === undefined || v === '') return null;\n    if (typeof v === 'number') return new Date(v * 1000).toISOString().slice(0, 10);\n    const s = String(v).trim();\n    if (/^\\d{10}$/.test(s)) return new Date(Number(s) * 1000).toISOString().slice(0, 10);\n    const d = new Date(s);\n    return isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);\n  };\n\n  const payload = {\n    // ── Automatico del CRM ──\n    conversation_id: conv.id ?? null,\n    account_id:      conv.account_id ?? c.account?.id ?? null,\n    contact_id:      meta.sender?.id ?? null,\n    nombre:          meta.sender?.name || '',\n    telefono:        meta.sender?.phone_number || '',\n    canal:           CANALES[conv.channel] || conv.channel || '',\n    asesor:          meta.assignee?.name || '',\n    fecha_derivacion: aFecha(conv.created_at),\n\n    // ── Lo que llena el asesor (custom attributes) ──\n    perfil_coincide:      attrs.perfil_coincide || '',\n    status:               attrs.status || '',\n    fecha_cita:           aFecha(attrs.fecha_cita),\n    fecha_compra:         aFecha(attrs.fecha_compra),\n    motivo_no_cita:       attrs.motivo_no_cita || '',\n    fecha_probable_venta: aFecha(attrs.fecha_probable_venta),\n    proxima_accion:       attrs.proxima_accion || '',\n    fecha_seguimiento:    aFecha(attrs.fecha_seguimiento),\n  };\n\n  // Chatwoot dispara conversation_updated en CADA mensaje. Solo tiene sentido\n  // escribir cuando el asesor ya clasifico el lead; si no, se llenaria la tabla\n  // de filas vacias y el endpoint recibiria trafico inutil.\n  payload._enviar = Boolean(payload.perfil_coincide || payload.status);\n\n  salida.push({ json: payload });\n}\n\nreturn salida;"
+        "jsCode": "// Traduce el evento de Chatwoot al formato que espera el endpoint del funnel.\n// Se hace en un Code node y no en expresiones sueltas para que quede en un\n// solo lugar legible: si Chatwoot cambia el shape del payload, se toca aqui.\n//\n// BUG REAL encontrado y corregido el 14/09/2026: el nodo Webhook de n8n\n// SIEMPRE envuelve el POST real dentro de item.json.body -- item.json trae\n// { headers, params, query, body, webhookUrl, executionMode }, nunca la\n// conversacion directamente. La version anterior de este Code (desde el\n// 26/08/2026, sin cambios en esto hasta hoy) leia directo de item.json y\n// nunca leyo nada real: siempre mandaba todo vacio. Se detecto con un\n// payload real pineado en el nodo Webhook (conversacion 1858, inbox 83,\n// estado \"interesado\") que devolvia _enviar:false con todos los campos en\n// blanco. Verificado el fix contra ESE MISMO payload real, no uno simulado.\n//\n// ACTUALIZADO 14/09/2026: Trade Cars paso de dos custom attributes separados\n// (perfil_coincide + status) a uno solo (estado), con una automatizacion de\n// Chatwoot que ademas le pone una etiqueta de color a la conversacion segun\n// ese valor. La etiqueta es SOLO cosmetica para las personas -- este nodo NO\n// la lee ni la necesita, lee directo el custom attribute \"estado\".\n//\n// El endpoint del dashboard NO cambio: sigue esperando perfil_coincide+status\n// por separado (son los que alimentan las columnas GENERATED etapa/etapa_rank\n// y el trigger anti-regresion en sql/tradecars_funnel.sql). Por eso la\n// traduccion vive aqui, no en el backend: mueve el problema a un solo lugar\n// legible en vez de tocar una tabla con miles de filas ya migradas.\n\nconst salida = [];\n\n// \"estado\" (Chatwoot) -> (perfil_coincide, status) que ya entiende el dashboard.\n// Verificado contra utils/tradecarsFunnel.ts: cada fila cae en su barra exacta\n// del embudo (LEADS...COMPRAS), en orden.\n//\n// \"lead\" manda perfil_coincide vacio, NO \"NO\": \"NO\" en el dashboard significa\n// \"no cumple la politica de compra\" (rechazo definitivo, se queda pegado en\n// LEADS para siempre). \"lead\" es solo \"todavia sin calificar\" -- vacio logra\n// lo mismo (cae en LEADS) sin marcarlo como rechazado.\nconst ESTADO_A_CAMPOS = {\n  lead:            { perfil_coincide: '',   status: '' },\n  cumple_politica: { perfil_coincide: 'SI', status: 'NO CONTACTADO'   },\n  contactado:      { perfil_coincide: 'SI', status: 'NO INTERESADO'  },\n  interesado:      { perfil_coincide: 'SI', status: 'EN SEGUIMIENTO' },\n  cita_agendada:   { perfil_coincide: 'SI', status: 'CITA'           },\n  cita_asistida:   { perfil_coincide: 'SI', status: 'CITA ASISTIDA'  },\n  compra:          { perfil_coincide: 'SI', status: 'CONCRETADA'     },\n  // \"clientes\" queda AFUERA a proposito -- confirmado con el cliente el\n  // 14/09/2026: por ahora eso se revisa a mano, no representa una etapa del\n  // embudo. Si mas adelante cambia, agregarla aca.\n};\n\n// Canal e inboxes de Trade Cars -- confirmados por el cliente el 14/09/2026.\n// Si se agrega un inbox nuevo del mismo canal (ej. un segundo numero de\n// WhatsApp), agregar su id tambien en INBOX_A_CANAL e INBOX_A_CAMPANA.\nconst INBOX_A_CANAL = {\n  88: 'WhatsApp',\n  81: 'Instagram',\n  82: 'TikTok',\n  83: 'Facebook',   // Messenger entra bajo el mismo canal que Facebook Page\n};\n\n// Respaldo por tipo de canal, para cualquier inbox que no este en la lista\n// de arriba.\nconst CANALES_POR_TIPO = {\n  'Channel::Whatsapp':     'WhatsApp',\n  'Channel::Instagram':    'Instagram',\n  'Channel::FacebookPage': 'Facebook',\n  'Channel::Tiktok':       'TikTok',\n  'Channel::Api':          'API',\n  'Channel::WebWidget':    'Web',\n  'Channel::Email':        'Email',\n};\n\n// La campana ES el canal de origen -- decision del cliente del 14/09/2026:\n// no hay un custom attribute \"campana\" en Chatwoot, ni hace falta crearlo.\n// OJO: el nombre no siempre coincide con el de INBOX_A_CANAL (el inbox 83 es\n// \"Facebook\" para el filtro de canal de todo el dashboard, pero \"Messenger\"\n// como campana, que es como el cliente lo quiere ver en este reporte).\n//\n// \"WEB\" queda reservado para mas adelante -- hoy no hay inbox de Chatwoot\n// para la web: esos leads entran por server/api/tradecars/formulario.ts,\n// a otra tabla (tradecars_solicitudes_venta/compra), y ese endpoint todavia\n// no escribe nada en tradecars_funnel_leads.campana. Cuando se conecte,\n// usar el mismo valor exacto \"WEB\" para que quede junto a estas 4.\nconst INBOX_A_CAMPANA = {\n  88: 'WhatsApp',\n  81: 'Instagram',\n  82: 'TikTok',\n  83: 'Messenger',\n};\n\nfor (const item of $input.all()) {\n  const raw = item.json || {};\n\n  // El Webhook de n8n SIEMPRE entrega { headers, params, query, body, ... } --\n  // el POST real de Chatwoot esta en .body, nunca al nivel raiz. Si alguien\n  // prueba pegando solo el cuerpo de Chatwoot (sin el sobre de n8n), raw.body\n  // no existe y se usa raw directo -- por eso el fallback.\n  const c = raw.body ?? raw;\n\n  // Segun la version, Chatwoot manda la conversacion directo en .body o\n  // anidada un nivel mas adentro en .body.conversation.\n  const conv  = c.conversation || c;\n  const attrs = conv.custom_attributes || c.custom_attributes || {};\n  const meta  = conv.meta || c.meta || {};\n\n  // Chatwoot manda las fechas como epoch en segundos o como ISO, segun el campo\n  const aFecha = (v) => {\n    if (v === null || v === undefined || v === '') return null;\n    if (typeof v === 'number') return new Date(v * 1000).toISOString().slice(0, 10);\n    const s = String(v).trim();\n    if (/^\\d{10}$/.test(s)) return new Date(Number(s) * 1000).toISOString().slice(0, 10);\n    const d = new Date(s);\n    return isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);\n  };\n\n  // Canal: primero por inbox_id (no es ambiguo), si no esta en la lista cae\n  // al tipo de canal como respaldo.\n  const inboxId = conv.inbox_id ?? c.inbox_id ?? null;\n  const canal = INBOX_A_CANAL[inboxId] || CANALES_POR_TIPO[conv.channel] || conv.channel || '';\n  const campana = INBOX_A_CAMPANA[inboxId] || '';\n\n  // Traduccion del estado nuevo. Si Chatwoot manda algo que no esta en la\n  // lista (typo, opcion nueva sin avisar, o \"clientes\"), NO se envia nada:\n  // es preferible dejarlo sin sincronizar a borrar por error una\n  // clasificacion que el lead ya tenia.\n  const estadoRaw = String(attrs.estado || '').trim().toLowerCase();\n  const mapeo = ESTADO_A_CAMPOS[estadoRaw];\n\n  let perfilCoincide = '';\n  let status = '';\n  let enviar = false;\n\n  if (mapeo) {\n    perfilCoincide = mapeo.perfil_coincide;\n    status = mapeo.status;\n    enviar = true;\n  } else if (!estadoRaw && (attrs.perfil_coincide || attrs.status)) {\n    // Compatibilidad con el formato viejo (dos campos separados), por si\n    // alguna conversacion todavia los tiene cargados de antes del cambio.\n    perfilCoincide = attrs.perfil_coincide || '';\n    status = attrs.status || '';\n    enviar = true;\n  } else if (estadoRaw) {\n    console.log(`[tradecars-funnel] estado no reconocido, se ignora: \"${estadoRaw}\" (conv ${conv.id})`);\n  }\n\n  const payload = {\n    // Automatico del CRM\n    conversation_id: conv.id ?? null,\n    account_id:      conv.account_id ?? c.account?.id ?? conv.messages?.[0]?.account_id ?? null,\n    contact_id:      meta.sender?.id ?? null,\n    nombre:          meta.sender?.name || '',\n    telefono:        meta.sender?.phone_number || '',\n    canal,\n    campana,\n    asesor:          meta.assignee?.name || '',\n    fecha_derivacion: aFecha(conv.created_at),\n\n    // Traducidos desde \"estado\" (o formato viejo, ver arriba)\n    perfil_coincide: perfilCoincide,\n    status:          status,\n\n    // El resto de los custom attributes, igual que antes\n    fecha_cita:           aFecha(attrs.fecha_cita),\n    fecha_compra:         aFecha(attrs.fecha_compra),\n    motivo_no_cita:       attrs.motivo_no_cita || '',\n    fecha_probable_venta: aFecha(attrs.fecha_probable_venta),\n    proxima_accion:       attrs.proxima_accion || '',\n    fecha_seguimiento:    aFecha(attrs.fecha_seguimiento),\n  };\n\n  // Chatwoot dispara conversation_updated en CADA mensaje. Solo tiene sentido\n  // escribir cuando ya se pudo traducir un estado valido.\n  payload._enviar = enviar;\n\n  salida.push({ json: payload });\n}\n\nreturn salida;\n"
       },
-      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "id": "armar-payload",
       "name": "Armar payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-40, 300]
+      "position": [
+        220,
+        0
+      ]
     },
     {
       "parameters": {
@@ -50,11 +56,14 @@
         "looseTypeValidation": true,
         "options": {}
       },
-      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "id": "ya-clasificado",
       "name": "Ya clasificado?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [180, 300]
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
     },
     {
       "parameters": {
@@ -81,38 +90,70 @@
           }
         }
       },
-      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "id": "enviar-al-funnel",
       "name": "Enviar al funnel",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [420, 200]
+      "position": [
+        660,
+        -60
+      ]
     },
     {
       "parameters": {},
-      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "id": "sin-clasificar",
       "name": "Sin clasificar - no hacer nada",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [420, 400]
+      "position": [
+        660,
+        100
+      ]
     }
   ],
   "connections": {
     "Webhook Chatwoot": {
-      "main": [[{ "node": "Armar payload", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Armar payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Armar payload": {
-      "main": [[{ "node": "Ya clasificado?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Ya clasificado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Ya clasificado?": {
       "main": [
-        [{ "node": "Enviar al funnel", "type": "main", "index": 0 }],
-        [{ "node": "Sin clasificar - no hacer nada", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Enviar al funnel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sin clasificar - no hacer nada",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "settings": {
     "executionOrder": "v1"
-  },
-  "active": false,
-  "pinData": {}
+  }
 }

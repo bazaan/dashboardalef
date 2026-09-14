@@ -169,6 +169,81 @@
         </div>
       </div>
 
+      <!-- ══════════ COMPARATIVO POR ASESOR ══════════ -->
+      <div class="chart-section" v-if="asesoresParaComparar.length">
+        <div class="chart-header">
+          <div class="chart-title-section">
+            <h2>Comparativo por asesor</h2>
+            <div class="chart-subtitle">
+              El mismo embudo de arriba, desglosado por asesor y por campaña de origen.
+              Respeta los filtros de fecha y canal de la parte de arriba.
+            </div>
+          </div>
+        </div>
+
+        <div class="asesores-grid">
+          <button v-for="a in asesoresParaComparar" :key="a" type="button" class="asesor-tile"
+            :class="{ activo: a === asesorActivo }" @click="asesorComparativo = a">
+            {{ a }}
+          </button>
+        </div>
+
+        <div v-if="!barrasAsesor[0]?.cantidad" class="funnel-vacio">
+          <v-icon icon="mdi-filter-variant-remove" size="32" />
+          <p>{{ asesorActivo }} no tiene leads en este período.</p>
+        </div>
+
+        <template v-else>
+          <div class="funnel-wrap funnel-wrap-mini">
+            <div v-for="(b, i) in barrasAsesor" :key="b.etapa" class="funnel-fila funnel-fila-mini">
+              <div class="funnel-etiqueta">
+                <span class="funnel-nombre">{{ b.etapa }}</span>
+              </div>
+              <div class="funnel-pista">
+                <div class="funnel-barra" :style="estiloBarra(b, i, barrasAsesor)">
+                  <span class="funnel-cantidad">{{ b.cantidad }}</span>
+                </div>
+              </div>
+              <div class="funnel-conv">
+                <template v-if="b.conversion !== null">
+                  <span :class="['funnel-pct', claseConversion(b.conversion)]">{{ b.conversion.toFixed(1) }}%</span>
+                </template>
+                <span v-else class="funnel-conv-sub">base</span>
+              </div>
+            </div>
+          </div>
+          <div class="conversion-total-caption">
+            Conversión total de <strong>{{ asesorActivo }}</strong>: <strong>{{ conversionAsesor }}</strong>
+            ({{ barrasAsesor[6]?.cantidad ?? 0 }} de {{ barrasAsesor[0]?.cantidad ?? 0 }} leads)
+          </div>
+
+          <div class="campanas-header">Campañas</div>
+          <div class="campanas-grid" :style="{ '--campanas-cols': campanasAsesor.length }">
+            <div class="campanas-etiquetas">
+              <div class="campanas-celda campanas-celda-head">&nbsp;</div>
+              <div v-for="etapa in TC_ETAPAS" :key="etapa" class="campanas-celda campanas-etapa">
+                {{ etapa }}
+              </div>
+            </div>
+            <div v-for="camp in campanasAsesor" :key="camp.nombre" class="campana-columna">
+              <div class="campanas-celda campanas-celda-head campana-nombre" :style="{ color: camp.color }">
+                {{ camp.nombre }}
+                <span class="campana-total">{{ camp.barras[0]?.cantidad ?? 0 }}</span>
+              </div>
+              <div v-for="b in camp.barras" :key="b.etapa" class="campanas-celda">
+                <div class="campana-pista">
+                  <div class="campana-barra" :style="estiloBarraCampana(b, camp)">
+                    <span class="campana-valor">
+                      {{ b.cantidad }}<template v-if="b.conversion !== null"> ({{ b.conversion.toFixed(0) }}%)</template>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <!-- ══════════ DETALLE ══════════ -->
       <v-card flat class="custom-data-table">
         <v-card-title class="table-search-bar">
@@ -379,6 +454,88 @@ const conversionTotal = computed(() => {
   return leads > 0 ? ((compras / leads) * 100).toFixed(1) + '%' : '—'
 })
 
+/**
+ * Comparativo por asesor — pedido del cliente el 14/09/2026 para que el
+ * "Funnel de Compras" se parezca al reporte que ya usaban en Power BI
+ * (un embudo por asesor + su desglose de campañas al lado). Reutiliza
+ * `tcConstruirFunnel()` sobre subconjuntos de `leadsFiltrados`, así que
+ * nunca puede contradecir al embudo agregado de arriba — mismos filtros
+ * de fecha/canal, sólo se agrega el corte por asesor y por campaña.
+ */
+const asesorComparativo = usePersistente('tradecars:funnel:asesorComparativo', '')
+
+/** Si arriba ya filtraste por un asesor puntual, el comparativo no tiene
+ *  sentido para los demás — se muestra sólo ese, sin selector. */
+const asesoresParaComparar = computed(() => {
+  if (fAsesor.value !== 'todos') return [fAsesor.value]
+  return opcionesAsesor.value.filter((a) => a !== 'todos')
+})
+
+const asesorActivo = computed(() =>
+  asesoresParaComparar.value.includes(asesorComparativo.value)
+    ? asesorComparativo.value
+    : (asesoresParaComparar.value[0] || ''))
+
+const leadsAsesorActivo = computed(() =>
+  leadsFiltrados.value.filter((l) => (l.asesor || '') === asesorActivo.value))
+
+const barrasAsesor = computed(() => tcConstruirFunnel(leadsAsesorActivo.value))
+
+const conversionAsesor = computed(() => {
+  const leads = barrasAsesor.value[0]?.cantidad ?? 0
+  const compras = barrasAsesor.value[6]?.cantidad ?? 0
+  return leads > 0 ? ((compras / leads) * 100).toFixed(1) + '%' : '—'
+})
+
+/**
+ * Las 4 campañas reales confirmadas por el cliente el 14/09/2026 (la campaña
+ * ES el canal de origen — ver CLAUDE.md). "WEB" queda reservada: hoy no
+ * genera leads por Chatwoot, así que si aparece con datos es porque ya se
+ * conectó el formulario web y simplemente entra en su lugar en el orden.
+ *
+ * Las 8.737 filas del histórico migrado desde el Excel del asesor traen su
+ * propio texto libre de campaña (`VENDE TU AUTO`, `TIK TOK`, `REFERIDOS`…),
+ * antes del cambio a Chatwoot — esas NO se fuerzan a encajar en las 4 de
+ * arriba (encajarían mal, son otro sistema) y aparecen aparte, ordenadas por
+ * volumen, para no perder ese historial.
+ */
+const ORDEN_CAMPANAS_PRINCIPALES = ['WhatsApp', 'Instagram', 'TikTok', 'Messenger', 'WEB']
+const COLOR_CAMPANA: Record<string, string> = {
+  WhatsApp: '#25D366',
+  Instagram: '#d6249f',
+  TikTok: '#00c2b8',
+  Messenger: '#0084FF',
+  WEB: '#daa520',
+}
+const COLOR_CAMPANA_OTRA = '#8b93a7'
+
+const campanasAsesor = computed(() => {
+  const mapa = new Map<string, any[]>()
+  for (const l of leadsAsesorActivo.value) {
+    const nombre = String(l.campana || '').trim() || 'Sin campaña'
+    if (!mapa.has(nombre)) mapa.set(nombre, [])
+    mapa.get(nombre)!.push(l)
+  }
+
+  const principales = ORDEN_CAMPANAS_PRINCIPALES.filter((n) => mapa.has(n))
+  const otras = [...mapa.keys()]
+    .filter((n) => n !== 'Sin campaña' && !ORDEN_CAMPANAS_PRINCIPALES.includes(n))
+    .sort((a, b) => mapa.get(b)!.length - mapa.get(a)!.length)
+  const orden = [...principales, ...otras, ...(mapa.has('Sin campaña') ? ['Sin campaña'] : [])]
+
+  return orden.map((nombre) => ({
+    nombre,
+    color: COLOR_CAMPANA[nombre] || COLOR_CAMPANA_OTRA,
+    barras: tcConstruirFunnel(mapa.get(nombre)!),
+  }))
+})
+
+function estiloBarraCampana(b: any, camp: { barras: any[]; color: string }) {
+  const max = camp.barras[0]?.cantidad || 1
+  const ancho = Math.max((b.cantidad / max) * 100, b.cantidad > 0 ? 6 : 0)
+  return { width: ancho + '%', background: camp.color }
+}
+
 /* ---------------- Presentación ---------------- */
 const DESCRIPCIONES: Record<string, string> = {
   'LEADS':           'Todos los leads del período',
@@ -395,8 +552,8 @@ const descripcionEtapa = (e: string) => DESCRIPCIONES[e] || ''
 const COLORES = ['#f5b301', '#f0a202', '#e89005', '#d97706', '#b45309', '#3f8f4a', '#16a34a']
 const colorEtapa = (etapa: string) => COLORES[TC_ETAPAS.indexOf(etapa as any)] || '#94a3b8'
 
-function estiloBarra(b: any, i: number) {
-  const max = barras.value[0]?.cantidad || 1
+function estiloBarra(b: any, i: number, base: any[] = barras.value) {
+  const max = base[0]?.cantidad || 1
   // Mínimo 4% para que una barra con 1 lead siga siendo visible y clickeable
   const ancho = Math.max((b.cantidad / max) * 100, b.cantidad > 0 ? 4 : 0)
   return { width: ancho + '%', background: colorEtapa(b.etapa) }
@@ -565,5 +722,122 @@ function exportarCsv() {
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
+}
+
+/* ── Comparativo por asesor ── */
+.asesores-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 22px;
+}
+.asesor-tile {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.asesor-tile:hover { border-color: var(--primary); }
+.asesor-tile.activo {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.funnel-wrap-mini { gap: 6px; }
+.funnel-fila-mini .funnel-pista { height: 30px; }
+.funnel-fila-mini .funnel-cantidad { font-size: 0.78rem; }
+
+.conversion-total-caption {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  margin: 14px 0 26px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.conversion-total-caption strong { color: var(--foreground); }
+
+.campanas-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  text-align: center;
+  padding: 8px 0;
+  margin-bottom: 14px;
+  background: var(--muted);
+  border-radius: 6px;
+}
+
+.campanas-grid {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.campanas-etiquetas,
+.campana-columna {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 130px;
+  flex: 1 1 0;
+}
+.campanas-etiquetas { min-width: 150px; flex: 0 0 150px; }
+
+.campanas-celda { min-height: 26px; display: flex; align-items: center; }
+.campanas-celda-head {
+  min-height: 34px;
+  align-items: flex-end;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 0.78rem;
+  border-bottom: 2px solid currentColor;
+  padding-bottom: 6px;
+}
+.campanas-etapa {
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.campana-total {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+
+.campana-pista {
+  width: 100%;
+  background: var(--muted);
+  border-radius: 4px;
+  height: 22px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+.campana-barra {
+  height: 100%;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  min-width: 0;
+  transition: width 0.3s ease;
+}
+.campana-valor {
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 </style>

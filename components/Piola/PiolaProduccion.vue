@@ -64,8 +64,13 @@
                 <span class="kanban-nombre">{{ estado.title }}</span>
                 <span class="kanban-count">{{ porEstado(estado.value).length }}</span>
               </div>
-              <div class="kanban-body">
-                <div v-for="e in porEstado(estado.value)" :key="e.id" class="ent-card" @click="detalle = { ...e }">
+              <div class="kanban-body" :class="{ 'kanban-body-destino': colSobrevolada === estado.value }"
+                @dragover.prevent="onArrastreSobreColumna(estado.value)"
+                @drop.prevent="onSoltarEnColumna(estado.value)">
+                <div v-for="e in porEstado(estado.value)" :key="e.id" class="ent-card"
+                  :class="{ 'ent-card-arrastrando': arrastrandoId === e.id }"
+                  :draggable="puedeEditar" @dragstart="onIniciarArrastre(e)" @dragend="onFinArrastre"
+                  @click="detalle = { ...e }">
                   <div class="ent-titulo">{{ e.titulo }}</div>
                   <div class="ent-cliente">{{ nombreCliente(e.cliente_id) }}</div>
                   <div class="ent-chips">
@@ -907,6 +912,49 @@ const detalle = ref<any>(null)
 const guardando = ref(false)
 const aprobando = ref(false)
 
+/* ══════════ Arrastrar y soltar en el tablero ══════════ */
+const arrastrandoId = ref<number | null>(null)
+const colSobrevolada = ref<string | null>(null)
+
+function onIniciarArrastre(e: any) {
+  arrastrandoId.value = e.id
+}
+function onFinArrastre() {
+  arrastrandoId.value = null
+  colSobrevolada.value = null
+}
+function onArrastreSobreColumna(estado: string) {
+  if (!puedeEditar.value) return
+  colSobrevolada.value = estado
+}
+
+async function onSoltarEnColumna(estadoNuevo: string) {
+  const id = arrastrandoId.value
+  colSobrevolada.value = null
+  arrastrandoId.value = null
+  if (!id || !puedeEditar.value) return
+
+  const item = entregables.value.find(e => e.id === id)
+  if (!item || item.estado === estadoNuevo) return
+
+  // Optimista: la tarjeta salta de columna al instante y recién ahí se
+  // confirma con el servidor. Si falla, vuelve a su columna — es más honesto
+  // que dejarla "flotando" a medias mientras se espera la respuesta.
+  const estadoAnterior = item.estado
+  item.estado = estadoNuevo
+
+  const { error, data } = await apiPiola('produccion', {
+    accion: 'mover_entregable', id, estado: estadoNuevo,
+  })
+  if (error) {
+    item.estado = estadoAnterior
+    return emit('notify', { text: `No se pudo mover: ${error.message}`, color: 'error' })
+  }
+  // El servidor puede haber puesto aprobado_por/aprobado_at/fecha_entrega —
+  // se reflejan en la tarjeta sin esperar a un recargo completo.
+  if (data?.entregable) Object.assign(item, data.entregable)
+}
+
 function abrirNuevo() {
   detalle.value = {
     titulo: '', cliente_id: fCliente.value !== 'todas' ? fCliente.value : null,
@@ -1259,7 +1307,13 @@ onMounted(cargar)
 .kanban-count {
   background: rgba(128, 128, 128, .2); border-radius: 999px; padding: 1px 8px; font-size: 11.5px; font-weight: 600;
 }
-.kanban-body { display: flex; flex-direction: column; gap: 8px; min-height: 50px; }
+.kanban-body {
+  display: flex; flex-direction: column; gap: 8px; min-height: 50px;
+  border-radius: 9px; transition: background-color .12s, outline-color .12s;
+  outline: 2px dashed transparent; outline-offset: -2px;
+}
+/* Columna destino mientras se arrastra una tarjeta encima. */
+.kanban-body-destino { background: rgba(var(--v-theme-primary), .08); outline-color: rgba(var(--v-theme-primary), .5); }
 .kanban-vacio { font-size: 12px; opacity: .4; text-align: center; padding: 16px 0; }
 
 .ent-card {
@@ -1269,6 +1323,8 @@ onMounted(cargar)
   border-radius: 9px; padding: 10px 11px; cursor: pointer; transition: transform .12s, box-shadow .12s;
 }
 .ent-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, .1); }
+.ent-card[draggable="true"] { cursor: grab; }
+.ent-card-arrastrando { opacity: .35; }
 .ent-titulo { font-weight: 600; font-size: 13px; }
 .ent-cliente { font-size: 11.5px; opacity: .6; margin-top: 2px; }
 .ent-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }

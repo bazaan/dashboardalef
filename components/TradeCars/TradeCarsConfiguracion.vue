@@ -1,21 +1,26 @@
 <!--
-  Trade Cars — Configuración: roles y colaboradores (14/09/2026)
-  ---------------------------------------------------------------
-  Mismo diseño que components/Piola/PiolaConfiguracion.vue (pestaña "Roles y
-  permisos" + "Colaboradores"), simplificado: acá no hay datos de planilla
-  que proteger, así que la ficha del colaborador es sólo nombre/cargo/rol.
+  Trade Cars — Configuración: roles, colaboradores y usuarios (14/09/2026)
+  --------------------------------------------------------------------------
+  Mismo diseño que components/Piola/PiolaConfiguracion.vue: ESTA pantalla ES
+  "Configuración" completa (reemplaza lo que antes era sólo SettingsView),
+  con "Usuarios del sistema" como una pestaña más adentro — pedido del
+  cliente el 14/09/2026 ("ponlo adentro de la configuración"), para no tener
+  una entrada de menú aparte para roles.
 
-  Sólo lo ve quien tiene permiso de 'configuracion' (en la práctica, sólo
-  Administrador — ver server/api/tradecars/configuracion.post.ts) y sólo un
-  Administrador puede escribir: el servidor lo vuelve a exigir con
-  exigirAdminTradeCars(), esta pantalla no es la única puerta pero si alguien
-  la abre sin permiso el servidor rechaza cada acción igual.
+  Simplificado respecto a Piola: acá no hay datos de planilla que proteger,
+  así que la ficha del colaborador es sólo nombre/cargo/rol/teléfono.
+
+  Sólo un Administrador puede escribir en roles/colaboradores: el servidor lo
+  exige con exigirAdminTradeCars() (server/api/tradecars/configuracion.post.ts) —
+  esta pantalla no es la única puerta, pero si alguien la abre sin permiso el
+  servidor rechaza cada acción igual. "Usuarios del sistema" tiene su propio
+  control de permisos adentro de SettingsView.vue (currentUserRole).
 -->
 <template>
   <div class="view-container">
     <header class="top-header">
       <h1>Configuración</h1>
-      <button class="btn-primary" @click="cargar">
+      <button v-if="tab !== 'usuarios'" class="btn-primary" @click="cargar">
         <v-icon icon="mdi-refresh" size="16" /><span>Actualizar</span>
       </button>
     </header>
@@ -29,10 +34,24 @@
           <button :class="['tab', { active: tab === 'roles' }]" @click="tab = 'roles'">
             Roles y permisos
           </button>
+          <button :class="['tab', { active: tab === 'usuarios' }]" @click="tab = 'usuarios'">
+            Usuarios del sistema
+          </button>
+        </div>
+
+        <!-- ══════════ USUARIOS DEL SISTEMA (acceso: correo + contraseña) ══════════ -->
+        <div v-if="tab === 'usuarios'">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Aquí se crea el <b>acceso al sistema</b> (correo y contraseña). El rol de Trade
+            Cars —Asesor de Compras, Jefe de Compras, Administrador— se asigna en la pestaña
+            <b>Colaboradores</b>, usando el mismo correo.
+          </v-alert>
+          <SettingsView company-id="tradecars" app-name="Trade Cars"
+            :current-user-role="currentUser?.role" :current-user-id="currentUser?.id" />
         </div>
 
         <!-- ══════════ COLABORADORES ══════════ -->
-        <v-card v-if="tab === 'colaboradores'" flat class="custom-data-table">
+        <v-card v-else-if="tab === 'colaboradores'" flat class="custom-data-table">
           <v-card-title class="table-search-bar">
             <span class="table-title">Colaboradores ({{ colaboradores.length }})</span>
             <v-spacer />
@@ -41,8 +60,9 @@
             </v-btn>
           </v-card-title>
           <v-alert type="info" variant="tonal" density="compact" class="ma-4 mb-0">
-            El <b>acceso al sistema</b> (correo y contraseña) se administra en Settings → Usuarios.
-            Aquí sólo se define qué rol de Trade Cars tiene cada quien, usando el mismo correo.
+            El <b>acceso al sistema</b> (correo y contraseña) se administra en la pestaña
+            <b>Usuarios del sistema</b>. Aquí sólo se define qué rol de Trade Cars tiene cada
+            quien, usando el mismo correo.
           </v-alert>
           <v-data-table :headers="headersColaboradores" :items="colaboradores" class="elevation-0"
             no-data-text="Todavía no hay colaboradores registrados" :items-per-page="25"
@@ -142,7 +162,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import SettingsView from '@/components/Settings/SettingsView.vue'
 
+const props = defineProps<{ currentUser?: any }>()
 const emit = defineEmits<{
   (e: 'notificar', texto: string, color?: string): void
   (e: 'perfil-actualizado'): void

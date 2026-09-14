@@ -917,6 +917,45 @@ rol real que explícitamente no lo incluye.
 
 ---
 
+### Módulo "Compras" = histórico real de operaciones (14/09/2026)
+
+El tab **Operaciones → Compras** ya no muestra `tradecars_compras` (quedó casi sin uso, 0
+filas) — ahora es un CRUD completo (ver/editar/añadir/eliminar) sobre
+`tradecars_data_historico_compras_ventas`: la MISMA tabla que usa el Tasador IA como
+comparables (`buscar_comparables_historicos`). No es una copia — es la tabla real, con las
+~1.305 filas que ya traía (hoja "VENTAS" del Excel de operaciones de la empresa,
+importada el 04/08/2026 en una sesión anterior). `tradecars_compras` sigue existiendo en la
+base sin tocar — el Tasador todavía la consulta en `resumen_precio_referencia` — sólo dejó
+de tener pantalla propia.
+
+**Es el único módulo de TradeCars que pasa 100% por el servidor, ida y vuelta.**
+`tradecars_data_historico_compras_ventas` es la única tabla de TradeCars **sin policy para
+`anon`** (a propósito — evita exponer precios de compra al navegador sin pasar por el
+servidor). Confirmado en vivo: leerla con `SUPABASE_KEY` devuelve **0 filas sin error**,
+mismo aviso que ya existe para las tablas del Tasador. Por eso
+`components/TradeCars/HistoricoComprasVentas.vue` no usa `client.from(...)` como el resto
+de TradeCars — todo pasa por `GET/POST /api/tradecars/historico`, con
+`serverSupabaseServiceRole()` + `exigirModuloTradeCars(perfil, 'operaciones', accion)`. Es
+real enforcement de rol, no sólo cosmético como el resto del dashboard.
+
+**La tabla tiene ~45 columnas y se muestran TODAS a propósito** (pedido explícito del
+cliente) — sólo se excluyen las de auditoría/sincronización (`id`, `created_at`,
+`sincronizado_en`, `actualizado_en/por`, `import_batch_id`, `sheet_row_id`,
+`origen_ultimo_cambio`). La tabla scrollea horizontal dentro de su propio contenedor
+(`.hcv-scroll`), nunca la página.
+
+> ⚠️ **`origen_ultimo_cambio` tiene un CHECK constraint que no está en ningún `sql/*.sql`
+> de este repo** (se creó directo en Supabase por quien armó el Tasador). Probado en vivo
+> por fuerza bruta: acepta `NULL` (como las 1.305 filas existentes) y `'sheet'` (reservado
+> para una futura sincronización con Google Sheets) — ningún otro valor probado pasó. Por
+> eso `server/api/tradecars/historico.post.ts` **no** le escribe nada a esa columna en
+> crear/actualizar: se deja como está en vez de adivinar un valor que rompa el insert. Si
+> se necesita distinguir "esto lo editó alguien a mano desde el dashboard", hay que agregar
+> el valor al constraint primero (`ALTER TABLE ... DROP CONSTRAINT ... ADD CONSTRAINT ...
+> CHECK (...)`), no inventarlo en el código.
+
+---
+
 ## Variables de Entorno (`.env`)
 
 ```

@@ -3,6 +3,7 @@
  *
  * Body:
  *   { accion: 'guardar_entregable', id?, titulo, cliente_id, tipo_contenido?, area_id?, ... }
+ *   { accion: 'mover_entregable', id, estado }   ← arrastrar la tarjeta en el tablero
  *   { accion: 'aprobar_entregable', id }
  *   { accion: 'eliminar_entregable', id }
  *   { accion: 'guardar_cliente', id?, nombre, ... }
@@ -197,6 +198,54 @@ export default defineEventHandler(async (event) => {
     if (res.error) throw createError({ statusCode: 400, statusMessage: res.error.message })
 
     return { ok: true, entregable: res.data }
+  }
+
+  if (accion === 'mover_entregable') {
+    // Cambio de columna del tablero (arrastrar y soltar). Es deliberadamente
+    // liviano — sólo toca `estado` y lo que ese estado implica — para no
+    // repetir el problema de `guardar_entregable`: esa acción exige el objeto
+    // completo (título, marca, etc.) porque sobrescribe todos los campos con
+    // lo que llegue en el body, así que reusarla para un simple cambio de
+    // columna borraría en silencio la descripción, los enlaces y todo lo demás
+    // que el arrastre no conoce.
+    exigirModulo(perfil, 'produccion', 'edit')
+
+    const id = Number(body?.id)
+    if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el entregable a mover' })
+
+    const estado = texto(body?.estado)
+    if (!estado || !ESTADOS_ENTREGABLE.includes(estado)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Estado de entregable desconocido: ${estado}. Válidos: ${ESTADOS_ENTREGABLE.join(', ')}`,
+      })
+    }
+
+    const cambios: Record<string, any> = { estado, updated_at: new Date().toISOString() }
+
+    // Mismo criterio que `aprobar_entregable`: quién aprobó y cuándo los pone
+    // el servidor, sin importar si el estado llegó por el botón "Aprobar" o
+    // arrastrando la tarjeta a esa columna — la trazabilidad tiene que ser la
+    // misma por los dos caminos.
+    if (estado === 'aprobado') {
+      cambios.aprobado_por = perfil.email
+      cambios.aprobado_at = new Date().toISOString()
+    }
+
+    // Un entregado sin fecha se fecha hoy (mismo criterio que guardar_entregable):
+    // si no, el cumplimiento del mes no lo cuenta y el reporte sale corto sin
+    // que nadie lo note. Sólo se pisa si todavía no tenía una.
+    if (estado === 'entregado') {
+      const { data: actual } = await supabase
+        .from('piola_deliverables').select('fecha_entrega').eq('id', id).maybeSingle()
+      if (!actual?.fecha_entrega) cambios.fecha_entrega = hoyLima()
+    }
+
+    const { data, error } = await supabase
+      .from('piola_deliverables').update(cambios).eq('id', id).select('*').single()
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    return { ok: true, entregable: data }
   }
 
   if (accion === 'aprobar_entregable') {

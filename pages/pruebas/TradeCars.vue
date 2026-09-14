@@ -29,7 +29,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="nav-section">
+        <div v-if="menuItems.length" class="nav-section">
           <div class="nav-label">Inicio</div>
           <button v-for="item in menuItems" :key="item.id" :class="['nav-item', { active: activeView === item.id }]"
             @click="activeView = item.id">
@@ -38,7 +38,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div v-if="funnelItems.length" class="nav-section">
           <div class="nav-label">Funnel de Ventas</div>
           <button v-for="item in funnelItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
@@ -48,7 +48,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div v-if="operacionesItems.length" class="nav-section">
           <div class="nav-label">Operaciones</div>
           <button v-for="item in operacionesItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
@@ -57,7 +57,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div v-if="tasadorItems.length" class="nav-section">
           <div class="nav-label">Tasador</div>
           <button v-for="item in tasadorItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
@@ -74,7 +74,7 @@
           </button>
         </div>
 
-        <div class="nav-section">
+        <div v-if="finanzasItems.length" class="nav-section">
           <div class="nav-label">Finanzas</div>
           <button v-for="item in finanzasItems" :key="item.id"
             :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
@@ -88,15 +88,6 @@
           <button :class="['nav-item', { active: activeView === 'remarketing' }]" @click="activeView = 'remarketing'">
             <v-icon icon="mdi-bullhorn" size="18" />
             <span>Remarketing</span>
-          </button>
-        </div>
-
-        <div v-if="sistemaItems.length" class="nav-section">
-          <div class="nav-label">Sistema</div>
-          <button v-for="item in sistemaItems" :key="item.id"
-            :class="['nav-item', { active: activeView === item.id }]" @click="activeView = item.id">
-            <v-icon :icon="item.icon" size="18" />
-            <span>{{ item.label }}</span>
           </button>
         </div>
       </nav>
@@ -901,11 +892,8 @@
       <!-- ==========  TASADOR IA  ========== -->
       <TradeCarsTasadorChat v-else-if="activeView === 'tasador'" @notificar="notify" />
 
-      <SettingsView v-else-if="activeView === 'settings'" company-id="tradecars"
-        :current-user-role="currentUser?.role" />
-
-      <!-- ==========  ROLES Y PERMISOS (14/09/2026)  ========== -->
-      <TradeCarsConfiguracion v-else-if="activeView === 'roles'"
+      <!-- ==========  CONFIGURACIÓN: colaboradores, roles y usuarios (14/09/2026)  ========== -->
+      <TradeCarsConfiguracion v-else-if="activeView === 'settings'" :current-user="currentUser"
         @notificar="notify" @perfil-actualizado="fetchPerfilTC" />
 
       <!-- ==========  VISTA: REMARKETING  ========== -->
@@ -1097,7 +1085,6 @@ import { useTheme } from 'vuetify'
 import { useActivityLogger } from '@/composables/useActivityLogger'
 import type { ApexOptions } from 'apexcharts'
 import { isSuperAdmin, canAccessTradeCars, dashboards, tradecarsCan } from '@/utils/permissions'
-import SettingsView from '@/components/Settings/SettingsView.vue'
 import RemarketingPanel from '@/components/RemarketingPanel.vue'
 import TradeCarsConfiguracion from '@/components/TradeCars/TradeCarsConfiguracion.vue'
 
@@ -1201,16 +1188,12 @@ const FINANZAS_ITEMS_TODOS = [
 const TASADOR_ITEMS_TODOS = [
   { icon: 'mdi-car-wrench', label: 'Tasador IA', id: 'tasador', modulo: 'tasador' },
 ]
-const SISTEMA_ITEMS_TODOS = [
-  { icon: 'mdi-account-cog', label: 'Roles y Permisos', id: 'roles', modulo: 'configuracion' },
-]
 
 const menuItems = computed(() => MENU_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
 const funnelItems = computed(() => FUNNEL_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
 const operacionesItems = computed(() => OPERACIONES_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
 const finanzasItems = computed(() => FINANZAS_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
 const tasadorItems = computed(() => TASADOR_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
-const sistemaItems = computed(() => SISTEMA_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))
 
 const chatsItems = [
   { icon: 'mdi-message-reply', label: 'Conversaciones', id: 'chatwoot', url: 'https://chats.alef.company/app/accounts/1/dashboard' },
@@ -1225,7 +1208,7 @@ const navigateToChat = (url: string) => { if (url) window.open(url, '_blank') }
  */
 const TODOS_LOS_ITEMS = [
   ...MENU_ITEMS_TODOS, ...FUNNEL_ITEMS_TODOS, ...OPERACIONES_ITEMS_TODOS,
-  ...FINANZAS_ITEMS_TODOS, ...TASADOR_ITEMS_TODOS, ...SISTEMA_ITEMS_TODOS,
+  ...FINANZAS_ITEMS_TODOS, ...TASADOR_ITEMS_TODOS,
 ]
 watch(perfilTC, () => {
   const item = TODOS_LOS_ITEMS.find(i => i.id === activeView.value)

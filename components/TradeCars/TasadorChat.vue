@@ -30,7 +30,7 @@
         <div v-if="!mensajes.length" class="tasador-bienvenida">
           <v-icon icon="mdi-car-search-outline" size="46" style="opacity:0.4;" />
           <p class="tasador-bienvenida-texto">
-            Preguntame por un precio de referencia, el stock actual o una compra/venta pasada.
+            Pregúntame por un precio de referencia, el stock actual o una compra/venta pasada.
             Reviso primero las tablas de Trade Cars antes de dar cualquier cifra.
           </p>
           <div class="tasador-sugerencias">
@@ -62,7 +62,7 @@
       </div>
 
       <div class="tasador-input">
-        <v-textarea v-model="borrador" placeholder="Escribí tu pregunta… (Enter envía, Shift+Enter salto de línea)"
+        <v-textarea v-model="borrador" placeholder="Escribe tu pregunta… (Enter envía, Shift+Enter salto de línea)"
           density="compact" variant="outlined" rows="1" max-rows="5" auto-grow hide-details
           :disabled="pensando" @keydown="onKeydown" />
         <button class="btn-primary tasador-enviar" :disabled="pensando || !borrador.trim()"

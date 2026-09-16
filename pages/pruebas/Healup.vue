@@ -6542,7 +6542,7 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig' | 'tiktok') => {
       procedimiento: item.procedimiento || '',
       procedure_id: item.procedure_id ? Number(item.procedure_id) : null,
       booking_sku: item.booking_sku || '',
-      fecha_agendamiento: item.fecha_agendamiento ? new Date(item.fecha_agendamiento).toISOString().slice(0, 16) : '',
+      fecha_agendamiento: item.fecha_agendamiento ? toLimaDatetimeLocal(new Date(item.fecha_agendamiento)) : '',
       metodo_de_pago: item.metodo_de_pago || 'Ninguno',
       estado: item.estado || 'Activo',
       agendamiento: item.agendamiento || 'IA'
@@ -6559,7 +6559,7 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig' | 'tiktok') => {
       procedimiento: '',
       procedure_id: null,
       booking_sku: '',
-      fecha_agendamiento: new Date().toISOString().slice(0, 16),
+      fecha_agendamiento: nowLimaDatetimeLocal(),
       metodo_de_pago: 'Ninguno',
       estado: 'Activo',
       agendamiento: 'IA'
@@ -6571,6 +6571,31 @@ const openPatientForm = (item: any | null, type: 'wpp' | 'fbig' | 'tiktok') => {
 const closePatientForm = () => {
   showPatientFormDialog.value = false
   editingPatient.value = null
+}
+
+// El formulario exige DNI y Número como obligatorios, pero cuando la asesora no los
+// tiene a mano suele escribir "0" para poder guardar. Antes de insertar/actualizar se
+// limpia ese placeholder a vacío — mismo criterio que ya usan los endpoints del agente IA
+// (server/api/healup/calendario*.post.ts) — para que no aparezca como un dato real en el
+// resumen diario de WhatsApp ni en ningún otro lado.
+function limpiarPlaceholder(v: string): string {
+  const s = (v ?? '').trim()
+  return (s === '0' || s.toLowerCase() === 'null' || s === '-') ? '' : s
+}
+
+// El input <input type="datetime-local"> no sabe de zonas horarias: muestra tal cual
+// el string que le pasamos, sin convertir nada. `new Date(x).toISOString()` da la hora
+// en UTC (5 horas adelantada a Lima) — usarla tal cual, tanto para precargar "ahora" en
+// un registro nuevo como para mostrar una fecha ya guardada al editar, hacía que el campo
+// mostrara una hora que NO era la hora real de Lima. Como nadie la corregía a mano antes
+// de guardar, la cita quedaba guardada ~5 horas adelantada. Restamos el offset antes de
+// convertir a ISO para que el string resultante, leído como si fuera UTC, muestre la hora
+// de Lima real (Lima es UTC-5 todo el año, sin horario de verano).
+function toLimaDatetimeLocal(date: Date): string {
+  return new Date(date.getTime() - 5 * 3600 * 1000).toISOString().slice(0, 16)
+}
+function nowLimaDatetimeLocal(): string {
+  return toLimaDatetimeLocal(new Date())
 }
 
 const savePatient = async () => {
@@ -6611,8 +6636,8 @@ const savePatient = async () => {
 
     const commonPayload: Record<string, any> = {
       nombre: patientFormData.value.nombre,
-      dni: patientFormData.value.dni,
-      numero: patientFormData.value.numero,
+      dni: limpiarPlaceholder(patientFormData.value.dni),
+      numero: limpiarPlaceholder(patientFormData.value.numero),
       precio: inputReserva,                        // anticipo / reserva
       precio_tratamiento: finalPrecioTratamiento,  // saldo pendiente
       procedimiento: patientFormData.value.procedimiento,
@@ -6674,8 +6699,8 @@ const savePatient = async () => {
         const historyPayload = {
           name: name,
           surname: surname,
-          dni: patientFormData.value.dni,
-          phone: patientFormData.value.numero,
+          dni: limpiarPlaceholder(patientFormData.value.dni),
+          phone: limpiarPlaceholder(patientFormData.value.numero),
           email: '',
           date_added: new Date().toISOString().slice(0, 10),
           attachment_name: '',
@@ -6714,8 +6739,8 @@ const savePatient = async () => {
         const historyPayload = {
           name: name,
           surname: surname,
-          dni: patientFormData.value.dni, // Update to new DNI
-          phone: patientFormData.value.numero
+          dni: limpiarPlaceholder(patientFormData.value.dni), // Update to new DNI
+          phone: limpiarPlaceholder(patientFormData.value.numero)
         }
 
         // 1. Try to UPDATE existing records matching the old DNI
@@ -10345,7 +10370,7 @@ function openPatientFormFromHistory(item: MedicalHistoryEntry) {
     precio: '',
     precio_tratamiento: '',
     procedimiento: '',
-    fecha_agendamiento: new Date().toISOString().slice(0, 16),
+    fecha_agendamiento: nowLimaDatetimeLocal(),
     metodo_de_pago: 'Ninguno',
     estado: item.status || 'Activo',
     agendamiento: 'IA'

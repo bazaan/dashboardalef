@@ -31,8 +31,6 @@
     "apexcharts": "^5.3.5",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
-    "exceljs": "^4.4.0",
-    "unpdf": "^1.8.1",
     "vite-plugin-vuetify": "^2.0.4",
     "vue": "latest",
     "vue-router": "latest",

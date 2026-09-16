@@ -1,0 +1,147 @@
+-- ==============================================================================
+-- TRADE CARS -- Solo el esquema de tradecars_data_historico_compras (16/09/2026)
+--
+-- Esta es la parte chica de sql/tradecars_compras_import.sql -- CREATE TABLE +
+-- constraint UNIQUE + RLS, sin las 1307 filas de datos (el archivo completo
+-- pesa 1.6MB y el SQL Editor de Supabase lo rechaza por tamaño). Correr ESTE
+-- archivo primero en el SQL Editor; los datos se cargan aparte (ver aviso del
+-- asistente en el dashboard).
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.tradecars_data_historico_compras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fecha_de_compra DATE,
+  cuenta NUMERIC,
+  placa TEXT,
+  concat TEXT,
+  marca TEXT,
+  modelo TEXT,
+  version TEXT,
+  color TEXT,
+  ano TEXT,
+  tipo_de_combustible TEXT,
+  transmision TEXT,
+  kilometraje NUMERIC,
+  tipo_de_vehiculo TEXT,
+  canal_de_compra TEXT,
+  asesor_comercial_comprador TEXT,
+  detalle_canal_de_compra TEXT,
+  nombre_referido_compra TEXT,
+  tipo_compra_retoma TEXT,
+  tipo_de_compra TEXT,
+  precio_de_compra_valor_acta NUMERIC,
+  valor_de_compra NUMERIC,
+  comision_referido NUMERIC,
+  notariales NUMERIC,
+  impuesto_vehicular NUMERIC,
+  soat TEXT,
+  rtv TEXT,
+  multa_sat NUMERIC,
+  multa_callao NUMERIC,
+  multa_sutran NUMERIC,
+  levantamiento_de_prenda NUMERIC,
+  otros_gastos_documentales NUMERIC,
+  detalle_de_otros_gastos_documentales TEXT,
+  arreglos_esteticos NUMERIC,
+  arreglos_mecanicos NUMERIC,
+  lavado_de_salon NUMERIC,
+  tratamiento_de_pintura NUMERIC,
+  detalle_arreglos TEXT,
+  total_gastos_extras_prov NUMERIC,
+  costo_total_total_provision NUMERIC,
+  impuesto_vehicular_prov NUMERIC,
+  soat_2 TEXT,
+  rtv_2 NUMERIC,
+  multa_sat_2 NUMERIC,
+  multa_callao_2 NUMERIC,
+  multa_sutran_2 NUMERIC,
+  levantamiento_de_prenda_2 NUMERIC,
+  otros_gastos_documentales_2 NUMERIC,
+  arreglos_esteticos_2 NUMERIC,
+  arreglos_mecanicos_2 NUMERIC,
+  lavado_de_salon_2 NUMERIC,
+  tratamiento_de_pintura_2 NUMERIC,
+  otros_gastos NUMERIC,
+  total_gastos_extras_reales NUMERIC,
+  costo_total_gastos_extras_real NUMERIC,
+  costo_total_sin_igv NUMERIC,
+  notaria TEXT,
+  compra_prenda_status TEXT,
+  banco_prenda TEXT,
+  status_notarial TEXT,
+  declaracion_jurada TEXT,
+  pagado TEXT,
+  cuenta_de TEXT,
+  detalle_de_operacion TEXT,
+  registro_stock TEXT,
+  vencimiento_soat TEXT,
+  dias TEXT,
+  rtv_3 TEXT,
+  vencimiento_de_rtv TEXT,
+  certificado_de_gas TEXT,
+  otros_documentos TEXT,
+  status TEXT,
+  rango_de_inv TEXT,
+  vin TEXT,
+  motor TEXT,
+  fecha_compra DATE,
+  fecha_venta TEXT,
+  tramitador_de_prenda TEXT,
+  placa_ii TEXT,
+  costo_total_real_total_provision NUMERIC,
+  costo_total_gastos_extras_real_2 NUMERIC,
+  status_ii TEXT,
+  n_compra NUMERIC,
+  kardex TEXT,
+  a_nombre_de TEXT,
+  semana TEXT,
+  placa_iii TEXT,
+  marca_2 TEXT,
+  modelo_2 TEXT,
+  precio NUMERIC,
+  precio_de_cierre NUMERIC,
+  version_2 TEXT,
+  ano_fab TEXT,
+  km NUMERIC,
+  color_2 TEXT,
+  tipo_de_vehiculo_2 TEXT,
+  combustible TEXT,
+  transmision_2 TEXT,
+  fecha_de_compra_2 DATE,
+  tipo_compra_retoma_2 TEXT,
+  tipo_de_compra_2 TEXT,
+  valor_de_compra_2 NUMERIC,
+  igv_compra NUMERIC,
+  adquisicion NUMERIC,
+  comision_compra NUMERIC,
+  comision_venta NUMERIC,
+  gastos_extras NUMERIC,
+  costo_total NUMERIC,
+  notariales_2 NUMERIC,
+  costo_total_notariales NUMERIC,
+  a_nombre_de_2 TEXT,
+  dias_de_inv NUMERIC,
+  disponible_para_venta TEXT,
+  status_ii_2 TEXT,
+  sheet_row_id TEXT,
+  import_batch_id TEXT,
+  sincronizado_en TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+  actualizado_por TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'tradecars_data_historico_compras_concat_key'
+  ) THEN
+    ALTER TABLE public.tradecars_data_historico_compras
+      ADD CONSTRAINT tradecars_data_historico_compras_concat_key UNIQUE (concat);
+  END IF;
+END $$;
+
+-- Sin policy para `anon` a propósito -- mismo criterio que
+-- tradecars_data_historico_compras_ventas (precios de compra reales, no se
+-- exponen al navegador sin pasar por el servidor).
+ALTER TABLE public.tradecars_data_historico_compras ENABLE ROW LEVEL SECURITY;

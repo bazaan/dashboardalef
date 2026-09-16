@@ -6,12 +6,15 @@
   mismo criterio que components/TradeCars/HistoricoComprasVentas.vue (la de
   "Ventas", hoja "VENTAS" del mismo Excel).
 
-  Van 113 columnas — demasiadas para escribir cada `<template v-slot:item.X>`
-  y cada `<v-text-field>` a mano (así está hecho HistoricoComprasVentas.vue,
-  con ~45). Acá la tabla completa Y la ficha de edición salen del mismo array
-  CAMPOS (key/título/tipo/bloque), generado una sola vez desde el encabezado
-  real del Excel — agregar/quitar una columna es tocar ese array, no dos
-  lugares por separado.
+  Mismo v-data-table de Vuetify que HistoricoComprasVentas.vue (paginador
+  nativo, orden por columna, fechas cortas) — pero son 113 columnas,
+  demasiadas para escribir cada `<template v-slot:item.X>` y cada
+  `<v-text-field>` a mano (así está hecho el de Ventas, con ~45). Acá la
+  tabla Y la ficha de edición salen del mismo array CAMPOS (key/título/tipo/
+  bloque), generado una sola vez desde el encabezado real del Excel — los
+  slots de columna se generan con `v-for` + nombre de slot dinámico
+  (`v-slot:[`item.${c.key}`]`) en vez de 113 bloques repetidos. Agregar/
+  quitar una columna es tocar ese array, no dos lugares por separado.
 
   "bloque" distingue las 78 columnas del registro de compra en sí (1) de las
   35 columnas del resumen/valorizado de stock que la misma hoja trae
@@ -51,37 +54,25 @@
             density="compact" hide-details style="max-width: 320px;" />
         </v-card-title>
 
-        <!-- 113 columnas a propósito (pedido explícito: TODAS) — sólo esta
-             tabla scrollea horizontal, nunca la página. Renderizado manual
-             fila-por-fila (no headers/slots de v-data-table) porque son
-             demasiadas columnas para declarar un slot por cada una. -->
-        <div class="hc-scroll">
-          <table class="hc-table">
-            <thead>
-              <tr>
-                <th v-for="c in CAMPOS" :key="c.key" :class="{ 'hc-num': c.tipo === 'number' }">{{ c.title }}</th>
-                <th class="hc-acciones"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="cargando"><td :colspan="CAMPOS.length + 1" class="hc-empty">Cargando...</td></tr>
-              <tr v-else-if="filasPagina.length === 0"><td :colspan="CAMPOS.length + 1" class="hc-empty">No hay registros</td></tr>
-              <tr v-for="item in filasPagina" :key="item.id" class="hc-row" @click="abrirFicha(item)">
-                <td v-for="c in CAMPOS" :key="c.key" :class="{ 'hc-num': c.tipo === 'number' }">
-                  {{ formatCell(item[c.key], c.tipo) }}
-                </td>
-                <td class="hc-acciones">
-                  <v-btn icon="mdi-delete" size="x-small" variant="text" color="error"
-                    @click.stop="eliminar(item)" />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="hc-paginacion">
-          <span class="hcv-sub">Página {{ pagina + 1 }} de {{ totalPaginas }}</span>
-          <v-btn size="small" variant="text" :disabled="pagina === 0" @click="pagina--">Anterior</v-btn>
-          <v-btn size="small" variant="text" :disabled="pagina >= totalPaginas - 1" @click="pagina++">Siguiente</v-btn>
+        <!-- Mismo v-data-table que HistoricoComprasVentas.vue (fechas cortas,
+             paginador nativo de Vuetify, orden por columna) — son 113
+             columnas a propósito (pedido explícito: TODAS), así que sigue
+             siendo ancha y sólo ella scrollea horizontal, nunca la página.
+             Los slots por columna salen del mismo array CAMPOS con un
+             v-for + nombre de slot dinámico, en vez de escribir 113
+             `<template v-slot:item.X>` a mano. -->
+        <div class="hcv-scroll">
+          <v-data-table :headers="headers" :items="filasFiltradas" :loading="cargando"
+            class="elevation-0" no-data-text="No hay registros" :items-per-page="25"
+            fixed-header height="600" @click:row="(_: any, r: any) => abrirFicha(r.item)">
+            <template v-for="c in CAMPOS" :key="c.key" v-slot:[`item.${c.key}`]="{ item }">
+              {{ formatCell(item[c.key], c.tipo) }}
+            </template>
+            <template v-slot:item.acciones="{ item }">
+              <v-btn icon="mdi-delete" size="x-small" variant="text" color="error"
+                @click.stop="eliminar(item)" />
+            </template>
+          </v-data-table>
         </div>
       </v-card>
     </div>
@@ -254,11 +245,20 @@ const CAMPOS: { key: string; title: string; tipo: 'text' | 'date' | 'number'; bl
 const camposBloque1 = CAMPOS.filter(c => c.bloque === 1)
 const camposBloque2 = CAMPOS.filter(c => c.bloque === 2)
 
+// Mismos headers que consume v-data-table en HistoricoComprasVentas.vue —
+// generados desde CAMPOS en vez de escritos a mano (son 113).
+const headers = [
+  ...CAMPOS.map(c => ({
+    title: c.title,
+    key: c.key,
+    ...(c.tipo === 'number' ? { align: 'end' as const, sortable: true } : {}),
+  })),
+  { title: '', key: 'acciones', sortable: false, width: 50 },
+]
+
 const filas = ref<any[]>([])
 const cargando = ref(false)
 const buscar = ref('')
-const pagina = ref(0)
-const POR_PAGINA = 25
 
 async function apiHistoricoCompras<T = any>(body: Record<string, any>): Promise<{ data: T | null; error: { message: string } | null }> {
   try {
@@ -290,12 +290,6 @@ const filasFiltradas = computed(() => {
   return filas.value.filter(f => [f.placa, f.marca, f.modelo, f.concat]
     .some(x => String(x ?? '').toLowerCase().includes(q)))
 })
-const totalPaginas = computed(() => Math.max(1, Math.ceil(filasFiltradas.value.length / POR_PAGINA)))
-const filasPagina = computed(() => {
-  const desde = pagina.value * POR_PAGINA
-  return filasFiltradas.value.slice(desde, desde + POR_PAGINA)
-})
-
 function formatCell(v: any, tipo: 'text' | 'date' | 'number') {
   if (v === null || v === undefined || v === '') return '—'
   if (tipo === 'date') {
@@ -357,22 +351,11 @@ async function eliminar(item: any) {
 .hcv-sub { font-size: 11px; opacity: .6; }
 
 /* Son 113 columnas a propósito (se pidió ver todas) — sólo esta tabla
-   scrollea horizontal, nunca la página. Tabla HTML simple en vez de
-   v-data-table: con tantas columnas, paginar/renderizar fila-por-fila a
-   mano es más liviano que una grilla con 113 headers dinámicos. */
-.hc-scroll { overflow-x: auto; }
-.hc-table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 13px; }
-.hc-table th, .hc-table td {
-  white-space: nowrap; padding: 8px 10px; text-align: left;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
-}
-.hc-table th { font-weight: 600; font-size: 12px; opacity: .75; position: sticky; top: 0; background: inherit; }
-.hc-num { text-align: right; font-variant-numeric: tabular-nums; }
-.hc-acciones { width: 44px; }
-.hc-row { cursor: pointer; }
-.hc-row:hover { background: rgba(128, 128, 128, 0.06); }
-.hc-empty { text-align: center; padding: 24px; opacity: .6; white-space: normal; }
-.hc-paginacion { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }
+   scrollea horizontal, nunca la página. Mismo criterio que
+   HistoricoComprasVentas.vue (con ~45 columnas). */
+.hcv-scroll { overflow-x: auto; }
+.hcv-scroll :deep(table) { min-width: 5200px; }
+.hcv-scroll :deep(td), .hcv-scroll :deep(th) { white-space: nowrap; }
 
 .form-section-title {
   font-weight: 600; font-size: 13px; text-transform: uppercase;

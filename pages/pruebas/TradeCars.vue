@@ -579,84 +579,15 @@
         </v-dialog>
       </div>
 
-      <!-- ==========  VISTA: VENTAS  ========== -->
-      <div v-else-if="activeView === 'ventas'" class="view-container">
-        <header class="top-header">
-          <h1>Ventas</h1>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <button class="btn-primary" @click="nuevaVenta"><v-icon icon="mdi-plus" size="16" /><span>Registrar venta</span></button>
-            <button class="btn-primary" @click="fetchVentas"><v-icon icon="mdi-refresh" size="16" /><span>Actualizar</span></button>
-          </div>
-        </header>
-        <div class="content-area">
-          <div class="stats-grid" style="margin-bottom: 18px;">
-            <div class="stat-card">
-              <div class="stat-header"><span class="stat-title">Ventas del mes</span></div>
-              <div class="stat-value">{{ ventasMes.length }}</div>
-              <div class="stat-description">Unidades vendidas este mes</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-header"><span class="stat-title">Ingresos del mes</span></div>
-              <div class="stat-value">{{ money(ingresosMes) }}</div>
-              <div class="stat-description">Suma de precios de venta</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-header"><span class="stat-title">Margen del mes</span></div>
-              <div class="stat-value">{{ money(margenMes) }}</div>
-              <div class="stat-description">Venta menos costo de compra</div>
-            </div>
-          </div>
-          <v-card flat class="custom-data-table">
-            <v-card-title class="table-search-bar">
-              <span class="table-title">Historial de ventas</span>
-              <v-spacer />
-              <v-text-field v-model="searchVentas" prepend-inner-icon="mdi-magnify" placeholder="Buscar..."
-                density="compact" hide-details style="max-width: 240px;" />
-            </v-card-title>
-            <v-data-table :headers="headersVentasFull" :items="ventasFiltradas" :loading="loadingVentas"
-              class="elevation-0" no-data-text="No hay ventas" :items-per-page="20">
-              <template v-slot:item.precio_venta="{ item }">{{ money(item.precio_venta) }}</template>
-              <template v-slot:item.margen="{ item }">
-                <span :style="{ color: margenVenta(item) >= 0 ? '#2e7d32' : '#c62828', fontWeight: 600 }">
-                  {{ money(margenVenta(item)) }}
-                </span>
-              </template>
-              <template v-slot:item.acciones="{ item }">
-                <v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="eliminarVenta(item)" />
-              </template>
-            </v-data-table>
-          </v-card>
-        </div>
+      <!-- ==========  VISTA: id 'ventas' -- etiqueta "Compras"  ========== -->
+      <!-- (16/09/2026) Reemplaza el viejo formulario "Registrar venta" (escribía en
+           tradecars_ventas, tabla simple) por el histórico real de COMPRAS del
+           Excel — ver components/TradeCars/HistoricoCompras.vue. El id interno
+           sigue siendo 'ventas' (ver nota en OPERACIONES_ITEMS_TODOS más abajo). -->
+      <HistoricoCompras v-else-if="activeView === 'ventas'" @notificar="notify" />
 
-        <v-dialog v-model="showVentaDialog" max-width="700" persistent>
-          <v-card v-if="ventaForm">
-            <v-card-title class="pt-4">Registrar venta</v-card-title>
-            <v-card-text>
-              <v-select v-model="ventaForm.vehiculo_id" :items="vehiculosSelect" item-title="label" item-value="id"
-                label="Vehículo" density="compact" hide-details class="mb-3" @update:model-value="onVehiculoVenta" />
-              <div class="form-grid-2">
-                <v-text-field v-model="ventaForm.cliente_nombre" label="Cliente *" density="compact" hide-details />
-                <v-text-field v-model="ventaForm.cliente_dni" label="DNI" density="compact" hide-details />
-                <v-text-field v-model="ventaForm.cliente_telefono" label="Teléfono" density="compact" hide-details />
-                <v-text-field v-model.number="ventaForm.precio_venta" type="number" label="Precio de venta (S/) *" density="compact" hide-details />
-                <v-select v-model="ventaForm.metodo_pago" :items="METODOS_PAGO" label="Método de pago" density="compact" hide-details />
-                <v-select v-model="ventaForm.estado" :items="['separacion', 'completada', 'anulada']" label="Estado" density="compact" hide-details />
-                <v-text-field v-model="ventaForm.asesor" label="Asesor" density="compact" hide-details />
-                <v-text-field v-model="ventaForm.fecha_venta" type="date" label="Fecha" density="compact" hide-details />
-              </div>
-              <v-textarea v-model="ventaForm.notas" label="Notas" rows="2" density="compact" hide-details class="mt-4" auto-grow />
-            </v-card-text>
-            <v-card-actions>
-              <v-spacer />
-              <v-btn variant="text" @click="showVentaDialog = false">Cancelar</v-btn>
-              <v-btn color="primary" variant="flat" @click="guardarVenta">Guardar</v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-dialog>
-      </div>
-
-      <!-- ==========  VISTA: COMPRAS  ========== -->
-      <!-- "Compras" ahora muestra el histórico real de operaciones (14/09/2026) — ver
+      <!-- ==========  VISTA: id 'compras' -- etiqueta "Ventas"  ========== -->
+      <!-- "Ventas" muestra el histórico real de operaciones (14/09/2026) — ver
            components/TradeCars/HistoricoComprasVentas.vue. Reemplaza la tabla vieja
            `tradecars_compras` (casi sin uso, 0 filas) que sólo servía para registrar
            tasaciones sueltas; esa tabla queda intacta en la base (el Tasador todavía
@@ -1034,6 +965,7 @@ import { isSuperAdmin, canAccessTradeCars, dashboards, tradecarsCan } from '@/ut
 import RemarketingPanel from '@/components/RemarketingPanel.vue'
 import TradeCarsConfiguracion from '@/components/TradeCars/TradeCarsConfiguracion.vue'
 import HistoricoComprasVentas from '@/components/TradeCars/HistoricoComprasVentas.vue'
+import HistoricoCompras from '@/components/TradeCars/HistoricoCompras.vue'
 
 const { logActivity } = useActivityLogger()
 
@@ -1123,10 +1055,17 @@ const FUNNEL_ITEMS_TODOS = [
   { icon: 'mdi-chart-timeline-variant', label: 'Análisis de Conversión', id: 'analisis', modulo: 'funnel' },
   { icon: 'mdi-source-branch', label: 'Procedencia y Costos', id: 'procedencia', modulo: 'funnel' },
 ]
+// OJO (16/09/2026): las ETIQUETAS "Ventas"/"Compras" se intercambiaron a
+// pedido del cliente, pero los `id` internos NO se tocaron (evita romper
+// las decenas de referencias a activeView==='ventas'/'compras' en este
+// archivo). id 'ventas' -> ahora se ve como "Compras" (histórico nuevo,
+// hoja COMPRAS del Excel). id 'compras' -> ahora se ve como "Ventas"
+// (sigue siendo HistoricoComprasVentas.vue / tradecars_data_historico_
+// compras_ventas, sin cambios).
 const OPERACIONES_ITEMS_TODOS = [
   { icon: 'mdi-car-multiple', label: 'Vehículos', id: 'vehiculos', modulo: 'operaciones' },
-  { icon: 'mdi-cash-register', label: 'Ventas', id: 'ventas', modulo: 'operaciones' },
-  { icon: 'mdi-car-key', label: 'Compras', id: 'compras', modulo: 'operaciones' },
+  { icon: 'mdi-car-key', label: 'Compras', id: 'ventas', modulo: 'operaciones' },
+  { icon: 'mdi-cash-register', label: 'Ventas', id: 'compras', modulo: 'operaciones' },
   { icon: 'mdi-calendar-blank', label: 'Agenda', id: 'calendario', modulo: 'operaciones' },
 ]
 const FINANZAS_ITEMS_TODOS = [
@@ -1446,10 +1385,6 @@ const vehiculosFiltrados = computed(() => {
   }
   return lista
 })
-const vehiculosSelect = computed(() => vehiculos.value
-  .filter(v => v.estado !== 'vendido')
-  .map(v => ({ id: v.id, label: `${v.marca || ''} ${v.modelo || ''} ${v.anio || ''} — ${v.placa || 's/placa'}`.trim() })))
-
 function margenVeh(v: any) { return Number(v.precio_venta || 0) - Number(v.precio_compra || 0) }
 
 const headersVehiculos = [
@@ -1512,16 +1447,7 @@ async function eliminarVehiculo(v: any) {
    ══════════════════════════════════════════════════════════════════════════ */
 const ventas = ref<any[]>([])
 const loadingVentas = ref(false)
-const searchVentas = ref('')
-const showVentaDialog = ref(false)
-const ventaForm = ref<any>(null)
 
-const ventasFiltradas = computed(() => {
-  if (!searchVentas.value) return ventas.value
-  const q = searchVentas.value.toLowerCase()
-  return ventas.value.filter(v => [v.cliente_nombre, v.marca, v.modelo, v.placa, v.asesor]
-    .some(x => String(x ?? '').toLowerCase().includes(q)))
-})
 const ventasMes = computed(() => ventas.value.filter(v => mesDe(v.fecha_venta || v.created_at) === mesActual() && v.estado !== 'anulada'))
 const ingresosMes = computed(() => ventasMes.value.reduce((s, v) => s + Number(v.precio_venta || 0), 0))
 const margenMes = computed(() => ventasMes.value.reduce((s, v) => s + margenVenta(v), 0))
@@ -1534,64 +1460,12 @@ const headersVentas = [
   { title: 'Precio', key: 'precio_venta' },
   { title: 'Fecha', key: 'fecha_venta' },
 ]
-const headersVentasFull = [
-  { title: 'Fecha', key: 'fecha_venta' },
-  { title: 'Cliente', key: 'cliente_nombre' },
-  { title: 'Teléfono', key: 'cliente_telefono' },
-  { title: 'Vehículo', key: 'marca' },
-  { title: 'Modelo', key: 'modelo' },
-  { title: 'Placa', key: 'placa' },
-  { title: 'Precio', key: 'precio_venta' },
-  { title: 'Margen', key: 'margen', sortable: false },
-  { title: 'Estado', key: 'estado' },
-  { title: '', key: 'acciones', sortable: false, width: 60 },
-]
-
 async function fetchVentas() {
   loadingVentas.value = true
   const { data, error } = await client.from('tradecars_ventas').select('*').order('fecha_venta', { ascending: false })
   if (error) notify('Error cargando ventas: ' + error.message, 'error')
   ventas.value = data || []
   loadingVentas.value = false
-}
-function nuevaVenta() {
-  ventaForm.value = {
-    vehiculo_id: null, cliente_nombre: '', cliente_dni: '', cliente_telefono: '',
-    marca: '', modelo: '', anio: null, placa: '', precio_venta: null, precio_compra: null,
-    metodo_pago: 'efectivo', estado: 'completada', asesor: currentUser.value.full_name || '',
-    fecha_venta: new Date().toISOString().slice(0, 10), notas: '',
-  }
-  showVentaDialog.value = true
-}
-function onVehiculoVenta(id: string) {
-  const v = vehiculos.value.find(x => x.id === id)
-  if (!v || !ventaForm.value) return
-  ventaForm.value.marca = v.marca
-  ventaForm.value.modelo = v.modelo
-  ventaForm.value.anio = v.anio
-  ventaForm.value.placa = v.placa
-  ventaForm.value.precio_compra = v.precio_compra
-  if (!ventaForm.value.precio_venta) ventaForm.value.precio_venta = v.precio_venta
-}
-async function guardarVenta() {
-  const f = ventaForm.value
-  if (!f?.cliente_nombre?.trim()) { notify('El cliente es obligatorio', 'error'); return }
-  if (!f?.precio_venta) { notify('El precio de venta es obligatorio', 'error'); return }
-  const { error } = await (client.from('tradecars_ventas') as any).insert({ ...f })
-  if (error) { notify('Error guardando: ' + error.message, 'error'); return }
-  // Marca el vehículo como vendido
-  if (f.vehiculo_id && f.estado === 'completada') {
-    await (client.from('tradecars_vehiculos') as any).update({ estado: 'vendido' }).eq('id', f.vehiculo_id)
-  }
-  notify('Venta registrada')
-  showVentaDialog.value = false
-  await Promise.all([fetchVentas(), fetchVehiculos()])
-}
-async function eliminarVenta(v: any) {
-  if (!confirm('¿Eliminar esta venta?')) return
-  const { error } = await client.from('tradecars_ventas').delete().eq('id', v.id)
-  if (error) { notify('Error eliminando: ' + error.message, 'error'); return }
-  notify('Venta eliminada'); await fetchVentas()
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

@@ -6598,11 +6598,100 @@ function nowLimaDatetimeLocal(): string {
   return toLimaDatetimeLocal(new Date())
 }
 
+// Normaliza nombre para comparar (sin tildes, minúsculas, espacios colapsados) —
+// mismo criterio que ya usa server/utils/healup-citas-manana.ts para fusionar
+// citas de distintas fuentes.
+function normalizeNombreBusqueda(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+interface RegistroExistente { fuente: string; nombre: string; fecha: string; detalle: string }
+
+/**
+ * Busca si ya existe una cita/paciente con el mismo DNI, número o nombre
+ * (normalizado) en el calendario o en las 3 tablas de pacientes, ANTES de
+ * crear uno nuevo — para evitar el caso real que reportó el cliente: un
+ * paciente ya agendado vía el bot (con su cita en healup_calendar_events)
+ * vuelve a cargarse a mano porque el staff no revisó si ya existía.
+ * No bloquea el guardado — sólo avisa; puede ser una visita real distinta.
+ */
+async function buscarRegistrosExistentes(nombre: string, dniRaw: string, numeroRaw: string): Promise<RegistroExistente[]> {
+  const dni = limpiarPlaceholder(dniRaw)
+  const numero = limpiarPlaceholder(numeroRaw)
+  const nombreNorm = normalizeNombreBusqueda(nombre)
+  const primeraPalabra = nombreNorm.split(' ')[0] || ''
+  const matches: RegistroExistente[] = []
+  if (!dni && !numero && !primeraPalabra) return matches
+
+  try {
+    let query = client.from('healup_calendar_events')
+      .select('client_name, client_surname, client_dni, client_phone, date, time, subject')
+    query = (dni || numero)
+      ? query.or([dni && `client_dni.eq.${dni}`, numero && `client_phone.eq.${numero}`].filter(Boolean).join(','))
+      : query.ilike('client_name', `%${primeraPalabra}%`)
+    const { data } = await query.limit(20)
+    for (const e of (data || []) as any[]) {
+      const nombreCompleto = `${e.client_name || ''} ${e.client_surname || ''}`.trim()
+      const esMatch = (dni && e.client_dni === dni) || (numero && e.client_phone === numero) ||
+        (!dni && !numero && normalizeNombreBusqueda(nombreCompleto) === nombreNorm)
+      if (esMatch) {
+        matches.push({ fuente: 'Calendario', nombre: nombreCompleto, fecha: `${e.date || ''} ${e.time || ''}`.trim(), detalle: e.subject || '' })
+      }
+    }
+  } catch { /* búsqueda de aviso, nunca bloquea el guardado */ }
+
+  const tablasPacientes = [
+    { tabla: 'PacientesBDwppHEALUP', label: 'Pacientes WhatsApp' },
+    { tabla: 'PacientesBDfbigHEALUP', label: 'Pacientes FB/IG' },
+    { tabla: 'PacientesBDtiktokHEALUP', label: 'Pacientes TikTok' },
+  ]
+  for (const { tabla, label } of tablasPacientes) {
+    try {
+      let query = client.from(tabla).select('nombre, dni, numero, fecha_agendamiento, procedimiento')
+      query = (dni || numero)
+        ? query.or([dni && `dni.eq.${dni}`, numero && `numero.eq.${numero}`].filter(Boolean).join(','))
+        : query.ilike('nombre', `%${primeraPalabra}%`)
+      const { data } = await query.limit(20)
+      for (const p of (data || []) as any[]) {
+        const esMatch = (dni && p.dni === dni) || (numero && p.numero === numero) ||
+          (!dni && !numero && normalizeNombreBusqueda(p.nombre) === nombreNorm)
+        if (esMatch) {
+          matches.push({ fuente: label, nombre: p.nombre, fecha: p.fecha_agendamiento || '', detalle: p.procedimiento || '' })
+        }
+      }
+    } catch { /* búsqueda de aviso, nunca bloquea el guardado */ }
+  }
+
+  return matches
+}
+
 const savePatient = async () => {
   // Validate
   if (!patientFormData.value.nombre || !patientFormData.value.dni || !patientFormData.value.numero) {
     alert('Por favor complete los campos obligatorios (Nombre, DNI, Número)')
     return
+  }
+
+  // Aviso de posible duplicado — sólo al crear (no al editar uno ya existente).
+  // No bloquea: puede ser una visita real distinta de la misma persona.
+  if (!editingPatient.value) {
+    const posiblesDuplicados = await buscarRegistrosExistentes(
+      patientFormData.value.nombre, patientFormData.value.dni, patientFormData.value.numero
+    )
+    if (posiblesDuplicados.length > 0) {
+      const detalle = posiblesDuplicados
+        .map(m => `• ${m.fuente}: ${m.nombre}${m.fecha ? ' — ' + m.fecha : ''}${m.detalle ? ' (' + m.detalle + ')' : ''}`)
+        .join('\n')
+      const continuar = confirm(
+        `⚠️ Ya existe${posiblesDuplicados.length > 1 ? 'n' : ''} ${posiblesDuplicados.length} registro(s) con este nombre/DNI/número:\n\n${detalle}\n\n¿Seguro que quieres crear un paciente nuevo de todas formas?`
+      )
+      if (!continuar) return
+    }
   }
 
   loading.value = true

@@ -111,16 +111,24 @@ function toISODate(raw: string): string {
   return s
 }
 
-/* ─── Fuente 1: healup_calendar_events (citas reales de HOY) ─────── */
+/* ─── Fuente 1: healup_calendar_events (registradas HOY en el calendario) ─
+ * Filtra por `created_at` (cuándo se cargó la fila al calendario), NO por
+ * `date` (para cuándo es la cita). Antes filtraba por fecha de la cita, lo
+ * que hacía que una cita cargada hace días (ej. vía la tool de TikTok) pero
+ * agendada PARA hoy apareciera en el reporte de hoy en vez de en el del día
+ * que realmente se cargó — exactamente lo que el cliente reportó con el caso
+ * de Maylin Cesar Casavilca (cargada el 14, cita para el 16, salió en el
+ * reporte del 16 en vez del 14). El campo `fecha_agendamiento` sigue
+ * mostrando la fecha real de la cita — sólo cambió el criterio de filtro. */
 
-async function fetchCalendarioHoy(event: H3Event, fechaLima: string): Promise<CitaHoy[]> {
+async function fetchCalendarioHoy(event: H3Event, inicioISO: string, finISO: string): Promise<CitaHoy[]> {
   const supabase = serverSupabaseServiceRole(event)
-  const ddmmyyyy = (() => { const [y, m, d] = fechaLima.split('-'); return `${d}-${m}-${y}` })()
 
   const { data, error } = await supabase
     .from('healup_calendar_events')
-    .select('id, date, time, client_name, client_surname, client_phone, client_dni, subject, description, procedure_id')
-    .or(`date.eq.${fechaLima},date.eq.${ddmmyyyy}`)
+    .select('id, date, time, client_name, client_surname, client_phone, client_dni, subject, description, procedure_id, created_at')
+    .gte('created_at', inicioISO)
+    .lte('created_at', finISO)
 
   if (error) throw new Error(`Supabase healup_calendar_events: ${error.message}`)
 
@@ -140,7 +148,7 @@ async function fetchCalendarioHoy(event: H3Event, fechaLima: string): Promise<Ci
         ? catalogo.find((p: any) => Number(p.id) === Number(e.procedure_id))
         : null
       const nombre = `${e.client_name || ''} ${e.client_surname || ''}`.replace(/\bnull\b/gi, '').trim()
-      const fechaISO = toISODate(e.date || fechaLima)
+      const fechaISO = toISODate(e.date || '')
       const hora = (e.time || '00:00:00').substring(0, 8)
       const dni = limpiarPlaceholder(e.client_dni)
       const numero = limpiarPlaceholder(e.client_phone)
@@ -294,7 +302,7 @@ export async function ejecutarEnvioAgendamientos(
   let errorsByTabla: Record<string, string> = {}
 
   const [calRes, pacRes] = await Promise.allSettled([
-    fetchCalendarioHoy(event, fechaLima),
+    fetchCalendarioHoy(event, inicioISO, finISO),
     fetchPacientesCreadosHoy(event, inicioISO, finISO)
   ])
   if (calRes.status === 'fulfilled') calendarioCitas = calRes.value

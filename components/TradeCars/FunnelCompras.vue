@@ -7,6 +7,13 @@
   etapa o una superior, así que un lead CONCRETADA suma en las 7. El % de cada
   barra es contra la barra ANTERIOR, no contra el total.
 
+  Se arman en cascada con DOS campos del CRM (reunión de alineación de
+  septiembre/2026): Coincide (✓ / x) y estado (6 valores). LEADS = todo lo que
+  entra; de CUMPLE POLITICA para abajo solo cuentan los leads con Coincide = SI
+  (la misma condición que pone la etiqueta cumple_politica en Chatwoot).
+  Además de las 7 barras hay una métrica aparte: PERFILES QUE NO COINCIDEN (x),
+  con su distribución por día / semana / mes — no es un embudo, es un contador.
+
   Toda la matemática vive en utils/tradecarsFunnel.ts (auto-import de Nuxt),
   compartida con los otros dos módulos para que nunca se desvíen entre sí.
 -->
@@ -26,13 +33,13 @@
 
     <div class="content-area">
 
-      <!-- Aviso: datos que el CRM mandó mal y quedan fuera del funnel -->
+      <!-- Aviso: datos que el CRM mandó mal (no avanzan más allá de LEADS / CUMPLE POLITICA hasta corregirlos) -->
       <v-alert v-if="conStatusInvalido.length" type="error" variant="tonal" density="compact"
         class="mb-4" icon="mdi-alert-octagon">
         <div class="d-flex align-center flex-wrap" style="gap:8px;">
           <strong>{{ conStatusInvalido.length }}</strong>
-          lead(s) con un STATUS que no está en la lista permitida. No se cuentan en el
-          embudo hasta corregirlos en el CRM.
+          lead(s) con un ESTADO que no está en la lista permitida. No avanzan en el embudo
+          (se quedan en LEADS o CUMPLE POLITICA) hasta corregirlos en el CRM.
           <v-chip v-for="s in statusInvalidosUnicos" :key="s" size="x-small" color="error" variant="flat">
             {{ s }}
           </v-chip>
@@ -42,8 +49,8 @@
       <v-alert v-if="sinStatus.length" type="warning" variant="tonal" density="compact"
         class="mb-4" icon="mdi-help-circle">
         <div><strong>{{ sinStatus.length }}</strong>
-        lead(s) con PERFIL COINCIDE = SI pero sin STATUS asignado. Quedan fuera del
-        embudo hasta que el asesor los clasifique.</div>
+        lead(s) con Coincide = SI pero sin ESTADO asignado. Cuentan como CUMPLE POLITICA,
+        pero no avanzan en el embudo hasta que el asesor les ponga un estado.</div>
         <div v-if="sinStatusPorAsesor.length" class="sin-status-asesores">
           <v-chip v-for="a in sinStatusPorAsesor" :key="a.asesor" size="x-small" variant="flat" color="warning">
             {{ a.asesor }}: {{ a.cantidad }}
@@ -89,6 +96,11 @@
           <div class="stat-title">Citas asistidas</div>
           <div class="stat-value">{{ barras[5]?.cantidad ?? 0 }}</div>
           <div class="stat-description">de {{ barras[4]?.cantidad ?? 0 }} agendadas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">No coinciden</div>
+          <div class="stat-value" style="color:#dc2626;">{{ perfiles.noCoinciden }}</div>
+          <div class="stat-description">{{ textoPctNoCoinciden }}</div>
         </div>
       </div>
 
@@ -164,6 +176,62 @@
                 <span class="funnel-conv-sub">vs {{ barras[i - 1].etapa }}</span>
               </template>
               <span v-else class="funnel-conv-sub">base</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PERFILES QUE NO COINCIDEN ══════════ -->
+      <div class="chart-section">
+        <div class="chart-header">
+          <div class="chart-title-section">
+            <h2>Perfiles que no coinciden</h2>
+            <div class="chart-subtitle">
+              Leads con Coincide = x. Se quedan en LEADS y el estado queda bloqueado.
+              No es parte del embudo: es un contador aparte, con los mismos filtros de arriba.
+            </div>
+          </div>
+          <div class="gran-toggle" role="group" aria-label="Agrupar por">
+            <button v-for="g in GRANULARIDADES" :key="g.valor" type="button" class="gran-btn"
+              :class="{ activo: granularidad === g.valor }" @click="granularidad = g.valor">
+              {{ g.etiqueta }}
+            </button>
+          </div>
+        </div>
+
+        <div class="perfiles-resumen">
+          <div class="perfil-dato">
+            <span class="perfil-num" style="color:#dc2626;">{{ perfiles.noCoinciden }}</span>
+            <span class="perfil-lbl">No coinciden (x)</span>
+          </div>
+          <div class="perfil-dato">
+            <span class="perfil-num" style="color:#16a34a;">{{ perfiles.coinciden }}</span>
+            <span class="perfil-lbl">Coinciden (✓)</span>
+          </div>
+          <div class="perfil-dato">
+            <span class="perfil-num" style="color:#8b93a7;">{{ perfiles.sinCalificar }}</span>
+            <span class="perfil-lbl">Sin calificar</span>
+          </div>
+          <div class="perfil-dato">
+            <span class="perfil-num">{{ perfiles.pctNoCoinciden !== null ? perfiles.pctNoCoinciden.toFixed(1) + '%' : '—' }}</span>
+            <span class="perfil-lbl">% que no coincide</span>
+          </div>
+        </div>
+
+        <div v-if="!serieNoCoinciden.length" class="funnel-vacio">
+          <v-icon icon="mdi-account-check-outline" size="32" />
+          <p>No hay perfiles marcados como «no coincide» en este período.</p>
+        </div>
+        <div v-else class="serie-scroll">
+          <div class="serie-barras" :style="{ minWidth: (serieNoCoinciden.length * 34) + 'px' }">
+            <div v-for="(p, i) in serieNoCoinciden" :key="p.clave" class="serie-col"
+              :title="`${p.etiqueta}: ${p.cantidad}`">
+              <span class="serie-valor">{{ p.cantidad || '' }}</span>
+              <div class="serie-pista">
+                <div class="serie-barra" :class="{ vacia: !p.cantidad }"
+                  :style="{ height: alturaBarraNoCoincide(p.cantidad) }" />
+              </div>
+              <span class="serie-etiqueta">{{ i % saltoEtiqueta === 0 ? p.etiqueta : '' }}</span>
             </div>
           </div>
         </div>
@@ -384,10 +452,47 @@ const conStatusInvalido = computed(() =>
 const statusInvalidosUnicos = computed(() =>
   [...new Set(conStatusInvalido.value.map(l => String(l.status)))].slice(0, 6))
 
-/** PERFIL = SI pero sin STATUS: fuera del funnel hasta clasificarlos. */
+/** Coincide = SI pero sin ESTADO: cuentan como CUMPLE POLITICA y ahí se quedan hasta que tengan estado. */
 const sinStatus = computed(() =>
-  leadsFiltrados.value.filter(l =>
-    tcPerfilCoincide(l.perfil_coincide) && !String(l.status ?? '').trim()))
+  leadsFiltrados.value.filter(l => tcSinEstado(l)))
+
+/**
+ * Perfiles que NO coinciden (x) — métrica aparte del embudo, pedida por Trade
+ * Cars en la reunión de alineación. Comparte los filtros de arriba (mes/rango,
+ * asesor, canal) para que nunca contradiga las 7 barras.
+ */
+const perfiles = computed(() => tcResumenPerfiles(leadsFiltrados.value))
+
+const textoPctNoCoinciden = computed(() => {
+  const p = perfiles.value
+  if (!p.total) return 'Sin leads en el período'
+  return `${(p.pctNoCoinciden ?? 0).toFixed(1)}% de los leads`
+})
+
+const GRANULARIDADES: { valor: TcGranularidad; etiqueta: string }[] = [
+  { valor: 'dia', etiqueta: 'Por día' },
+  { valor: 'semana', etiqueta: 'Por semana' },
+  { valor: 'mes', etiqueta: 'Por mes' },
+]
+const granularidad = usePersistente<TcGranularidad>('tradecars:funnel:noCoincidenGran', 'dia')
+
+const serieNoCoinciden = computed(() => tcSerieNoCoinciden(leadsFiltrados.value, granularidad.value))
+const maxSerieNoCoinciden = computed(() =>
+  serieNoCoinciden.value.reduce((m, p) => Math.max(m, p.cantidad), 0) || 1)
+
+/** Con muchos cubos (día sobre un histórico largo) se muestra un rótulo cada N barras. */
+const saltoEtiqueta = computed(() => {
+  const n = serieNoCoinciden.value.length
+  if (n <= 16) return 1
+  if (n <= 40) return 2
+  if (n <= 90) return 5
+  return 10
+})
+
+function alturaBarraNoCoincide(cantidad: number) {
+  if (!cantidad) return '2px'
+  return Math.max((cantidad / maxSerieNoCoinciden.value) * 100, 4) + '%'
+}
 
 /**
  * Desglose por asesor de los leads sin status — pedido en la reunión del
@@ -538,13 +643,13 @@ function estiloBarraCampana(b: any, camp: { barras: any[]; color: string }) {
 
 /* ---------------- Presentación ---------------- */
 const DESCRIPCIONES: Record<string, string> = {
-  'LEADS':           'Todos los leads del período',
-  'CUMPLE POLITICA': 'Perfil coincide = SI',
-  'CONTACTADO':      'Se logró contacto con el cliente',
+  'LEADS':           'Todos los clientes que entran',
+  'CUMPLE POLITICA': 'Coincide ✓ (con o sin estado)',
+  'CONTACTADO':      'Se logró contacto (no interesado o más)',
   'INTERESADOS':     'En seguimiento o más avanzado',
-  'CITAS AGENDADAS': 'Con cita programada',
-  'CITAS ASISTIDAS': 'El cliente asistió a la cita',
-  'COMPRAS':         'Compra concretada',
+  'CITAS AGENDADAS': 'Cita, cita asistida o concretado',
+  'CITAS ASISTIDAS': 'Cita asistida o concretado',
+  'COMPRAS':         'Estado Concretado',
 }
 const descripcionEtapa = (e: string) => DESCRIPCIONES[e] || ''
 
@@ -722,6 +827,89 @@ function exportarCsv() {
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
+}
+
+/* ── Perfiles que no coinciden ── */
+.gran-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.gran-btn {
+  padding: 7px 14px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.gran-btn + .gran-btn { border-left: 1px solid var(--border); }
+.gran-btn:hover { background: var(--card); }
+.gran-btn.activo {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.perfiles-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+  padding: 4px 4px 18px;
+}
+.perfil-dato { display: flex; flex-direction: column; line-height: 1.2; }
+.perfil-num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.perfil-lbl { font-size: 0.7rem; color: var(--muted-foreground); }
+
+.serie-scroll { overflow-x: auto; padding-bottom: 6px; }
+.serie-barras {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 190px;
+}
+.serie-col {
+  flex: 1 1 0;
+  min-width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.serie-valor {
+  height: 14px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.serie-pista {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.serie-barra {
+  width: 70%;
+  max-width: 26px;
+  background: #dc2626;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.serie-barra.vacia { background: var(--border); }
+.serie-etiqueta {
+  height: 14px;
+  font-size: 0.62rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
 }
 
 /* ── Comparativo por asesor ── */

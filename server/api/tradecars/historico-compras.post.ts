@@ -10,6 +10,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { resolverPerfilTradeCars, exigirModuloTradeCars } from '../../utils/tradecars'
+import { tcCalcularCompra, tcSoloCambios } from '~/utils/tradecarsFormulas'
 
 const texto = (v: any) => {
   const s = v === null || v === undefined ? '' : String(v).trim()
@@ -62,6 +63,42 @@ function armarFila(body: any) {
   return fila
 }
 
+/**
+ * Aplica las fórmulas del Excel (utils/tradecarsFormulas.ts) sobre lo que se va a guardar:
+ * las columnas calculadas SIEMPRE salen de la cuenta, no de lo que venga del formulario, para
+ * que editar un precio deje coherente el resto de la fila. Sobre una edición se mezcla primero
+ * con la fila que ya está guardada (el formulario solo manda lo que cambió).
+ */
+async function aplicarFormulas(supabase: any, fila: Record<string, any>, previo: Record<string, any> | null) {
+  const base = { ...(previo || {}), ...fila }
+
+  // N° de compra de una compra nueva: el siguiente de esa placa
+  let siguienteNCompra: number | undefined
+  if (!previo && base.n_compra === undefined && base.placa) {
+    const { data } = await supabase
+      .from('tradecars_data_historico_compras').select('n_compra').eq('placa', base.placa)
+    const maximo = (data || []).reduce((m: number, r: any) => Math.max(m, Number(r.n_compra) || 0), 0)
+    siguienteNCompra = maximo + 1
+  }
+
+  let calc = tcCalcularCompra(base, { siguienteNCompra })
+
+  // ¿Ya se vendió? Hay una venta con el mismo concat (placa-N)
+  const concat = String(calc.concat ?? base.concat ?? '').trim()
+  let tieneVenta: boolean | undefined
+  if (concat) {
+    const { data } = await supabase
+      .from('tradecars_data_historico_compras_ventas').select('id').eq('concat', concat).limit(1)
+    tieneVenta = (data?.length ?? 0) > 0
+  }
+  calc = tcCalcularCompra({ ...base, ...calc }, { tieneVenta })
+
+  // En una edición solo se reescribe lo que la edición realmente cambia (ver tcSoloCambios)
+  if (previo) calc = tcSoloCambios(calc, tcCalcularCompra(previo, { tieneVenta }), previo)
+
+  return { ...fila, ...calc }
+}
+
 export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
   const perfil = await resolverPerfilTradeCars(event, supabase)
@@ -71,10 +108,11 @@ export default defineEventHandler(async (event) => {
   if (accion === 'crear') {
     exigirModuloTradeCars(perfil, 'operaciones', 'create')
 
-    const fila = armarFila(body)
+    let fila = armarFila(body)
     if (!fila.placa && !fila.marca) {
       throw createError({ statusCode: 400, statusMessage: 'Al menos la placa o la marca son obligatorias' })
     }
+    fila = await aplicarFormulas(supabase, fila, null)
     fila.actualizado_en = new Date().toISOString()
     fila.actualizado_por = perfil.email
 
@@ -92,7 +130,13 @@ export default defineEventHandler(async (event) => {
     const id = texto(body?.id)
     if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el id de la fila a editar' })
 
-    const fila = armarFila(body)
+    // La fila que ya está guardada: las fórmulas se calculan sobre "lo guardado + lo que se cambió"
+    const { data: previo } = await supabase
+      .from('tradecars_data_historico_compras').select('*').eq('id', id).maybeSingle()
+    if (!previo) throw createError({ statusCode: 404, statusMessage: 'La compra ya no existe' })
+
+    let fila = armarFila(body)
+    fila = await aplicarFormulas(supabase, fila, previo)
     fila.actualizado_en = new Date().toISOString()
     fila.actualizado_por = perfil.email
 

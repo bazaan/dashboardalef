@@ -13,6 +13,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { resolverPerfilTradeCars, exigirModuloTradeCars } from '../../utils/tradecars'
+import { tcCalcularVenta, tcSoloCambios } from '~/utils/tradecarsFormulas'
 
 const texto = (v: any) => {
   const s = v === null || v === undefined ? '' : String(v).trim()
@@ -65,10 +66,12 @@ export default defineEventHandler(async (event) => {
   if (accion === 'crear') {
     exigirModuloTradeCars(perfil, 'operaciones', 'create')
 
-    const fila = armarFila(body)
+    let fila = armarFila(body)
     if (!fila.placa && !fila.marca) {
       throw createError({ statusCode: 400, statusMessage: 'Al menos la placa o la marca son obligatorias' })
     }
+    // Fórmulas del Excel (margen bruto, días de inventario, etc.) — ver utils/tradecarsFormulas.ts
+    fila = { ...fila, ...tcCalcularVenta(fila) }
     fila.actualizado_en = new Date().toISOString()
     fila.actualizado_por = perfil.email
     // `origen_ultimo_cambio` tiene un CHECK constraint en la base que no está
@@ -92,7 +95,17 @@ export default defineEventHandler(async (event) => {
     const id = texto(body?.id)
     if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el id de la fila a editar' })
 
-    const fila = armarFila(body)
+    // Las fórmulas se calculan sobre "lo ya guardado + lo que se cambió" (el formulario solo manda lo editado)
+    const { data: previo } = await supabase
+      .from('tradecars_data_historico_compras_ventas').select('*').eq('id', id).maybeSingle()
+    if (!previo) throw createError({ statusCode: 404, statusMessage: 'La venta ya no existe' })
+
+    let fila = armarFila(body)
+    // Solo se reescribe lo que la edición realmente cambia (una fila con un valor escrito a mano no se pisa)
+    fila = {
+      ...fila,
+      ...tcSoloCambios(tcCalcularVenta({ ...previo, ...fila }), tcCalcularVenta(previo), previo),
+    }
     fila.actualizado_en = new Date().toISOString()
     fila.actualizado_por = perfil.email
 

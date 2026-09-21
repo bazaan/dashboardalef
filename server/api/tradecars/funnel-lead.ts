@@ -24,8 +24,10 @@
  *   "asesor": "Miguel C.",
  *   "fecha_derivacion": "2026-08-01",
  *
- *   "perfil_coincide": "SI",             // SI | NO
- *   "status": "CITA",                    // uno de los 6 valores cerrados
+ *   "perfil_coincide": "SI",             // SI | NO  (tambien acepta el ✓ / x del CRM)
+ *   "status": "CITA",                    // uno de los 6 valores cerrados (acepta "Concretado")
+ *   "informacion_auto": "Toyota Yaris 2019, 45 mil km",   // atributo "informacion del auto"
+ *   "transcripcion": "…"                 // opcional: chat, solo para extraer datos del auto al concretar
  *   "fecha_cita": "2026-08-14",
  *   "fecha_compra": null,
  *   "motivo_no_cita": "Precio ofrecido bajo",
@@ -47,18 +49,31 @@
  * el dashboard lo muestre como error visible (lo pide la minuta) en vez de que
  * el lead desaparezca silenciosamente.
  *
+ * REGLAS DE LA REUNIÓN DE ALINEACIÓN (septiembre/2026):
+ *  - El CRM manda DOS campos: "coincide" (✓ / x) y "estado" (6 valores). n8n los
+ *    traduce a perfil_coincide (SI/NO) + status; aquí se vuelve a normalizar con
+ *    utils/tradecarsFunnel.ts (la misma lógica del dashboard) por si llega crudo.
+ *  - Con Coincide = NO el estado se BLOQUEA: se guarda vacío.
+ *  - Al avanzar a CITA / CITA ASISTIDA / CONCRETADA sin fecha propia, se registra
+ *    la fecha de hoy (Lima) como fecha del evento, para que el lead caiga en el
+ *    mes correcto del embudo (Chatwoot no manda esas fechas).
+ *  - Al llegar a CONCRETADA se crea (una sola vez) la fila en el histórico de
+ *    compras para que la verifique el administrador — ver
+ *    server/utils/tradecars-compra-crm.ts.
+ *
  * Log: agent_tool_logs (company_id='tradecars', tool_name='Funnel Lead')
  */
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { getMethod } from 'h3'
+import {
+  TC_STATUS, tcPerfilValor, tcStatusValido, tcStatusEsInvalido, tcRank, tcNormalizar,
+} from '~/utils/tradecarsFunnel'
+import { crearCompraDesdeLead } from '~/server/utils/tradecars-compra-crm'
 
 const API_KEY = 'tradecars-funnel-2026'
 
-const STATUS_VALIDOS = [
-  'NO CONTACTADO', 'NO INTERESADO', 'EN SEGUIMIENTO',
-  'CITA', 'CITA ASISTIDA', 'CONCRETADA',
-]
+const STATUS_VALIDOS: string[] = [...TC_STATUS]
 
 /** Devuelve el primer valor no vacío entre varias claves posibles del body. */
 function pick(body: any, ...claves: string[]): string {
@@ -69,14 +84,9 @@ function pick(body: any, ...claves: string[]): string {
   return ''
 }
 
-/** Normaliza a mayúsculas sin acentos. */
-function norm(v: any): string {
-  return String(v ?? '')
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+/** YYYY-MM-DD de hoy en hora de Lima (el equipo opera en Perú). */
+function hoyLima(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
 }
 
 /** Convierte a 'YYYY-MM-DD' o null. Acepta ISO, DD/MM/YYYY y Date. */
@@ -128,12 +138,23 @@ export default defineEventHandler(async (event) => {
   const asesor   = pick(body, 'asesor', 'asesor_asignado', 'agent', 'ASESOR')
 
   // ── Campos que llena el asesor ──
-  const perfilRaw = pick(body, 'perfil_coincide', 'perfilCoincide', 'PERFIL COINCIDE')
+  const perfilRaw = pick(body, 'perfil_coincide', 'perfilCoincide', 'PERFIL COINCIDE', 'coincide')
   const statusRaw = pick(body, 'status', 'STATUS', 'estado')
 
-  const perfil = perfilRaw ? (norm(perfilRaw) === 'SI' || norm(perfilRaw) === 'YES' || norm(perfilRaw) === 'TRUE' ? 'SI' : 'NO') : null
-  const status = statusRaw ? norm(statusRaw) : null
-  const statusInvalido = !!status && !STATUS_VALIDOS.includes(status)
+  // Coincide en TRES estados con la misma normalización del dashboard
+  // (utils/tradecarsFunnel.ts): acepta ✓ / x del CRM. Un texto que no se reconoce
+  // es "sin calificar" (null) — NO se asume "NO": antes cualquier cosa distinta de
+  // SI se guardaba como NO y eso inflaba la métrica de perfiles que no coinciden.
+  const perfilValor = tcPerfilValor(perfilRaw)
+  const perfil = perfilValor || null
+
+  // Estado canónico ("Concretado" del CRM -> "CONCRETADA"). Con Coincide = NO el
+  // estado se BLOQUEA: se guarda vacío aunque llegue uno (regla de la reunión).
+  const statusBloqueado = perfilValor === 'NO' && !!statusRaw
+  const statusInvalido = !statusBloqueado && tcStatusEsInvalido(statusRaw)
+  const status: string | null = perfilValor === 'NO'
+    ? null
+    : (tcStatusValido(statusRaw) || (statusInvalido ? tcNormalizar(statusRaw) : null))
 
   const fila: Record<string, any> = {
     contacto_nombre:      nombre || null,
@@ -159,6 +180,7 @@ export default defineEventHandler(async (event) => {
     proxima_accion:       pick(body, 'proxima_accion', 'proximaAccion', 'PROXIMA ACCION') || null,
     fecha_seguimiento:    fecha(pick(body, 'fecha_seguimiento', 'fechaSeguimiento', 'FECHA DE SEGUIMIENTO')),
     observaciones:        pick(body, 'observaciones', 'notas') || null,
+    informacion_auto:     pick(body, 'informacion_auto', 'informacion_del_auto', 'info_auto') || null,
 
     // ── Campos del Excel del asesor (no entran al cálculo del funnel) ──
     placa:        pick(body, 'placa', 'PLACA') || null,
@@ -190,10 +212,22 @@ export default defineEventHandler(async (event) => {
     feedback:              pick(body, 'feedback', 'FEEDBACK') || null,
   }
 
-  // No pisar con null los campos que el CRM no mandó en este envío parcial
+  // Un envío del CRM nunca borra lo que ya está guardado: los campos vacíos se descartan.
+  // Antes se descartaban solo si la clave no venía en el body, y n8n manda todas las claves
+  // (con null cuando el atributo está vacío), así que cada evento de Chatwoot pisaba con null
+  // las fechas de cita/compra y lo que el asesor había editado en el dashboard.
+  // Únicas excepciones: `status` y `perfil_coincide`, que SÍ pueden quedar vacíos a propósito
+  // (Coincide = NO bloquea el estado; un CRM puede mandar Coincide vacío = sin calificar).
   for (const k of Object.keys(fila)) {
-    if (fila[k] === null && !(k in body) && !statusInvalido) delete fila[k]
+    if (fila[k] !== null) continue
+    const limpiable =
+      (k === 'perfil_coincide' && k in body) ||
+      (k === 'status' && (k in body || perfilValor === 'NO'))
+    if (!limpiable) delete fila[k]
   }
+  // Como consecuencia, informacion_auto solo viaja cuando trae contenido: un envío sin ese
+  // dato no borra el que ya estaba, y no exige que la migración v2 (que crea la columna)
+  // ya se haya corrido mientras el asesor no haya llenado nada.
 
   const log = async (status_log: string, output: any, error?: string) => {
     try {
@@ -208,6 +242,32 @@ export default defineEventHandler(async (event) => {
     } catch { /* el log nunca debe tumbar la sincronización */ }
   }
 
+  // Fechas del evento: Chatwoot NO manda fecha de cita ni de compra (no existen esos
+  // atributos), así que al AVANZAR de etapa se registra la de hoy (Lima) cuando el
+  // lead todavía no la tiene. Sin esto todos los leads caerían en el mes de su
+  // derivación y no en el mes en que realmente pasó la cita o la compra.
+  const estamparFechas = (previo: any | null) => {
+    const rankNuevo = tcRank({ perfil_coincide: perfil, status })
+    const rankPrevio = previo ? Number(previo.etapa_rank ?? 0) : -1   // -1 = lead nuevo
+    if (rankNuevo <= rankPrevio) return   // no avanza (si retrocede, lo frena el trigger de la BD)
+    const hoy = hoyLima()
+    if (rankNuevo >= 4 && !fila.fecha_cita && !previo?.fecha_cita) fila.fecha_cita = hoy
+    if (rankNuevo >= 5 && !fila.fecha_cita_asistida && !previo?.fecha_cita_asistida) fila.fecha_cita_asistida = hoy
+    if (rankNuevo >= 6 && !fila.fecha_compra && !previo?.fecha_compra) fila.fecha_compra = hoy
+  }
+
+  // Escribe el lead. Si la migración v2 todavía no se corrió, la columna informacion_auto
+  // no existe: se reintenta una vez sin ella para no perder la sincronización del funnel.
+  const escribir = async (armar: (f: Record<string, any>) => any) => {
+    let res = await armar(fila)
+    if (res.error && 'informacion_auto' in fila && /informacion_auto/i.test(res.error.message || '')) {
+      const { informacion_auto: _omitida, ...sinInfo } = fila
+      res = await armar(sinInfo)
+    }
+    if (res.error) throw res.error
+    return res.data
+  }
+
   try {
     let guardado: any = null
     let creado = false
@@ -215,27 +275,25 @@ export default defineEventHandler(async (event) => {
     if (conversationId) {
       // Upsert por conversación: el CRM puede reenviar el mismo lead N veces
       const { data: existente } = await (supabase.from('tradecars_funnel_leads') as any)
-        .select('id').eq('chatwoot_conversation_id', conversationId).maybeSingle()
+        .select('id, etapa_rank, fecha_cita, fecha_cita_asistida, fecha_compra')
+        .eq('chatwoot_conversation_id', conversationId).maybeSingle()
+
+      estamparFechas(existente)
 
       if (existente) {
-        const { data, error } = await (supabase.from('tradecars_funnel_leads') as any)
-          .update(fila).eq('id', existente.id)
-          .select('id, etapa, etapa_rank, fecha_funnel').single()
-        if (error) throw error
-        guardado = data
+        guardado = await escribir((f) =>
+          (supabase.from('tradecars_funnel_leads') as any)
+            .update(f).eq('id', existente.id).select('*').single())
       } else {
-        const { data, error } = await (supabase.from('tradecars_funnel_leads') as any)
-          .insert({ ...fila, chatwoot_conversation_id: conversationId })
-          .select('id, etapa, etapa_rank, fecha_funnel').single()
-        if (error) throw error
-        guardado = data
+        guardado = await escribir((f) =>
+          (supabase.from('tradecars_funnel_leads') as any)
+            .insert({ ...f, chatwoot_conversation_id: conversationId }).select('*').single())
         creado = true
       }
     } else {
-      const { data, error } = await (supabase.from('tradecars_funnel_leads') as any)
-        .insert(fila).select('id, etapa, etapa_rank, fecha_funnel').single()
-      if (error) throw error
-      guardado = data
+      estamparFechas(null)
+      guardado = await escribir((f) =>
+        (supabase.from('tradecars_funnel_leads') as any).insert(f).select('*').single())
       creado = true
     }
 
@@ -248,19 +306,38 @@ export default defineEventHandler(async (event) => {
     }
 
     if (statusInvalido) {
-      // Se guardó, pero el dashboard lo va a marcar en rojo hasta que se corrija
+      // Se guardó (cuenta solo como LEAD), pero el dashboard lo va a marcar en rojo hasta que se corrija
       salida.error = 'status_invalido'
       salida.status_recibido = status
       salida.status_validos = STATUS_VALIDOS
       salida.mensaje = 'El lead se guardó pero el STATUS no es uno de los 6 valores permitidos. '
-        + 'Aparecerá marcado como error en el dashboard hasta que se corrija.'
+        + 'No avanza en el embudo (queda en LEADS / CUMPLE POLITICA) y aparecerá marcado como error en el dashboard hasta que se corrija.'
       await log('warning', salida)
       console.warn('[tradecars/funnel-lead] STATUS invalido:', status, '| conv', conversationId)
       return salida
     }
 
-    if (!guardado.etapa && guardado.etapa_rank === -1) {
-      salida.aviso = 'PERFIL COINCIDE = SI sin STATUS: el lead no entra al funnel hasta que el asesor lo clasifique.'
+    if (statusBloqueado) {
+      salida.aviso = 'Coincide = NO: el estado se bloquea (se guardó vacío). El lead se queda en LEADS.'
+    } else if (perfil === 'SI' && !guardado.status) {
+      salida.aviso = 'Coincide = SI sin estado: cuenta como CUMPLE POLITICA hasta que el asesor le ponga un estado.'
+    }
+
+    // Compra concretada -> histórico de compras (una sola vez por lead: la función es
+    // idempotente por crm_lead_id, así que llamarla en cada evento es seguro). Se decide
+    // con lo que quedó REALMENTE en la BD, no con lo que llegó (el trigger anti-regresión
+    // puede haber conservado un estado más avanzado).
+    if (guardado.etapa_rank === 6) {
+      try {
+        const compra = await crearCompraDesdeLead(supabase, guardado, {
+          transcripcion: pick(body, 'transcripcion', 'chat_transcripcion'),
+        })
+        if (compra) salida.compra = compra
+      } catch (e: any) {
+        // Nunca debe tumbar la sincronización del funnel
+        salida.compra = { ok: false, error: e?.message ?? String(e) }
+        console.error('[tradecars/funnel-lead] compra automática falló:', e?.message)
+      }
     }
 
     await log('success', salida)

@@ -265,6 +265,8 @@ Doble sistema para auditar acciones:
 | POST | `/api/users/create` | admin, superadmin. No puede crear superadmin |
 | PUT | `/api/users/update` | admin (su empresa), superadmin |
 | DELETE | `/api/users/delete` | admin (su empresa), superadmin. No auto-eliminación |
+| PUT | `/api/users/password` | Cambia la contraseña de otro usuario. superadmin, o en Piola solo los correos de `piola_modulo_acceso` (grupo `contrasenas`: Raysa y Edson). Body: `{ id, password, tu_password }`; exige la contraseña propia. Actualiza `dashboardlogin` **y** Supabase Auth |
+| GET | `/api/users/password` | `{ puede: boolean }` para mostrar u ocultar el bloque "Cambiar contraseña" |
 | POST | `/api/n8n/toggle-workflow` | Cualquier autenticado. Body: `{ clientKey, active: boolean }` |
 | POST | `/api/pse/factura` | Autenticados de Healup / ECS |
 | GET | `/api/pse/comprobantes` | Autenticados de Healup / ECS |
@@ -1558,6 +1560,37 @@ dijeron que están bien tal cual.
 - Roles y permisos granulares — reunión interna aparte, la próxima semana.
 - La reconciliación con `feat/mobile-adaptation` — hay otra sesión trabajando en eso sobre la
   misma base de datos; ver `sql/piola_reconciliacion_mobile.sql` (sin correr).
+
+### Reunión del 14/09/2026 — lo acordado (migración `sql/piola_reunion_14sep.sql`)
+
+Participaron Sebastián Ávalos, Raysa Cucho, Edson Polo, Héctor Córdova y Roberto. **Correr una vez
+`sql/piola_reunion_14sep.sql`** (idempotente; solo siembra quién puede cambiar contraseñas). Lo demás no toca la base.
+
+| Qué pidieron | Dónde quedó |
+|---|---|
+| Producción: "Etapa de producción" pasa a llamarse **Área** y se elimina el "Área" genérico (Dirección / Comercial / …), que se confundía con el Estado | `PiolaProduccion.vue`: un solo campo **Área** = `piola_produccion_areas` (guiones, producción, grabación, edición, presentación, diseño gráfico). El filtro, la tarjeta y el reporte usan solo esa. `piola_deliverables.area_id` y `piola_compromisos.area_id` **siguen en la base** (no se borran datos); solo dejaron de mostrarse. Los compromisos se siguen guardando con su `area_id` anterior intacto |
+| Botón **Duplicar** en el tablero de producción (Sebastián: "clic derecho, duplicar, y solo le cambian el título") | Botón en la tarjeta (al pasar el mouse), **clic derecho** y botón en el diálogo. Acción `duplicar_entregable` en `produccion.post.ts`: copia marca, tipo, área, servicio, cantidad, periodo, responsable, fecha de compromiso y descripción; **no copia** enlaces, observaciones de Dirección, aprobación ni fecha de entrega, y arranca "En producción". La copia se guarda al instante y se abre para cambiarle el título |
+| **Cumplimiento por marca** igual al **Excel de KPIs** (una fila por marca, una columna por tipo de contenido, total, avance %, "el 100 % es todo el mes; en la quincena deberíamos ir en 40–50 %") | Tabla verde estilo Excel en `PiolaProduccion.vue` + `utils/piolaCumplimiento.ts` (funciones puras con pruebas). Cada barra lleva una marca vertical con el **avance esperado a hoy** (día del mes / días del mes) y un ritmo: Completo / Al día / En riesgo (hasta 15 puntos por debajo) / Atrasado. Sale de la vista `piola_cumplimiento_tipo` (aprobado + entregado): no se llena a mano |
+| Reporte del tablero de producción **en PDF** (5 guiones y 7 piezas gráficas en producción, lo que está en revisión…), general o por marca | Botón **Reporte PDF** en el Tablero (respeta los filtros: marca, área, tipo, responsable) y **Descargar PDF** en Cumplimiento (todas las marcas o una). Es HTML que se imprime a PDF desde el navegador (mismo criterio que boletas y facturas: el proyecto no tiene librería de PDF). Si el navegador bloquea las ventanas emergentes, imprime desde un iframe oculto |
+| Título "Reportes y alertas" → **"Reportes comerciales y alertas CRM"** | Menú lateral y título de la página (`Piola.vue`, `PiolaReportes.vue`) |
+| **Cambiar contraseñas** de los usuarios del sistema: solo Raysa y Edson (Héctor, aunque es administrador, no) | `PUT /api/users/password` + bloque "Cambiar contraseña" en `EditUserDialog.vue` (visible solo para quien tiene permiso). Ver las reglas abajo |
+| Roles: "rol" = qué módulos ve, "cargo" = nombre del puesto | Sin cambios: se quedaron con los roles existentes (Dirección Estratégica para quien solo ve Mi espacio + Producción). `piola_colaboradores.cargo` ya existe |
+| Registro de entrada/salida en **Mi espacio** (sin dar acceso a RR. HH.) | **Ya estaba así:** Mi espacio trae Iniciar jornada / Break / Terminar jornada, historial, vacaciones y boletas propias. El rol Colaborador solo ve Mi espacio |
+| CRM en el celular: usar el navegador (Chrome), no la app | Aviso cerrable en el Dashboard de Piola (`PiolaHome.vue`). La app nativa de Chatwoot tiene errores conocidos y no deja enviar mensajes |
+
+**Cambio de contraseña — reglas que NO son obvias** (`server/utils/usuarios-password.ts`):
+
+- **Quién puede:** superadmin de Alef siempre; un admin de Piola **solo si su correo está en `piola_modulo_acceso` con `grupo = 'contrasenas'`** (Raysa y Edson). Sin esa fila, o si falla la consulta, nadie más que Alef puede: falla cerrado. El grupo `contrasenas` no está en `GRUPOS_ACCESO_RECONOCIDOS`, así que no restringe ningún módulo. Para dar o quitar el permiso basta editar el arreglo `emails`.
+- **Hay que confirmar con la contraseña propia** (`tu_password`). La cookie `dashboard_session` es un JSON sin firmar que solo lleva el correo: quien conozca el de un administrador podría fabricarla, y para leer datos eso ya era un límite conocido pero para **cambiar la contraseña de otro** significaría tomar su cuenta. Se verifica contra el hash de `dashboardlogin` y, si no coincide, contra Supabase Auth (quien cambió su clave con "olvidé mi contraseña" solo la tiene actualizada ahí). Freno de 5 intentos fallidos por 10 minutos (en memoria: es un freno, no una garantía).
+- **Se cambia en DOS lugares.** El login prueba primero **Supabase Auth** y solo después el hash bcrypt de `dashboardlogin`. Un usuario que ya entró alguna vez fue migrado a Auth con su clave de ese momento: cambiar solo el hash dejaría la **contraseña vieja funcionando**. Por eso se actualiza `dashboardlogin.password` y, si existe, el usuario de Auth (`auth.admin.updateUserById`, buscándolo por id o por correo). Si todavía no está en Auth, la próxima entrada lo migra ya con la clave nueva.
+- Un admin nunca toca a un superadmin ni a un usuario de otra empresa; mínimo 8 y máximo 72 caracteres (bcrypt ignora en silencio lo que pase de 72); sin espacios en los bordes; la clave nunca se devuelve ni se registra (solo "Cambió la contraseña del usuario X"). Las sesiones ya abiertas del usuario no se cierran.
+- Probado de punta a punta contra la base real con usuarios de prueba (22 comprobaciones: permisos, cada rechazo, el caso feliz, el freno de intentos y la limpieza).
+
+**Pendiente del cliente (bloquea completar, no es desarrollo):**
+- **Excel de KPIs** (la "tabla verde"): lo iba a mandar Sebastián por WhatsApp. La tabla de Cumplimiento se armó con la estructura descrita en la reunión; cuando llegue el Excel se ajustan columnas y orden en `utils/piolaCumplimiento.ts`.
+- **Excel de códigos financieros** (Edson): la numeración de tipo de gasto ya existe (`piola_expense_categories.codigo`); falta importar el archivo cuando llegue.
+- **Texto del saludo automático** de WhatsApp (Héctor): se carga en Configuración → Mensajes automáticos (`piola_mensajes`, clave `bienvenida_whatsapp`) y se activa en el saludo del inbox de Chatwoot / n8n (`referencia/n8n/piola-saludo-automatico-guia.md`).
+- **Operativo, no de código:** Edson crea los ~15 usuarios (primero "Usuarios del sistema" con rol Agente y después la ficha en Colaboradores; Alejandro incluido) y Roberto les pone las contraseñas por grupo (Edson/Raysa/Héctor una; Sebastián otra; el equipo operativo otra) con el nuevo botón. Sebastián carga los 2 entregables de Guabazana (gráficas + videos) en el tablero.
 
 ### Pendientes del cliente (bloquean cierre, no desarrollo)
 

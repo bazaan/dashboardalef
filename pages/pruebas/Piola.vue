@@ -244,7 +244,7 @@ const SECCIONES = [
   {
     label: 'Reportes',
     items: [
-      { id: 'reportes', icon: 'mdi-chart-box', label: 'Reportes y alertas', modulo: 'reportes' },
+      { id: 'reportes', icon: 'mdi-chart-box', label: 'Reportes comerciales y alertas CRM', modulo: 'reportes' },
     ],
   },
 ] as const

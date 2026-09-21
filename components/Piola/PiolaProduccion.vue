@@ -55,7 +55,20 @@
             <v-btn v-if="hayFiltros" size="small" variant="text" @click="limpiarFiltros">
               <v-icon icon="mdi-filter-remove-outline" start /> Limpiar
             </v-btn>
+            <v-spacer />
+            <v-btn size="small" variant="tonal" @click="imprimirTablero">
+              <v-icon icon="mdi-file-pdf-box" start /> Reporte PDF
+            </v-btn>
           </div>
+
+          <!-- Menú de clic derecho sobre una tarjeta -->
+          <v-menu v-model="menuCtx.abierto" :target="[menuCtx.x, menuCtx.y]" :close-on-content-click="true">
+            <v-list density="compact" min-width="170">
+              <v-list-item prepend-icon="mdi-open-in-new" title="Abrir" @click="abrirDesdeMenu" />
+              <v-list-item v-if="puedeCrear" prepend-icon="mdi-content-copy" title="Duplicar"
+                @click="duplicarDesdeMenu" />
+            </v-list>
+          </v-menu>
 
           <!-- ── Kanban por estado ── -->
           <div v-if="tab === 'tablero'" class="kanban">
@@ -70,14 +83,18 @@
                 <div v-for="e in porEstado(estado.value)" :key="e.id" class="ent-card"
                   :class="{ 'ent-card-arrastrando': arrastrandoId === e.id }"
                   :draggable="puedeEditar" @dragstart="onIniciarArrastre(e)" @dragend="onFinArrastre"
-                  @click="detalle = { ...e }">
+                  @click="detalle = { ...e }" @contextmenu.prevent="abrirMenuTarjeta($event, e)">
+                  <!-- Duplicar sin abrir la tarjeta (también con clic derecho) -->
+                  <button v-if="puedeCrear" type="button" class="ent-dup" title="Duplicar este entregable"
+                    :disabled="duplicando" @click.stop="duplicarEntregable(e)">
+                    <v-icon icon="mdi-content-copy" size="14" />
+                  </button>
                   <div class="ent-titulo">{{ e.titulo }}</div>
                   <div class="ent-cliente">{{ nombreCliente(e.cliente_id) }}</div>
                   <div class="ent-chips">
                     <span class="etapa-chip" :style="chipTipo(e.tipo_contenido)">
                       {{ nombreTipo(e.tipo_contenido) }}
                     </span>
-                    <span v-if="e.area_id" class="area-chip">{{ nombreArea(e.area_id) }}</span>
                     <span v-if="e.area_produccion_id" class="area-chip">{{ nombreAreaProduccion(e.area_produccion_id) }}</span>
                   </div>
                   <div class="ent-pie">
@@ -147,14 +164,18 @@
         <div v-else-if="tab === 'cumplimiento'" class="tablero-content">
           <div class="cumpl-head">
             <div>
-              <h2 class="cumpl-titulo">Compromiso vs. entregado — {{ periodo }}</h2>
+              <h2 class="cumpl-titulo">Cumplimiento por marca — {{ nombrePeriodo }}</h2>
               <p class="cumpl-sub">
-                Cada tipo de contenido lleva su propia barra: 7 videos y 3 piezas gráficas ya no se
-                mezclan en un solo porcentaje. Cuenta como entregado lo <b>aprobado</b> y lo
-                <b>entregado</b>; en revisión y en producción todavía no suman.
+                Mismo formato que el Excel de KPIs: una fila por marca y una columna por tipo de contenido
+                (<b>entregado / comprometido</b>). Se llena solo con lo que el equipo mueve en el tablero:
+                cuenta como entregado lo <b>aprobado</b> y lo <b>entregado</b>; en revisión y en producción
+                todavía no suman.
               </p>
             </div>
             <div class="cumpl-acciones">
+              <v-btn size="small" variant="tonal" @click="imprimirKpi">
+                <v-icon icon="mdi-file-pdf-box" start /> Descargar PDF
+              </v-btn>
               <v-btn v-if="puedeEditar" size="small" variant="tonal" @click="abrirCompromisos()">
                 <v-icon icon="mdi-clipboard-list-outline" start /> Definir compromisos
               </v-btn>
@@ -187,46 +208,88 @@
               <div class="stat-value">{{ totalesPeriodo.comprometido ? totalesPeriodo.pct + ' %' : '—' }}</div>
               <div class="stat-description">Entregado / comprometido de todas las marcas</div>
             </div>
+            <div class="stat-card">
+              <div class="stat-header"><span class="stat-title">Avance esperado hoy</span></div>
+              <div class="stat-value">{{ avanceEsperado }} %</div>
+              <div class="stat-description">
+                {{ avanceEsperado >= 100 ? 'El mes ya cerró' : avanceEsperado <= 0 ? 'El mes todavía no empieza' : 'A esta fecha del mes deberían llevar este avance' }}
+              </div>
+            </div>
           </div>
 
-          <div v-if="!cumplimientoPorMarca.length" class="kanban-vacio">Sin marcas activas</div>
-
-          <div v-for="m in cumplimientoPorMarca" :key="m.cliente_id" class="marca-card">
-            <div class="marca-head">
-              <div class="marca-nombre">{{ m.cliente }}</div>
-              <div class="marca-total">
-                <div class="barra">
-                  <div class="barra-fill"
-                    :style="{ width: Math.min(100, m.pct) + '%', background: colorPct(m.pct, m.comprometido) }" />
-                </div>
-                <span class="marca-frac">{{ m.entregado }} / {{ m.comprometido || '—' }}</span>
-                <span class="marca-pct">{{ m.comprometido ? m.pct + ' %' : '—' }}</span>
-                <v-btn v-if="puedeEditar" icon="mdi-pencil-outline" size="x-small" variant="text"
-                  title="Definir compromisos de esta marca" @click="abrirCompromisos(m.cliente_id)" />
-              </div>
-            </div>
-
-            <div v-if="!m.filas.length" class="marca-vacia">
-              Sin compromisos ni entregables cargados en {{ periodo }}.
-            </div>
-
-            <div v-for="f in m.filas" :key="f.tipo_contenido" class="tipo-fila">
-              <span class="etapa-chip" :style="chipTipo(f.tipo_contenido)">{{ nombreTipo(f.tipo_contenido) }}</span>
-              <div class="barra">
-                <div class="barra-fill"
-                  :style="{ width: Math.min(100, pct(f.entregado, f.comprometido)) + '%',
-                            background: colorPct(pct(f.entregado, f.comprometido), f.comprometido) }" />
-              </div>
-              <span class="tipo-frac">{{ f.entregado }} / {{ f.comprometido || '—' }}</span>
-              <span class="tipo-pct">{{ f.comprometido ? pct(f.entregado, f.comprometido) + ' %' : '—' }}</span>
-              <span class="tipo-estados">
-                <span v-if="f.en_revision">{{ f.en_revision }} en revisión</span>
-                <span v-if="f.en_produccion">{{ f.en_produccion }} en producción</span>
-                <span v-if="f.rechazado" class="texto-alerta">{{ f.rechazado }} rechazado</span>
-                <span v-if="!f.comprometido && f.total_cargado" class="aviso-suelto">sin compromiso definido</span>
+          <!-- ── Tabla estilo Excel de KPIs ── -->
+          <div class="kpi-toolbar">
+            <v-select v-model="kpiMarca" :items="opcionesClienteFiltro" density="compact" hide-details
+              variant="outlined" label="Marca" class="filtro" style="max-width:260px;" />
+            <div class="kpi-leyenda">
+              <span v-for="r in RITMOS_LEYENDA" :key="r" class="kpi-leyenda-item">
+                <span class="kpi-punto" :style="{ background: PIOLA_RITMO_COLOR[r] }" />{{ PIOLA_RITMO_TEXTO[r] }}
               </span>
             </div>
           </div>
+
+          <div v-if="!kpi.filas.length" class="kanban-vacio">Sin marcas activas</div>
+          <div v-else class="kpi-wrap">
+            <table class="kpi-tabla">
+              <thead>
+                <tr>
+                  <th class="kpi-marca">Marca</th>
+                  <th v-for="c in kpi.columnas" :key="c.codigo">{{ c.nombre }}</th>
+                  <th>Total</th>
+                  <th>Avance</th>
+                  <th>Ritmo</th>
+                  <th v-if="puedeEditar" class="kpi-acc" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="f in kpi.filas" :key="f.cliente_id">
+                  <td class="kpi-marca">
+                    {{ f.cliente }}
+                    <span v-if="f.en_revision || f.en_produccion" class="kpi-proceso">
+                      {{ f.en_revision ? f.en_revision + ' en revisión' : '' }}{{ f.en_revision && f.en_produccion ? ' · ' : '' }}{{ f.en_produccion ? f.en_produccion + ' en producción' : '' }}
+                    </span>
+                  </td>
+                  <td v-for="c in kpi.columnas" :key="c.codigo" class="kpi-num"
+                    :class="{ 'kpi-completo': celdaCompleta(f.celdas[c.codigo]) }">
+                    {{ textoCelda(f.celdas[c.codigo]) }}
+                  </td>
+                  <td class="kpi-num"><b>{{ f.entregado }} / {{ f.comprometido || '—' }}</b></td>
+                  <td class="kpi-avance">
+                    <div class="barra kpi-barra">
+                      <div class="barra-fill" :style="{ width: Math.min(100, f.pct) + '%', background: PIOLA_RITMO_COLOR[f.ritmo] }" />
+                      <span class="kpi-esperado" :style="{ left: Math.min(100, kpi.esperado) + '%' }" title="Avance esperado hoy" />
+                    </div>
+                    <b>{{ f.comprometido ? f.pct + ' %' : '—' }}</b>
+                  </td>
+                  <td><span class="kpi-ritmo" :style="{ background: PIOLA_RITMO_COLOR[f.ritmo] }">{{ PIOLA_RITMO_TEXTO[f.ritmo] }}</span></td>
+                  <td v-if="puedeEditar" class="kpi-acc">
+                    <v-btn icon="mdi-pencil-outline" size="x-small" variant="text"
+                      title="Definir compromisos de esta marca" @click="abrirCompromisos(f.cliente_id)" />
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td class="kpi-marca">TOTAL</td>
+                  <td v-for="c in kpi.columnas" :key="c.codigo" class="kpi-num">{{ textoCelda(kpi.totales.celdas[c.codigo]) }}</td>
+                  <td class="kpi-num"><b>{{ kpi.totales.entregado }} / {{ kpi.totales.comprometido || '—' }}</b></td>
+                  <td class="kpi-avance">
+                    <div class="barra kpi-barra">
+                      <div class="barra-fill" :style="{ width: Math.min(100, kpi.totales.pct) + '%', background: PIOLA_RITMO_COLOR[kpi.totales.ritmo] }" />
+                      <span class="kpi-esperado" :style="{ left: Math.min(100, kpi.esperado) + '%' }" title="Avance esperado hoy" />
+                    </div>
+                    <b>{{ kpi.totales.comprometido ? kpi.totales.pct + ' %' : '—' }}</b>
+                  </td>
+                  <td><span class="kpi-ritmo" :style="{ background: PIOLA_RITMO_COLOR[kpi.totales.ritmo] }">{{ PIOLA_RITMO_TEXTO[kpi.totales.ritmo] }}</span></td>
+                  <td v-if="puedeEditar" class="kpi-acc" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p class="kpi-pie">
+            La marca vertical de cada barra es el avance esperado a hoy ({{ kpi.esperado }} %): si la barra
+            no la alcanza, esa marca va atrasada frente al ritmo del mes.
+          </p>
         </div>
 
         <!-- ══════════ MARCAS / CLIENTES ══════════ -->
@@ -340,10 +403,11 @@
               density="compact" hide-details variant="outlined" />
             <v-select v-model="detalle.tipo_contenido" :items="opcionesTipo" label="Tipo de contenido"
               density="compact" hide-details variant="outlined" clearable />
-            <v-select v-model="detalle.area_id" :items="opcionesArea" label="Área" density="compact"
-              hide-details variant="outlined" clearable />
+            <!-- Un solo "Área" (reunión 14/09/2026): guiones, producción, grabación, edición,
+                 presentación, diseño gráfico. Antes había dos campos —"Área" y "Etapa de producción"—
+                 y se confundían con el Estado; el genérico (Dirección/Comercial/…) se quitó. -->
             <v-select v-model="detalle.area_produccion_id" :items="opcionesAreaProduccion"
-              label="Etapa de producción" density="compact" hide-details variant="outlined" clearable />
+              label="Área" density="compact" hide-details variant="outlined" clearable />
             <v-select v-model="detalle.service_id" :items="opcionesServicio" label="Servicio"
               density="compact" hide-details variant="outlined" clearable />
             <v-text-field v-model.number="detalle.cantidad" type="number" label="Cantidad de piezas"
@@ -397,6 +461,10 @@
         <v-card-actions style="flex-wrap:wrap; gap:8px; padding:12px 20px 18px;">
           <v-btn v-if="detalle.id && puedeEliminar" color="error" variant="text" @click="eliminarEntregable">
             Eliminar
+          </v-btn>
+          <v-btn v-if="detalle.id && puedeCrear" variant="tonal" :loading="duplicando"
+            @click="duplicarEntregable(detalle)">
+            <v-icon icon="mdi-content-copy" start /> Duplicar
           </v-btn>
           <v-btn v-if="detalle.id && puedeAprobar && detalle.estado === 'en_revision'" color="success"
             variant="tonal" :loading="aprobando" @click="aprobar">
@@ -468,14 +536,12 @@
           <div v-if="cargandoLineas" class="kanban-vacio">Cargando…</div>
           <template v-else>
             <div class="comp-linea comp-cabecera">
-              <span>Tipo</span><span>Cantidad</span><span>Área</span><span>Notas</span>
+              <span>Tipo</span><span>Cantidad</span><span>Notas</span>
             </div>
             <div v-for="l in compromisoDlg.lineas" :key="l.tipo_contenido" class="comp-linea">
               <span class="etapa-chip" :style="chipTipo(l.tipo_contenido)">{{ nombreTipo(l.tipo_contenido) }}</span>
               <v-text-field v-model.number="l.cantidad" type="number" min="0" density="compact"
                 hide-details variant="outlined" />
-              <v-select v-model="l.area_id" :items="opcionesArea" density="compact" hide-details
-                variant="outlined" clearable placeholder="—" />
               <v-text-field v-model="l.notas" density="compact" hide-details variant="outlined"
                 placeholder="Opcional" />
             </div>
@@ -590,6 +656,11 @@ import {
   PEN, fechaCorta, fechaHora, periodoActual, ultimosPeriodos, hoyISO, ESTADOS_ENTREGABLE,
   traerTodo, apiPiola,
 } from '@/composables/usePiola'
+import {
+  piolaAvanceEsperado, piolaConstruirKpi, piolaMatrizEstadoTipo, piolaNombrePeriodo, piolaReporteHtml,
+  PIOLA_RITMO_COLOR, PIOLA_RITMO_TEXTO,
+} from '@/utils/piolaCumplimiento'
+import type { KpiCelda, EntregableReporte } from '@/utils/piolaCumplimiento'
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{ (e: 'notify', payload: any): void }>()
@@ -611,8 +682,11 @@ const clientes = ref<any[]>([])
 const servicios = ref<any[]>([])
 const colaboradores = ref<any[]>([])
 const tiposContenido = ref<any[]>([])
-const areas = ref<any[]>([])
-/** Etapas del pipeline (reunión 07/09/2026): guiones→…→diseño gráfico. Distinto de `areas`. */
+/**
+ * "Área" del entregable (reunión 14/09/2026): guiones, producción, grabación, edición, presentación,
+ * diseño gráfico. Antes se llamaba "Etapa de producción" y convivía con otro campo "Área" genérico
+ * (Dirección / Comercial / …) que se eliminó porque se confundía con el Estado.
+ */
 const areasProduccion = ref<any[]>([])
 const compromisos = ref<any[]>([])
 const cumplimientoFilas = ref<any[]>([])
@@ -626,14 +700,13 @@ const fTipo = ref<any>('todos')
 
 /* ══════════ Carga ══════════ */
 async function cargar() {
-  const [e, c, s, col, tc, ar, arp] = await Promise.all([
+  const [e, c, s, col, tc, arp] = await Promise.all([
     traerTodo(() => client.from('piola_deliverables').select('*')
       .order('fecha_compromiso', { ascending: true }).order('id')),
     client.from('piola_clientes').select('*').order('nombre'),
     client.from('piola_services').select('*').order('orden'),
     client.from('piola_colaboradores').select('email, nombre').eq('activo', true).order('nombre'),
     client.from('piola_tipos_contenido').select('*').order('orden').order('id'),
-    client.from('piola_areas').select('id, nombre').eq('activo', true).order('orden'),
     client.from('piola_produccion_areas').select('id, codigo, nombre').eq('activo', true).order('orden'),
   ])
   if (e.error) emit('notify', { text: `Error cargando entregables: ${e.error.message}`, color: 'error' })
@@ -642,7 +715,6 @@ async function cargar() {
   servicios.value = (s.data as any[]) || []
   colaboradores.value = (col.data as any[]) || []
   tiposContenido.value = (tc.data as any[]) || []
-  areas.value = (ar.data as any[]) || []
   areasProduccion.value = (arp.data as any[]) || []
   if (tc.error) faltaMigracion.value = true
   await cargarPeriodo()
@@ -669,7 +741,6 @@ watch(periodo, cargarPeriodo)
 
 /* ══════════ Derivados y etiquetas ══════════ */
 const nombreCliente = (id: any) => clientes.value.find(c => c.id === id)?.nombre || '—'
-const nombreArea = (id: any) => areas.value.find(a => a.id === id)?.nombre || '—'
 const nombreAreaProduccion = (id: any) => areasProduccion.value.find(a => a.id === id)?.nombre || '—'
 const nombreColaborador = (email: any) =>
   colaboradores.value.find(c => String(c.email).toLowerCase() === String(email).toLowerCase())?.nombre
@@ -714,7 +785,6 @@ const opcionesResponsable = computed(() =>
   colaboradores.value.map(c => ({ value: c.email, title: c.nombre })))
 const opcionesResponsableFiltro = computed(() =>
   [{ value: 'todos', title: 'Todos' }, ...opcionesResponsable.value])
-const opcionesArea = computed(() => areas.value.map(a => ({ value: a.id, title: a.nombre })))
 /**
  * `piola_produccion_areas` la sembró otra sesión con un guess PRE-reunión
  * ('rodajes', 'diseno', 'community') que Sebastián corrigió el 07/09
@@ -732,7 +802,7 @@ const opcionesAreaProduccion = computed(() => areasProduccion.value
   .map(a => ({ value: a.id, title: a.nombre })))
 const opcionesAreaFiltro = computed(() => [
   { value: 'todas', title: 'Todas las áreas' },
-  ...opcionesArea.value,
+  ...opcionesAreaProduccion.value,
   { value: 'sin_area', title: 'Sin área' },
 ])
 const tiposActivos = computed(() => tiposContenido.value.filter(t => t.activo !== false))
@@ -758,8 +828,8 @@ function limpiarFiltros() {
 const baseFiltrada = computed(() => {
   let lista = entregables.value.filter(e => e.periodo === periodo.value)
   if (fCliente.value !== 'todas') lista = lista.filter(e => e.cliente_id === fCliente.value)
-  if (fArea.value === 'sin_area') lista = lista.filter(e => !e.area_id)
-  else if (fArea.value !== 'todas') lista = lista.filter(e => e.area_id === fArea.value)
+  if (fArea.value === 'sin_area') lista = lista.filter(e => !e.area_produccion_id)
+  else if (fArea.value !== 'todas') lista = lista.filter(e => e.area_produccion_id === fArea.value)
   if (fTipo.value === 'sin_clasificar') lista = lista.filter(e => !e.tipo_contenido)
   else if (fTipo.value !== 'todos') lista = lista.filter(e => e.tipo_contenido === fTipo.value)
   return lista
@@ -806,10 +876,6 @@ const pendientesPorResponsable = computed(() => {
 const pct = (entregado: any, comprometido: any) => Number(comprometido)
   ? Math.round(Number(entregado || 0) / Number(comprometido) * 1000) / 10
   : 0
-
-const colorPct = (p: number, comprometido: any) => !Number(comprometido)
-  ? 'rgba(128,128,128,.35)'
-  : p >= 100 ? '#2e9e5b' : p >= 60 ? '#f2a63b' : '#e2564a'
 
 const entregadosDe = (clienteId: any) => entregables.value
   .filter(e => e.cliente_id === clienteId && e.periodo === periodo.value
@@ -883,6 +949,122 @@ const totalesPeriodo = computed(() => {
   t.pct = pct(t.entregado, t.comprometido)
   return t
 })
+
+/* ══════════ Tabla KPI estilo Excel + reportes PDF ══════════ */
+/**
+ * Reunión del 14/09/2026: el equipo (7 personas) llevaba un Excel manual de KPIs; se replica acá en el
+ * mismo formato para que lo llenen en tiempo real moviendo entregables en el tablero. La cuenta vive en
+ * utils/piolaCumplimiento.ts (probada aparte); acá solo se conecta con los datos y los filtros.
+ */
+const kpiMarca = ref<any>('todas')
+const RITMOS_LEYENDA = ['completo', 'al_dia', 'en_riesgo', 'atrasado'] as const
+
+const nombrePeriodo = computed(() => piolaNombrePeriodo(periodo.value))
+/** Lo que "debería" llevar el mes hoy (quincena = 50 %). */
+const avanceEsperado = computed(() => piolaAvanceEsperado(periodo.value, hoyISO()))
+
+const kpi = computed(() => {
+  const todas = kpiMarca.value === 'todas'
+  // Las marcas activas salen siempre (aunque no tengan nada cargado: es donde se hace clic para definirles el
+  // compromiso). Una marca inactiva solo sale si tiene compromisos o entregables en el mes, igual que las
+  // tarjetas de arriba: si no, el total de la tabla no coincidiría con el "Comprometido" del resumen.
+  const marcas = clientes.value
+    .filter(c => c.activo !== false && (todas || c.id === kpiMarca.value))
+    .map(c => ({ id: c.id, nombre: c.nombre }))
+  const filas = cumplimientoFilas.value.filter(f => todas || f.cliente_id === kpiMarca.value)
+  return piolaConstruirKpi(filas, marcas, tiposActivos.value, avanceEsperado.value)
+})
+
+const textoCelda = (c?: KpiCelda) => c && (c.comprometido || c.entregado)
+  ? `${c.entregado} / ${c.comprometido || '—'}` : '—'
+const celdaCompleta = (c?: KpiCelda) => !!c && c.comprometido > 0 && c.entregado >= c.comprometido
+
+/**
+ * Abre el reporte en otra pestaña y lo manda a imprimir (Guardar como PDF). Si el navegador bloquea las
+ * ventanas emergentes (o es un celular), se imprime desde un iframe oculto: así nunca depende de un permiso.
+ */
+function abrirReporte(html: string) {
+  const w = window.open('', '_blank')
+  if (w) {
+    w.document.open()
+    w.document.write(html)
+    w.document.close()
+    return
+  }
+  const marco = document.createElement('iframe')
+  marco.setAttribute('aria-hidden', 'true')
+  marco.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+  document.body.appendChild(marco)
+  const doc = marco.contentWindow?.document
+  if (!doc) { marco.remove(); return emit('notify', { text: 'No se pudo preparar el reporte para imprimir', color: 'error' }) }
+  doc.open()
+  // El script que imprime por su cuenta es solo para la pestaña nueva; acá se imprime desde el iframe
+  doc.write(html.replace(/<script>[\s\S]*?<\/script>/, ''))
+  doc.close()
+  setTimeout(() => {
+    marco.contentWindow?.focus()
+    marco.contentWindow?.print()
+    setTimeout(() => marco.remove(), 120000)
+  }, 300)
+}
+
+const fechaLarga = () => new Date().toLocaleString('es-PE', {
+  timeZone: 'America/Lima', dateStyle: 'long', timeStyle: 'short',
+})
+
+function entregableReporte(e: any): EntregableReporte {
+  return {
+    titulo: e.titulo, marca: nombreCliente(e.cliente_id), tipo: e.tipo_contenido || 'sin_clasificar',
+    area: e.area_produccion_id ? nombreAreaProduccion(e.area_produccion_id) : '',
+    responsable: e.responsable_email ? String(nombreColaborador(e.responsable_email)) : '',
+    estado: e.estado, fecha: e.fecha_compromiso ? fechaCorta(e.fecha_compromiso) : '',
+    cantidad: Number(e.cantidad || 1),
+  }
+}
+
+/** Cumplimiento por marca (todas, o la marca elegida arriba) + el detalle de sus entregables. */
+function imprimirKpi() {
+  const marcaTxt = kpiMarca.value === 'todas' ? 'Todas las marcas' : nombreCliente(kpiMarca.value)
+  const items = entregables.value
+    .filter(e => e.periodo === periodo.value && (kpiMarca.value === 'todas' || e.cliente_id === kpiMarca.value))
+    .map(entregableReporte)
+    .sort((a, b) => a.marca.localeCompare(b.marca, 'es') || a.titulo.localeCompare(b.titulo, 'es'))
+  abrirReporte(piolaReporteHtml({
+    titulo: 'Cumplimiento por marca',
+    subtitulo: `${nombrePeriodo.value} · ${marcaTxt}`,
+    generado: fechaLarga(),
+    kpi: kpi.value,
+    esperado: avanceEsperado.value,
+    entregables: items,
+    nombreTipo, nombreEstado: etiquetaEstadoEntregable,
+  }))
+}
+
+/** Foto del tablero de producción con los filtros de arriba: piezas por estado y tipo + la lista. */
+function imprimirTablero() {
+  const items = delPeriodo.value.map(entregableReporte)
+    .sort((a, b) => a.estado.localeCompare(b.estado) || a.marca.localeCompare(b.marca, 'es'))
+  const filtros = [
+    fCliente.value !== 'todas' ? nombreCliente(fCliente.value) : '',
+    typeof fArea.value === 'number' ? nombreAreaProduccion(fArea.value) : '',
+    fTipo.value !== 'todos' ? nombreTipo(fTipo.value) : '',
+    fResponsable.value !== 'todos' ? String(nombreColaborador(fResponsable.value)) : '',
+  ].filter(Boolean)
+  const tiposCatalogo = tiposActivos.value.map(t => ({ codigo: t.codigo, nombre: t.nombre }))
+  if (items.some(i => i.tipo === 'sin_clasificar')) tiposCatalogo.push({ codigo: 'sin_clasificar', nombre: 'Sin clasificar' })
+  abrirReporte(piolaReporteHtml({
+    titulo: 'Tablero de producción',
+    subtitulo: `${nombrePeriodo.value} · ${filtros.length ? filtros.join(' · ') : 'Todas las marcas'}`,
+    generado: fechaLarga(),
+    matriz: {
+      estados: ESTADOS_ENTREGABLE.map((e: any) => ({ value: e.value, title: e.title })),
+      tipos: tiposCatalogo,
+      datos: piolaMatrizEstadoTipo(items),
+    },
+    entregables: items,
+    nombreTipo, nombreEstado: etiquetaEstadoEntregable,
+  }))
+}
 
 /* ══════════ Tablas ══════════ */
 const headersClientes = computed(() => [
@@ -960,7 +1142,7 @@ function abrirNuevo() {
     titulo: '', cliente_id: fCliente.value !== 'todas' ? fCliente.value : null,
     service_id: null, cantidad: 1,
     tipo_contenido: fTipo.value !== 'todos' && fTipo.value !== 'sin_clasificar' ? fTipo.value : null,
-    area_id: typeof fArea.value === 'number' ? fArea.value : null,
+    area_produccion_id: typeof fArea.value === 'number' ? fArea.value : null,
     periodo: periodo.value, fecha_compromiso: '', responsable_email: props.perfil?.email || null,
     estado: 'en_produccion', drive_url: '', dropbox_url: '', publicado_url: '',
     descripcion: '', observaciones: '',
@@ -991,6 +1173,36 @@ async function guardarEntregable() {
   emit('notify', d.id ? 'Entregable actualizado' : 'Entregable creado')
   detalle.value = null
   await cargar()
+}
+
+/* ══════════ Duplicar (botón de la tarjeta, del diálogo y clic derecho) ══════════ */
+const duplicando = ref(false)
+const menuCtx = ref<{ abierto: boolean; x: number; y: number; item: any }>({ abierto: false, x: 0, y: 0, item: null })
+
+function abrirMenuTarjeta(ev: MouseEvent, e: any) {
+  menuCtx.value = { abierto: true, x: ev.clientX, y: ev.clientY, item: e }
+}
+function abrirDesdeMenu() {
+  if (menuCtx.value.item) detalle.value = { ...menuCtx.value.item }
+}
+function duplicarDesdeMenu() {
+  if (menuCtx.value.item) duplicarEntregable(menuCtx.value.item)
+}
+
+/**
+ * Crea la copia en el servidor (`duplicar_entregable`: no copia enlaces, aprobación ni fecha de entrega
+ * y arranca "En producción") y abre la copia ya guardada para que la persona solo le cambie el título.
+ */
+async function duplicarEntregable(original: any) {
+  if (!original?.id || duplicando.value) return
+  duplicando.value = true
+  const res = await apiPiola<any>('produccion', { accion: 'duplicar_entregable', id: original.id })
+  duplicando.value = false
+  if (res.error) return emit('notify', { text: `No se pudo duplicar: ${res.error.message}`, color: 'error' })
+  emit('notify', 'Entregable duplicado: cámbiale el título y guarda')
+  await cargar()
+  const copia = res.data?.entregable
+  if (copia) detalle.value = { ...(entregables.value.find(e => e.id === copia.id) || copia) }
 }
 
 async function aprobar() {
@@ -1322,7 +1534,18 @@ onMounted(cargar)
   border: 1px solid rgba(128, 128, 128, .2);
   border-radius: 9px; padding: 10px 11px; cursor: pointer; transition: transform .12s, box-shadow .12s;
 }
+.ent-card { position: relative; }
 .ent-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0, 0, 0, .1); }
+/* Botón "Duplicar" de la tarjeta: aparece al pasar el mouse (en pantallas táctiles queda siempre visible) */
+.ent-dup {
+  position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; border: 1px solid rgba(128, 128, 128, .3);
+  background: rgb(var(--v-theme-surface)); color: inherit; cursor: pointer; opacity: 0; transition: opacity .12s;
+}
+.ent-card:hover .ent-dup, .ent-dup:focus-visible { opacity: .9; }
+.ent-dup:hover { opacity: 1; background: rgba(var(--v-theme-primary), .12); }
+@media (hover: none) { .ent-dup { opacity: .7; } }
+.ent-card .ent-titulo { padding-right: 26px; }
 .ent-card[draggable="true"] { cursor: grab; }
 .ent-card-arrastrando { opacity: .35; }
 .ent-titulo { font-weight: 600; font-size: 13px; }
@@ -1411,9 +1634,39 @@ onMounted(cargar)
 }
 .barra-fill { height: 100%; }
 
+/* ── Tabla KPI (formato del Excel de KPIs de Piola) ── */
+.kpi-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 4px 0 12px; }
+.kpi-leyenda { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 11.5px; opacity: .8; margin-left: auto; }
+.kpi-leyenda-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.kpi-punto { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.kpi-wrap { overflow-x: auto; border: 1px solid rgba(128, 128, 128, .25); border-radius: 10px; }
+.kpi-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 640px; }
+.kpi-tabla th {
+  background: #2f7d4f; color: #fff; font-weight: 600; font-size: 11.5px; text-align: center;
+  padding: 9px 10px; white-space: nowrap; position: sticky; top: 0;
+}
+.kpi-tabla th.kpi-marca, .kpi-tabla td.kpi-marca { text-align: left; min-width: 170px; }
+.kpi-tabla td { padding: 8px 10px; border-bottom: 1px solid rgba(128, 128, 128, .18); text-align: center; }
+.kpi-tabla tbody tr:hover { background: rgba(128, 128, 128, .06); }
+.kpi-tabla td.kpi-marca { font-weight: 600; }
+.kpi-proceso { display: block; font-size: 10.5px; font-weight: 400; opacity: .6; margin-top: 1px; }
+.kpi-num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kpi-completo { color: #1f8a4c; font-weight: 700; }
+.kpi-avance { min-width: 150px; white-space: nowrap; }
+.kpi-barra { position: relative; display: inline-block; width: 90px; vertical-align: middle; margin-right: 8px; overflow: visible; }
+.kpi-barra .barra-fill { border-radius: 999px; }
+/* Marca vertical del avance esperado a hoy */
+.kpi-esperado { position: absolute; top: -3px; width: 2px; height: 13px; background: rgb(var(--v-theme-on-surface)); opacity: .55; }
+.kpi-ritmo { color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.kpi-acc { width: 44px; padding: 0 4px; }
+.kpi-tabla tfoot td {
+  background: rgba(47, 125, 79, .12); font-weight: 700; border-top: 2px solid #2f7d4f; border-bottom: none;
+}
+.kpi-pie { font-size: 11.5px; opacity: .6; margin: 10px 2px 0; }
+
 /* ── Compromisos ── */
 .comp-linea {
-  display: grid; grid-template-columns: 140px 110px 1fr 1.4fr; gap: 10px;
+  display: grid; grid-template-columns: 140px 110px 1fr; gap: 10px;
   align-items: center; padding: 6px 0;
 }
 .comp-cabecera { font-size: 11px; font-weight: 600; opacity: .55; text-transform: uppercase; letter-spacing: .3px; }

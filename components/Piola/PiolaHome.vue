@@ -13,6 +13,17 @@
         <p>{{ fechaLarga }}</p>
       </div>
 
+      <!-- Aviso del CRM en el celular (reunión 14/09/2026): la app nativa de Chatwoot tiene errores
+           conocidos y no deja enviar mensajes; el navegador del teléfono sí funciona bien. Se puede cerrar
+           y no vuelve a salir en ese dispositivo. -->
+      <v-alert v-if="mostrarAvisoCrmMovil" type="info" variant="tonal" density="compact" class="mb-4"
+        icon="mdi-cellphone" closable @click:close="cerrarAvisoCrmMovil">
+        <strong>CRM desde el celular:</strong> entra con Chrome (o el navegador de tu teléfono) al mismo enlace que
+        usas en la computadora:
+        <a href="https://chats.alef.company/app" target="_blank" rel="noopener">chats.alef.company</a>.
+        La app de Chatwoot tiene errores conocidos y no deja enviar mensajes; el navegador sí.
+      </v-alert>
+
       <!-- ══════════ WIDGETS PERSONALES (§7.3) ══════════ -->
       <div class="mis-widgets">
         <div class="mini-widget" @click="emit('ir', 'mi_espacio')">
@@ -210,6 +221,18 @@ import { PEN_CORTO, PEN, fechaCorta, periodoActual, ultimosPeriodos, hoyISO, tra
 import type { ApexOptions } from 'apexcharts'
 
 const props = defineProps<{ perfil: any }>()
+
+/* Aviso "CRM desde el celular": se lee de localStorage recién al montar (no en el render del servidor) */
+const CLAVE_AVISO_CRM = 'piola:aviso-crm-movil-cerrado'
+const mostrarAvisoCrmMovil = ref(false)
+onMounted(() => {
+  try { mostrarAvisoCrmMovil.value = localStorage.getItem(CLAVE_AVISO_CRM) !== '1' }
+  catch { mostrarAvisoCrmMovil.value = true }
+})
+function cerrarAvisoCrmMovil() {
+  mostrarAvisoCrmMovil.value = false
+  try { localStorage.setItem(CLAVE_AVISO_CRM, '1') } catch { /* sin storage: vuelve a salir, no pasa nada */ }
+}
 const emit = defineEmits<{ (e: 'ir', vista: string): void; (e: 'notify', payload: any): void }>()
 
 const client = useSupabaseClient()

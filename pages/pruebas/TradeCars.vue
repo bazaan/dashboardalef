@@ -511,22 +511,32 @@
       <div v-else-if="activeView === 'vehiculos'" class="view-container">
         <header class="top-header">
           <h1>Inventario de Vehículos</h1>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <button class="btn-primary" @click="nuevoVehiculo"><v-icon icon="mdi-plus" size="16" /><span>Nuevo vehículo</span></button>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <!-- Dos vistas del mismo stock (reunión de septiembre/2026): la administrativa es de uso
+                 interno con todos los campos y el margen; la pública solo muestra lo comercial. -->
+            <v-btn-toggle v-model="vistaInventario" mandatory density="compact" variant="outlined" divided color="primary">
+              <v-btn value="admin" size="small" prepend-icon="mdi-shield-lock-outline">Administrativa</v-btn>
+              <v-btn value="publica" size="small" prepend-icon="mdi-storefront-outline">Pública</v-btn>
+            </v-btn-toggle>
+            <button v-if="!vistaPublica" class="btn-primary" @click="nuevoVehiculo"><v-icon icon="mdi-plus" size="16" /><span>Nuevo vehículo</span></button>
             <button class="btn-primary" @click="fetchVehiculos"><v-icon icon="mdi-refresh" size="16" /><span>Actualizar</span></button>
           </div>
         </header>
         <div class="content-area">
+          <v-alert v-if="vistaPublica" type="info" variant="tonal" density="compact" class="mb-4">
+            Vista pública: solo lo comercial (sin precio de compra, margen, propietario, deuda ni notas) y solo los
+            vehículos disponibles o reservados. Es la que se puede compartir con clientes.
+          </v-alert>
           <v-card flat class="custom-data-table">
             <v-card-title class="table-search-bar">
-              <span class="table-title">Vehículos ({{ vehiculos.length }})</span>
+              <span class="table-title">Vehículos ({{ vehiculosVista.length }}<template v-if="vehiculosVista.length !== vehiculos.length"> de {{ vehiculos.length }}</template>)</span>
               <v-spacer />
-              <v-select v-model="filtroEstadoVeh" :items="['todos', ...ESTADOS_VEHICULO]" density="compact" hide-details
+              <v-select v-if="!vistaPublica" v-model="filtroEstadoVeh" :items="['todos', ...ESTADOS_VEHICULO]" density="compact" hide-details
                 style="max-width: 180px;" class="mr-3" />
               <v-text-field v-model="searchVehiculos" prepend-inner-icon="mdi-magnify" placeholder="Buscar..."
                 density="compact" hide-details style="max-width: 240px;" />
             </v-card-title>
-            <v-data-table :headers="headersVehiculos" :items="vehiculosFiltrados" :loading="loadingVehiculos"
+            <v-data-table :headers="headersVehiculosVista" :items="vehiculosVista" :loading="loadingVehiculos"
               class="elevation-0" no-data-text="No hay vehículos" :items-per-page="20">
               <template v-slot:item.precio_compra="{ item }">{{ money(item.precio_compra) }}</template>
               <template v-slot:item.precio_venta="{ item }">{{ money(item.precio_venta) }}</template>
@@ -534,6 +544,22 @@
                 <span :style="{ color: margenVeh(item) >= 0 ? '#2e7d32' : '#c62828', fontWeight: 600 }">
                   {{ money(margenVeh(item)) }}
                 </span>
+              </template>
+              <template v-slot:item.margen_pct="{ item }">
+                <span v-if="margenPctVeh(item) !== null" :style="{ color: margenPctVeh(item)! >= 0 ? '#2e7d32' : '#c62828' }">
+                  {{ margenPctVeh(item)!.toFixed(1) }}%
+                </span>
+                <span v-else class="text-medium-emphasis">—</span>
+              </template>
+              <template v-slot:item.dias="{ item }">
+                <span v-if="diasEnInventario(item) !== null">{{ diasEnInventario(item) }}</span>
+                <span v-else class="text-medium-emphasis">—</span>
+              </template>
+              <template v-slot:item.origen="{ item }">
+                <v-chip v-if="item.origen === 'compra_crm'" size="x-small" variant="tonal" color="info" prepend-icon="mdi-check-decagram">
+                  Compra CRM
+                </v-chip>
+                <span v-else class="text-medium-emphasis">—</span>
               </template>
               <template v-slot:item.estado="{ item }">
                 <v-chip :color="colorEstadoVeh(item.estado)" size="small" variant="tonal" style="text-transform: capitalize;">
@@ -584,7 +610,8 @@
            tradecars_ventas, tabla simple) por el histórico real de COMPRAS del
            Excel — ver components/TradeCars/HistoricoCompras.vue. El id interno
            sigue siendo 'ventas' (ver nota en OPERACIONES_ITEMS_TODOS más abajo). -->
-      <HistoricoCompras v-else-if="activeView === 'ventas'" @notificar="notify" />
+      <HistoricoCompras v-else-if="activeView === 'ventas'" :es-admin="perfilTC ? perfilTC.es_admin : true"
+        @notificar="notify" />
 
       <!-- ==========  VISTA: id 'compras' -- etiqueta "Ventas"  ========== -->
       <!-- "Ventas" muestra el histórico real de operaciones (14/09/2026) — ver
@@ -790,22 +817,20 @@
           <v-card-text>
             <!-- Vista previa de lo que va a pasar en el embudo al guardar -->
             <v-alert density="compact" variant="tonal"
-              :type="etapaPrevista ? 'info' : 'warning'" class="mb-4">
+              :type="avisoEtapaPrevista ? 'warning' : 'info'" class="mb-4">
               <div class="d-flex align-center flex-wrap" style="gap:14px;">
                 <div>
                   <div class="text-caption text-medium-emphasis">Etapa resultante</div>
-                  <strong>{{ etapaPrevista || 'Fuera del funnel' }}</strong>
+                  <strong>{{ etapaPrevista }}</strong>
                 </div>
                 <v-divider vertical />
                 <div>
                   <div class="text-caption text-medium-emphasis">Fecha del funnel</div>
                   <strong>{{ fechaFunnelPrevista || 'sin fecha' }}</strong>
                 </div>
-                <template v-if="!etapaPrevista">
+                <template v-if="avisoEtapaPrevista">
                   <v-divider vertical />
-                  <span class="text-caption">
-                    Con perfil SI hace falta un status para que entre al embudo.
-                  </span>
+                  <span class="text-caption">{{ avisoEtapaPrevista }}</span>
                 </template>
               </div>
             </v-alert>
@@ -827,12 +852,15 @@
             <v-divider class="my-4" />
             <div class="text-overline mb-1">Clasificación del asesor</div>
             <div class="form-grid-2">
-              <v-select v-model="funnelForm.perfil_coincide" :items="['SI', 'NO']"
-                label="Perfil coincide *" density="compact" hide-details />
+              <v-select v-model="funnelForm.perfil_coincide" :items="opcionesPerfilLead"
+                item-title="title" item-value="value"
+                label="Coincide" density="compact" hide-details="auto" clearable
+                hint="Vacío = todavía sin calificar" persistent-hint
+                @update:model-value="alCambiarPerfilLead" />
               <v-select v-model="funnelForm.status" :items="[...TC_STATUS]"
-                label="Status *" density="compact" hide-details="auto" clearable
+                label="Estado" density="compact" hide-details="auto" clearable
                 :disabled="funnelForm.perfil_coincide === 'NO'"
-                :hint="funnelForm.perfil_coincide === 'NO' ? 'Con perfil NO el lead se queda en LEADS' : ''"
+                :hint="funnelForm.perfil_coincide === 'NO' ? 'Con Coincide = x el estado se bloquea y el lead se queda en LEADS' : ''"
                 persistent-hint />
               <v-text-field v-model="funnelForm.fecha_cita" type="date" label="Fecha de cita (agendada)"
                 density="compact" hide-details
@@ -848,7 +876,7 @@
             <v-alert v-if="funnelForm._statusOriginal && tcStatusEsInvalido(funnelForm._statusOriginal)"
               type="error" variant="tonal" density="compact" class="mt-3">
               El CRM había mandado <strong>{{ funnelForm._statusOriginal }}</strong>, que no es un valor
-              permitido. Elige uno de la lista para que el lead vuelva a contar en el embudo.
+              permitido. Elige uno de la lista para que el lead avance en el embudo.
             </v-alert>
 
             <v-divider class="my-4" />
@@ -1386,8 +1414,33 @@ const vehiculosFiltrados = computed(() => {
   return lista
 })
 function margenVeh(v: any) { return Number(v.precio_venta || 0) - Number(v.precio_compra || 0) }
+/** % de margen sobre el precio de compra. null si no hay precio de compra (no se inventa un número). */
+function margenPctVeh(v: any): number | null {
+  const compra = Number(v.precio_compra || 0)
+  return compra > 0 ? (margenVeh(v) / compra) * 100 : null
+}
+/** Días desde que entró al inventario. null si no hay fecha de ingreso. */
+function diasEnInventario(v: any): number | null {
+  const f = String(v.fecha_ingreso || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return null
+  const dias = Math.round((new Date(tcHoyLima() + 'T12:00:00').getTime() - new Date(f + 'T12:00:00').getTime()) / 86400000)
+  return Math.max(0, dias)
+}
 
-const headersVehiculos = [
+/* Dos vistas del mismo stock: la administrativa (todo, con margen) y la pública (solo lo comercial).
+   Los campos de cada una son provisionales hasta que Jean/Fabián manden sus plantillas. */
+const vistaInventario = usePersistente('tradecars:vistaInventario', 'admin')
+const vistaPublica = computed(() => vistaInventario.value === 'publica')
+
+const vehiculosVista = computed(() => {
+  if (!vistaPublica.value) return vehiculosFiltrados.value
+  const q = searchVehiculos.value.toLowerCase()
+  return vehiculos.value
+    .filter(v => v.estado === 'disponible' || v.estado === 'reservado')
+    .filter(v => !q || [v.marca, v.modelo, v.version, v.color, v.codigo].some(x => String(x ?? '').toLowerCase().includes(q)))
+})
+
+const headersVehiculosAdmin = [
   { title: 'Marca', key: 'marca' },
   { title: 'Modelo', key: 'modelo' },
   { title: 'Año', key: 'anio' },
@@ -1396,9 +1449,25 @@ const headersVehiculos = [
   { title: 'Compra', key: 'precio_compra' },
   { title: 'Venta', key: 'precio_venta' },
   { title: 'Margen', key: 'margen', sortable: false },
+  { title: '% margen', key: 'margen_pct', sortable: false },
+  { title: 'Días en inv.', key: 'dias', sortable: false },
+  { title: 'Origen', key: 'origen' },
   { title: 'Estado', key: 'estado' },
   { title: '', key: 'acciones', sortable: false, width: 100 },
 ]
+const headersVehiculosPublico = [
+  { title: 'Marca', key: 'marca' },
+  { title: 'Modelo', key: 'modelo' },
+  { title: 'Versión', key: 'version' },
+  { title: 'Año', key: 'anio' },
+  { title: 'Km', key: 'kilometraje' },
+  { title: 'Transmisión', key: 'transmision' },
+  { title: 'Combustible', key: 'combustible' },
+  { title: 'Color', key: 'color' },
+  { title: 'Precio', key: 'precio_venta' },
+  { title: 'Estado', key: 'estado' },
+]
+const headersVehiculosVista = computed(() => vistaPublica.value ? headersVehiculosPublico : headersVehiculosAdmin)
 const headersVehiculosMini = [
   { title: 'Marca', key: 'marca' },
   { title: 'Modelo', key: 'modelo' },
@@ -1675,7 +1744,8 @@ function editarFunnelLead(lead: any) {
     canal_origen: lead.canal_origen,
     asesor: lead.asesor,
     fecha_derivacion: lead.fecha_derivacion,
-    perfil_coincide: tcPerfilCoincide(lead.perfil_coincide) ? 'SI' : 'NO',
+    // Tri-estado: SI / NO / null (sin calificar). Antes todo lo que no era SI se guardaba como NO.
+    perfil_coincide: tcPerfilValor(lead.perfil_coincide) || null,
     status: tcStatusValido(lead.status) || null,
     fecha_cita: lead.fecha_cita,
     fecha_cita_asistida: lead.fecha_cita_asistida,
@@ -1705,7 +1775,8 @@ function nuevoFunnelLead() {
   funnelForm.value = {
     contacto_nombre: '', contacto_telefono: '', canal_origen: 'WhatsApp',
     asesor: asesoresNombres.value[0] || '', fecha_derivacion: tcHoyLima(),
-    perfil_coincide: 'SI', status: 'NO CONTACTADO',
+    // Un lead nuevo entra sin calificar: cuenta como LEAD hasta que el asesor marque Coincide (y estado).
+    perfil_coincide: null, status: null,
     fecha_cita: null, fecha_cita_asistida: null, fecha_compra: null, motivo_no_cita: null,
     fecha_probable_venta: null, proxima_accion: '', fecha_seguimiento: null,
     observaciones: '',
@@ -1718,9 +1789,35 @@ function nuevoFunnelLead() {
   showFunnelDialog.value = true
 }
 
+/** Coincide es tri-estado: ✓ (SI), x (NO) o vacío (todavía sin calificar). */
+const opcionesPerfilLead = [
+  { title: '✓ Coincide', value: 'SI' },
+  { title: 'x No coincide', value: 'NO' },
+]
+
+/** Con Coincide = x el estado se bloquea: se limpia al momento para no dejar un valor colgado. */
+function alCambiarPerfilLead(v: string | null) {
+  if (funnelForm.value && tcPerfilValor(v) === 'NO') funnelForm.value.status = null
+}
+
 /** La etapa que va a quedar tras guardar: se muestra en vivo dentro del diálogo. */
 const etapaPrevista = computed(() =>
-  funnelForm.value ? tcEtapa(funnelForm.value) : null)
+  funnelForm.value ? tcEtapa(funnelForm.value) : 'LEADS')
+
+/** Aviso cuando el lead se queda en LEADS por algo que el asesor todavía puede completar. */
+const avisoEtapaPrevista = computed(() => {
+  const f = funnelForm.value
+  if (!f) return ''
+  const perfil = tcPerfilValor(f.perfil_coincide)
+  if (perfil === 'NO') return 'Coincide = x: se queda en LEADS y el estado queda bloqueado.'
+  if (perfil !== 'SI' && String(f.status ?? '').trim()) {
+    return 'Para que el estado cuente en el embudo, Coincide tiene que ser ✓.'
+  }
+  if (perfil === 'SI' && !String(f.status ?? '').trim()) {
+    return 'Coincide = ✓ sin estado: cuenta como CUMPLE POLITICA hasta que el asesor le ponga un estado.'
+  }
+  return ''
+})
 
 /** La fecha con la que el lead caerá en el embudo tras guardar. */
 const fechaFunnelPrevista = computed(() =>
@@ -1734,18 +1831,20 @@ async function guardarFunnelLead() {
   // CITA / CITA ASISTIDA necesitan fecha de cita, y CONCRETADA fecha de compra:
   // sin eso el lead caería en el mes equivocado del embudo.
   if ((f.status === 'CITA' || f.status === 'CITA ASISTIDA') && !f.fecha_cita) {
-    return notify('Con status ' + f.status + ' hace falta la fecha de cita', 'error')
+    return notify('Con estado ' + f.status + ' hace falta la fecha de cita', 'error')
   }
   if (f.status === 'CITA ASISTIDA' && !f.fecha_cita_asistida) {
-    return notify('Con status CITA ASISTIDA hace falta la fecha en que se realizó la cita', 'error')
+    return notify('Con estado CITA ASISTIDA hace falta la fecha en que se realizó la cita', 'error')
   }
   if (f.status === 'CONCRETADA' && !f.fecha_compra) {
-    return notify('Con status CONCRETADA hace falta la fecha de compra', 'error')
+    return notify('Con estado CONCRETADA hace falta la fecha de compra', 'error')
   }
 
   const fila: Record<string, any> = { ...f }
   delete fila._statusOriginal
   delete fila.id
+  // Coincide = x bloquea el estado (el trigger de la BD también lo garantiza)
+  if (tcPerfilValor(fila.perfil_coincide) === 'NO') fila.status = null
   // zona, marca_normalizada y marca_prioridad los resuelve el trigger de la BD
   // contra los catálogos: mandarlos desde aquí sólo abriría la puerta a que la
   // UI y la BD se contradigan.

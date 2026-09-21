@@ -17,6 +17,41 @@ Funnel, Tabla de Leads y Análisis de Conversión, en vivo
 
 Tiempo estimado: ~20 minutos.
 
+> ## ⭐ VIGENTE desde el 18/09/2026 (reunión de alineación) — leer esto primero
+>
+> El embudo se arma en cascada con **dos** custom attributes de Chatwoot, no con el dropdown único de
+> 7 etapas del 14/09:
+>
+> | Display Name | Key | Tipo | Valores |
+> |---|---|---|---|
+> | Coincide | `coincide` | List | `✓`, `x` |
+> | Estado | `estado` | List | No contactado, No interesado, En seguimiento, Cita, Cita asistida, Concretado |
+> | Información del auto | `informacion_del_auto` | Text | texto libre: marca, modelo, año, km, placa |
+>
+> ```
+> Asesor marca Coincide / Estado (Chatwoot)
+>        ↓  webhook conversation_updated
+> n8n · Armar payload  →  ✓ → perfil SI · x → perfil NO (y el estado se BLOQUEA: se manda vacío)
+>        ├─ POST /api/tradecars/funnel-lead                (el dashboard calcula las 7 barras)
+>        └─ etiqueta en la conversación: ✓ → cumple_politica · x → no_coincide · vacío → ninguna
+> ```
+>
+> - **LEADS = todo lo que entra; el resto exige Coincide ✓.** CUMPLE POLITICA = ✓ (con o sin estado);
+>   CONTACTADO = ✓ + cualquier estado menos "No contactado"; INTERESADOS = ✓ + En seguimiento o más;
+>   CITAS AGENDADAS = ✓ + Cita o más; CITAS ASISTIDAS = ✓ + Cita asistida o más; COMPRAS = ✓ + Concretado.
+> - Dos valores del dropdown `estado` traen un **TAB escondido** delante (`"<TAB>No interesado"`,
+>   `"<TAB>En seguimiento"`): el nodo los limpia. "Concretado" se traduce a `CONCRETADA`.
+> - **Solo se envía lo que existe.** Un atributo vacío ya no viaja como `null` (antes cada evento de Chatwoot
+>   pisaba fechas y ediciones hechas en el dashboard).
+> - **Etiquetas:** hay que crear en Chatwoot (Settings → Labels) `cumple_politica` y `no_coincide` (ya creadas en
+>   la cuenta 17). El flujo lee la lista actual, cambia solo esas dos y escribe **solo si algo cambió** — el POST
+>   de etiquetas **reemplaza la lista completa**, por eso no se confía en la lista del webhook. Las etiquetas de
+>   estado (`cita`, `no_contactado`…) las siguen poniendo las automatizaciones de Chatwoot.
+> - **Importar `tradecars-funnel-workflow.json`:** trae 12 nodos. En los dos nodos HTTP de etiquetas hay que
+>   pegar el token de Chatwoot donde dice `PEGAR_AQUI_EL_TOKEN_DE_CHATWOOT` (no se guarda en el repo).
+> - Los pasos 1 / 1b de más abajo describen el esquema anterior (7 etapas en un solo dropdown). El nodo sigue
+>   leyendo ese formato si una conversación lo trae, pero **ya no es el vigente**.
+
 > **Actualizado 14/09/2026.** La versión original de esta guía (26/08) pedía crear
 > **dos** custom attributes (`perfil_coincide` + `status`). Trade Cars simplificó
 > eso a un solo campo (`estado`) con los nombres de las 7 etapas del embudo, más

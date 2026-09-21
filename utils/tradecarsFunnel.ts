@@ -4,10 +4,36 @@
  * Traduce a código las reglas que hoy viven en las fórmulas del Power BI
  * (funnel tradecars 2.pbix) y que el cliente validó en la reunión del 26/08/2026.
  *
- * Vive en `utils/` (auto-import de Nuxt) para que los tres módulos del funnel
+ * REVISADO tras la reunión de alineación de septiembre/2026 con Trade Cars
+ * (Jean Marcos Silvera). El embudo se arma en CASCADA a partir de DOS campos del
+ * CRM: `Coincide` (✓ / x  ->  perfil_coincide SI / NO) y `estado` (6 valores):
+ *
+ *   LEADS            todo lo que entra (con o sin perfil, con o sin estado)
+ *   CUMPLE POLITICA  Coincide = SI  (con cualquiera de los 6 estados, o todavía sin estado)
+ *   CONTACTADO       Coincide = SI  y  estado ∈ {NO INTERESADO, EN SEGUIMIENTO, CITA, CITA ASISTIDA, CONCRETADA}
+ *   INTERESADOS      Coincide = SI  y  estado ∈ {EN SEGUIMIENTO, CITA, CITA ASISTIDA, CONCRETADA}
+ *   CITAS AGENDADAS  Coincide = SI  y  estado ∈ {CITA, CITA ASISTIDA, CONCRETADA}
+ *   CITAS ASISTIDAS  Coincide = SI  y  estado ∈ {CITA ASISTIDA, CONCRETADA}
+ *   COMPRAS          Coincide = SI  y  estado = CONCRETADA
+ *
+ * Reglas que salieron de esa reunión y que este archivo hace cumplir:
+ *  - Un lead con Coincide = NO se queda SOLO en LEADS, tenga el estado que tenga
+ *    (en el CRM el estado se bloquea al marcar NO; aquí se ignora por si llega).
+ *  - Coincide = SI ya es CUMPLE POLITICA aunque el asesor todavía no haya elegido
+ *    estado: "cumple política es netamente si coincide". Es la misma condición que
+ *    dispara la etiqueta `cumple_politica` en Chatwoot (flujo n8n del funnel), así
+ *    la etiqueta y la barra del embudo nunca se contradicen. "No contactado" es
+ *    solo el estado de entrada: no mueve al lead de esa barra.
+ *  - "NO INTERESADO" cuenta como CONTACTADO pero NO como INTERESADOS.
+ *  - El CRM manda "Concretado" (masculino); el dashboard guarda "CONCRETADA".
+ *    Se aceptan las dos.
+ *
+ * Vive en `utils/` (auto-import de Nuxt) para que los módulos del funnel
  * —embudo, tabla de leads y análisis de conversión— calculen exactamente igual.
  * La misma lógica está replicada en columnas GENERATED de Postgres
- * (sql/tradecars_funnel.sql): si se cambia una, hay que cambiar la otra.
+ * (sql/tradecars_funnel_v2_crm.sql): si se cambia una, hay que cambiar la otra.
+ * El endpoint server/api/tradecars/funnel-lead.ts importa este mismo archivo
+ * para normalizar lo que manda el CRM.
  */
 
 /* ══════════════════ Valores cerrados ══════════════════ */
@@ -42,7 +68,8 @@ export const TC_CANALES = ['WhatsApp', 'Instagram', 'TikTok', 'Facebook'] as con
 
 /**
  * STATUS -> etapa que alcanza el lead cuando PERFIL COINCIDE = SI.
- * Con PERFIL COINCIDE = NO el lead se queda en LEADS sin importar el status.
+ * Con PERFIL COINCIDE = NO (o sin calificar) el lead se queda en LEADS sin
+ * importar el status.
  */
 const STATUS_A_ETAPA: Record<TcStatus, TcEtapa> = {
   'NO CONTACTADO':  'CUMPLE POLITICA',
@@ -53,38 +80,82 @@ const STATUS_A_ETAPA: Record<TcStatus, TcEtapa> = {
   'CONCRETADA':     'COMPRAS',
 }
 
+/**
+ * El dropdown `estado` del CRM dice "Concretado" (masculino) y el dashboard
+ * guarda "CONCRETADA" desde el 26/08. Se aceptan los dos para que ninguna de
+ * las dos fuentes pueda dejar un lead fuera del embudo por un tema de género.
+ */
+const STATUS_ALIAS: Record<string, TcStatus> = {
+  'CONCRETADO': 'CONCRETADA',
+}
+
 /** Statuses desde los que un lead NO puede retroceder (regla anti-regresión). */
 export const TC_STATUS_IRREVERSIBLES: TcStatus[] = ['CITA', 'CITA ASISTIDA', 'CONCRETADA']
 
 /* ══════════════════ Normalización ══════════════════ */
 
-/** Normaliza texto libre del CRM: mayúsculas, sin acentos, sin espacios de más. */
+/**
+ * Normaliza texto libre del CRM: mayúsculas, sin acentos, sin espacios de más.
+ * OJO: `\s+` también se come los TABULADORES — dos valores del dropdown `estado`
+ * de Chatwoot vienen con un tab escondido delante ("\tNo interesado",
+ * "\tEn seguimiento"). Sin esta normalización no coincidirían con la lista.
+ */
 export function tcNormalizar(v: any): string {
   return String(v ?? '')
     .toUpperCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\uFE0F/g, '')                    // selector de variacion de emoji
     .replace(/\s+/g, ' ')
     .trim()
 }
 
+/** Resuelve alias ("CONCRETADO") a su valor canónico. Devuelve '' si está vacío. */
+function statusCanonico(v: any): string {
+  const s = tcNormalizar(v)
+  return STATUS_ALIAS[s] || s
+}
+
 /** Devuelve el STATUS válido, o null si está vacío o el CRM mandó algo no reconocido. */
 export function tcStatusValido(v: any): TcStatus | null {
-  const s = tcNormalizar(v)
+  const s = statusCanonico(v)
   if (!s) return null
   return (TC_STATUS as readonly string[]).includes(s) ? (s as TcStatus) : null
 }
 
 /** true cuando el CRM mandó un status con contenido pero fuera de la lista cerrada. */
 export function tcStatusEsInvalido(v: any): boolean {
-  const s = tcNormalizar(v)
+  const s = statusCanonico(v)
   return !!s && !(TC_STATUS as readonly string[]).includes(s)
 }
 
-/** PERFIL COINCIDE = SI. Acepta SI/YES/TRUE/1 por tolerancia con el CRM. */
-export function tcPerfilCoincide(v: any): boolean {
+/**
+ * PERFIL COINCIDE en tres estados. El CRM de Trade Cars lo marca con un dropdown
+ * "Coincide": ✓ (coincide) / x (no coincide) / vacío (todavía sin calificar).
+ * Cuando llega vacío NO es lo mismo que "NO": el lead simplemente no fue evaluado,
+ * y la métrica de "no coinciden" no debe inflarse con ellos.
+ */
+export type TcPerfil = 'SI' | 'NO' | ''
+
+const PERFIL_SI = ['SI', 'YES', 'TRUE', '1', '✓', '✔', '✅', '☑']
+const PERFIL_NO = ['NO', 'X', 'FALSE', '0', '✗', '✘', '✖', '❌']
+
+export function tcPerfilValor(v: any): TcPerfil {
   const s = tcNormalizar(v)
-  return s === 'SI' || s === 'YES' || s === 'TRUE' || s === '1'
+  if (!s) return ''
+  if (PERFIL_SI.includes(s)) return 'SI'
+  if (PERFIL_NO.includes(s)) return 'NO'
+  return ''
+}
+
+/** PERFIL COINCIDE = SI (✓). */
+export function tcPerfilCoincide(v: any): boolean {
+  return tcPerfilValor(v) === 'SI'
+}
+
+/** PERFIL COINCIDE = NO (x), marcado explícitamente por el asesor. */
+export function tcPerfilNoCoincide(v: any): boolean {
+  return tcPerfilValor(v) === 'NO'
 }
 
 /* ══════════════════ Etapa ══════════════════ */
@@ -100,27 +171,36 @@ export interface TcLeadCrudo {
 }
 
 /**
- * Etapa más avanzada que alcanzó el lead.
+ * Etapa más avanzada que alcanzó el lead. Siempre devuelve una etapa: todo lead
+ * cuenta al menos como LEADS ("todo lo que entra").
  *
- * Devuelve null en dos casos que NO entran al funnel:
- *  - PERFIL COINCIDE = SI pero STATUS vacío (aún sin clasificar por el asesor)
- *  - STATUS con un valor fuera de la lista cerrada (dato sucio del CRM)
- * Se distinguen entre sí con tcStatusEsInvalido().
+ *  - Coincide = NO o sin calificar          -> LEADS
+ *  - Coincide = SI + estado válido          -> la etapa de ese estado
+ *  - Coincide = SI sin estado, o con un
+ *    estado fuera de la lista cerrada       -> CUMPLE POLITICA (cumple el perfil; le
+ *                                              falta un estado válido para avanzar,
+ *                                              y eso se avisa aparte con tcSinEstado()
+ *                                              / tcStatusEsInvalido())
  */
-export function tcEtapa(lead: TcLeadCrudo): TcEtapa | null {
-  // Perfil NO: el lead existe pero no cumple política. Se queda en LEADS.
+export function tcEtapa(lead: TcLeadCrudo): TcEtapa {
   if (!tcPerfilCoincide(lead?.perfil_coincide)) return 'LEADS'
 
   const status = tcStatusValido(lead?.status)
-  if (!status) return null   // vacío o inválido: fuera del funnel hasta corregirlo
-
-  return STATUS_A_ETAPA[status]
+  return status ? STATUS_A_ETAPA[status] : 'CUMPLE POLITICA'
 }
 
-/** Posición de la etapa en el embudo (0 = LEADS … 6 = COMPRAS). -1 si no aplica. */
+/** Posición de la etapa en el embudo (0 = LEADS … 6 = COMPRAS). */
 export function tcRank(lead: TcLeadCrudo): number {
-  const e = tcEtapa(lead)
-  return e ? TC_ETAPAS.indexOf(e) : -1
+  return TC_ETAPAS.indexOf(tcEtapa(lead))
+}
+
+/**
+ * Coincide = SI pero el asesor todavía no le puso estado. Cuenta como CUMPLE POLITICA
+ * pero no avanza más: es la lista de "a quién le falta poner estado" que se le pasa
+ * al asesor.
+ */
+export function tcSinEstado(lead: TcLeadCrudo): boolean {
+  return tcPerfilCoincide(lead?.perfil_coincide) && !String(lead?.status ?? '').trim()
 }
 
 /* ══════════════════ Fecha del funnel ══════════════════ */
@@ -192,7 +272,8 @@ export interface TcBarra {
  * superior**. Un lead CONCRETADA suma en las 7 barras porque pasó por todas.
  */
 export function tcConstruirFunnel(leads: TcLeadCrudo[]): TcBarra[] {
-  const ranks = leads.map(tcRank).filter(r => r >= 0)   // -1 = fuera del funnel
+  // Todo lead tiene rank >= 0 (LEADS = todo lo que entra): ya no hay leads "fuera del embudo".
+  const ranks = leads.map(tcRank)
   const total = ranks.length
   let previa = 0
 
@@ -217,7 +298,7 @@ export interface TcFiltros {
   fechaHasta?: string
   asesor?: string     // 'todos'
   canal?: string      // 'todos'
-  perfil?: string     // 'SI' | 'NO' | 'todos'
+  perfil?: string     // 'SI' | 'NO' | 'SIN' (sin calificar) | 'todos'
   etapa?: string      // TcEtapa | 'todos'
   buscar?: string
 }
@@ -244,9 +325,11 @@ export function tcFiltrar(leads: TcLeadCrudo[], f: TcFiltros): TcLeadCrudo[] {
     if (f.canal && f.canal !== 'todos' && (l.canal_origen || '') !== f.canal) return false
 
     if (f.perfil && f.perfil !== 'todos') {
-      const coincide = tcPerfilCoincide(l.perfil_coincide)
-      if (f.perfil === 'SI' && !coincide) return false
-      if (f.perfil === 'NO' && coincide) return false
+      // 'NO' es el "x" explícito del asesor; un lead todavía sin calificar es 'SIN'.
+      const valor = tcPerfilValor(l.perfil_coincide)
+      if (f.perfil === 'SI' && valor !== 'SI') return false
+      if (f.perfil === 'NO' && valor !== 'NO') return false
+      if (f.perfil === 'SIN' && valor !== '') return false
     }
     if (f.etapa && f.etapa !== 'todos' && tcEtapa(l) !== f.etapa) return false
 
@@ -258,6 +341,121 @@ export function tcFiltrar(leads: TcLeadCrudo[], f: TcFiltros): TcLeadCrudo[] {
     }
     return true
   })
+}
+
+/* ══════════════════ Perfiles que NO coinciden ══════════════════
+ *
+ * Métrica adicional que pidió Jean Marcos en la reunión de alineación
+ * (y que Roberto aceptó): "un apartado que mida la cantidad de perfiles que no
+ * coinciden y que se pueda dar la distribución por semana, por día o por mes".
+ * NO es un embudo — es un contador con su distribución en el tiempo.
+ */
+
+export interface TcResumenPerfiles {
+  total: number
+  /** Coincide = SI (✓). */
+  coinciden: number
+  /** Coincide = NO (x) marcado explícitamente por el asesor. */
+  noCoinciden: number
+  /** Todavía sin calificar (el asesor no marcó ni ✓ ni x). */
+  sinCalificar: number
+  /** noCoinciden / total, en %. null si no hay leads. */
+  pctNoCoinciden: number | null
+}
+
+export function tcResumenPerfiles(leads: TcLeadCrudo[]): TcResumenPerfiles {
+  let coinciden = 0
+  let noCoinciden = 0
+  let sinCalificar = 0
+  for (const l of leads) {
+    const v = tcPerfilValor(l?.perfil_coincide)
+    if (v === 'SI') coinciden++
+    else if (v === 'NO') noCoinciden++
+    else sinCalificar++
+  }
+  const total = leads.length
+  return {
+    total, coinciden, noCoinciden, sinCalificar,
+    pctNoCoinciden: total > 0 ? (noCoinciden / total) * 100 : null,
+  }
+}
+
+export type TcGranularidad = 'dia' | 'semana' | 'mes'
+
+export interface TcPuntoSerie {
+  /** Clave ordenable: YYYY-MM-DD (día y semana = lunes de esa semana) o YYYY-MM (mes). */
+  clave: string
+  etiqueta: string
+  cantidad: number
+}
+
+/** Suma `dias` a una fecha YYYY-MM-DD sin depender de la zona horaria del navegador. */
+function sumarDias(fecha: string, dias: number): string {
+  const [y, m, d] = fecha.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d + dias))
+  return t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0') + '-' + String(t.getUTCDate()).padStart(2, '0')
+}
+
+/** Lunes de la semana a la que pertenece la fecha (semana Lun–Dom, como en Perú). */
+function lunesDe(fecha: string): string {
+  const [y, m, d] = fecha.split('-').map(Number)
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()   // 0 = domingo
+  return sumarDias(fecha, -((dow + 6) % 7))
+}
+
+/** Clave del "cubo" (día / semana / mes) al que pertenece una fecha. */
+export function tcClaveSerie(fecha: string, g: TcGranularidad): string {
+  if (g === 'mes') return fecha.slice(0, 7)
+  if (g === 'semana') return lunesDe(fecha)
+  return fecha
+}
+
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+function etiquetaSerie(clave: string, g: TcGranularidad): string {
+  if (g === 'mes') {
+    const [y, m] = clave.split('-')
+    return MESES_CORTOS[Number(m) - 1] + ' ' + y.slice(2)
+  }
+  const [, m, d] = clave.split('-')
+  const base = d + ' ' + MESES_CORTOS[Number(m) - 1]
+  return g === 'semana' ? 'Sem ' + base : base
+}
+
+/**
+ * Distribución en el tiempo de los leads con Coincide = NO. Se agrupan por la
+ * MISMA fecha del funnel que usa todo el dashboard (para que los filtros de
+ * período no se contradigan) y se rellenan con 0 los días/semanas/meses sin
+ * datos entre el primero y el último, así el gráfico no "salta" huecos.
+ */
+export function tcSerieNoCoinciden(leads: TcLeadCrudo[], g: TcGranularidad): TcPuntoSerie[] {
+  const conteo = new Map<string, number>()
+  for (const l of leads) {
+    if (!tcPerfilNoCoincide(l?.perfil_coincide)) continue
+    const f = tcFechaFunnel(l)
+    if (!f) continue
+    const k = tcClaveSerie(f, g)
+    conteo.set(k, (conteo.get(k) || 0) + 1)
+  }
+  if (!conteo.size) return []
+
+  const claves = [...conteo.keys()].sort()
+  const primera = claves[0]
+  const ultima = claves[claves.length - 1]
+
+  const serie: TcPuntoSerie[] = []
+  let actual = primera
+  // tope de seguridad: 800 cubos (más de 2 años en modo día) para no colgar el navegador
+  for (let i = 0; i < 800 && actual <= ultima; i++) {
+    serie.push({ clave: actual, etiqueta: etiquetaSerie(actual, g), cantidad: conteo.get(actual) || 0 })
+    if (g === 'mes') {
+      const [y, m] = actual.split('-').map(Number)
+      actual = m === 12 ? (y + 1) + '-01' : y + '-' + String(m + 1).padStart(2, '0')
+    } else {
+      actual = sumarDias(actual, g === 'semana' ? 7 : 1)
+    }
+  }
+  return serie
 }
 
 /* ══════════════════ Alertas de seguimiento ══════════════════ */

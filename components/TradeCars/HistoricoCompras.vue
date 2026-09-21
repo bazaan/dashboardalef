@@ -24,6 +24,13 @@
 
   Igual que la tabla de Ventas: va todo por server/api/tradecars/
   historico-compras.{get,post}.ts porque NO tiene policy `anon`.
+
+  COMPRAS QUE LLEGAN DEL CRM (reunión de septiembre/2026): cuando el asesor marca
+  "Concretado" en Chatwoot, el funnel crea acá una fila con verificado = false y los
+  datos del auto que pudo extraer. El administrador la revisa, completa lo que falte
+  y con "Ingresar a inventario" la pasa a Vehículos (server/api/tradecars/
+  inventario-ingresar.post.ts). No es automático a propósito: solo entran al
+  inventario los carros que él ordene.
 -->
 <template>
   <div class="view-container">
@@ -40,7 +47,20 @@
     </header>
 
     <div class="content-area">
-      <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+      <v-alert v-if="pendientes.length" type="warning" variant="tonal" density="compact" class="mb-4"
+        icon="mdi-clipboard-check-outline">
+        <strong>{{ pendientes.length }}</strong>
+        {{ pendientes.length === 1 ? 'compra llegó' : 'compras llegaron' }} del CRM (estado Concretado) y
+        {{ pendientes.length === 1 ? 'espera' : 'esperan' }} revisión. Completa lo que falte y usa
+        «Ingresar a inventario» para pasarla a Vehículos.
+        <template #append>
+          <v-btn size="small" variant="tonal" @click="soloPendientes = !soloPendientes">
+            {{ soloPendientes ? 'Ver todas' : 'Ver solo pendientes' }}
+          </v-btn>
+        </template>
+      </v-alert>
+
+      <v-alert v-else type="info" variant="tonal" density="compact" class="mb-4">
         Histórico real de compras (hoja "COMPRAS" del Excel de la empresa) — {{ CAMPOS.length }} columnas,
         todas visibles y editables acá.
       </v-alert>
@@ -65,8 +85,17 @@
           <v-data-table :headers="headers" :items="filasFiltradas" :loading="cargando"
             class="elevation-0" no-data-text="No hay registros" :items-per-page="25"
             fixed-header height="600" @click:row="(_: any, r: any) => abrirFicha(r.item)">
+            <template v-slot:item._estado="{ item }">
+              <v-chip v-if="item.inventario_vehiculo_id" size="x-small" color="success" variant="tonal"
+                prepend-icon="mdi-warehouse">En inventario</v-chip>
+              <v-chip v-else-if="item.verificado === false" size="x-small" color="warning" variant="flat"
+                prepend-icon="mdi-clipboard-clock-outline">Por verificar</v-chip>
+              <v-chip v-else-if="item.origen === 'crm'" size="x-small" color="info" variant="tonal"
+                prepend-icon="mdi-check">Verificada</v-chip>
+              <span v-else class="text-medium-emphasis">—</span>
+            </template>
             <template v-for="c in CAMPOS" :key="c.key" v-slot:[`item.${c.key}`]="{ item }">
-              {{ formatCell(item[c.key], c.tipo) }}
+              {{ formatCell(valorFila(item, c.key), c.tipo) }}
             </template>
             <template v-slot:item.acciones="{ item }">
               <v-btn icon="mdi-delete" size="x-small" variant="text" color="error"
@@ -84,15 +113,47 @@
           {{ ficha.id ? `${ficha.marca || ''} ${ficha.modelo || ''} — ${ficha.placa || 'sin placa'}` : 'Nuevo registro' }}
         </v-card-title>
         <v-card-text>
+          <!-- Compra que creó el CRM: qué anotó el asesor y de qué chat viene -->
+          <v-alert v-if="ficha.origen === 'crm'" :type="ficha.verificado === false ? 'warning' : 'info'"
+            variant="tonal" density="compact" class="mb-4">
+            <div>
+              <strong>
+                {{ ficha.verificado === false ? 'Creada automáticamente desde el CRM — falta verificar' : 'Creada desde el CRM (ya verificada)' }}
+              </strong>
+              <template v-if="ficha.crm_conversation_id">
+                ·
+                <a :href="urlConversacion(ficha.crm_conversation_id)" target="_blank" rel="noopener">
+                  ver el chat #{{ ficha.crm_conversation_id }}
+                </a>
+              </template>
+            </div>
+            <div v-if="ficha.informacion_auto" class="mt-1 text-body-2">
+              El asesor anotó: «{{ ficha.informacion_auto }}»
+            </div>
+            <div class="mt-1 text-caption">
+              Revisa marca, modelo, año, kilometraje y placa; completa precios y gastos, guarda, y usa
+              «Ingresar a inventario».
+            </div>
+          </v-alert>
+          <v-alert v-if="ficha.inventario_vehiculo_id" type="success" variant="tonal" density="compact" class="mb-4"
+            icon="mdi-warehouse">
+            Ya está en el inventario de vehículos<template v-if="ficha.ingresado_inventario_en">
+              (desde el {{ formatCell(ficha.ingresado_inventario_en, 'date') }})</template>.
+          </v-alert>
+
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4" icon="mdi-function-variant">
+            Los campos con el icono <b>fx</b> se calculan solos con las fórmulas del Excel (valor de compra, gastos, costo total,
+            rango de inventario…). Se recalculan al editar y el servidor los vuelve a calcular al guardar.
+          </v-alert>
+
           <div class="form-section-title">Registro de compra</div>
           <div class="form-grid-3">
             <template v-for="c in camposBloque1" :key="c.key">
               <v-text-field v-if="c.tipo === 'number'" v-model.number="ficha[c.key]" type="number"
-                :label="c.title" density="compact" hide-details variant="outlined" />
+                :readonly="esCampoCalculado(c.key)" :class="{ 'campo-calculado': esCampoCalculado(c.key) }":prepend-inner-icon="esCampoCalculado(c.key) ? 'mdi-function-variant' : undefined"density="compact" hide-details variant="outlined" />
               <v-text-field v-else-if="c.tipo === 'date'" v-model="ficha[c.key]" type="date"
-                :label="c.title" density="compact" hide-details variant="outlined" />
-              <v-text-field v-else v-model="ficha[c.key]" :label="c.title"
-                density="compact" hide-details variant="outlined" />
+                :readonly="esCampoCalculado(c.key)" :class="{ 'campo-calculado': esCampoCalculado(c.key) }":prepend-inner-icon="esCampoCalculado(c.key) ? 'mdi-function-variant' : undefined"density="compact" hide-details variant="outlined" />
+              <v-text-field v-else v-model="ficha[c.key]" :readonly="esCampoCalculado(c.key)" :class="{ 'campo-calculado': esCampoCalculado(c.key) }":prepend-inner-icon="esCampoCalculado(c.key) ? 'mdi-function-variant' : undefined"density="compact" hide-details variant="outlined" />
             </template>
           </div>
 
@@ -100,19 +161,24 @@
           <div class="form-grid-3">
             <template v-for="c in camposBloque2" :key="c.key">
               <v-text-field v-if="c.tipo === 'number'" v-model.number="ficha[c.key]" type="number"
-                :label="c.title" density="compact" hide-details variant="outlined" />
+                :readonly="esCampoCalculado(c.key)" :class="{ 'campo-calculado': esCampoCalculado(c.key) }":prepend-inner-icon="esCampoCalculado(c.key) ? 'mdi-function-variant' : undefined"density="compact" hide-details variant="outlined" />
               <v-text-field v-else-if="c.tipo === 'date'" v-model="ficha[c.key]" type="date"
-                :label="c.title" density="compact" hide-details variant="outlined" />
-              <v-text-field v-else v-model="ficha[c.key]" :label="c.title"
-                density="compact" hide-details variant="outlined" />
+                :readonly="esCampoCalculado(c.key)" :class="{ 'campo-calculado': esCampoCalculado(c.key) }":prepend-inner-icon="esCampoCalculado(c.key) ? 'mdi-function-variant' : undefined"density="compact" hide-details variant="outlined" />
+              <v-text-field v-else v-model="ficha[c.key]" :readonly="esCampoCalculado(c.key)" :class="{ 'campo-calculado': esCampoCalculado(c.key) }":prepend-inner-icon="esCampoCalculado(c.key) ? 'mdi-function-variant' : undefined"density="compact" hide-details variant="outlined" />
             </template>
           </div>
         </v-card-text>
         <v-card-actions>
           <v-btn v-if="ficha.id" color="error" variant="text" @click="eliminar(ficha)">Eliminar</v-btn>
           <v-spacer />
+          <template v-if="ficha.id && esAdmin">
+            <v-btn v-if="ficha.verificado === false" variant="tonal" color="warning" prepend-icon="mdi-check"
+              :loading="procesando" @click="verificarCompra">Marcar verificada</v-btn>
+            <v-btn v-if="!ficha.inventario_vehiculo_id" variant="tonal" color="success" prepend-icon="mdi-warehouse"
+              :loading="procesando" @click="ingresarInventario">Ingresar a inventario</v-btn>
+          </template>
           <v-btn variant="text" @click="ficha = null">Cancelar</v-btn>
-          <v-btn color="primary" variant="flat" :loading="guardando" @click="guardar">Guardar</v-btn>
+          <v-btn color="primary" variant="flat" :loading="guardando" @click="guardar()">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -120,10 +186,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+
+const props = withDefaults(defineProps<{
+  /** Solo un Administrador puede verificar e ingresar a inventario (el servidor lo vuelve a exigir). */
+  esAdmin?: boolean
+}>(), { esAdmin: true })
 
 const emit = defineEmits<{ (e: 'notificar', texto: string, color?: string): void }>()
 const notify = (texto: string, color = 'success') => emit('notificar', texto, color)
+
+// Cuenta de Trade Cars en Chatwoot (para abrir el chat de origen de una compra del CRM)
+const CHATWOOT_ACCOUNT_TRADECARS = 17
+const urlConversacion = (id: number | string) =>
+  `https://chats.alef.company/app/accounts/${CHATWOOT_ACCOUNT_TRADECARS}/conversations/${id}`
 
 // Generado desde el encabezado real de la hoja "COMPRAS" — ver el mapeo
 // completo (header original -> columna SQL) en sql/tradecars_compras_import.sql.
@@ -247,7 +323,12 @@ const camposBloque2 = CAMPOS.filter(c => c.bloque === 2)
 
 // Mismos headers que consume v-data-table en HistoricoComprasVentas.vue —
 // generados desde CAMPOS en vez de escritos a mano (son 113).
+const estadoTexto = (r: any) =>
+  r.inventario_vehiculo_id ? 'En inventario' : r.verificado === false ? 'Por verificar' : r.origen === 'crm' ? 'Verificada' : ''
+
 const headers = [
+  // Primera columna: dónde va cada compra en el flujo CRM -> verificación -> inventario
+  { title: 'Estado', key: '_estado', value: (r: any) => estadoTexto(r), sortable: true },
   ...CAMPOS.map(c => ({
     title: c.title,
     key: c.key,
@@ -275,7 +356,10 @@ async function cargar() {
   cargando.value = true
   try {
     const res = await $fetch<{ ok: boolean; filas: any[] }>('/api/tradecars/historico-compras')
-    filas.value = res.filas || []
+    const hoy = tcHoyLima()
+    // Los días para vencer SOAT / RTV y los días en inventario cambian cada día (en el Excel son HOY()):
+    // se calculan al mostrar y NO se guardan.
+    filas.value = (res.filas || []).map((f: any) => ({ ...f, __vivos: tcCompraVivos(f, hoy) }))
   } catch (e: any) {
     notify(`Error cargando: ${e?.data?.statusMessage || e?.message || 'error'}`, 'error')
   } finally {
@@ -284,10 +368,16 @@ async function cargar() {
 }
 onMounted(cargar)
 
+// Compras que creó el CRM y todavía no revisó nadie (verificado = false)
+const pendientes = computed(() => filas.value.filter(f => f.verificado === false))
+const soloPendientes = ref(false)
+
 const filasFiltradas = computed(() => {
-  if (!buscar.value.trim()) return filas.value
+  // Si ya no quedan pendientes, el filtro no puede dejar la tabla vacía sin salida
+  let base = soloPendientes.value && pendientes.value.length ? pendientes.value : filas.value
+  if (!buscar.value.trim()) return base
   const q = buscar.value.toLowerCase()
-  return filas.value.filter(f => [f.placa, f.marca, f.modelo, f.concat]
+  return base.filter(f => [f.placa, f.marca, f.modelo, f.concat]
     .some(x => String(x ?? '').toLowerCase().includes(q)))
 })
 function formatCell(v: any, tipo: 'text' | 'date' | 'number') {
@@ -305,6 +395,47 @@ function formatCell(v: any, tipo: 'text' | 'date' | 'number') {
 const ficha = ref<any>(null)
 const guardando = ref(false)
 
+/** Valor que se muestra en la tabla: el "vivo" (calculado con la fecha de hoy) si lo hay, si no el guardado. */
+function valorFila(item: any, key: string) {
+  const vivo = item?.__vivos?.[key]
+  return vivo !== undefined ? vivo : item[key]
+}
+const CLAVES_VIVAS = ['dias', 'vencimiento_de_rtv', 'dias_de_inv']
+
+/* Fórmulas del Excel en vivo (utils/tradecarsFormulas.ts). En una fila que ya existe solo se reescribe lo
+   que la edición realmente cambia: una fila con un total escrito a mano no se pisa. El servidor vuelve a
+   calcular todo al guardar (y resuelve lo que necesita otras tablas: N° de compra y si ya se vendió). */
+const CALCULADOS = new Set<string>(TC_COMPRA_CALCULADOS)
+let fichaOriginal: Record<string, any> | null = null
+
+const hayValor = (v: any) => v !== null && v !== undefined && String(v).trim() !== ''
+
+/** ¿Este campo sale de una fórmula (solo lectura)? Algunos son manuales cuando no hay de dónde calcularlos. */
+function esCampoCalculado(key: string): boolean {
+  const f = ficha.value
+  if (!f || !CALCULADOS.has(key)) return false
+  // El total de gastos reales es la suma de los 13 gastos; si no se detalló ninguno, es un total escrito a mano
+  if (key === 'total_gastos_extras_reales') return TC_COMPRA_GASTOS_REALES.some(k => hayValor(f[k]))
+  // PÉRDIDA / NO APLICA se escriben a mano: el status solo lo decide la fórmula cuando no es uno de esos
+  if (key === 'status' || key === 'status_ii' || key === 'status_ii_2') return false
+  if (key === 'rango_de_inv') return String(f.rango_de_inv || '').trim().toUpperCase() !== 'NO APLICA'
+  return true
+}
+
+function aplicarFormulasFicha() {
+  const f = ficha.value
+  if (!f) return
+  let calc = tcCalcularCompra(f)
+  if (fichaOriginal) calc = tcSoloCambios(calc, tcCalcularCompra(fichaOriginal), fichaOriginal)
+  for (const [k, v] of Object.entries(calc)) {
+    if (k === 'status') continue              // depende de si ya hay una venta: lo resuelve el servidor
+    const actual = f[k]
+    const igual = typeof v === 'number' && typeof actual === 'number' ? Math.abs(v - actual) < 1e-9 : v === actual
+    if (!igual) f[k] = v                      // solo se asigna si cambió: así el watch no entra en bucle
+  }
+}
+watch(ficha, aplicarFormulasFicha, { deep: true })
+
 function fichaVacia() {
   const obj: Record<string, any> = {}
   for (const c of CAMPOS) obj[c.key] = c.tipo === 'number' ? null : ''
@@ -314,27 +445,97 @@ function fichaVacia() {
 function abrirFicha(item?: any) {
   if (item) {
     const copia = { ...item }
+    delete copia.__vivos
     for (const c of CAMPOS) {
       if (c.tipo === 'date' && copia[c.key]) copia[c.key] = String(copia[c.key]).slice(0, 10)
     }
+    fichaOriginal = { ...copia }
     ficha.value = copia
   } else {
+    fichaOriginal = null
     ficha.value = fichaVacia()
   }
 }
 
-async function guardar() {
+/** Guarda la ficha. Devuelve true si se pudo (los botones de inventario lo usan para no
+ *  mandar al inventario datos viejos: primero se guarda lo que el administrador acaba de editar). */
+async function guardar(cerrar = true): Promise<boolean> {
   const f = ficha.value
   if (!f.placa?.trim?.() && !f.marca?.trim?.()) {
-    return notify('Al menos la placa o la marca son obligatorias', 'error')
+    notify('Al menos la placa o la marca son obligatorias', 'error')
+    return false
   }
   guardando.value = true
-  const { error } = await apiHistoricoCompras({ accion: f.id ? 'actualizar' : 'crear', ...f })
+  // Los valores que dependen de la fecha de hoy no se guardan (se recalculan al mostrar)
+  const datos: Record<string, any> = { ...f }
+  delete datos.__vivos
+  for (const k of CLAVES_VIVAS) delete datos[k]
+  const { error } = await apiHistoricoCompras({ accion: f.id ? 'actualizar' : 'crear', ...datos })
   guardando.value = false
-  if (error) return notify(`Error: ${error.message}`, 'error')
-  notify(f.id ? 'Registro actualizado' : 'Registro creado')
-  ficha.value = null
+  if (error) { notify(`Error: ${error.message}`, 'error'); return false }
+  if (cerrar) {
+    notify(f.id ? 'Registro actualizado' : 'Registro creado')
+    ficha.value = null
+  }
   await cargar()
+  return true
+}
+
+/* ══════════ Verificación e ingreso a inventario (solo Administrador) ══════════ */
+const procesando = ref(false)
+
+async function apiInventario(accion: 'verificar' | 'ingresar', id: string) {
+  try {
+    const data = await $fetch<any>('/api/tradecars/inventario-ingresar', { method: 'POST', body: { accion, id } })
+    return { data, error: null as string | null }
+  } catch (e: any) {
+    return { data: null, error: String(e?.data?.statusMessage || e?.statusMessage || e?.message || 'No se pudo completar la operación') }
+  }
+}
+
+/** Vuelve a abrir la ficha con lo que ya está guardado (para que muestre el nuevo estado). */
+function reabrirFicha(id: string) {
+  const fresca = filas.value.find(f => f.id === id)
+  if (fresca) abrirFicha(fresca)
+  else ficha.value = null
+}
+
+async function verificarCompra() {
+  const f = ficha.value
+  if (!f?.id) return
+  procesando.value = true
+  try {
+    if (!(await guardar(false))) return
+    const { error } = await apiInventario('verificar', f.id)
+    if (error) return notify(error, 'error')
+    notify('Compra marcada como verificada')
+    await cargar()
+    reabrirFicha(f.id)
+  } finally {
+    procesando.value = false
+  }
+}
+
+async function ingresarInventario() {
+  const f = ficha.value
+  if (!f?.id) return
+  if (!confirm(`¿Ingresar ${f.marca || ''} ${f.modelo || ''} (${f.placa || 'sin placa'}) al inventario de vehículos?`)) return
+  procesando.value = true
+  try {
+    // Se guarda primero lo que el administrador acaba de completar: el inventario se arma desde la BD
+    if (!(await guardar(false))) return
+    const { data, error } = await apiInventario('ingresar', f.id)
+    if (error) return notify(error, 'error')
+    notify(data?.ya_ingresado
+      ? 'Ya estaba en el inventario'
+      : data?.accion === 'vinculado'
+        ? 'Ya había un vehículo con esa placa: se vinculó a esta compra'
+        : 'Vehículo ingresado al inventario')
+    await cargar()
+    reabrirFicha(f.id)
+  } finally {
+    procesando.value = false
+  }
 }
 
 async function eliminar(item: any) {
@@ -362,6 +563,10 @@ async function eliminar(item: any) {
   letter-spacing: .4px; opacity: .65; margin-bottom: 10px;
 }
 .form-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+/* Campo que sale de una fórmula del Excel: se ve, pero no se escribe */
+.campo-calculado :deep(.v-field) { background: rgba(var(--v-theme-primary), 0.06); }
+.campo-calculado :deep(input) { font-weight: 600; }
 
 @media (max-width: 780px) {
   .form-grid-3 { grid-template-columns: 1fr; }

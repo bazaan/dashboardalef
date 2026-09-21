@@ -37,8 +37,8 @@
           label="Asesor" density="compact" hide-details variant="outlined" class="filtro" />
         <v-select v-model="fCanal" :items="opcionesCanal"
           label="Canal" density="compact" hide-details variant="outlined" class="filtro" />
-        <v-select v-model="fPerfil" :items="['todos', 'SI', 'NO']"
-          label="Perfil coincide" density="compact" hide-details variant="outlined" class="filtro" />
+        <v-select v-model="fPerfil" :items="opcionesPerfil" item-title="label" item-value="value"
+          label="Coincide" density="compact" hide-details variant="outlined" class="filtro" />
         <v-select v-model="fEtapa" :items="opcionesEtapa"
           label="Etapa" density="compact" hide-details variant="outlined" class="filtro" />
         <v-select v-model="fCampana" :items="opcionesCampana"
@@ -103,14 +103,18 @@
 
           <template #item.asesor="{ item }">{{ item.asesor || '—' }}</template>
 
+          <!-- Coincide: ✓ / x / todavía sin calificar (vacío ≠ NO) -->
           <template #item.perfil_coincide="{ item }">
-            <v-chip size="x-small" variant="flat"
-              :color="tcPerfilCoincide(item.perfil_coincide) ? 'success' : 'grey'">
-              {{ tcPerfilCoincide(item.perfil_coincide) ? 'SI' : 'NO' }}
+            <v-chip v-if="tcPerfilCoincide(item.perfil_coincide)" size="x-small" variant="flat" color="success">
+              ✓ SI
             </v-chip>
+            <v-chip v-else-if="tcPerfilNoCoincide(item.perfil_coincide)" size="x-small" variant="flat" color="error">
+              x NO
+            </v-chip>
+            <v-chip v-else size="x-small" variant="outlined" color="grey">sin calificar</v-chip>
           </template>
 
-          <!-- STATUS: si el CRM mandó algo fuera de la lista, se marca en rojo -->
+          <!-- ESTADO: fuera de lista se marca en rojo; con Coincide = NO queda bloqueado -->
           <template #item.status="{ item }">
             <v-tooltip v-if="tcStatusEsInvalido(item.status)" location="top">
               <template #activator="{ props }">
@@ -125,25 +129,33 @@
               {{ item.status }}
             </v-chip>
 
+            <v-tooltip v-else-if="tcPerfilNoCoincide(item.perfil_coincide)" location="top">
+              <template #activator="{ props }">
+                <v-chip v-bind="props" size="small" color="grey" variant="outlined" prepend-icon="mdi-lock-outline">
+                  Bloqueado
+                </v-chip>
+              </template>
+              <span>Coincide = NO: el estado se bloquea y el lead se queda en LEADS</span>
+            </v-tooltip>
+
             <v-tooltip v-else-if="tcPerfilCoincide(item.perfil_coincide)" location="top">
               <template #activator="{ props }">
                 <v-chip v-bind="props" size="small" color="warning" variant="tonal" prepend-icon="mdi-help-circle">
-                  Sin status
+                  Sin estado
                 </v-chip>
               </template>
-              <span>Perfil coincide = SI pero sin status: no entra al funnel</span>
+              <span>Coincide = SI pero sin estado: cuenta como CUMPLE POLITICA hasta que el asesor le ponga un estado</span>
             </v-tooltip>
 
             <span v-else class="text-medium-emphasis">—</span>
           </template>
 
-          <!-- Calculadas por el dashboard -->
+          <!-- Calculadas por el dashboard: todo lead cae al menos en LEADS -->
           <template #item.etapa="{ item }">
-            <div v-if="item._etapa" class="d-flex align-center" style="gap:6px;">
+            <div class="d-flex align-center" style="gap:6px;">
               <span class="punto-etapa" :style="{ background: colorEtapa(item._etapa) }" />
               <span>{{ item._etapa }}</span>
             </div>
-            <span v-else class="text-medium-emphasis fst-italic">fuera del funnel</span>
           </template>
 
           <template #item.fecha_funnel="{ item }">
@@ -240,6 +252,14 @@ const opcionesCanal = computed(() => {
 })
 const opcionesEtapa = computed(() => ['todos', ...TC_ETAPAS])
 
+// Coincide es tri-estado: "sin calificar" (el asesor aún no marcó ✓ ni x) no es lo mismo que NO.
+const opcionesPerfil = [
+  { label: 'Todos', value: 'todos' },
+  { label: '✓ Coincide', value: 'SI' },
+  { label: 'x No coincide', value: 'NO' },
+  { label: 'Sin calificar', value: 'SIN' },
+]
+
 /* ---------------- Datos ---------------- */
 const leadsFiltrados = computed(() => {
   const base = tcFiltrar(props.leads, filtros.value)
@@ -265,10 +285,7 @@ const filasOrdenadas = computed(() =>
 )
 
 const conProblemas = computed(() =>
-  leadsFiltrados.value.filter(l =>
-    tcStatusEsInvalido(l.status)
-    || (tcPerfilCoincide(l.perfil_coincide) && !String(l.status ?? '').trim()),
-  ).length)
+  leadsFiltrados.value.filter(l => tcStatusEsInvalido(l.status) || tcSinEstado(l)).length)
 
 /* ---------------- Presentación ---------------- */
 const headers = [
@@ -277,8 +294,8 @@ const headers = [
   { title: 'Canal', key: 'canal_origen' },
   { title: 'Vehículo', key: 'vehiculo', value: '_vehiculo', sortable: false },
   { title: 'Asesor', key: 'asesor' },
-  { title: 'Perfil', key: 'perfil_coincide', align: 'center' as const },
-  { title: 'Status', key: 'status' },
+  { title: 'Coincide', key: 'perfil_coincide', align: 'center' as const },
+  { title: 'Estado', key: 'status' },
   { title: 'Etapa', key: 'etapa', value: '_etapa' },
   { title: 'Fecha funnel', key: 'fecha_funnel', value: '_fechaFunnel' },
   { title: 'Derivación', key: 'fecha_derivacion' },
@@ -333,9 +350,9 @@ function exportarExcel() {
     ['Telefono', (l: any) => l.contacto_telefono],
     ['Canal', (l: any) => l.canal_origen],
     ['Asesor', (l: any) => l.asesor],
-    ['Perfil coincide', (l: any) => (tcPerfilCoincide(l.perfil_coincide) ? 'SI' : 'NO')],
-    ['Status', (l: any) => l.status],
-    ['Etapa', (l: any) => l._etapa || 'FUERA DEL FUNNEL'],
+    ['Coincide', (l: any) => (tcPerfilCoincide(l.perfil_coincide) ? 'SI' : tcPerfilNoCoincide(l.perfil_coincide) ? 'NO' : 'SIN CALIFICAR')],
+    ['Estado', (l: any) => l.status],
+    ['Etapa', (l: any) => l._etapa],
     ['Fecha funnel', (l: any) => l._fechaFunnel],
     ['Origen de la fecha', (l: any) => l._origenFecha],
     ['Fecha derivacion', (l: any) => tcFecha(l.fecha_derivacion)],

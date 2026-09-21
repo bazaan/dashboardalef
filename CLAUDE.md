@@ -546,8 +546,9 @@ una hay que cambiar la otra (está avisado en ambos archivos).
   manda usar la del evento más reciente. Validado contra las 8.515 filas de su base real:
   la cascada coincide con su columna `FECHA` calculada en el 100% de los casos.
 - **`PERFIL COINCIDE = NO`** → el lead se queda en `LEADS` sin importar el status.
-- **`PERFIL = SI` con STATUS vacío** → queda **fuera de TODAS las barras** (`rank = -1`),
-  no sólo de las superiores. Se muestra como aviso ámbar en el módulo 1.
+- **`PERFIL = SI` con STATUS vacío** → cuenta como **CUMPLE POLITICA** (rank 1) y ahí se queda hasta
+  que el asesor le ponga un estado (desde el 18/09/2026; antes quedaba fuera de TODAS las barras con
+  `rank = -1`, que ya no existe). Se muestra como aviso ámbar en el módulo 1.
 - **STATUS fuera de la lista cerrada** → NO se ignora: se guarda, se marca en rojo en la
   tabla y sale una alerta en el embudo. El endpoint devuelve `ok:false` + `status_invalido`
   pero **200**, para que el CRM no reintente en bucle.
@@ -636,23 +637,11 @@ importable `tradecars-funnel-workflow.json` (webhook Chatwoot → n8n → endpoi
 node traduce el canal por `inbox_id`, normaliza fechas epoch/ISO y **descarta los eventos
 sin clasificar**: Chatwoot dispara `conversation_updated` en cada mensaje.
 
-**Chatwoot usa UN solo custom attribute (`estado`), el endpoint sigue esperando DOS
-(`perfil_coincide` + `status`).** El 26/08 se documentó con dos campos separados; el 14/09
-Trade Cars lo simplificó en Chatwoot a un solo dropdown `estado` con los nombres de las 7
-etapas del embudo (`lead`, `cumple_politica`, `contactado`, `interesado`, `cita_agendada`,
-`cita_asistida`, `compra`), más una automatización de Chatwoot que le pone una etiqueta de
-color a juego (sólo cosmético — n8n no la lee). El endpoint **no cambió**, porque
-`perfil_coincide`/`status` son los que alimentan las columnas `GENERATED`
-`etapa`/`etapa_rank` y el trigger anti-regresión sobre miles de leads ya migrados — tocar
-eso para acomodar el nombre nuevo era el cambio más riesgoso posible por el beneficio más
-chico. La traducción `estado → (perfil_coincide, status)` vive sólo en el nodo **Armar
-payload** de n8n (tabla completa en el Paso 1b de la guía), verificada contra
-`utils/tradecarsFunnel.ts` para que cada valor caiga en su barra exacta. `lead` manda
-`perfil_coincide` vacío y no `"NO"` — `"NO"` es un rechazo definitivo (política de compra),
-`lead` es sólo "todavía sin calificar". La etiqueta `clientes` de Chatwoot no es una de las
-7 etapas y queda sin mapear a propósito — confirmado con el cliente (14/09) que por ahora
-eso se revisa a mano; si se selecciona, el nodo no manda nada, para no borrar por error una
-clasificación que el lead ya tenía.
+**Chatwoot usa DOS custom attributes desde el 18/09/2026 — `coincide` y `estado` — y el flujo
+n8n los traduce al `perfil_coincide` + `status` que entiende el endpoint.** (El esquema de un solo
+dropdown `estado` con 7 etapas, del 14/09, quedó reemplazado: ver "Reunión de alineación del
+18/09/2026" más abajo. Se mantiene la lectura de ese formato viejo como compatibilidad para
+conversaciones que todavía lo traen.)
 
 **La campaña ES el canal de origen — no hay (ni hace falta) un custom attribute `campana`
 en Chatwoot.** Decisión del cliente (14/09): el nodo deriva `campana` del mismo `inbox_id`
@@ -694,6 +683,108 @@ Los 4 asesores ya están cargados en `tradecars_asesores` y sus nombres coincide
 los de Chatwoot (cuenta 17), que es lo que hace que el filtro cruce.
 
 ---
+
+### Reunión de alineación del 18/09/2026 — lo acordado (migración `sql/tradecars_funnel_v2_crm.sql`)
+
+Participaron Jean Marcos Silvera (Trade Cars), Roberto y Marcelo (Alef). **Correr una vez
+`sql/tradecars_funnel_v2_crm.sql`** (idempotente, va DESPUÉS de `sql/tradecars_funnel.sql`).
+
+**1. El embudo se arma en cascada con DOS campos del CRM.** En Chatwoot (cuenta 17):
+`coincide` (✓ / x) y `estado` (No contactado · No interesado · En seguimiento · Cita · Cita asistida ·
+Concretado). Reglas (`utils/tradecarsFunnel.ts` + función SQL `tc_rank()` — cambiar una es cambiar la otra):
+
+| Barra | Condición |
+|---|---|
+| LEADS | todo lo que entra |
+| CUMPLE POLITICA | Coincide ✓ (con cualquier estado **o sin estado**) |
+| CONTACTADO | ✓ + estado ≠ No contactado (incluye **No interesado**) |
+| INTERESADOS | ✓ + En seguimiento, Cita, Cita asistida o Concretado (**No interesado NO cuenta**) |
+| CITAS AGENDADAS | ✓ + Cita, Cita asistida o Concretado |
+| CITAS ASISTIDAS | ✓ + Cita asistida o Concretado |
+| COMPRAS | ✓ + Concretado |
+
+- **Coincide es tri-estado:** ✓ (`SI`), x (`NO`) o **vacío = sin calificar** (ya NO se confunde con NO:
+  antes todo lo que no era SI se guardaba como NO e inflaba la métrica).
+- **Coincide = x bloquea el estado:** el lead se queda en LEADS y `status` se guarda vacío (n8n, endpoint y
+  trigger de la BD lo hacen cumplir; en Chatwoot el dropdown lo bloquea el equipo de Trade Cars).
+- **"Concretado" (Chatwoot) = `CONCRETADA` (dashboard):** se aceptan las dos. Dos valores del dropdown
+  `estado` traen un **TAB escondido** delante (`"<TAB>No interesado"`, `"<TAB>En seguimiento"`): se limpia con trim.
+- **`rank -1` ya no existe.** `tc_rank()` nunca devuelve -1; los 4 leads históricos con SI sin status ahora
+  suman en CUMPLE POLITICA.
+- **Interpretación a confirmar con el cliente:** "SI sin estado = CUMPLE POLITICA" sale de que la etiqueta
+  `cumple_politica` de Chatwoot se pone con solo marcar ✓. Si prefieren que cuente como LEAD hasta que haya
+  estado, se cambia en `tcEtapa()` y en `tc_rank()` (`ELSE 1` → `ELSE 0`).
+
+**2. Etiquetas en Chatwoot (las pone el flujo n8n `hIchxzZehkdrjvLk`, no el dashboard).** `cumple_politica`
+(verde) si Coincide = ✓ y `no_coincide` (rojo) si = x; se cambian solas si el asesor cambia de opinión y se
+quitan si Coincide queda vacío. Las etiquetas de estado (`no_contactado`, `cita`…) las siguen poniendo las 17
+automatizaciones de Chatwoot y **no se tocan**. Detalles que no son obvios:
+- `POST /conversations/{id}/labels` **REEMPLAZA** la lista completa: el flujo lee la lista actual justo antes
+  (no confía en la del webhook), cambia solo esas dos y **solo escribe si algo cambió** → así el webhook que
+  dispara su propio POST llega, ve que ya está bien y termina (sin bucle).
+- Las automatizaciones "QUITAR" de Chatwoot (`estado != X → remove_label`) reescriben la lista de etiquetas:
+  si corren a la vez que el flujo pueden pisar una etiqueta, y el siguiente evento la repone (todo es
+  "level-triggered"). Se vio en una prueba con una etiqueta de estado sin su atributo.
+- El flujo ahora tiene 12 nodos: la rama del funnel (Ya clasificado? → Enviar al funnel) y la de etiquetas
+  (¿Sincronizar? → Leer etiquetas actuales → Calcular etiquetas → ¿Cambian? → Actualizar etiquetas). El token de
+  Chatwoot va inline en los nodos HTTP, como en los demás flujos del proyecto.
+- **Solo se envían los datos que existen** (antes un atributo vacío viajaba como `null` y cada evento de
+  Chatwoot pisaba las fechas de cita/compra y lo editado en el dashboard). El endpoint también descarta los
+  `null` (salvo `status` y `perfil_coincide`, que pueden quedar vacíos a propósito).
+- `fecha_derivacion` sale en **hora de Lima** (antes se cortaba el ISO en UTC: una conversación creada
+  después de las 19:00 caía en el día siguiente y, a fin de mes, en el mes siguiente del embudo).
+- **Al avanzar de etapa el endpoint estampa la fecha de hoy (Lima)** en `fecha_cita` / `fecha_cita_asistida` /
+  `fecha_compra` si el lead no la tiene: Chatwoot no manda esas fechas y sin esto todo caía en el mes de su
+  derivación.
+
+**3. Métrica "Perfiles que no coinciden"** (`FunnelCompras.vue`): contador aparte (no es un embudo) con el total,
+el % sobre los leads y su distribución **por día / semana / mes** (`tcResumenPerfiles`, `tcSerieNoCoinciden`).
+Respeta los filtros de arriba. La "vista separada de chats No Coincide" se hace en Chatwoot filtrando por la
+etiqueta `no_coincide`.
+
+**4. Compra concretada → histórico de compras → inventario** (`server/utils/tradecars-compra-crm.ts`,
+`inventario-ingresar.post.ts`):
+1. El asesor marca Concretado → `funnel-lead` crea una fila en `tradecars_data_historico_compras` con
+   `verificado = false`, `origen = 'crm'` y los datos del auto (placa, marca, modelo, versión, año, km) sacados
+   del atributo **`informacion_del_auto`** de Chatwoot, del formulario web (por teléfono) y — solo si sigue
+   faltando placa/marca/modelo y hay `OPENAI_API_KEY` + `CHATWOOT_API_TOKEN` — del chat leído con IA. Prioridad
+   cuando se contradicen: texto del asesor/chat > campos del lead > formulario.
+2. Es **idempotente** por `crm_lead_id` (índice único): el webhook dispara en cada mensaje.
+3. En **Compras** aparece con el chip "Por verificar" y un aviso. Fabián (Administrador) revisa, completa y
+   usa **"Ingresar a inventario"**: pasa los datos comerciales a `tradecars_vehiculos` (o vincula uno que ya
+   existía con esa placa sin pisar lo escrito a mano). **NO es automático a propósito** (faltarían campos y
+   habría que llenarlos dos veces). Solo Administrador, verificado en el servidor.
+4. Sin la migración, ese endpoint y el histórico devuelven un 409 que dice qué archivo SQL correr.
+
+**5. Inventario en dos vistas** (`pages/pruebas/TradeCars.vue`, vistas SQL `tradecars_inventario_admin` /
+`tradecars_inventario_publico`): **Administrativa** (todo, con margen, % de margen y días en inventario) y
+**Pública** (marca, modelo, versión, año, km, transmisión, combustible, color, precio; sin precio de compra,
+margen, placa, propietario, deuda ni notas; solo disponibles/reservados). **Los campos son provisionales:**
+Jean/Fabián todavía tienen que mandar las plantillas exactas de cada una.
+
+**6. Fórmulas del Excel aplicadas a Compras y Ventas** (`utils/tradecarsFormulas.ts`, usado por el servidor y
+por las fichas). Cada fórmula se validó fila por fila contra las 1.307 compras y 1.305 ventas de la base
+(≥98,9 %). Al guardar, el servidor recalcula; en una **edición solo reescribe lo que la edición cambia**
+(`tcSoloCambios`), para no pisar los pocos totales escritos a mano. Los campos calculados salen de solo lectura
+con el icono fx. Los días para vencer SOAT/RTV y los días en inventario dependen de HOY(): se calculan al
+mostrar y **no se guardan**. **Lo que NO se recalcula a propósito** (el Excel no sigue una sola fórmula y
+aplicarla cambiaría números ya reportados): en Ventas `comision_de_venta`, `igv_venta`, `valor_venta`,
+`revenue`, `margen_sin_igv*` y `costo_total_usd`; en Compras `costo_total_gastos_extras_real`. El `concat`
+(placa-N, llave compra↔venta) solo se arma en filas nuevas. Ojo con un detalle del Excel que se replicó:
+compara texto sin distinguir mayúsculas pero **sí acentos** ("CONSIGNACIÓN" ≠ "CONSIGNACION" en `notariales_2`).
+
+**7. Renombre:** el módulo de ventas ahora dice "Ventas — Histórico" (decía "Compras y Ventas").
+
+**Diferido / no definitivo** (no implementado, a propósito):
+- Iniciar conversaciones de WhatsApp desde el dashboard: el equipo todavía lo está analizando.
+- Formularios web: cruzar contra chats existentes, reparto equitativo entre los 4 asesores y mostrar
+  "Asignado / Sin asignar" — Roberto lo hace en otro flujo n8n. Hoy `tradecars_solicitudes_venta` no tiene
+  columna de asesor.
+- Filtro administrativo de vehículos por placa (SUNARP/ATU/SAT): proyecto futuro, en investigación.
+
+**Netlify:** para que la lectura del chat funcione hace falta `CHATWOOT_API_TOKEN` en las variables de entorno
+(el módulo de remarketing usa un valor por defecto en el código si no está). Sin él, esa parte se salta y se
+sigue con las demás fuentes.
 
 ### Tasador IA (chat de tasación) — `server/api/tradecars/tasador-chat.post.ts`
 

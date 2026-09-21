@@ -15,7 +15,9 @@
 <template>
   <div class="view-container">
     <header class="top-header">
-      <h1>Compras y Ventas — Histórico</h1>
+      <!-- Antes decía "Compras y Ventas": esta tabla es la de VENTAS (hoja "VENTAS" del Excel);
+           las compras tienen su propio módulo. Renombrado a pedido de Trade Cars (reunión de sep/2026). -->
+      <h1>Ventas — Histórico</h1>
       <div style="display:flex; gap:10px; align-items:center;">
         <button class="btn-primary" @click="abrirFicha()">
           <v-icon icon="mdi-plus" size="16" /><span>Nuevo registro</span>
@@ -89,6 +91,10 @@
           {{ ficha.id ? `${ficha.marca || ''} ${ficha.modelo || ''} — ${ficha.placa || 'sin placa'}` : 'Nuevo registro' }}
         </v-card-title>
         <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4" icon="mdi-function-variant">
+            Los campos con <b>fx</b> se calculan solos con las fórmulas del Excel (valor de compra, margen bruto, días de
+            inventario…). La comisión, el IGV de venta y el revenue se siguen escribiendo a mano: en el Excel no siguen una sola fórmula.
+          </v-alert>
           <div class="form-section-title">Vehículo</div>
           <div class="form-grid-3">
             <v-text-field v-model="ficha.placa" label="Placa" density="compact" hide-details variant="outlined" />
@@ -109,14 +115,14 @@
             <v-text-field v-model="ficha.canal_compra" label="Canal de compra" density="compact" hide-details variant="outlined" />
             <v-text-field v-model="ficha.tipo_compra_retoma" label="Tipo (compra / retoma)" density="compact" hide-details variant="outlined" />
             <v-text-field v-model="ficha.tipo_compra" label="Tipo de compra" density="compact" hide-details variant="outlined" />
-            <v-text-field v-model.number="ficha.valor_compra_usd" type="number" label="Valor de compra (USD)" density="compact" hide-details variant="outlined" />
-            <v-text-field v-model.number="ficha.igv_compra_usd" type="number" label="IGV compra (USD)" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model.number="ficha.valor_compra_usd" type="number" label="Valor de compra (USD)" readonly class="campo-calculado" prepend-inner-icon="mdi-function-variant" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model.number="ficha.igv_compra_usd" type="number" label="IGV compra (USD)" readonly class="campo-calculado" prepend-inner-icon="mdi-function-variant" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.adquisicion_usd" type="number" label="Adquisición (USD)" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.comision_compra_usd" type="number" label="Comisión compra (USD)" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.gastos_extras_usd" type="number" label="Gastos extras (USD)" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.costo_total_usd" type="number" label="Costo total (USD)" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.notariales_usd" type="number" label="Notariales (USD)" density="compact" hide-details variant="outlined" />
-            <v-text-field v-model.number="ficha.costo_total_notariales_usd" type="number" label="Costo total + notariales (USD)" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model.number="ficha.costo_total_notariales_usd" type="number" label="Costo total + notariales (USD)" readonly class="campo-calculado" prepend-inner-icon="mdi-function-variant" density="compact" hide-details variant="outlined" />
           </div>
 
           <div class="form-section-title mt-4">Venta</div>
@@ -136,12 +142,12 @@
 
           <div class="form-section-title mt-4">Márgenes</div>
           <div class="form-grid-3">
-            <v-text-field v-model.number="ficha.margen_bruto_usd" type="number" label="Margen bruto (USD)" density="compact" hide-details variant="outlined" />
-            <v-text-field v-model.number="ficha.margen_bruto_pct" type="number" step="0.0001" label="Margen bruto (%, ej. 0.10 = 10%)" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model.number="ficha.margen_bruto_usd" type="number" label="Margen bruto (USD)" readonly class="campo-calculado" prepend-inner-icon="mdi-function-variant" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model.number="ficha.margen_bruto_pct" type="number" step="0.0001" label="Margen bruto (%, ej. 0.10 = 10%)" readonly class="campo-calculado" prepend-inner-icon="mdi-function-variant" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.margen_sin_igv_pct" type="number" step="0.0001" label="Margen sin IGV (%)" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.margen_sin_igv_usd" type="number" label="Margen sin IGV (USD)" density="compact" hide-details variant="outlined" />
             <v-text-field v-model.number="ficha.margen_sin_igv_limpio_usd" type="number" label="Margen sin IGV limpio (USD)" density="compact" hide-details variant="outlined" />
-            <v-text-field v-model.number="ficha.dias_inventario" type="number" label="Días de inventario" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model.number="ficha.dias_inventario" type="number" label="Días de inventario" readonly class="campo-calculado" prepend-inner-icon="mdi-function-variant" density="compact" hide-details variant="outlined" />
           </div>
 
           <div class="form-section-title mt-4">Otros</div>
@@ -171,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 
 const emit = defineEmits<{ (e: 'notificar', texto: string, color?: string): void }>()
 const notify = (texto: string, color = 'success') => emit('notificar', texto, color)
@@ -298,7 +304,26 @@ function porcentaje(v: any) {
 const ficha = ref<any>(null)
 const guardando = ref(false)
 
+/* Fórmulas del Excel en vivo (utils/tradecarsFormulas.ts). En una fila que ya existe solo se
+   reescribe lo que la edición realmente cambia: una fila con un valor escrito a mano no se pisa.
+   El servidor vuelve a calcular todo al guardar, así que esto es la vista previa de lo que va a quedar. */
+let fichaOriginal: Record<string, any> | null = null
+
+function aplicarFormulasFicha() {
+  const f = ficha.value
+  if (!f) return
+  let calc = tcCalcularVenta(f)
+  if (fichaOriginal) calc = tcSoloCambios(calc, tcCalcularVenta(fichaOriginal), fichaOriginal)
+  for (const [k, v] of Object.entries(calc)) {
+    const actual = f[k]
+    const igual = typeof v === 'number' && typeof actual === 'number' ? Math.abs(v - actual) < 1e-9 : v === actual
+    if (!igual) f[k] = v            // solo se asigna si cambió: así el watch no entra en bucle
+  }
+}
+watch(ficha, aplicarFormulasFicha, { deep: true })
+
 function abrirFicha(item?: any) {
+  fichaOriginal = item ? { ...item } : null
   ficha.value = item
     ? { ...item, fecha_venta: item.fecha_venta?.slice(0, 10) || '', fecha_compra: item.fecha_compra?.slice(0, 10) || '' }
     : {
@@ -357,6 +382,10 @@ async function eliminar(item: any) {
   letter-spacing: .4px; opacity: .65; margin-bottom: 10px;
 }
 .form-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+/* Campo que sale de una fórmula del Excel: se ve, pero no se escribe */
+.campo-calculado :deep(.v-field) { background: rgba(var(--v-theme-primary), 0.06); }
+.campo-calculado :deep(input) { font-weight: 600; }
 
 @media (max-width: 780px) {
   .form-grid-3 { grid-template-columns: 1fr; }

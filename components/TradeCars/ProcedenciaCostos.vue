@@ -246,7 +246,6 @@ const opcionesCampana = computed(() => {
 const opcionesPrioridad = ['todos', '1', '2', '3', 'sin prioridad']
 
 const leadsFiltrados = computed(() => props.leads.filter((l) => {
-  if (tcRank(l) < 0) return false                 // sin clasificar: fuera del funnel
   if (fMes.value !== 'todos' && tcMesFunnel(l) !== fMes.value) return false
   if (fCampana.value !== 'todos' && (l.campana || '') !== fCampana.value) return false
   if (fPrioridad.value !== 'todos') {

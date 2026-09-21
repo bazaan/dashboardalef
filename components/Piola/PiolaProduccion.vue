@@ -166,10 +166,10 @@
             <div>
               <h2 class="cumpl-titulo">Cumplimiento por marca — {{ nombrePeriodo }}</h2>
               <p class="cumpl-sub">
-                Mismo formato que el Excel de KPIs: una fila por marca y una columna por tipo de contenido
-                (<b>entregado / comprometido</b>). Se llena solo con lo que el equipo mueve en el tablero:
-                cuenta como entregado lo <b>aprobado</b> y lo <b>entregado</b>; en revisión y en producción
-                todavía no suman.
+                Mismo formato que el Excel de KPIs: cada columna de tipo es lo <b>comprometido</b> del mes,
+                <b>avance</b> es lo entregado y <b>% de avance</b> es avance / piezas mensuales. Se llena solo
+                con lo que el equipo mueve en el tablero: cuenta como entregado lo <b>aprobado</b> y lo
+                <b>entregado</b>; en revisión y en producción todavía no suman.
               </p>
             </div>
             <div class="cumpl-acciones">
@@ -222,6 +222,7 @@
             <v-select v-model="kpiMarca" :items="opcionesClienteFiltro" density="compact" hide-details
               variant="outlined" label="Marca" class="filtro" style="max-width:260px;" />
             <div class="kpi-leyenda">
+              <span>Color del % de avance:</span>
               <span v-for="r in RITMOS_LEYENDA" :key="r" class="kpi-leyenda-item">
                 <span class="kpi-punto" :style="{ background: PIOLA_RITMO_COLOR[r] }" />{{ PIOLA_RITMO_TEXTO[r] }}
               </span>
@@ -232,63 +233,54 @@
           <div v-else class="kpi-wrap">
             <table class="kpi-tabla">
               <thead>
+                <tr><th class="kpi-banner" :colspan="kpi.columnas.length + 4">{{ tituloKpi }}</th></tr>
                 <tr>
-                  <th class="kpi-marca">Marca</th>
-                  <th v-for="c in kpi.columnas" :key="c.codigo">{{ c.nombre }}</th>
-                  <th>Total</th>
-                  <th>Avance</th>
-                  <th>Ritmo</th>
-                  <th v-if="puedeEditar" class="kpi-acc" />
+                  <th class="kpi-cli">CLIENTE</th>
+                  <th v-for="c in kpi.columnas" :key="c.codigo" class="kpi-tipo">{{ c.nombre }}</th>
+                  <th class="kpi-cum">PIEZAS MENSUALES</th>
+                  <th class="kpi-cum">AVANCE</th>
+                  <th class="kpi-cum">% DE AVANCE</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="f in kpi.filas" :key="f.cliente_id">
-                  <td class="kpi-marca">
-                    {{ f.cliente }}
-                    <span v-if="f.en_revision || f.en_produccion" class="kpi-proceso">
-                      {{ f.en_revision ? f.en_revision + ' en revisión' : '' }}{{ f.en_revision && f.en_produccion ? ' · ' : '' }}{{ f.en_produccion ? f.en_produccion + ' en producción' : '' }}
-                    </span>
+                  <td class="kpi-cliente">
+                    <div class="kpi-cliente-in">
+                      <span>
+                        {{ f.cliente }}
+                        <span v-if="f.en_revision || f.en_produccion" class="kpi-proceso">
+                          {{ f.en_revision ? f.en_revision + ' en revisión' : '' }}{{ f.en_revision && f.en_produccion ? ' · ' : '' }}{{ f.en_produccion ? f.en_produccion + ' en producción' : '' }}
+                        </span>
+                      </span>
+                      <v-btn v-if="puedeEditar" icon="mdi-pencil-outline" size="x-small" variant="text"
+                        title="Definir compromisos de esta marca" @click="abrirCompromisos(f.cliente_id)" />
+                    </div>
                   </td>
                   <td v-for="c in kpi.columnas" :key="c.codigo" class="kpi-num"
-                    :class="{ 'kpi-completo': celdaCompleta(f.celdas[c.codigo]) }">
-                    {{ textoCelda(f.celdas[c.codigo]) }}
+                    :class="{ 'kpi-cero': !f.celdas[c.codigo]?.comprometido }" :title="tituloCelda(f.celdas[c.codigo])">
+                    {{ f.celdas[c.codigo]?.comprometido || 0 }}
                   </td>
-                  <td class="kpi-num"><b>{{ f.entregado }} / {{ f.comprometido || '—' }}</b></td>
-                  <td class="kpi-avance">
-                    <div class="barra kpi-barra">
-                      <div class="barra-fill" :style="{ width: Math.min(100, f.pct) + '%', background: PIOLA_RITMO_COLOR[f.ritmo] }" />
-                      <span class="kpi-esperado" :style="{ left: Math.min(100, kpi.esperado) + '%' }" title="Avance esperado hoy" />
-                    </div>
-                    <b>{{ f.comprometido ? f.pct + ' %' : '—' }}</b>
-                  </td>
-                  <td><span class="kpi-ritmo" :style="{ background: PIOLA_RITMO_COLOR[f.ritmo] }">{{ PIOLA_RITMO_TEXTO[f.ritmo] }}</span></td>
-                  <td v-if="puedeEditar" class="kpi-acc">
-                    <v-btn icon="mdi-pencil-outline" size="x-small" variant="text"
-                      title="Definir compromisos de esta marca" @click="abrirCompromisos(f.cliente_id)" />
+                  <td class="kpi-num"><b>{{ f.comprometido }}</b></td>
+                  <td class="kpi-num"><b>{{ f.entregado }}</b></td>
+                  <td class="kpi-num kpi-pct" :style="{ color: PIOLA_RITMO_COLOR[f.ritmo] }" :title="PIOLA_RITMO_TEXTO[f.ritmo]">
+                    {{ piolaPctTexto(f.entregado, f.comprometido) }}
                   </td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr>
-                  <td class="kpi-marca">TOTAL</td>
-                  <td v-for="c in kpi.columnas" :key="c.codigo" class="kpi-num">{{ textoCelda(kpi.totales.celdas[c.codigo]) }}</td>
-                  <td class="kpi-num"><b>{{ kpi.totales.entregado }} / {{ kpi.totales.comprometido || '—' }}</b></td>
-                  <td class="kpi-avance">
-                    <div class="barra kpi-barra">
-                      <div class="barra-fill" :style="{ width: Math.min(100, kpi.totales.pct) + '%', background: PIOLA_RITMO_COLOR[kpi.totales.ritmo] }" />
-                      <span class="kpi-esperado" :style="{ left: Math.min(100, kpi.esperado) + '%' }" title="Avance esperado hoy" />
-                    </div>
-                    <b>{{ kpi.totales.comprometido ? kpi.totales.pct + ' %' : '—' }}</b>
-                  </td>
-                  <td><span class="kpi-ritmo" :style="{ background: PIOLA_RITMO_COLOR[kpi.totales.ritmo] }">{{ PIOLA_RITMO_TEXTO[kpi.totales.ritmo] }}</span></td>
-                  <td v-if="puedeEditar" class="kpi-acc" />
+                  <td class="kpi-tot-etq" :colspan="kpi.columnas.length + 1">TOTALES</td>
+                  <td class="kpi-num">{{ kpi.totales.comprometido }}</td>
+                  <td class="kpi-num">{{ kpi.totales.entregado }}</td>
+                  <td class="kpi-num">{{ piolaPctTexto(kpi.totales.entregado, kpi.totales.comprometido) }}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
           <p class="kpi-pie">
-            La marca vertical de cada barra es el avance esperado a hoy ({{ kpi.esperado }} %): si la barra
-            no la alcanza, esa marca va atrasada frente al ritmo del mes.
+            Avance esperado a hoy: <b>{{ kpi.esperado }} %</b> del mes. El % de avance de cada marca va en verde
+            si está al día, en naranja si está en riesgo y en rojo si está atrasada frente a ese ritmo.
+            Pasa el cursor sobre una cifra de tipo para ver cuánto de eso ya se entregó.
           </p>
         </div>
 
@@ -657,7 +649,8 @@ import {
   traerTodo, apiPiola,
 } from '@/composables/usePiola'
 import {
-  piolaAvanceEsperado, piolaConstruirKpi, piolaMatrizEstadoTipo, piolaNombrePeriodo, piolaReporteHtml,
+  piolaAvanceEsperado, piolaConstruirKpi, piolaMatrizEstadoTipo, piolaNombrePeriodo, piolaPctTexto,
+  piolaReporteHtml, piolaTituloKpi,
   PIOLA_RITMO_COLOR, PIOLA_RITMO_TEXTO,
 } from '@/utils/piolaCumplimiento'
 import type { KpiCelda, EntregableReporte } from '@/utils/piolaCumplimiento'
@@ -960,6 +953,8 @@ const kpiMarca = ref<any>('todas')
 const RITMOS_LEYENDA = ['completo', 'al_dia', 'en_riesgo', 'atrasado'] as const
 
 const nombrePeriodo = computed(() => piolaNombrePeriodo(periodo.value))
+/** "KPI Y SEGUIMIENTO AGENCIA PIOLA SEPTIEMBRE 2026": el título de la hoja del Excel */
+const tituloKpi = computed(() => piolaTituloKpi(periodo.value))
 /** Lo que "debería" llevar el mes hoy (quincena = 50 %). */
 const avanceEsperado = computed(() => piolaAvanceEsperado(periodo.value, hoyISO()))
 
@@ -975,9 +970,9 @@ const kpi = computed(() => {
   return piolaConstruirKpi(filas, marcas, tiposActivos.value, avanceEsperado.value)
 })
 
-const textoCelda = (c?: KpiCelda) => c && (c.comprometido || c.entregado)
-  ? `${c.entregado} / ${c.comprometido || '—'}` : '—'
-const celdaCompleta = (c?: KpiCelda) => !!c && c.comprometido > 0 && c.entregado >= c.comprometido
+/** La celda del Excel muestra lo comprometido; cuánto de eso ya se entregó queda en el tooltip. */
+const tituloCelda = (c?: KpiCelda) => c && (c.comprometido || c.entregado)
+  ? `Entregado: ${c.entregado} de ${c.comprometido || 0}` : ''
 
 /**
  * Abre el reporte en otra pestaña y lo manda a imprimir (Guardar como PDF). Si el navegador bloquea las
@@ -1035,6 +1030,7 @@ function imprimirKpi() {
     generado: fechaLarga(),
     kpi: kpi.value,
     esperado: avanceEsperado.value,
+    periodo: periodo.value,
     entregables: items,
     nombreTipo, nombreEstado: etiquetaEstadoEntregable,
   }))
@@ -1640,28 +1636,23 @@ onMounted(cargar)
 .kpi-leyenda-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .kpi-punto { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .kpi-wrap { overflow-x: auto; border: 1px solid rgba(128, 128, 128, .25); border-radius: 10px; }
+/* Mismos colores que la hoja del Excel: cliente en verde, encabezados amarillo y azul. Los fondos son fijos
+   (con su propio color de texto) para que se vean igual en tema claro y oscuro. */
 .kpi-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 640px; }
-.kpi-tabla th {
-  background: #2f7d4f; color: #fff; font-weight: 600; font-size: 11.5px; text-align: center;
-  padding: 9px 10px; white-space: nowrap; position: sticky; top: 0;
-}
-.kpi-tabla th.kpi-marca, .kpi-tabla td.kpi-marca { text-align: left; min-width: 170px; }
-.kpi-tabla td { padding: 8px 10px; border-bottom: 1px solid rgba(128, 128, 128, .18); text-align: center; }
-.kpi-tabla tbody tr:hover { background: rgba(128, 128, 128, .06); }
-.kpi-tabla td.kpi-marca { font-weight: 600; }
-.kpi-proceso { display: block; font-size: 10.5px; font-weight: 400; opacity: .6; margin-top: 1px; }
+.kpi-tabla th, .kpi-tabla td { border: 1px solid rgba(128, 128, 128, .45); padding: 7px 8px; text-align: center; }
+.kpi-tabla th { font-weight: 700; font-size: 11.5px; color: #111; }
+.kpi-tabla th.kpi-tipo { white-space: nowrap; }
+.kpi-tabla th.kpi-banner { background: #111; color: #fff; font-size: 13px; letter-spacing: .4px; padding: 10px; }
+.kpi-tabla th.kpi-cli, .kpi-tabla th.kpi-cum { background: #fff200; }
+.kpi-tabla th.kpi-tipo { background: #3a75c4; color: #fff; text-transform: uppercase; }
+.kpi-tabla td.kpi-cliente { background: #3cb54a; color: #111; font-weight: 700; text-align: left; min-width: 150px; }
+.kpi-cliente-in { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.kpi-proceso { display: block; font-size: 10.5px; font-weight: 400; opacity: .7; margin-top: 1px; }
 .kpi-num { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.kpi-completo { color: #1f8a4c; font-weight: 700; }
-.kpi-avance { min-width: 150px; white-space: nowrap; }
-.kpi-barra { position: relative; display: inline-block; width: 90px; vertical-align: middle; margin-right: 8px; overflow: visible; }
-.kpi-barra .barra-fill { border-radius: 999px; }
-/* Marca vertical del avance esperado a hoy */
-.kpi-esperado { position: absolute; top: -3px; width: 2px; height: 13px; background: rgb(var(--v-theme-on-surface)); opacity: .55; }
-.kpi-ritmo { color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.kpi-acc { width: 44px; padding: 0 4px; }
-.kpi-tabla tfoot td {
-  background: rgba(47, 125, 79, .12); font-weight: 700; border-top: 2px solid #2f7d4f; border-bottom: none;
-}
+.kpi-cero { opacity: .4; }
+.kpi-pct { font-weight: 700; }
+.kpi-tabla tfoot td { background: #fff200; color: #111; font-weight: 700; font-size: 13px; }
+.kpi-tabla tfoot td.kpi-tot-etq { text-align: right; letter-spacing: .5px; }
 .kpi-pie { font-size: 11.5px; opacity: .6; margin: 10px 2px 0; }
 
 /* ── Compromisos ── */

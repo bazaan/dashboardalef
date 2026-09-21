@@ -91,7 +91,11 @@ async function aplicarFormulas(supabase: any, fila: Record<string, any>, previo:
       .from('tradecars_data_historico_compras_ventas').select('id').eq('concat', concat).limit(1)
     tieneVenta = (data?.length ?? 0) > 0
   }
-  calc = tcCalcularCompra({ ...base, ...calc }, { tieneVenta })
+  // Segunda pasada con lo ya calculado y con el estado de venta. Se MEZCLA con la primera (no la
+  // reemplaza): el N° de compra y el concat se arman una sola vez, en la primera, y la segunda ya no
+  // los vuelve a producir porque para entonces existen. Reemplazar en vez de mezclar los perdía y una
+  // compra nueva se guardaba sin concat ni N° (se detectó probando en producción).
+  calc = { ...calc, ...tcCalcularCompra({ ...base, ...calc }, { tieneVenta }) }
 
   // En una edición solo se reescribe lo que la edición realmente cambia (ver tcSoloCambios)
   if (previo) calc = tcSoloCambios(calc, tcCalcularCompra(previo, { tieneVenta }), previo)

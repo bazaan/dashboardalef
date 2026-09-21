@@ -1,7 +1,7 @@
 <template>
   <div class="view-container">
     <header class="top-header">
-      <h1>Reportes y Automatizaciones</h1>
+      <h1>Reportes comerciales y alertas CRM</h1>
       <button class="btn-primary" @click="cargar">
         <v-icon icon="mdi-refresh" size="16" /><span>Actualizar</span>
       </button>

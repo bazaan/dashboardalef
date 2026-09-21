@@ -200,6 +200,52 @@ export default defineEventHandler(async (event) => {
     return { ok: true, entregable: res.data }
   }
 
+  /**
+   * Duplicar un entregable (reunión del 14/09/2026, Sebastián): "presiona clic derecho, duplicar, y
+   * ellos entran y solamente le cambian el título" — con 7 u 8 videos por marca, llenar cada uno de
+   * cero es lo que iba a hacer que "algunos no quieran llenarlo".
+   *
+   * Se copia lo que se repite entre piezas de la misma marca (marca, tipo, área, servicio, cantidad,
+   * periodo, responsable, fecha de compromiso, descripción) y NO se copia lo que es propio de esa
+   * pieza: enlaces de Drive / Dropbox / publicado, observaciones de Dirección, quién aprobó y
+   * cuándo, y la fecha de entrega. La copia siempre arranca "En producción": duplicar algo ya
+   * entregado no lo deja entregado. `origen_id` tampoco se copia: es de `clonar_periodo` y es lo
+   * que impide duplicar dos veces el mismo mes.
+   */
+  if (accion === 'duplicar_entregable') {
+    exigirModulo(perfil, 'produccion', 'create')
+
+    const id = Number(body?.id)
+    if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el entregable a duplicar' })
+
+    const { data: original, error: errOriginal } = await supabase
+      .from('piola_deliverables').select('*').eq('id', id).maybeSingle()
+    if (errOriginal) throw createError({ statusCode: 400, statusMessage: errOriginal.message })
+    if (!original) throw createError({ statusCode: 404, statusMessage: 'El entregable ya no existe' })
+
+    const copia: Record<string, any> = {
+      titulo: `${original.titulo} (copia)`,
+      cliente_id: original.cliente_id,
+      service_id: original.service_id ?? null,
+      cantidad: original.cantidad ?? 1,
+      periodo: original.periodo ?? null,
+      descripcion: original.descripcion ?? null,
+      fecha_compromiso: original.fecha_compromiso ?? null,
+      estado: 'en_produccion',
+      responsable_email: original.responsable_email ?? null,
+      tipo_contenido: original.tipo_contenido ?? null,
+      area_id: original.area_id ?? null,
+      area_produccion_id: original.area_produccion_id ?? null,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data, error } = await supabase
+      .from('piola_deliverables').insert(copia).select('*').single()
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    return { ok: true, entregable: data }
+  }
+
   if (accion === 'mover_entregable') {
     // Cambio de columna del tablero (arrastrar y soltar). Es deliberadamente
     // liviano — sólo toca `estado` y lo que ese estado implica — para no

@@ -875,6 +875,12 @@ Sólo un superadmin de Alef puede cerrarlo (`resolver_solicitud`).
 - **Sólo `admin` y `superadmin` editan** (`puedeEditarTasador()` en `server/utils/tradecars.ts`).
   Un asesor puede conversar y consultar, pero no tocar los números con los que la empresa
   decide cuánto paga por un auto.
+- **Los 4 endpoints del Tasador NO confían en la cookie**: usan `verificarSesionTradeCarsEnBase()`, que lee
+  el rol y la empresa de `dashboardlogin`. `verificarSesionTradeCars()` (solo cookie) sigue existiendo pero
+  **no debe usarse en nada que escriba**: `dashboard_session` es un JSON sin firmar y cualquiera puede
+  escribirle `role: 'superadmin'` desde su navegador, con lo que podría cambiar los parámetros con los que el
+  bot cotiza a clientes reales. Probado el 21/09/2026: cookie falsificada de un agente, de un correo que no
+  existe y de un admin de otra empresa → 403 en config, datos y chat.
 - **El endpoint GET expone un bloque `salud`** que avisa si el Tasador no está en condiciones
   de cotizar (sin parámetros, sin comparables o sin precios de 0km). Sin eso, el estado
   "configurado pero incapaz de tasar" sólo se descubre en una conversación con un cliente real.
@@ -882,7 +888,9 @@ Sólo un superadmin de Alef puede cerrarlo (`resolver_solicitud`).
   corrió: las tablas ya existían en la base sin las columnas de auditoría, y pedirlas devuelve
   400. Así el módulo abre igual y la UI puede avisar que falta correr el SQL.
 
-**Migración:** correr una vez `sql/tradecars_tasador_config.sql` (idempotente). Los 24
+**Migración: YA CORRIDA y verificada el 21/09/2026** (`sql/tradecars_tasador_config.sql`, idempotente; 24
+parámetros con sus barandas, reglas Subaru/Kia Soluto, alta rotación Kia Rio/Soluto, tablas de historial e
+importaciones, `import_batch_id` en las dos tablas de datos y las policies de `anon`). Los 24
 parámetros, las 2 reglas y los 2 modelos de alta rotación **ya estaban cargados** por quien
 armó el Tasador, así que los `INSERT` no hacen nada: los valores y descripciones de ellos
 mandan. Lo que la migración sí aporta sobre esas filas es `minimo`/`maximo` —las barandas que
@@ -937,6 +945,18 @@ con instrucción explícita de poner `null` antes que inventar.
 - **Las fechas ambiguas se leen como dd/mm/yyyy**, que es el formato peruano.
 - `.xls` antiguo (BIFF) no se lee: hay que guardarlo como `.xlsx`. Un PDF escaneado tampoco,
   porque no tiene capa de texto.
+- **Precios 0km (`tradecars_data_precios_vehiculos_nuevos`) tiene restricciones que el importador respeta** —
+  se descubrieron probando, no leyendo el esquema:
+  · `fuente` solo admite `manual` / `wigo` / `autoland` (CHECK); `tier` 1 = scraper, 2 = carga manual, 3 = rareza.
+    Una carga desde archivo es **siempre** `fuente='manual'`, `tier=2` (igual que las 89 filas que había),
+    para no mezclarse con lo que actualiza el scraper. No sale del archivo (`DESTINOS.precios_nuevos.fijos`).
+  · `estado_produccion` solo admite `activo` / `descontinuado`: "vigente" tumbaba la carga entera, así que se
+    normalizan los sinónimos (`aEstadoProduccion`). `moneda` se normaliza a USD/PEN (`aMoneda`).
+  · `anio_modelo` es NOT NULL sin default → es campo **obligatorio** en la carga (sin año la fila se descarta y
+    se dice por qué).
+  · **Un dato vacío no se manda** (y el insert usa `defaultToNull: false`): mandar `null` explícito pisaba los
+    defaults de la base (`moneda`, `estado_produccion`, `fecha_ultimo_precio`) y una lista sin esas columnas
+    fallaba con "null value in column moneda…".
 - **`exceljs` y `unpdf` se importan de forma estática, no dinámica.** Con `await import()` el
   loader ESM de Nitro en dev sobre Windows falla con *"Only URLs with a scheme in: file, data,
   and node are supported… Received protocol 'c:'"*. Ya pasó una vez; no volver a cambiarlo a
@@ -1558,8 +1578,15 @@ dijeron que están bien tal cual.
 - El dashboard propio de Sebastián por área de producción — Raysa le pidió que lo especifique él
   mismo esta semana; se dejó lista la capa de datos (áreas y tipos), no una pantalla nueva.
 - Roles y permisos granulares — reunión interna aparte, la próxima semana.
-- La reconciliación con `feat/mobile-adaptation` — hay otra sesión trabajando en eso sobre la
-  misma base de datos; ver `sql/piola_reconciliacion_mobile.sql` (sin correr).
+- La reconciliación con `feat/mobile-adaptation` — ver `sql/piola_reconciliacion_mobile.sql`.
+  **Estado verificado el 21/09/2026:** las partes *aditivas* (tablas y columnas nuevas: `piola_cliente_compromisos`,
+  `piola_documentos`, `piola_recibos_honorarios`, `piola_import_lotes`, `piola_facturas_programadas`,
+  `piola_enlaces_carpetas`, columnas en `piola_deliverables`/`piola_contratos`/`piola_clientes`, etc.) **están
+  aplicadas** (18/18), pero **ninguna de las partes destructivas se ejecutó** — y así debe seguir: el código de
+  `main` todavía usa `piola_compromisos` (con 4 filas reales del 14/09), `piola_adjuntos`, `piola_import_batches`
+  y las columnas `piola_payslips.tipo/rxh_*`, `piola_transactions.import_batch_id`. **No volver a correr las
+  secciones 3, 6, 7 y 10 de ese archivo mientras `main` use las tablas viejas.** Las tablas nuevas conviven
+  vacías; ningún componente ni endpoint las usa todavía.
 
 ### Reunión del 14/09/2026 — lo acordado (migración `sql/piola_reunion_14sep.sql`)
 

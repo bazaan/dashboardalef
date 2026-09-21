@@ -57,6 +57,40 @@ export function verificarSesionTradeCars(event: H3Event): SesionTradeCars {
 }
 
 /**
+ * Igual que verificarSesionTradeCars() y con la misma forma de resultado, pero el rol y la
+ * empresa salen de `dashboardlogin`, NO de la cookie. La cookie `dashboard_session` no está
+ * firmada: cualquiera puede escribirle `role: 'superadmin'` desde su navegador. Para leer la
+ * configuración da igual, pero los endpoints del Tasador que ESCRIBEN (parámetros con los que
+ * el bot cotiza, comparables históricos) y el que gasta OpenAI tienen que apoyarse en el rol
+ * real — mismo criterio que `resolverPerfilTradeCars()` y el resto de la API de Trade Cars.
+ */
+export async function verificarSesionTradeCarsEnBase(event: H3Event, supabase: any): Promise<SesionTradeCars> {
+  const raw = parseCookies(event).dashboard_session
+  if (!raw) throw createError({ statusCode: 401, statusMessage: 'No autenticado' })
+
+  let session: any
+  try {
+    session = JSON.parse(decodeURIComponent(raw))
+  } catch {
+    throw createError({ statusCode: 401, statusMessage: 'Sesión inválida' })
+  }
+  if (!session?.email) throw createError({ statusCode: 401, statusMessage: 'Sesión sin email' })
+
+  const { data: perfil } = await supabase
+    .from('dashboardlogin').select('email, role, company_id').eq('email', session.email).single()
+  if (!perfil) throw createError({ statusCode: 403, statusMessage: 'Perfil no encontrado' })
+
+  const role = String(perfil.role ?? '').toLowerCase()
+  const esSuperadmin = role === 'superadmin'
+  const companyId = String(perfil.company_id ?? '').toLowerCase().replace(/\s+/g, '')
+  if (!esSuperadmin && !companyId.includes('tradecars')) {
+    throw createError({ statusCode: 403, statusMessage: 'Sin acceso a Trade Cars' })
+  }
+
+  return { email: String(perfil.email), role, company_id: companyId, esSuperadmin }
+}
+
+/**
  * Solo administración puede enseñarle al Tasador. Un asesor puede conversar con
  * él y consultarle datos, pero no cambiar los números con los que la empresa
  * decide cuánto paga por un auto.

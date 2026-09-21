@@ -12,8 +12,11 @@
  * NO se recalcula: viene de la vista `piola_cumplimiento_tipo` (aprobado + entregado), la misma
  * definición que usan los reportes.
  *
- * Nota: este archivo se hizo SIN el Excel real (Sebastián lo va a mandar por WhatsApp): copia la
- * estructura que se describió en la reunión. Cuando llegue, se ajustan columnas y orden acá.
+ * Formato: llegó una captura del Excel real ("KPI Y SEGUIMIENTO AGENCIA PIOLA SEPTIEMBRE"): columnas
+ * CLIENTE | una por tipo (VIDEO, GRÁFICA…: lo COMPROMETIDO del mes) | PIEZAS MENSUALES (suma de lo
+ * comprometido) | AVANCE (lo entregado) | % DE AVANCE (avance / piezas, con dos decimales), y una fila
+ * TOTALES. La tabla de pantalla y el PDF lo replican tal cual (ejemplo de su hoja: 112 piezas, 63
+ * de avance, 56.25 %).
  */
 
 /* ══════════════════ Fechas / ritmo del mes ══════════════════ */
@@ -25,6 +28,19 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 export function piolaNombrePeriodo(periodo: string): string {
   const [y, m] = String(periodo || '').split('-').map(Number)
   return MESES[(m || 1) - 1] ? `${MESES[m - 1]} ${y}` : String(periodo || '')
+}
+
+/** '2026-09' -> 'Septiembre' */
+export function piolaNombreMes(periodo: string): string {
+  const m = Number(String(periodo || '').split('-')[1])
+  return MESES[m - 1] || ''
+}
+
+/** '2026-09' -> 'KPI Y SEGUIMIENTO AGENCIA PIOLA SEPTIEMBRE 2026' (el título de la hoja del Excel). */
+export function piolaTituloKpi(periodo: string): string {
+  const mes = piolaNombreMes(periodo)
+  return ['KPI Y SEGUIMIENTO AGENCIA PIOLA', mes, mes ? String(periodo).slice(0, 4) : '']
+    .filter(Boolean).join(' ').toUpperCase()
 }
 
 /**
@@ -79,6 +95,13 @@ export const PIOLA_RITMO_COLOR: Record<PiolaRitmo, string> = {
 
 export const piolaPct = (entregado: any, comprometido: any): number =>
   Number(comprometido) ? Math.round(Number(entregado || 0) / Number(comprometido) * 1000) / 10 : 0
+
+/** "% DE AVANCE" como lo muestra el Excel: dos decimales ("78.57%"), y "-%" si no hay compromiso. */
+export function piolaPctTexto(entregado: any, comprometido: any): string {
+  const c = Number(comprometido)
+  if (!c) return '-%'
+  return (Math.round(Number(entregado || 0) / c * 10000) / 100).toFixed(2) + '%'
+}
 
 /* ══════════════════ Tabla KPI ══════════════════ */
 
@@ -207,6 +230,8 @@ export interface OpcionesReporte {
   generado: string
   kpi?: KpiTabla
   esperado?: number
+  /** 'YYYY-MM': arma el título "KPI Y SEGUIMIENTO AGENCIA PIOLA {MES} {AÑO}" de la tabla de KPIs */
+  periodo?: string
   matriz?: { estados: { value: string; title: string }[]; tipos: { codigo: string; nombre: string }[]; datos: Record<string, Record<string, number>> }
   entregables?: EntregableReporte[]
   nombreTipo: (codigo: string) => string
@@ -224,23 +249,38 @@ export function piolaReporteHtml(o: OpcionesReporte): string {
 
   if (o.kpi) {
     const k = o.kpi
-    const cab = k.columnas.map(c => `<th>${esc(c.nombre)}</th>`).join('')
-    const celda = (c?: KpiCelda) => c && (c.comprometido || c.entregado)
-      ? `${c.entregado} / ${c.comprometido || '—'}` : '—'
-    const fila = (f: KpiFila, total = false) => `
-      <tr class="${total ? 'total' : ''}">
-        <td class="marca">${esc(f.cliente)}</td>
-        ${k.columnas.map(c => `<td class="num">${celda(f.celdas[c.codigo])}</td>`).join('')}
-        <td class="num"><b>${f.entregado} / ${f.comprometido || '—'}</b></td>
-        <td class="num"><b>${f.comprometido ? f.pct + ' %' : '—'}</b></td>
-        <td><span class="ritmo" style="background:${PIOLA_RITMO_COLOR[f.ritmo]}">${esc(PIOLA_RITMO_TEXTO[f.ritmo])}</span></td>
+    const titulo = o.periodo ? piolaTituloKpi(o.periodo) : 'KPI Y SEGUIMIENTO AGENCIA PIOLA'
+    const cab = k.columnas.map(c => `<th class="tipo">${esc(c.nombre)}</th>`).join('')
+    // Cada columna de tipo muestra lo COMPROMETIDO (como el Excel); 0 si esa marca no lo tiene pactado
+    const celda = (c?: KpiCelda) => {
+      const n = c?.comprometido || 0
+      return `<td class="num${n ? '' : ' cero'}">${n}</td>`
+    }
+    const fila = (f: KpiFila) => `
+      <tr>
+        <td class="cliente">${esc(f.cliente)}</td>
+        ${k.columnas.map(c => celda(f.celdas[c.codigo])).join('')}
+        <td class="num"><b>${f.comprometido}</b></td>
+        <td class="num"><b>${f.entregado}</b></td>
+        <td class="num pct" style="color:${PIOLA_RITMO_COLOR[f.ritmo]}">${piolaPctTexto(f.entregado, f.comprometido)}</td>
       </tr>`
+    const t = k.totales
     partes.push(`
       <h2>Cumplimiento por marca</h2>
-      <p class="nota">Avance esperado hoy: <b>${o.esperado ?? k.esperado} %</b> del mes. Cuenta como entregado lo aprobado por Dirección y lo entregado.</p>
-      <table>
-        <thead><tr><th>Marca</th>${cab}<th>Total</th><th>Avance</th><th>Ritmo</th></tr></thead>
-        <tbody>${k.filas.filter(f => f.comprometido || Object.keys(f.celdas).length).map(f => fila(f)).join('')}${fila(k.totales, true)}</tbody>
+      <p class="nota">Avance esperado hoy: <b>${o.esperado ?? k.esperado} %</b> del mes. Cuenta como entregado lo aprobado por Dirección y lo entregado.
+        El % de avance va en verde si la marca está al día, naranja si está en riesgo y rojo si está atrasada frente a ese ritmo.</p>
+      <table class="kpi">
+        <thead>
+          <tr><th class="banner" colspan="${k.columnas.length + 4}">${esc(titulo)}</th></tr>
+          <tr><th class="cli">CLIENTE</th>${cab}<th class="cum">PIEZAS MENSUALES</th><th class="cum">AVANCE</th><th class="cum">% DE AVANCE</th></tr>
+        </thead>
+        <tbody>${k.filas.filter(f => f.comprometido || Object.keys(f.celdas).length).map(f => fila(f)).join('')}</tbody>
+        <tfoot>
+          <tr class="totales">
+            <td colspan="${k.columnas.length + 1}">TOTALES</td>
+            <td class="num">${t.comprometido}</td><td class="num">${t.entregado}</td><td class="num">${piolaPctTexto(t.entregado, t.comprometido)}</td>
+          </tr>
+        </tfoot>
       </table>`)
   }
 
@@ -275,7 +315,7 @@ export function piolaReporteHtml(o: OpcionesReporte): string {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>${esc(o.titulo)}</title>
 <style>
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #1b1b1b; margin: 28px; font-size: 12px; }
   header { border-bottom: 3px solid #e2564a; padding-bottom: 10px; margin-bottom: 18px; }
   h1 { font-size: 20px; margin: 0; }
@@ -286,8 +326,17 @@ export function piolaReporteHtml(o: OpcionesReporte): string {
   td { padding: 5px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
   td.marca { font-weight: 600; }
   td.num { text-align: right; white-space: nowrap; }
-  tr.total td { background: #eef5f0; font-weight: 700; border-top: 2px solid #2f7d4f; }
-  .ritmo { color: #fff; border-radius: 999px; padding: 2px 9px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+  /* Tabla de KPIs: mismos colores que el Excel (cliente en verde, encabezados amarillo y azul) */
+  table.kpi th, table.kpi td { border: 1px solid #222; text-align: center; padding: 6px 8px; }
+  table.kpi th { color: #111; font-size: 11px; text-transform: uppercase; }
+  table.kpi th.banner { background: #111; color: #fff; font-size: 13px; letter-spacing: .4px; }
+  table.kpi th.cli, table.kpi th.cum { background: #fff200; }
+  table.kpi th.tipo { background: #3a75c4; color: #fff; }
+  table.kpi td.cliente { background: #3cb54a; color: #111; font-weight: 700; text-align: left; }
+  table.kpi td.cero { color: #aaa; }
+  table.kpi td.pct { font-weight: 700; }
+  table.kpi tr.totales td { background: #fff200; color: #111; font-weight: 700; font-size: 12.5px; }
+  table.kpi tr.totales td:first-child { text-align: right; letter-spacing: .5px; }
   .nota { color: #666; font-size: 11px; }
   footer { margin-top: 24px; color: #888; font-size: 10.5px; }
   @media print { body { margin: 12mm; } h2 { page-break-after: avoid; } tr { page-break-inside: avoid; } }

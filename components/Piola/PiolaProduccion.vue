@@ -780,15 +780,19 @@ const opcionesResponsableFiltro = computed(() =>
   [{ value: 'todos', title: 'Todos' }, ...opcionesResponsable.value])
 /**
  * `piola_produccion_areas` la sembró otra sesión con un guess PRE-reunión
- * ('rodajes', 'diseno', 'community') que Sebastián corrigió el 07/09
- * (confirmó guiones/producción/grabación/edición/presentación/diseño
- * gráfico, sin mencionar las otras tres). No se tocan esas filas viejas
- * porque la tabla es de la otra sesión y `area_produccion_id` todavía no
- * las referencia — se filtra acá para que el dropdown muestre exactamente
- * lo que Sebastián confirmó, sin depender de que alguien limpie la tabla.
+ * ('rodajes', 'diseno', 'community'), reemplazado el 07/09 por Sebastián con
+ * guiones/producción/grabación/edición/presentación/diseño gráfico (6 áreas),
+ * y ese set quedó reemplazado a su vez el 21/09/2026 (Raysa + Sebastián, en
+ * reunión y confirmado en el checklist escrito): las 4 áreas reales son
+ * Guiones, Creadores operativos, Filmmakers y Diseño gráfico. Ninguna fila
+ * vieja se borra ni se renombra — "Creadores operativos" y "Filmmakers" no
+ * son sinónimos evidentes de "Producción" ni "Grabación" (adivinar el mapeo
+ * habría reinterpretado en silencio el área de un entregable real ya
+ * cargado) — se agregan como filas NUEVAS y el filtro solo cambia qué se
+ * ofrece de acá en adelante.
  */
 const CODIGOS_AREA_PRODUCCION_CONFIRMADOS = [
-  'guiones', 'produccion', 'grabacion', 'edicion', 'presentacion', 'diseno_grafico',
+  'guiones', 'creadores_operativos', 'filmmakers', 'diseno_grafico',
 ]
 const opcionesAreaProduccion = computed(() => areasProduccion.value
   .filter(a => CODIGOS_AREA_PRODUCCION_CONFIRMADOS.includes(a.codigo))

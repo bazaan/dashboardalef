@@ -1352,7 +1352,7 @@ Los demás dashboards usan los roles globales (`superadmin`/`admin`/`agente`). P
 | Componente | Módulo |
 |---|---|
 | `Piola/PiolaHome.vue` | KPIs + widgets personales (vacaciones, antigüedad, contrato) |
-| `Piola/PiolaMiEspacio.vue` | Marcación de jornada/breaks, historial, vacaciones y boletas propias |
+| `Piola/PiolaMiEspacio.vue` | Marcación de jornada/breaks, historial, vacaciones, boletas propias y certificados de cursos propios |
 | `Piola/PiolaCRM.vue` | Kanban + tabla de leads, historial de interacciones, conversión a cliente |
 | `Piola/PiolaContabilidad.vue` | Ingresos/egresos, flujo de caja, **CRUD de categorías jerárquicas**, comisiones |
 | `Piola/PiolaFacturacion.vue` | Emisión con detracción, histórico, cobro → flujo de caja |
@@ -1380,7 +1380,7 @@ Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplan
 | GET | `/api/piola/reportes` | `?run=1` ejecuta; `?preview=1&tipo=` vista previa |
 | POST | `/api/piola/caja` | Abrir / movimiento / eliminar_movimiento / cerrar |
 | POST | `/api/piola/pagos` | Registrar o eliminar un cobro/pago contra una cuenta |
-| POST | `/api/piola/colaborador` | Ficha, contratos laborales y documentos del expediente |
+| POST | `/api/piola/colaborador` | Ficha, contratos laborales y documentos del expediente. `mi_documento_crear`/`mi_documento_eliminar` son autoservicio: cualquier colaborador con sesión sube/borra sus propios certificados, sin permiso de RR. HH. |
 | POST | `/api/piola/contabilidad` | Movimientos y categorías de gasto |
 | POST | `/api/piola/configuracion` | Roles, permisos y catálogos (incl. la config financiera) |
 | POST | `/api/piola/crm` | Leads, interacciones y conversión a cliente |
@@ -1618,6 +1618,33 @@ Participaron Sebastián Ávalos, Raysa Cucho, Edson Polo, Héctor Córdova y Rob
 - **Excel de códigos financieros** (Edson): la numeración de tipo de gasto ya existe (`piola_expense_categories.codigo`); falta importar el archivo cuando llegue.
 - **Texto del saludo automático** de WhatsApp (Héctor): se carga en Configuración → Mensajes automáticos (`piola_mensajes`, clave `bienvenida_whatsapp`) y se activa en el saludo del inbox de Chatwoot / n8n (`referencia/n8n/piola-saludo-automatico-guia.md`).
 - **Operativo, no de código:** Edson crea los ~15 usuarios (primero "Usuarios del sistema" con rol Agente y después la ficha en Colaboradores; Alejandro incluido) y Roberto les pone las contraseñas por grupo (Edson/Raysa/Héctor una; Sebastián otra; el equipo operativo otra) con el nuevo botón. Sebastián carga los 2 entregables de Guabazana (gráficas + videos) en el tablero.
+
+### Reunión del 21/09/2026 — lo acordado (migración `sql/piola_reunion_21sep.sql`)
+
+Participaron Raysa Cucho, Sebastián Ávalos, Héctor Córdova y Roberto. Objetivo: que Sebastián y Raysa
+probaran el módulo de Producción del 14/09 en vivo y dieran feedback. Hay dos fuentes para esta reunión:
+la grabación (Fathom, transcrita) y un checklist escrito que Roberto circuló después
+(`Piola_Pendientes_22set2026.docx`) — el checklist es la lista de tareas real; la transcripción solo
+sirvió para desambiguar qué significaba cada ítem. **Correr una vez `sql/piola_reunion_21sep.sql`**
+(idempotente), va DESPUÉS de `sql/piola_reunion_14sep.sql`.
+
+| Qué pidieron | Dónde quedó |
+|---|---|
+| Confirmar en vivo "eliminar Área y renombrar Etapa a Área" | **Ya estaba hecho desde el 14/09** — Roberto lo mostró en la llamada y Sebastián lo validó ("ya esto ya lo tengo mucho más claro cómo se ejecuta"). No fue un cambio nuevo, aunque el checklist automático lo vuelve a listar como pendiente de Roberto |
+| **Las áreas de producción reales son 4**: Guiones, Creadores operativos, Filmmakers y Diseño Gráfico (reemplazan a las 6 que Sebastián había confirmado el 07/09) | `CODIGOS_AREA_PRODUCCION_CONFIRMADOS` en `PiolaProduccion.vue` + 2 filas nuevas en `piola_produccion_areas` (`creadores_operativos`, `filmmakers`). Las filas del 07/09 (`produccion`, `grabacion`, `edicion`, `presentacion`) **no se tocan ni se renombran** — "Creadores operativos" y "Filmmakers" no son sinónimos evidentes de ninguna de ellas, y ya hay un entregable real (`piola_deliverables.id=4`) etiquetado "Producción"; adivinar el mapeo lo habría reinterpretado en silencio |
+| **Botón para que los empleados suban sus propios certificados de cursos** (antes solo RR. HH./Configuración podía adjuntar documentos al expediente) | Pestaña **"Mis certificados"** en Mi Espacio (`PiolaMiEspacio.vue`) + acciones `mi_documento_crear` / `mi_documento_eliminar` en `colaborador.post.ts`. **Sin exigir permiso de módulo** — alcanza con tener sesión de Piola — pero seguro: el `colaborador_id` sale siempre de la propia ficha (`perfil.colaborador.id`), nunca del body, el `tipo` queda fijo en `'certificado'` (no puede tocar DNI/contrato) y solo puede borrar lo que subió él mismo. Reutiliza la tabla que ya existía (`piola_colaborador_documentos`, sin migración) y el mismo componente de subida (`PiolaSubirPdf.vue`, bucket `piola-docs`) que usa el expediente de RR. HH. |
+
+**Explícitamente NO implementado — ambiguo, no está en el checklist escrito:** en la transcripción Sebastián
+confirma algo que Roberto ya le había explicado antes ("habías mencionado, Roberto, que eso solo puede
+hacerlo Raysa y Edson") sobre quién asigna responsables. No quedó claro si es sobre el campo
+`responsable_email` del entregable, sobre gestionar roles, o sobre otra cosa — y el checklist que Roberto
+mandó después no lo lista como pendiente. Implementarlo mal habría bloqueado a Sebastián de su propia
+tarea de cargar entregables. Si el cliente confirma el alcance exacto, se agrega.
+
+**Pendiente del cliente (bloquea completar, no es desarrollo):**
+- **Excel de códigos financieros** (Héctor → Roberto): sigue sin llegar.
+- **Texto del saludo automático de WhatsApp** (Héctor → Roberto): sigue sin llegar. (En la transcripción hay una frase suelta de que Héctor ya lo envió al *grupo de WhatsApp* del equipo — no es lo mismo que mandárselo a Roberto para cargarlo en `piola_mensajes`; el checklist escrito, posterior y más confiable, lo sigue listando como pendiente.)
+- **Operativo, no de código:** Héctor/Edson crean los usuarios del equipo (tope original: 22/09). Sebastián carga sus entregables pendientes al sistema.
 
 ### Pendientes del cliente (bloquean cierre, no desarrollo)
 

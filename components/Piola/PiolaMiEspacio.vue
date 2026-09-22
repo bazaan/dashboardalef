@@ -96,6 +96,9 @@
           <button :class="['tab', { active: tab === 'historial' }]" @click="tab = 'historial'">Mi historial</button>
           <button :class="['tab', { active: tab === 'vacaciones' }]" @click="tab = 'vacaciones'">Mis vacaciones</button>
           <button :class="['tab', { active: tab === 'boletas' }]" @click="tab = 'boletas'">Mis boletas</button>
+          <button :class="['tab', { active: tab === 'certificados' }]" @click="tab = 'certificados'">
+            Mis certificados
+          </button>
           <button v-if="puedeVerEquipo" :class="['tab', { active: tab === 'equipo' }]" @click="tab = 'equipo'">
             <v-icon icon="mdi-account-supervisor" size="15" start /> Equipo
           </button>
@@ -187,6 +190,43 @@
             </template>
           </v-data-table>
         </v-card>
+
+        <!-- ══════════ MIS CERTIFICADOS (reunión 21/09/2026) ══════════
+             Antes solo RR. HH. podía adjuntar documentos al expediente (exigirExpediente).
+             Raysa/Sebastián pidieron un botón para que cada empleado suba sus propios
+             certificados de cursos, sin necesitar ese permiso. -->
+        <div v-else-if="tab === 'certificados'">
+          <v-card flat class="custom-data-table" style="padding:18px;">
+            <div class="form-section-title">Subir un certificado</div>
+            <div class="vac-form">
+              <v-text-field v-model="nuevoCertificado.nombre" label="Nombre del curso o certificado *"
+                density="compact" hide-details variant="outlined" />
+              <v-text-field v-model="nuevoCertificado.fecha" type="date" label="Fecha (opcional)"
+                density="compact" hide-details variant="outlined" />
+              <PiolaSubirPdf v-model="nuevoCertificado.archivo_url" carpeta="certificados"
+                label="Archivo (PDF)"
+                @error="(m: string) => emit('notify', { text: m, color: 'error' })" />
+              <v-btn color="primary" variant="flat" :loading="subiendoCertificado"
+                @click="agregarCertificado">Agregar certificado</v-btn>
+            </div>
+          </v-card>
+
+          <v-card flat class="custom-data-table mt-4">
+            <v-card-title class="table-search-bar">
+              <span class="table-title">Mis certificados</span>
+            </v-card-title>
+            <v-data-table :headers="headersCertificados" :items="misCertificados" class="elevation-0"
+              no-data-text="Todavía no subiste ningún certificado" :items-per-page="20">
+              <template v-slot:item.fecha="{ item }">{{ item.fecha ? fechaCorta(item.fecha) : '—' }}</template>
+              <template v-slot:item.acciones="{ item }">
+                <v-btn v-if="item.archivo_url" icon="mdi-file-eye" size="x-small" variant="text"
+                  title="Ver aquí mismo" @click="abrirVisor(item.archivo_url, item.nombre)" />
+                <v-btn icon="mdi-delete" size="x-small" variant="text" color="error"
+                  title="Eliminar" @click="eliminarCertificado(item)" />
+              </template>
+            </v-data-table>
+          </v-card>
+        </div>
 
         <!-- ══════════ VISOR DE SUPERVISOR ══════════ -->
         <!-- Raysa preguntó si cada persona ve solo lo suyo o si alguien puede ver
@@ -312,9 +352,10 @@
  * ?vista=mias y el endpoint filtra por su correo.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { PEN, fechaCorta, horaLima, minutosAHoras, urlDocumento, periodoActual, hoyISO } from '@/composables/usePiola'
+import { PEN, fechaCorta, horaLima, minutosAHoras, urlDocumento, periodoActual, hoyISO, apiPiola } from '@/composables/usePiola'
 import { piolaCan } from '@/utils/permissions'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
+import PiolaSubirPdf from './PiolaSubirPdf.vue'
 
 const client = useSupabaseClient()
 
@@ -483,6 +524,46 @@ const headersBoletas = [
   { title: '', key: 'acciones', sortable: false },
 ]
 
+/* ── Mis certificados (reunión 21/09/2026): autoservicio, sin permiso de RR. HH. ── */
+const misCertificados = ref<any[]>([])
+const nuevoCertificado = ref<any>({ nombre: '', fecha: '', archivo_url: null })
+const subiendoCertificado = ref(false)
+
+function resetCertificado() {
+  nuevoCertificado.value = { nombre: '', fecha: '', archivo_url: null }
+}
+
+async function agregarCertificado() {
+  const c = nuevoCertificado.value
+  if (!c.nombre?.trim()) return emit('notify', { text: 'Ponle un nombre al certificado', color: 'error' })
+  if (!c.archivo_url) return emit('notify', { text: 'Sube el archivo antes de agregarlo', color: 'error' })
+
+  subiendoCertificado.value = true
+  const { data, error } = await apiPiola('colaborador', {
+    accion: 'mi_documento_crear', nombre: c.nombre.trim(), archivo_url: c.archivo_url, fecha: c.fecha || null,
+  })
+  subiendoCertificado.value = false
+  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
+
+  misCertificados.value = [data.documento, ...misCertificados.value]
+  emit('notify', 'Certificado agregado')
+  resetCertificado()
+}
+
+async function eliminarCertificado(c: any) {
+  if (!confirm(`¿Eliminar "${c.nombre}"?`)) return
+  const { error } = await apiPiola('colaborador', { accion: 'mi_documento_eliminar', id: c.id })
+  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
+  misCertificados.value = misCertificados.value.filter((d) => d.id !== c.id)
+  emit('notify', 'Certificado eliminado')
+}
+
+const headersCertificados = [
+  { title: 'Nombre', key: 'nombre' },
+  { title: 'Fecha', key: 'fecha' },
+  { title: '', key: 'acciones', sortable: false },
+]
+
 /* ══════════ Visor de supervisor ══════════
  *
  * Raysa: "¿eso se podría hacer por persona, o solamente Edson vería un listado
@@ -581,6 +662,7 @@ onMounted(async () => {
   actualizarReloj()
   intervalo = setInterval(actualizarReloj, 1000)
   tareo.value = props.perfil?.tareo_hoy || null
+  misCertificados.value = props.perfil?.mis_certificados || []
   await Promise.all([cargarHistorial(), cargarVacaciones(), cargarBoletas()])
   // El tablero se pide después: alimenta los nombres del acumulado mensual,
   // así que este orden importa.

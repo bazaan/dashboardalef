@@ -8,6 +8,8 @@
  *   { accion: 'contrato_eliminar', id }
  *   { accion: 'documento_crear', colaborador_id, ... }
  *   { accion: 'documento_eliminar', id }
+ *   { accion: 'mi_documento_crear', nombre, archivo_url, fecha? }   — autoservicio, ver abajo
+ *   { accion: 'mi_documento_eliminar', id }                        — solo lo que uno mismo subió
  *
  * POR QUÉ EXISTE: `piola_colaboradores` guarda sueldo_bruto, bonificaciones,
  * comision_pct y afp_cuspp. La censura de la auditoría (migración 04) evitó que
@@ -264,6 +266,62 @@ export default defineEventHandler(async (event) => {
 
     const { error } = await supabase.from('piola_colaborador_documentos').delete().eq('id', id)
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    return { ok: true }
+  }
+
+  /*
+   * ══════════ Autoservicio: certificados de cursos (reunión 21/09/2026) ══════════
+   *
+   * Pedido de Raysa/Sebastián: "un botón para que los empleados suban los certificados
+   * de los cursos" — CUALQUIER colaborador, no solo RR. HH./Configuración. Por eso estas
+   * dos acciones NO llaman a `exigirExpediente()`: alcanza con tener sesión de Piola.
+   *
+   * Lo que las mantiene seguras sin ese permiso:
+   *   - `colaborador_id` sale de `perfil.colaborador.id` (la propia ficha), nunca del body:
+   *     así nadie sube — ni borra — el documento de otra persona.
+   *   - `tipo` queda fijo en 'certificado': un empleado sin permiso de RR. HH. no puede
+   *     tocar su DNI, contrato ni otros documentos del expediente por esta vía.
+   *   - `mi_documento_eliminar` solo borra si el documento es 'certificado' Y pertenece
+   *     a su propia ficha (columnas verificadas en el WHERE, no solo en el filtro previo).
+   */
+  if (accion === 'mi_documento_crear') {
+    const colaboradorId = Number(perfil.colaborador?.id)
+    if (!colaboradorId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Todavía no tienes una ficha de colaborador en Piola. Pídele a RR. HH. que te dé de alta.',
+      })
+    }
+
+    const nombre = texto(body?.nombre)
+    const archivoUrl = texto(body?.archivo_url)
+    if (!nombre) throw createError({ statusCode: 400, statusMessage: 'El certificado necesita un nombre' })
+    if (!archivoUrl) throw createError({ statusCode: 400, statusMessage: 'Sube el archivo antes de agregarlo' })
+
+    const { data, error } = await supabase.from('piola_colaborador_documentos').insert({
+      colaborador_id: colaboradorId,
+      tipo: 'certificado',
+      nombre,
+      archivo_url: archivoUrl,
+      fecha: texto(body?.fecha),
+      subido_por: perfil.email,
+    }).select('*').single()
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+
+    return { ok: true, documento: data }
+  }
+
+  if (accion === 'mi_documento_eliminar') {
+    const colaboradorId = Number(perfil.colaborador?.id)
+    const id = Number(body?.id)
+    if (!colaboradorId || !id) throw createError({ statusCode: 400, statusMessage: 'Falta el certificado a eliminar' })
+
+    const { error, count } = await supabase.from('piola_colaborador_documentos')
+      .delete({ count: 'exact' })
+      .eq('id', id).eq('colaborador_id', colaboradorId).eq('tipo', 'certificado')
+    if (error) throw createError({ statusCode: 400, statusMessage: error.message })
+    if (!count) throw createError({ statusCode: 404, statusMessage: 'Ese certificado no existe o no es tuyo' })
 
     return { ok: true }
   }

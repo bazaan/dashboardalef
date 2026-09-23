@@ -8,7 +8,7 @@
  *   { accion: 'contrato_eliminar', id }
  *   { accion: 'documento_crear', colaborador_id, ... }
  *   { accion: 'documento_eliminar', id }
- *   { accion: 'mi_documento_crear', nombre, archivo_url, fecha? }   — autoservicio, ver abajo
+ *   { accion: 'mi_documento_crear', tipo?, nombre, archivo_url, fecha?, periodo? }  — autoservicio, ver abajo
  *   { accion: 'mi_documento_eliminar', id }                        — solo lo que uno mismo subió
  *
  * POR QUÉ EXISTE: `piola_colaboradores` guarda sueldo_bruto, bonificaciones,
@@ -54,6 +54,18 @@ const CAMPOS_TEXTO = [
 const CAMPOS_FECHA = ['fecha_nacimiento', 'fecha_ingreso', 'fecha_cese', 'fecha_fin_contrato']
 const CAMPOS_BOOL = ['activo', 'asignacion_familiar']
 const CAMPOS_ENTERO = ['area_id']
+
+/**
+ * Lo que un colaborador puede subir y borrar POR SÍ MISMO desde Mi Espacio.
+ * Es una lista blanca a propósito: DNI, CV o adendas siguen siendo cosa de RR. HH.
+ */
+const TIPOS_AUTOSERVICIO: Record<string, string> = {
+  recibo_honorarios: 'recibo por honorarios',
+  contrato: 'contrato',
+  certificado: 'certificado',
+}
+/** Mes al que corresponde un recibo: 'YYYY-MM'. */
+const PERIODO_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 
 /**
  * Importes y datos de planilla: SOLO Administrador.
@@ -245,12 +257,20 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'El documento necesita colaborador y nombre' })
     }
 
+    const tipo = texto(body?.tipo) || 'otro'
+    const periodo = texto(body?.periodo)
+    if (periodo && !PERIODO_RE.test(periodo)) {
+      throw createError({ statusCode: 400, statusMessage: 'El mes debe tener el formato AAAA-MM' })
+    }
+
     const { data, error } = await supabase.from('piola_colaborador_documentos').insert({
       colaborador_id: colaboradorId,
-      tipo: texto(body?.tipo) || 'otro',
+      tipo,
       nombre,
       archivo_url: texto(body?.archivo_url),
       fecha: texto(body?.fecha),
+      // El mes solo tiene sentido en un recibo; se omite del insert si no aplica
+      ...(tipo === 'recibo_honorarios' && periodo ? { periodo } : {}),
       subido_por: perfil.email,
     }).select('*').single()
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
@@ -271,19 +291,21 @@ export default defineEventHandler(async (event) => {
   }
 
   /*
-   * ══════════ Autoservicio: certificados de cursos (reunión 21/09/2026) ══════════
+   * ══════════ Autoservicio: documentos propios (Mi Espacio) ══════════
    *
-   * Pedido de Raysa/Sebastián: "un botón para que los empleados suban los certificados
-   * de los cursos" — CUALQUIER colaborador, no solo RR. HH./Configuración. Por eso estas
-   * dos acciones NO llaman a `exigirExpediente()`: alcanza con tener sesión de Piola.
+   * 21/09/2026: Raysa/Sebastián pidieron que cualquier colaborador suba sus propios
+   * certificados de cursos. 23/09/2026: Mi Espacio pasa a "Mis recibos por honorarios"
+   * y "Mis contratos" — mismo mecanismo, más tipos.
+   *
+   * Estas dos acciones NO llaman a `exigirExpediente()`: alcanza con tener sesión de Piola.
    *
    * Lo que las mantiene seguras sin ese permiso:
    *   - `colaborador_id` sale de `perfil.colaborador.id` (la propia ficha), nunca del body:
    *     así nadie sube — ni borra — el documento de otra persona.
-   *   - `tipo` queda fijo en 'certificado': un empleado sin permiso de RR. HH. no puede
-   *     tocar su DNI, contrato ni otros documentos del expediente por esta vía.
-   *   - `mi_documento_eliminar` solo borra si el documento es 'certificado' Y pertenece
-   *     a su propia ficha (columnas verificadas en el WHERE, no solo en el filtro previo).
+   *   - `tipo` solo puede ser uno de TIPOS_AUTOSERVICIO: por esta vía no se toca el DNI,
+   *     el CV ni las adendas del expediente.
+   *   - `mi_documento_eliminar` solo borra lo que SUBIÓ ÉL MISMO. Un contrato que RR. HH.
+   *     cargó en su expediente aparece en "Mis contratos", pero él no puede quitarlo.
    */
   if (accion === 'mi_documento_crear') {
     const colaboradorId = Number(perfil.colaborador?.id)
@@ -294,17 +316,31 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Sin `tipo` = 'certificado': es lo que mandaba la pantalla antes del 23/09
+    const tipo = texto(body?.tipo) || 'certificado'
+    const etiqueta = TIPOS_AUTOSERVICIO[tipo]
+    if (!etiqueta) throw createError({ statusCode: 400, statusMessage: 'Ese tipo de documento no se puede subir desde Mi Espacio' })
+
     const nombre = texto(body?.nombre)
     const archivoUrl = texto(body?.archivo_url)
-    if (!nombre) throw createError({ statusCode: 400, statusMessage: 'El certificado necesita un nombre' })
+    if (!nombre) throw createError({ statusCode: 400, statusMessage: `Ponle un nombre al ${etiqueta}` })
     if (!archivoUrl) throw createError({ statusCode: 400, statusMessage: 'Sube el archivo antes de agregarlo' })
+
+    // Un recibo se identifica por el mes que cubre: sin él, RR. HH. no sabe qué mes falta
+    let periodo: string | null = null
+    if (tipo === 'recibo_honorarios') {
+      periodo = texto(body?.periodo)
+      if (!periodo) throw createError({ statusCode: 400, statusMessage: 'Indica el mes al que corresponde el recibo' })
+      if (!PERIODO_RE.test(periodo)) throw createError({ statusCode: 400, statusMessage: 'El mes debe tener el formato AAAA-MM' })
+    }
 
     const { data, error } = await supabase.from('piola_colaborador_documentos').insert({
       colaborador_id: colaboradorId,
-      tipo: 'certificado',
+      tipo,
       nombre,
       archivo_url: archivoUrl,
       fecha: texto(body?.fecha),
+      ...(periodo ? { periodo } : {}),
       subido_por: perfil.email,
     }).select('*').single()
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
@@ -315,13 +351,30 @@ export default defineEventHandler(async (event) => {
   if (accion === 'mi_documento_eliminar') {
     const colaboradorId = Number(perfil.colaborador?.id)
     const id = Number(body?.id)
-    if (!colaboradorId || !id) throw createError({ statusCode: 400, statusMessage: 'Falta el certificado a eliminar' })
+    if (!colaboradorId || !id) throw createError({ statusCode: 400, statusMessage: 'Falta el documento a eliminar' })
 
-    const { error, count } = await supabase.from('piola_colaborador_documentos')
-      .delete({ count: 'exact' })
-      .eq('id', id).eq('colaborador_id', colaboradorId).eq('tipo', 'certificado')
+    const { data: doc } = await supabase.from('piola_colaborador_documentos')
+      .select('id, colaborador_id, tipo, archivo_url, subido_por').eq('id', id).maybeSingle()
+    // Ajeno o de un tipo que no es de autoservicio: para quien pregunta, no existe
+    if (!doc || Number(doc.colaborador_id) !== colaboradorId || !TIPOS_AUTOSERVICIO[String(doc.tipo)]) {
+      throw createError({ statusCode: 404, statusMessage: 'Ese documento no existe o no es tuyo' })
+    }
+    if (String(doc.subido_por || '').toLowerCase() !== perfil.email.toLowerCase()) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Ese documento lo subió RR. HH.; solo ellos pueden quitarlo',
+      })
+    }
+
+    const { error } = await supabase.from('piola_colaborador_documentos').delete().eq('id', id)
     if (error) throw createError({ statusCode: 400, statusMessage: error.message })
-    if (!count) throw createError({ statusCode: 404, statusMessage: 'Ese certificado no existe o no es tuyo' })
+
+    // Borrar el registro y dejar el PDF (un contrato, con sueldo) vivo en el bucket
+    // sería "eliminar" solo de nombre. Es un path del bucket, no una URL externa.
+    const ruta = String(doc.archivo_url || '')
+    if (ruta && !/^https?:\/\//i.test(ruta)) {
+      await supabase.storage.from('piola-docs').remove([ruta]).catch(() => {})
+    }
 
     return { ok: true }
   }

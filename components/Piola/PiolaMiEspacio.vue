@@ -95,9 +95,11 @@
         <div class="table-tabs">
           <button :class="['tab', { active: tab === 'historial' }]" @click="tab = 'historial'">Mi historial</button>
           <button :class="['tab', { active: tab === 'vacaciones' }]" @click="tab = 'vacaciones'">Mis vacaciones</button>
-          <button :class="['tab', { active: tab === 'boletas' }]" @click="tab = 'boletas'">Mis boletas</button>
-          <button :class="['tab', { active: tab === 'certificados' }]" @click="tab = 'certificados'">
-            Mis certificados
+          <button :class="['tab', { active: tab === 'recibos' }]" @click="tab = 'recibos'">
+            Mis recibos por honorarios
+          </button>
+          <button :class="['tab', { active: tab === 'contratos' }]" @click="tab = 'contratos'">
+            Mis contratos
           </button>
           <button v-if="puedeVerEquipo" :class="['tab', { active: tab === 'equipo' }]" @click="tab = 'equipo'">
             <v-icon icon="mdi-account-supervisor" size="15" start /> Equipo
@@ -173,59 +175,42 @@
           </v-card>
         </div>
 
-        <v-card v-else-if="tab === 'boletas'" flat class="custom-data-table">
-          <v-card-title class="table-search-bar">
-            <span class="table-title">Mis boletas de pago</span>
-          </v-card-title>
-          <v-data-table :headers="headersBoletas" :items="misBoletas" class="elevation-0"
-            no-data-text="Todavía no tienes boletas emitidas" :items-per-page="24">
-            <template v-slot:item.total_ingresos="{ item }">{{ PEN(item.total_ingresos) }}</template>
-            <template v-slot:item.total_descuentos="{ item }">{{ PEN(item.total_descuentos) }}</template>
-            <template v-slot:item.neto="{ item }"><strong>{{ PEN(item.neto) }}</strong></template>
-            <template v-slot:item.acciones="{ item }">
-              <v-btn v-if="item.pdf_url" icon="mdi-file-eye" size="x-small" variant="text"
-                title="Ver aquí mismo" @click="abrirVisor(item.pdf_url, `Boleta ${item.periodo}`)" />
-              <v-btn v-if="item.pdf_url" icon="mdi-download" size="x-small" variant="text"
-                title="Descargar" :href="urlDoc(item.pdf_url)" :download="item.codigo || 'boleta'" />
-            </template>
-          </v-data-table>
-        </v-card>
+        <!-- ══════════ MIS RECIBOS POR HONORARIOS (23/09/2026) ══════════
+             Antes esta pestaña era "Mis boletas" (solo lectura). Ahora el colaborador sube
+             su recibo por honorarios cada mes; lo que Piola le emitió sigue a la vista debajo
+             (solo aparece si tiene algo), para que quien esté en planilla no pierda su boleta. -->
+        <div v-else-if="tab === 'recibos'">
+          <PiolaMisDocumentos tipo="recibo_honorarios" :documentos="misRecibos" :email="perfil?.email || ''"
+            @agregado="agregarDocumento" @eliminado="quitarDocumento"
+            @notify="(p: any) => emit('notify', p)" />
 
-        <!-- ══════════ MIS CERTIFICADOS (reunión 21/09/2026) ══════════
-             Antes solo RR. HH. podía adjuntar documentos al expediente (exigirExpediente).
-             Raysa/Sebastián pidieron un botón para que cada empleado suba sus propios
-             certificados de cursos, sin necesitar ese permiso. -->
-        <div v-else-if="tab === 'certificados'">
-          <v-card flat class="custom-data-table" style="padding:18px;">
-            <div class="form-section-title">Subir un certificado</div>
-            <div class="vac-form">
-              <v-text-field v-model="nuevoCertificado.nombre" label="Nombre del curso o certificado *"
-                density="compact" hide-details variant="outlined" />
-              <v-text-field v-model="nuevoCertificado.fecha" type="date" label="Fecha (opcional)"
-                density="compact" hide-details variant="outlined" />
-              <PiolaSubirPdf v-model="nuevoCertificado.archivo_url" carpeta="certificados"
-                label="Archivo (PDF)"
-                @error="(m: string) => emit('notify', { text: m, color: 'error' })" />
-              <v-btn color="primary" variant="flat" :loading="subiendoCertificado"
-                @click="agregarCertificado">Agregar certificado</v-btn>
-            </div>
-          </v-card>
-
-          <v-card flat class="custom-data-table mt-4">
+          <v-card v-if="misBoletas.length" flat class="custom-data-table mt-4">
             <v-card-title class="table-search-bar">
-              <span class="table-title">Mis certificados</span>
+              <span class="table-title">Pagos emitidos por Piola ({{ misBoletas.length }})</span>
             </v-card-title>
-            <v-data-table :headers="headersCertificados" :items="misCertificados" class="elevation-0"
-              no-data-text="Todavía no subiste ningún certificado" :items-per-page="20">
-              <template v-slot:item.fecha="{ item }">{{ item.fecha ? fechaCorta(item.fecha) : '—' }}</template>
+            <v-data-table :headers="headersBoletas" :items="misBoletas" class="elevation-0"
+              :items-per-page="24">
+              <template v-slot:item.total_ingresos="{ item }">{{ PEN(item.total_ingresos) }}</template>
+              <template v-slot:item.total_descuentos="{ item }">{{ PEN(item.total_descuentos) }}</template>
+              <template v-slot:item.neto="{ item }"><strong>{{ PEN(item.neto) }}</strong></template>
               <template v-slot:item.acciones="{ item }">
-                <v-btn v-if="item.archivo_url" icon="mdi-file-eye" size="x-small" variant="text"
-                  title="Ver aquí mismo" @click="abrirVisor(item.archivo_url, item.nombre)" />
-                <v-btn icon="mdi-delete" size="x-small" variant="text" color="error"
-                  title="Eliminar" @click="eliminarCertificado(item)" />
+                <div v-if="item.pdf_url" class="acciones-fila">
+                  <v-btn icon="mdi-eye-outline" size="small" variant="text"
+                    title="Ver aquí mismo" @click="abrirVisor(item.pdf_url, `Boleta ${item.periodo}`)" />
+                  <v-btn icon="mdi-download-outline" size="small" variant="text" title="Descargar"
+                    :href="urlDescarga(client, item.pdf_url, item.codigo || `boleta-${item.periodo}`)" />
+                </div>
               </template>
             </v-data-table>
           </v-card>
+        </div>
+
+        <!-- ══════════ MIS CONTRATOS (23/09/2026) ══════════
+             Sustituye a "Mis certificados" (21/09): mismo autoservicio, otro documento. -->
+        <div v-else-if="tab === 'contratos'">
+          <PiolaMisDocumentos tipo="contrato" :documentos="misContratos" :email="perfil?.email || ''"
+            @agregado="agregarDocumento" @eliminado="quitarDocumento"
+            @notify="(p: any) => emit('notify', p)" />
         </div>
 
         <!-- ══════════ VISOR DE SUPERVISOR ══════════ -->
@@ -347,15 +332,15 @@
  * Mi espacio — la vista del colaborador (§7.1, §7.2, §7.3).
  *
  * Es lo único que ve el rol "Colaborador": marca su jornada y sus breaks,
- * consulta su historial, pide vacaciones y descarga sus propias boletas.
- * Nada de esto le muestra datos de terceros: las boletas se piden con
- * ?vista=mias y el endpoint filtra por su correo.
+ * consulta su historial, pide vacaciones y sube sus recibos por honorarios y
+ * contratos. Nada de esto le muestra datos de terceros: los pagos emitidos por
+ * Piola se piden con ?vista=mias y el endpoint filtra por su correo.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { PEN, fechaCorta, horaLima, minutosAHoras, urlDocumento, periodoActual, hoyISO, apiPiola } from '@/composables/usePiola'
+import { PEN, fechaCorta, horaLima, minutosAHoras, urlDocumento, urlDescarga, periodoActual, hoyISO } from '@/composables/usePiola'
 import { piolaCan } from '@/utils/permissions'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
-import PiolaSubirPdf from './PiolaSubirPdf.vue'
+import PiolaMisDocumentos from './PiolaMisDocumentos.vue'
 
 const client = useSupabaseClient()
 
@@ -524,45 +509,21 @@ const headersBoletas = [
   { title: '', key: 'acciones', sortable: false },
 ]
 
-/* ── Mis certificados (reunión 21/09/2026): autoservicio, sin permiso de RR. HH. ── */
-const misCertificados = ref<any[]>([])
-const nuevoCertificado = ref<any>({ nombre: '', fecha: '', archivo_url: null })
-const subiendoCertificado = ref(false)
+/* ── Mis recibos por honorarios y Mis contratos (23/09/2026) ──
+ * Autoservicio, sin permiso de RR. HH. La lista llega con el perfil y la mantiene
+ * este componente; PiolaMisDocumentos solo avisa qué se agregó o se quitó.
+ * Los certificados de cursos (21/09) que alguien ya haya subido siguen en la base y
+ * RR. HH. los ve en el expediente; solo dejaron de tener pestaña aquí. */
+const misDocumentos = ref<any[]>([])
+const misRecibos = computed(() =>
+  misDocumentos.value.filter(d => d.tipo === 'recibo_honorarios')
+    // Del mes más reciente al más antiguo; a igual mes, el último que se subió
+    .sort((a, b) => String(b.periodo || '').localeCompare(String(a.periodo || ''))
+      || String(b.created_at || '').localeCompare(String(a.created_at || ''))))
+const misContratos = computed(() => misDocumentos.value.filter(d => d.tipo === 'contrato'))
 
-function resetCertificado() {
-  nuevoCertificado.value = { nombre: '', fecha: '', archivo_url: null }
-}
-
-async function agregarCertificado() {
-  const c = nuevoCertificado.value
-  if (!c.nombre?.trim()) return emit('notify', { text: 'Ponle un nombre al certificado', color: 'error' })
-  if (!c.archivo_url) return emit('notify', { text: 'Sube el archivo antes de agregarlo', color: 'error' })
-
-  subiendoCertificado.value = true
-  const { data, error } = await apiPiola('colaborador', {
-    accion: 'mi_documento_crear', nombre: c.nombre.trim(), archivo_url: c.archivo_url, fecha: c.fecha || null,
-  })
-  subiendoCertificado.value = false
-  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
-
-  misCertificados.value = [data.documento, ...misCertificados.value]
-  emit('notify', 'Certificado agregado')
-  resetCertificado()
-}
-
-async function eliminarCertificado(c: any) {
-  if (!confirm(`¿Eliminar "${c.nombre}"?`)) return
-  const { error } = await apiPiola('colaborador', { accion: 'mi_documento_eliminar', id: c.id })
-  if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
-  misCertificados.value = misCertificados.value.filter((d) => d.id !== c.id)
-  emit('notify', 'Certificado eliminado')
-}
-
-const headersCertificados = [
-  { title: 'Nombre', key: 'nombre' },
-  { title: 'Fecha', key: 'fecha' },
-  { title: '', key: 'acciones', sortable: false },
-]
+const agregarDocumento = (doc: any) => { misDocumentos.value = [doc, ...misDocumentos.value] }
+const quitarDocumento = (id: number) => { misDocumentos.value = misDocumentos.value.filter(d => d.id !== id) }
 
 /* ══════════ Visor de supervisor ══════════
  *
@@ -662,7 +623,7 @@ onMounted(async () => {
   actualizarReloj()
   intervalo = setInterval(actualizarReloj, 1000)
   tareo.value = props.perfil?.tareo_hoy || null
-  misCertificados.value = props.perfil?.mis_certificados || []
+  misDocumentos.value = props.perfil?.mis_documentos || []
   await Promise.all([cargarHistorial(), cargarVacaciones(), cargarBoletas()])
   // El tablero se pide después: alimenta los nombres del acumulado mensual,
   // así que este orden importa.
@@ -712,6 +673,7 @@ onUnmounted(() => { if (intervalo) clearInterval(intervalo) })
   letter-spacing: .4px; opacity: .65; margin-bottom: 12px;
 }
 .vac-form { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 10px; align-items: center; }
+.acciones-fila { display: flex; justify-content: flex-end; gap: 2px; }
 
 .estado-chip {
   display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;

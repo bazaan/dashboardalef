@@ -67,16 +67,20 @@ export default defineEventHandler(async (event) => {
     ? String(perfil.colaborador.fecha_fin_contrato).slice(0, 10) : null
   const diasParaRenovacion = finContrato ? diasEntre(hoy, finContrato) : null
 
-  /* ── Mis certificados de cursos (reunión 21/09/2026): solo los propios ── */
-  let misCertificados: any[] = []
+  /* ── Mis documentos (Mi Espacio): recibos por honorarios y contratos, solo los propios ──
+   * Incluye lo que RR. HH. cargó en su expediente además de lo que subió él mismo;
+   * la pantalla distingue uno y otro con `subido_por`. `select('*')` y no una lista
+   * de columnas: `periodo` lo agrega sql/piola_mi_espacio_documentos.sql y así esta
+   * consulta no se rompe si el deploy llega antes que el SQL. */
+  let misDocumentos: any[] = []
   if (perfil.colaborador?.id) {
     const { data } = await supabase
       .from('piola_colaborador_documentos')
-      .select('id, nombre, archivo_url, fecha, created_at')
+      .select('*')
       .eq('colaborador_id', perfil.colaborador.id)
-      .eq('tipo', 'certificado')
+      .in('tipo', ['recibo_honorarios', 'contrato', 'certificado'])
       .order('created_at', { ascending: false })
-    misCertificados = data || []
+    misDocumentos = data || []
   }
 
   return {
@@ -108,6 +112,6 @@ export default defineEventHandler(async (event) => {
     tareo_hoy: hoyRow
       ? { ...hoyRow, break_abierto: breakAbierto }
       : null,
-    mis_certificados: misCertificados,
+    mis_documentos: misDocumentos,
   }
 })

@@ -214,7 +214,7 @@
                       <v-btn icon="mdi-file-eye" size="x-small" variant="text" title="Ver"
                         @click="verDoc(c.contrato_pdf, `Contrato — ${nombreCompleto(ficha)}`)" />
                       <v-btn icon="mdi-download" size="x-small" variant="text" title="Descargar"
-                        :href="urlDoc(c.contrato_pdf)" />
+                        :href="urlDescarga(client, c.contrato_pdf, `Contrato - ${nombreCompleto(ficha)}.pdf`)" />
                     </template>
                     <span v-else style="opacity:.3">—</span>
                   </td>
@@ -236,6 +236,9 @@
                   density="compact" hide-details variant="outlined" />
                 <v-text-field v-model="nuevoDoc.nombre" label="Nombre del documento *"
                   density="compact" hide-details variant="outlined" />
+                <v-select v-if="nuevoDoc.tipo === 'recibo_honorarios'" v-model="nuevoDoc.periodo"
+                  :items="opcionesPeriodoDoc" label="Mes que cubre el recibo *" density="compact"
+                  hide-details variant="outlined" />
                 <v-text-field v-model="nuevoDoc.fecha" type="date" label="Fecha" density="compact"
                   hide-details variant="outlined" />
               </div>
@@ -250,30 +253,39 @@
               </div>
             </div>
 
-            <v-table v-if="documentos.length" density="compact" class="mt-3">
-              <thead>
-                <tr><th>Tipo</th><th>Nombre</th><th>Fecha</th><th>Subió</th><th class="text-right" /></tr>
-              </thead>
-              <tbody>
-                <tr v-for="d in documentos" :key="d.id">
-                  <td>{{ etiquetaTipoDoc(d.tipo) }}</td>
-                  <td>{{ d.nombre }}</td>
-                  <td>{{ fechaCorta(d.fecha) }}</td>
-                  <td class="sub-linea">{{ d.subido_por || '—' }}</td>
-                  <td class="text-right">
-                    <template v-if="d.archivo_url">
-                      <v-btn icon="mdi-file-eye" size="x-small" variant="text" title="Ver"
-                        @click="verDoc(d.archivo_url, d.nombre)" />
-                      <v-btn icon="mdi-download" size="x-small" variant="text" title="Descargar"
-                        :href="urlDoc(d.archivo_url)" />
-                    </template>
-                    <v-btn v-if="puedeEliminar" icon="mdi-delete" size="x-small" variant="text"
-                      color="error" @click="eliminarDocumento(d)" />
-                  </td>
-                </tr>
-              </tbody>
-            </v-table>
-            <div v-else class="sin-datos">Sin documentos en el expediente.</div>
+            <!-- Agrupados por tipo: contratos, recibos, certificados… en ese orden -->
+            <div v-for="g in documentosAgrupados" :key="g.tipo" class="grupo-doc">
+              <div class="grupo-doc-titulo">
+                {{ g.titulo }} <span class="grupo-doc-n">{{ g.items.length }}</span>
+              </div>
+              <v-table density="compact">
+                <thead>
+                  <tr>
+                    <th v-if="g.tipo === 'recibo_honorarios'">Mes</th>
+                    <th>Nombre</th><th>Fecha</th><th>Subió</th><th class="text-right" />
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="d in g.items" :key="d.id">
+                    <td v-if="g.tipo === 'recibo_honorarios'"><strong>{{ etiquetaPeriodo(d.periodo) }}</strong></td>
+                    <td>{{ d.nombre }}</td>
+                    <td>{{ fechaCorta(d.fecha) }}</td>
+                    <td class="sub-linea">{{ d.subido_por || '—' }}</td>
+                    <td class="text-right">
+                      <template v-if="d.archivo_url">
+                        <v-btn icon="mdi-eye-outline" size="small" variant="text" title="Ver aquí mismo"
+                          @click="verDoc(d.archivo_url, d.nombre)" />
+                        <v-btn icon="mdi-download-outline" size="small" variant="text" title="Descargar"
+                          :href="urlDescarga(client, d.archivo_url, `${d.nombre}.pdf`)" />
+                      </template>
+                      <v-btn v-if="puedeEliminar" icon="mdi-delete-outline" size="small" variant="text"
+                        color="error" title="Eliminar" @click="eliminarDocumento(d)" />
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
+            <div v-if="!documentos.length" class="sin-datos">Sin documentos en el expediente.</div>
           </div>
         </v-card-text>
 
@@ -306,7 +318,10 @@
  * alguien.
  */
 import { ref, computed, onMounted } from 'vue'
-import { PEN, fechaCorta, hoyISO, urlDocumento, apiPiola } from '@/composables/usePiola'
+import {
+  PEN, fechaCorta, hoyISO, urlDocumento, urlDescarga, apiPiola, etiquetaPeriodo, periodoActual,
+  ultimosPeriodos, TIPOS_DOCUMENTO_COLABORADOR, etiquetaTipoDocColaborador,
+} from '@/composables/usePiola'
 import PiolaSubirPdf from './PiolaSubirPdf.vue'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
 
@@ -347,14 +362,8 @@ const ESTADOS_LABORALES = [
   { value: 'suspendido', title: 'Suspendido' },
   { value: 'cesado', title: 'Cesado' },
 ]
-const TIPOS_DOCUMENTO = [
-  { value: 'dni', title: 'Documento de identidad' },
-  { value: 'cv', title: 'Currículum' },
-  { value: 'certificado', title: 'Certificado' },
-  { value: 'contrato', title: 'Contrato' },
-  { value: 'adenda', title: 'Adenda' },
-  { value: 'otro', title: 'Otro' },
-]
+// Misma lista que Mi Espacio y "Documentos del equipo" (composables/usePiola.ts)
+const TIPOS_DOCUMENTO = TIPOS_DOCUMENTO_COLABORADOR
 const OPCIONES_ESTADO = [
   { value: 'todos', title: 'Todos' },
   ...ESTADOS_LABORALES,
@@ -409,8 +418,7 @@ const colorEstado = (v: any) =>
   ({ activo: 'success', suspendido: 'warning', cesado: 'grey' }[String(v)] || 'success')
 const etiquetaTipoContrato = (v: any) =>
   TIPOS_CONTRATO_LAB.find(t => t.value === v)?.title || v
-const etiquetaTipoDoc = (v: any) =>
-  TIPOS_DOCUMENTO.find(t => t.value === v)?.title || v
+const opcionesPeriodoDoc = ultimosPeriodos(24).map(p => ({ value: p, title: etiquetaPeriodo(p) }))
 
 function antiguedad(desde: any): string {
   if (!desde) return '—'
@@ -471,6 +479,26 @@ const ficha = ref<any>(null)
 const tabFicha = ref('personales')
 const contratosLab = ref<any[]>([])
 const documentos = ref<any[]>([])
+
+/** Documentos en grupos ordenados: contratos, recibos, certificados, y el resto. */
+const ORDEN_GRUPOS = ['contrato', 'recibo_honorarios', 'certificado']
+const documentosAgrupados = computed(() => {
+  const porTipo = new Map<string, any[]>()
+  for (const d of documentos.value) {
+    const t = String(d.tipo || 'otro')
+    porTipo.set(t, [...(porTipo.get(t) || []), d])
+  }
+  const tipos = [...porTipo.keys()].sort((a, b) => {
+    const ia = ORDEN_GRUPOS.indexOf(a), ib = ORDEN_GRUPOS.indexOf(b)
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b)
+  })
+  return tipos.map(t => {
+    const items = porTipo.get(t)!
+    // Recibos: del mes más reciente al más antiguo. El resto: lo último que se subió, primero.
+    if (t === 'recibo_honorarios') items.sort((x, y) => String(y.periodo || '').localeCompare(String(x.periodo || '')))
+    return { tipo: t, titulo: etiquetaTipoDocColaborador(t), items }
+  })
+})
 
 async function abrir(c: any) {
   ficha.value = {
@@ -622,9 +650,9 @@ async function eliminarContratoLab(c: any) {
 }
 
 /* ══════════ Documentos ══════════ */
-const nuevoDoc = ref<any>({ tipo: 'otro', nombre: '', fecha: '', archivo_url: null })
+const nuevoDoc = ref<any>({ tipo: 'otro', nombre: '', fecha: '', periodo: periodoActual(), archivo_url: null })
 const resetDoc = () => {
-  nuevoDoc.value = { tipo: 'otro', nombre: '', fecha: hoyISO(), archivo_url: null }
+  nuevoDoc.value = { tipo: 'otro', nombre: '', fecha: hoyISO(), periodo: periodoActual(), archivo_url: null }
 }
 
 async function guardarDocumento() {
@@ -635,6 +663,10 @@ async function guardarDocumento() {
   if (!d.archivo_url) {
     return emit('notify', { text: 'Sube el archivo antes de agregarlo', color: 'error' })
   }
+  // Un recibo se identifica por el mes que cubre: sin él no se sabe qué mes falta
+  if (d.tipo === 'recibo_honorarios' && !d.periodo) {
+    return emit('notify', { text: 'Elige el mes que cubre el recibo', color: 'error' })
+  }
   guardando.value = true
   const { error } = await apiPiola('colaborador', {
     accion: 'documento_crear',
@@ -643,6 +675,7 @@ async function guardarDocumento() {
     nombre: d.nombre.trim(),
     archivo_url: d.archivo_url,
     fecha: d.fecha || null,
+    periodo: d.tipo === 'recibo_honorarios' ? d.periodo : null,
   })
   guardando.value = false
   if (error) return emit('notify', { text: `Error: ${error.message}`, color: 'error' })
@@ -693,6 +726,16 @@ defineExpose({ cargar })
 .acciones-bloque { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 .sin-datos { font-size: 12.5px; opacity: .5; padding: 12px 0; }
+
+.grupo-doc { margin-top: 18px; }
+.grupo-doc-titulo {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+  font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; opacity: .75;
+}
+.grupo-doc-n {
+  font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+  background: rgba(128, 128, 128, .18);
+}
 
 @media (max-width: 800px) {
   .form-grid { grid-template-columns: 1fr; }

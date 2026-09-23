@@ -12,6 +12,7 @@
         <div class="table-tabs">
           <button :class="['tab', { active: tab === 'tablero' }]" @click="tab = 'tablero'">Tareo en vivo</button>
           <button :class="['tab', { active: tab === 'expedientes' }]" @click="tab = 'expedientes'">Expedientes</button>
+          <button :class="['tab', { active: tab === 'documentos' }]" @click="tab = 'documentos'">Documentos</button>
           <button :class="['tab', { active: tab === 'mensual' }]" @click="tab = 'mensual'">Reporte mensual</button>
           <button :class="['tab', { active: tab === 'vacaciones' }]" @click="tab = 'vacaciones'">
             Vacaciones <span v-if="pendientesVac" class="badge">{{ pendientesVac }}</span>
@@ -26,6 +27,11 @@
         <PiolaExpediente v-if="tab === 'expedientes'" :perfil="perfil"
           :puede-editar="puedeEditar" :puede-eliminar="esAdmin"
           @notify="(p: any) => emit('notify', p)" />
+
+        <!-- ══════════ DOCUMENTOS DEL EQUIPO (23/09/2026) ══════════
+             Lo que cada colaborador sube desde Mi Espacio + lo que RR. HH. carga en el expediente -->
+        <PiolaDocumentosEquipo v-else-if="tab === 'documentos'" :perfil="perfil"
+          :puede-eliminar="esAdmin" @notify="(p: any) => emit('notify', p)" />
 
         <div v-else-if="tab === 'tablero'">
           <div class="stats-grid">
@@ -503,6 +509,7 @@ import {
 } from '@/composables/usePiola'
 import PiolaVisorPdf from './PiolaVisorPdf.vue'
 import PiolaExpediente from './PiolaExpediente.vue'
+import PiolaDocumentosEquipo from './PiolaDocumentosEquipo.vue'
 
 const props = defineProps<{ perfil: any }>()
 const emit = defineEmits<{ (e: 'notify', payload: any): void }>()

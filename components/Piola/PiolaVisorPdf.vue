@@ -7,7 +7,7 @@
         <span style="font-weight:700; font-size:16px;">{{ titulo || 'Documento' }}</span>
         <v-spacer />
         <!-- La descarga va aparte de la vista: ver no debe forzar bajar el archivo -->
-        <v-btn v-if="src" size="small" variant="tonal" :href="src" :download="nombreArchivo" target="_self">
+        <v-btn v-if="src" size="small" variant="tonal" :href="hrefDescarga" :download="nombreDescarga" target="_self">
           <v-icon icon="mdi-download" start /> Descargar
         </v-btn>
       </v-card-title>
@@ -40,6 +40,7 @@
  * El botón de descarga se mantiene SEPARADO del de ver, tal como se pidió.
  */
 import { computed } from 'vue'
+import { conDescarga } from '@/composables/usePiola'
 
 const props = defineProps<{
   modelValue: boolean
@@ -56,6 +57,27 @@ const nombreArchivo = computed(() => {
   const limpio = String(props.src).split('?')[0]
   return decodeURIComponent(limpio.split('/').pop() || '') || undefined
 })
+
+/**
+ * Cómo se llamará el archivo al descargarlo: el título que ve el usuario
+ * ("Contrato de locación 2026") con la extensión real, no el nombre técnico
+ * del bucket ("contrato-1790186343584-alkt64.pdf").
+ */
+const nombreDescarga = computed(() => {
+  const base = nombreArchivo.value
+  if (!base) return undefined
+  const titulo = String(props.titulo || '').trim()
+  if (!titulo) return base
+  const ext = /\.[a-z0-9]{2,5}$/i.exec(base)?.[0] || ''
+  return `${titulo}${ext}`
+})
+
+/**
+ * El atributo `download` no vale para archivos de otro dominio (Storage): sin
+ * esto, "Descargar" abría el PDF en esta misma pestaña y sacaba al usuario del
+ * dashboard. Con `?download=` Storage responde como adjunto y baja directo.
+ */
+const hrefDescarga = computed(() => conDescarga(props.src, nombreDescarga.value))
 </script>
 
 <style scoped>

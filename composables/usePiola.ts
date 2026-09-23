@@ -89,6 +89,52 @@ export function urlDocumento(client: any, path: string | null | undefined): stri
   }
 }
 
+/**
+ * Convierte la URL de un documento del bucket en una URL que se DESCARGA.
+ *
+ * Un <a download> se ignora cuando el archivo vive en otro dominio (Supabase
+ * Storage lo está), y el navegador terminaba abriendo el PDF en la misma
+ * pestaña — sacando al usuario del dashboard. Storage acepta `?download=<nombre>`
+ * y responde con `Content-Disposition: attachment`, que sí descarga en el acto.
+ * Lo que no es del bucket (una URL externa, un blob) se devuelve tal cual.
+ */
+export function conDescarga(url: string | null | undefined, nombre?: string | null): string {
+  if (!url) return ''
+  if (!url.includes('/storage/v1/object/public/')) return url
+  const limpio = String(nombre || '').trim().replace(/[\\/:*?"<>|]+/g, '-')
+  return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(limpio)}`
+}
+
+/** Atajo: path del bucket → URL de descarga. `nombre` es el que verá quien lo baja. */
+export const urlDescarga = (client: any, path: string | null | undefined, nombre?: string | null) =>
+  conDescarga(urlDocumento(client, path), nombre)
+
+/** 'YYYY-MM' → 'Septiembre 2026'. Lo que no tiene ese formato se devuelve igual. */
+export function etiquetaPeriodo(periodo: any): string {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(periodo || ''))
+  if (!m) return periodo ? String(periodo) : '—'
+  const mes = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1))
+    .toLocaleDateString('es-PE', { month: 'long', timeZone: 'UTC' })
+  return `${mes.charAt(0).toUpperCase()}${mes.slice(1)} ${m[1]}`
+}
+
+/**
+ * Tipos de documento del expediente de un colaborador
+ * (`piola_colaborador_documentos.tipo`). Una sola lista para que Mi Espacio,
+ * el Expediente y "Documentos del equipo" de RR. HH. hablen igual.
+ */
+export const TIPOS_DOCUMENTO_COLABORADOR = [
+  { value: 'dni', title: 'Documento de identidad' },
+  { value: 'cv', title: 'Currículum' },
+  { value: 'contrato', title: 'Contrato' },
+  { value: 'adenda', title: 'Adenda' },
+  { value: 'recibo_honorarios', title: 'Recibo por honorarios' },
+  { value: 'certificado', title: 'Certificado' },
+  { value: 'otro', title: 'Otro' },
+]
+export const etiquetaTipoDocColaborador = (v: any) =>
+  TIPOS_DOCUMENTO_COLABORADOR.find(t => t.value === v)?.title || String(v || 'Otro')
+
 /** Condiciones de pago de un contrato. Catálogo corto y estable. */
 export const MODALIDADES_PAGO = [
   { value: 'mensual', title: 'Mensual' },

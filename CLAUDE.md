@@ -1352,12 +1352,14 @@ Los demás dashboards usan los roles globales (`superadmin`/`admin`/`agente`). P
 | Componente | Módulo |
 |---|---|
 | `Piola/PiolaHome.vue` | KPIs + widgets personales (vacaciones, antigüedad, contrato) |
-| `Piola/PiolaMiEspacio.vue` | Marcación de jornada/breaks, historial, vacaciones, boletas propias y certificados de cursos propios |
+| `Piola/PiolaMiEspacio.vue` | Marcación de jornada/breaks, historial, vacaciones, **Mis recibos por honorarios** y **Mis contratos** (subida de PDF propia) |
+| `Piola/PiolaMisDocumentos.vue` | Formulario + lista + visor emergente de los documentos propios de Mi Espacio (recibos y contratos) |
 | `Piola/PiolaCRM.vue` | Kanban + tabla de leads, historial de interacciones, conversión a cliente |
 | `Piola/PiolaContabilidad.vue` | Ingresos/egresos, flujo de caja, **CRUD de categorías jerárquicas**, comisiones |
 | `Piola/PiolaFacturacion.vue` | Emisión con detracción, histórico, cobro → flujo de caja |
 | `Piola/PiolaProduccion.vue` | Entregables por marca, aprobación de Dirección, cumplimiento mensual |
-| `Piola/PiolaRRHH.vue` | Tareo en vivo, reporte mensual, vacaciones, boletas y AFP |
+| `Piola/PiolaRRHH.vue` | Tareo en vivo, expedientes, **documentos del equipo**, reporte mensual, vacaciones, boletas y AFP |
+| `Piola/PiolaDocumentosEquipo.vue` | RR. HH. → Documentos: quién tiene contrato en PDF y quién entregó el recibo por honorarios del mes, con detalle por persona |
 | `Piola/PiolaReportes.vue` | Reportes programados + configuración de alertas |
 | `Piola/PiolaConfiguracion.vue` | Colaboradores, roles/permisos, etapas del CRM, métodos de pago |
 
@@ -1380,7 +1382,7 @@ Helpers compartidos: `composables/usePiola.ts` (formatos PEN, fechas Lima, aplan
 | GET | `/api/piola/reportes` | `?run=1` ejecuta; `?preview=1&tipo=` vista previa |
 | POST | `/api/piola/caja` | Abrir / movimiento / eliminar_movimiento / cerrar |
 | POST | `/api/piola/pagos` | Registrar o eliminar un cobro/pago contra una cuenta |
-| POST | `/api/piola/colaborador` | Ficha, contratos laborales y documentos del expediente. `mi_documento_crear`/`mi_documento_eliminar` son autoservicio: cualquier colaborador con sesión sube/borra sus propios certificados, sin permiso de RR. HH. |
+| POST | `/api/piola/colaborador` | Ficha, contratos laborales y documentos del expediente. `mi_documento_crear`/`mi_documento_eliminar` son autoservicio: cualquier colaborador con sesión sube/borra sus propios recibos por honorarios y contratos (y certificados), sin permiso de RR. HH. |
 | POST | `/api/piola/contabilidad` | Movimientos y categorías de gasto |
 | POST | `/api/piola/configuracion` | Roles, permisos y catálogos (incl. la config financiera) |
 | POST | `/api/piola/crm` | Leads, interacciones y conversión a cliente |
@@ -1632,7 +1634,7 @@ sirvió para desambiguar qué significaba cada ítem. **Correr una vez `sql/piol
 |---|---|
 | Confirmar en vivo "eliminar Área y renombrar Etapa a Área" | **Ya estaba hecho desde el 14/09** — Roberto lo mostró en la llamada y Sebastián lo validó ("ya esto ya lo tengo mucho más claro cómo se ejecuta"). No fue un cambio nuevo, aunque el checklist automático lo vuelve a listar como pendiente de Roberto |
 | **Las áreas de producción reales son 4**: Guiones, Creadores operativos, Filmmakers y Diseño Gráfico (reemplazan a las 6 que Sebastián había confirmado el 07/09) | `CODIGOS_AREA_PRODUCCION_CONFIRMADOS` en `PiolaProduccion.vue` + 2 filas nuevas en `piola_produccion_areas` (`creadores_operativos`, `filmmakers`). Las filas del 07/09 (`produccion`, `grabacion`, `edicion`, `presentacion`) **no se tocan ni se renombran** — "Creadores operativos" y "Filmmakers" no son sinónimos evidentes de ninguna de ellas, y ya hay un entregable real (`piola_deliverables.id=4`) etiquetado "Producción"; adivinar el mapeo lo habría reinterpretado en silencio |
-| **Botón para que los empleados suban sus propios certificados de cursos** (antes solo RR. HH./Configuración podía adjuntar documentos al expediente) | Pestaña **"Mis certificados"** en Mi Espacio (`PiolaMiEspacio.vue`) + acciones `mi_documento_crear` / `mi_documento_eliminar` en `colaborador.post.ts`. **Sin exigir permiso de módulo** — alcanza con tener sesión de Piola — pero seguro: el `colaborador_id` sale siempre de la propia ficha (`perfil.colaborador.id`), nunca del body, el `tipo` queda fijo en `'certificado'` (no puede tocar DNI/contrato) y solo puede borrar lo que subió él mismo. Reutiliza la tabla que ya existía (`piola_colaborador_documentos`, sin migración) y el mismo componente de subida (`PiolaSubirPdf.vue`, bucket `piola-docs`) que usa el expediente de RR. HH. |
+| **Botón para que los empleados suban sus propios certificados de cursos** (antes solo RR. HH./Configuración podía adjuntar documentos al expediente) | *(El 23/09 esa pestaña se reemplazó por "Mis contratos" y "Mis recibos por honorarios", ver la sección de esa fecha; el mecanismo sigue igual.)* Pestaña **"Mis certificados"** en Mi Espacio (`PiolaMiEspacio.vue`) + acciones `mi_documento_crear` / `mi_documento_eliminar` en `colaborador.post.ts`. **Sin exigir permiso de módulo** — alcanza con tener sesión de Piola — pero seguro: el `colaborador_id` sale siempre de la propia ficha (`perfil.colaborador.id`), nunca del body, el `tipo` queda fijo en `'certificado'` (no puede tocar DNI/contrato) y solo puede borrar lo que subió él mismo. Reutiliza la tabla que ya existía (`piola_colaborador_documentos`, sin migración) y el mismo componente de subida (`PiolaSubirPdf.vue`, bucket `piola-docs`) que usa el expediente de RR. HH. |
 
 **Explícitamente NO implementado — ambiguo, no está en el checklist escrito:** en la transcripción Sebastián
 confirma algo que Roberto ya le había explicado antes ("habías mencionado, Roberto, que eso solo puede
@@ -1645,6 +1647,45 @@ tarea de cargar entregables. Si el cliente confirma el alcance exacto, se agrega
 - **Excel de códigos financieros** (Héctor → Roberto): sigue sin llegar.
 - **Texto del saludo automático de WhatsApp** (Héctor → Roberto): sigue sin llegar. (En la transcripción hay una frase suelta de que Héctor ya lo envió al *grupo de WhatsApp* del equipo — no es lo mismo que mandárselo a Roberto para cargarlo en `piola_mensajes`; el checklist escrito, posterior y más confiable, lo sigue listando como pendiente.)
 - **Operativo, no de código:** Héctor/Edson crean los usuarios del equipo (tope original: 22/09). Sebastián carga sus entregables pendientes al sistema.
+
+### Mi Espacio: recibos por honorarios y contratos — 23/09/2026 (migración `sql/piola_mi_espacio_documentos.sql`)
+
+Pedido de Roberto: en Mi Espacio, **"Mis boletas" pasa a "Mis recibos por honorarios"** y **"Mis certificados" pasa a
+"Mis contratos"**; en las dos el colaborador adjunta su PDF, lo ve en un visor emergente dentro del dashboard o lo
+descarga, y RR. HH. lo ve ordenado en su módulo. **Correr una vez el SQL ANTES de subir el código a main** (idempotente).
+
+- **Dónde se guarda:** sin tabla nueva. `piola_colaborador_documentos` (la del expediente) con `tipo='recibo_honorarios'`
+  o `'contrato'`; el PDF va al bucket `piola-docs` (carpetas `recibos-honorarios/` y `contratos/`). El SQL agrega solo
+  la columna **`periodo`** (`AAAA-MM`, el mes que cubre el recibo; CHECK de formato) y dos índices. **No hay columna de
+  monto a propósito:** la tabla se lee con la key pública (`anon_all_…`) y un importe es remuneración.
+- **Autoservicio, misma seguridad que el 21/09** (`mi_documento_crear`/`mi_documento_eliminar`): `colaborador_id` sale
+  de la sesión, nunca del body; `tipo` solo puede ser `recibo_honorarios`, `contrato` o `certificado`
+  (`TIPOS_AUTOSERVICIO`; sin `tipo` = `certificado`, por compatibilidad); un recibo **exige `periodo`**. Endurecido el
+  23/09: **solo se puede borrar lo que subió uno mismo** (`subido_por`) — un contrato que RR. HH. cargó en el expediente
+  aparece en "Mis contratos" pero el colaborador no puede quitarlo (403); y al borrar se elimina también el PDF del
+  bucket (antes el registro se iba pero el archivo quedaba vivo).
+- **"Mis certificados" (21/09) dejó de tener pestaña.** Los que ya estén subidos siguen en la base y RR. HH. los ve en
+  el expediente. Si el cliente los quiere de vuelta, es agregar una tercera pestaña con `<PiolaMisDocumentos>`.
+- **"Mis boletas" no desapareció:** los pagos que Piola le emitió al colaborador (`piola_payslips`, `?vista=mias`)
+  siguen a la vista **debajo** del formulario de recibos, solo si tiene alguno, para no dejar sin acceso a quien esté
+  en planilla.
+- **RR. HH. → pestaña "Documentos"** (`PiolaDocumentosEquipo.vue`): 4 tarjetas (contratos cargados, recibos del mes
+  recibidos, pendientes, total), tabla por colaborador (contrato: cargado/falta; recibo del mes: recibido/pendiente,
+  solo aplica a los de honorarios) con filtros, y un detalle por persona agrupado en Contratos / Recibos /
+  Certificados / Otros. Cuenta como contrato tanto lo subido como documento (`tipo='contrato'`) como los contratos
+  laborales con PDF (`piola_contratos_laborales.contrato_pdf`). El Expediente → Documentos ahora también agrupa por
+  tipo y acepta "Recibo por honorarios" con su mes.
+- **Descarga que no saca al usuario del dashboard:** un `<a download>` se ignora cuando el archivo está en otro
+  dominio (Storage) y el navegador abría el PDF en la misma pestaña. `conDescarga()`/`urlDescarga()` (en
+  `usePiola.ts`) agregan `?download=<nombre>`, con lo que Storage responde `Content-Disposition: attachment`
+  (verificado). Lo usan `PiolaVisorPdf` (botón "Descargar" de todos los visores) y los botones de descarga de Mi
+  Espacio, Expediente y Documentos del equipo. **Quedan con el `:href` viejo** (abren en la misma pestaña):
+  `PiolaContratos`, `PiolaCuentas`, `PiolaFacturacion`, `PiolaAdjuntos`, `PiolaClientes` y las boletas/AFP de
+  `PiolaRRHH` — cambiarlos es una línea cada uno.
+- **Ojo de privacidad (ya existía, ahora pesa más):** `piola_colaborador_documentos` tiene policy `anon_all` y el
+  bucket `piola-docs` es público, así que cualquiera con la key pública podría listar los contratos y recibos.
+  Cerrarlo = quitar la policy `anon` de esa tabla, leer por endpoint y pasar el bucket a privado con URLs firmadas
+  (el path se guarda, no la URL, justamente para poder hacerlo sin migrar filas).
 
 ### Pendientes del cliente (bloquean cierre, no desarrollo)
 

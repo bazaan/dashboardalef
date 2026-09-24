@@ -1069,6 +1069,50 @@ cliente) — sólo se excluyen las de auditoría/sincronización (`id`, `created
 
 ---
 
+### Solicitudes - formularios: web + IG + FB + TikTok (23/09/2026) — `sql/tradecars_formularios_sheets.sql`
+
+El módulo **"Solicitudes Web" pasó a llamarse "Solicitudes - formularios"** (menú y título; el `id` interno sigue
+siendo `solicitudes` porque se recuerda entre sesiones) y tiene **4 submódulos**: Formularios web · IG · FB · TIKTOK
+(selector de botones en `pages/pruebas/TradeCars.vue`, `formSub`, recordado en `tradecars:formSub`).
+
+- **Formularios web** es lo de siempre, sin cambios: "Quieren VENDER / COMPRAR" desde `tradecars_solicitudes_venta` /
+  `_compra` (Supabase directo).
+- **Formularios IG / FB / TIKTOK** (`components/TradeCars/FormulariosSheet.vue`) tienen la misma interfaz de tarjetas
+  (estado, notas, precio ofrecido, WhatsApp, correo, "Crear cliente"), pero los leads salen de **una hoja de Google por
+  canal** —la que llena Zapier— **leída EN VIVO**: al abrir el submódulo (`:key` la remonta), al tocar Actualizar, al
+  volver a la pestaña del navegador y cada 60 s mientras se mira (se pausa con una tarjeta abierta, para no pisar lo que
+  alguien escribe). Sin copia ni caché de los datos del lead.
+- **La hoja es de SOLO LECTURA.** El estado/notas/precio/cliente de cada tarjeta viven en `tradecars_formularios_estado`,
+  atados al lead por `lead_key`: el **ID del formulario** si la hoja lo trae, o un **hash de fecha+teléfono+correo+nombre**
+  (`utils/tradecarsFormularios.ts`). **Nunca el n.º de fila**: ordenar o borrar filas movería el trabajo hecho a otra
+  persona. Si la fila desaparece de la hoja pero la tarjeta ya tenía trabajo, se sigue mostrando ("ya no está en la hoja").
+  No hay botón Eliminar (no se puede borrar de la hoja): se usa el estado `descartado`.
+- **Columnas por detección, no fijas.** No se conocían las columnas (las arma Zapier según el formulario de Meta/TikTok), así
+  que `detectarMapeo()` las reconoce por el encabezado (ES/EN, sin tildes ni mayúsculas; excluye p. ej. `campaign_name` como
+  nombre) y **nada se descarta**: lo no reconocido sale como "Otros datos del formulario". El administrador corrige el mapeo
+  desde "Conectar hoja" (`tradecars_formularios_config.mapeo`, que manda sobre la detección). Limpieza: `p:+51…` de Meta →
+  `+51…`; "85,000" → 85000 pero "85 mil" NO se inventa; fechas de Sheets (número serial) y texto ISO/dd-mm-aaaa.
+- **Conexión con Google = el mismo OAuth por empresa que Healup/Davila**: `state=tradecars` en el callback compartido
+  `/api/healup/gcal-callback` → token en `app_settings.google_refresh_token_tradecars`. Sin tocar Google Cloud Console.
+  Endpoints: `GET /api/tradecars/formularios?canal=` (lee y fusiona), `POST /api/tradecars/formularios`
+  (`guardar` | `probar` | `configurar` | `quitar`), `GET /api/tradecars/google-auth` y `google-status`.
+- **Seguridad:** conectar Google y las hojas es **solo Administrador** (verificado en el servidor); ver exige `comercial.view`
+  y guardar `comercial.edit`. El callback compartido es público: para `state=tradecars` ahora exige además sesión de
+  Administrador (sin eso cualquiera con el `client_id` —que viaja en la URL— podía reemplazar la cuenta conectada).
+  Las tablas nuevas **no tienen policy `anon`**. Los fallos de conexión con la hoja NO son un 500: el GET responde 200 con
+  `error: { causa, mensaje }` (sin_google | token | sin_acceso | no_encontrada | otro) y la pantalla explica qué hacer.
+- **Se muestran los 1.500 leads más recientes** (`?limite=`, tope 5.000) y la pantalla avisa si hay más.
+- **Sin las tablas** (SQL sin correr) el módulo igual abre: los leads se ven, y guardar estado/notas queda deshabilitado con un
+  aviso. La hoja se puede fijar por env (`TRADECARS_SHEET_*_ID`) mientras tanto.
+- **NO se pudo probar contra hojas reales** (no había acceso): se probó con un Google simulado inyectado en el servidor de
+  desarrollo (`node --import`), con hojas de ejemplo de Meta, TikTok y un 403. Lo primero al tener acceso: conectar, **Probar
+  lectura** y revisar que las columnas queden bien asignadas.
+- **Guía paso a paso para conectar:** `referencia/tradecars/formularios-sheets-guia.md`.
+- **Ojo:** pedido a futuro por Trade Cars (reunión 18/09) — cruzar estos leads contra los chats existentes y repartirlos
+  entre los 4 asesores ("Asignado / Sin asignar") — **no está hecho**: aquí no hay columna de asesor todavía.
+
+---
+
 ## Variables de Entorno (`.env`)
 
 ```
@@ -1125,6 +1169,11 @@ VONAGE_FROM_NUMBER=                        # (opcional) número origen Vonage (d
 VONAGE_ANSWER_URL=                         # (opcional) URL del NCCO (default: <dominio>/api/vonage/handle-call)
 VONAGE_NCCO_TEXT=                          # (opcional) texto de la llamada (default: "Emergencia Gatwick. Revisa el WhatsApp")
 GATWICK_LLAMADA_DESTINO_FALLBACK=          # número(s) destino si gatwick_alerta_destinos está vacía (coma-separados)
+# Trade Cars — Solicitudes · formularios IG/FB/TikTok (hojas de Google). Todas OPCIONALES: la conexión se hace desde la pantalla.
+TRADECARS_SHEET_IG_ID=                     # enlace o ID de la hoja de IG (respaldo; lo guardado desde la pantalla manda)
+TRADECARS_SHEET_FB_ID=                     # ídem FB
+TRADECARS_SHEET_TIKTOK_ID=                 # ídem TikTok
+TRADECARS_SHEET_IG_TAB= / TRADECARS_SHEET_FB_TAB= / TRADECARS_SHEET_TIKTOK_TAB=   # nombre de pestaña (default: la del enlace o la primera)
 ```
 
 > **Tool "Calendario FB/IG"** (`POST /api/healup/calendario-fbig`, api_key `healup-calendario-fbig-2026`):

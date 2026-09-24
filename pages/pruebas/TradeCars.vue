@@ -266,17 +266,32 @@
         </div>
       </div>
 
-      <!-- ==========  VISTA: SOLICITUDES WEB (CARDS)  ========== -->
+      <!-- ==========  VISTA: SOLICITUDES - FORMULARIOS (CARDS)  ==========
+           4 submódulos: Formularios web (lo de siempre: quieren vender / quieren comprar, desde la base de
+           datos) y Formularios IG / FB / TIKTOK (mismas tarjetas, pero leídas EN VIVO de un Google Sheet por canal). -->
       <div v-else-if="activeView === 'solicitudes'" class="view-container">
         <header class="top-header">
-          <h1>Solicitudes Web</h1>
-          <button class="btn-primary" @click="fetchSolicitudes">
+          <h1>Solicitudes - formularios</h1>
+          <button v-if="formSub === 'web'" class="btn-primary" @click="fetchSolicitudes">
             <v-icon icon="mdi-refresh" size="16" />
             <span>Actualizar</span>
           </button>
         </header>
 
         <div class="content-area">
+          <div class="sub-tabs">
+            <button v-for="m in FORM_SUBMODULOS" :key="m.id" :class="['sub-tab', { active: formSub === m.id }]"
+              @click="formSub = m.id">
+              <v-icon :icon="m.icon" size="17" />
+              <span>{{ m.label }}</span>
+            </button>
+          </div>
+
+          <!-- IG / FB / TikTok: se vuelve a leer la hoja cada vez que se abre el submódulo (por eso el :key) -->
+          <TradeCarsFormulariosSheet v-if="formSub !== 'web'" :key="formSub" :canal="formSub as any"
+            @notificar="notify" @cliente-creado="fetchClientes" />
+
+          <template v-else>
           <div class="table-tabs">
             <button :class="['tab', { active: solTab === 'venta' }]" @click="solTab = 'venta'; expandedSol = null">
               Quieren VENDER su auto ({{ solicitudesVenta.length }})
@@ -414,6 +429,7 @@
             <p>No hay solicitudes que coincidan con el filtro.</p>
             <small>Las solicitudes llegan automáticamente desde el formulario de la web.</small>
           </div>
+          </template>
         </div>
       </div>
 
@@ -1073,7 +1089,9 @@ function logout() {
 // del módulo 'home', que todo colaborador ve siempre.
 const MENU_ITEMS_TODOS = [
   { icon: 'mdi-view-dashboard', label: 'Dashboard', id: 'dashboard', modulo: 'home' },
-  { icon: 'mdi-form-select', label: 'Solicitudes Web', id: 'solicitudes', modulo: 'comercial' },
+  // 23/09/2026: "Solicitudes Web" pasa a "Solicitudes - formularios" y suma 3 submódulos (IG, FB, TikTok).
+  // El `id` NO cambia: se recuerda entre sesiones (useVistaPersistente) y lo referencian el resto de la página.
+  { icon: 'mdi-form-select', label: 'Solicitudes - formularios', id: 'solicitudes', modulo: 'comercial' },
   { icon: 'mdi-account-group', label: 'Clientes', id: 'clientes', modulo: 'comercial' },
   { icon: 'mdi-chart-box', label: 'Leads', id: 'leads', modulo: 'comercial' },
 ]
@@ -1188,6 +1206,18 @@ function colorEstadoCita(e: string) {
 /* ══════════════════════════════════════════════════════════════════════════
    SOLICITUDES WEB (los 2 formularios de la página)
    ══════════════════════════════════════════════════════════════════════════ */
+// Submódulos de "Solicitudes - formularios". `web` es lo de siempre (base de datos); ig/fb/tiktok se leen
+// en vivo de un Google Sheet por canal (components/TradeCars/FormulariosSheet.vue).
+const FORM_SUBMODULOS = [
+  { id: 'web', label: 'Formularios web', icon: 'mdi-web' },
+  { id: 'ig', label: 'Formularios IG', icon: 'mdi-instagram' },
+  { id: 'fb', label: 'Formularios FB', icon: 'mdi-facebook' },
+  { id: 'tiktok', label: 'Formularios TIKTOK', icon: 'mdi-music-note' },
+]
+const formSub = usePersistente('tradecars:formSub', 'web')
+// Un valor viejo o inválido guardado en el navegador no debe dejar la pantalla en blanco
+watch(formSub, (v) => { if (!FORM_SUBMODULOS.some(m => m.id === v)) formSub.value = 'web' }, { immediate: true })
+
 const solicitudesCompra = ref<any[]>([])
 const solicitudesVenta = ref<any[]>([])
 const solTab = ref<'venta' | 'compra'>('venta')
@@ -2099,6 +2129,22 @@ onMounted(async () => {
     return navigateTo('/')
   }
   applyTheme()
+
+  // Regreso de "Conectar con Google" (callback OAuth compartido con Healup/Davila): ?gcal_success / ?gcal_error
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('gcal_success') || params.get('gcal_error')) {
+    activeView.value = 'solicitudes'
+    if (params.get('gcal_success')) {
+      notify('Google conectado. Ahora abre "Conectar hoja" y pega el enlace de la hoja de cada canal.')
+    } else {
+      const causa = params.get('gcal_error')
+      notify(causa === 'sin_permiso'
+        ? 'Solo un administrador de Trade Cars puede conectar la cuenta de Google.'
+        : `No se pudo conectar Google: ${causa}`, 'error')
+    }
+    window.history.replaceState({}, '', window.location.pathname)
+  }
+
   await Promise.all([
     fetchSolicitudes(), fetchClientes(), fetchVehiculos(),
     fetchVentas(), fetchLeads(), fetchCitas(), fetchEgresos(),
@@ -2108,6 +2154,39 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* ---- Solicitudes - formularios: selector de submódulo (Web / IG / FB / TikTok) ---- */
+.sub-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.sub-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 128, 128, .28);
+  background: transparent;
+  color: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+
+.sub-tab:hover {
+  background: rgba(128, 128, 128, .1);
+}
+
+.sub-tab.active {
+  background: rgba(218, 165, 32, .16);
+  border-color: #daa520;
+  color: #daa520;
+}
+
 /* ---- Solicitudes web: grid de tarjetas expandibles ---- */
 .sol-toolbar {
   display: flex;

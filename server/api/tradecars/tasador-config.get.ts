@@ -9,7 +9,7 @@
  *   ?historial=30   cuántos movimientos del historial traer (default 30, máx 200)
  *
  * Resp: { parametros, parametros_detalle, reglas, alta_rotacion,
- *         historial, pendientes_alef, puede_editar, salud }
+ *         historial, pendientes_alef, correcciones, puede_editar, salud }
  *
  * `salud` avisa si el Tasador está en condiciones de tasar: si las tablas de
  * configuración o de datos están vacías, el agente de WhatsApp devuelve
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
 
   const config = await leerConfigTasador(supabase)
 
-  const [historial, pendientes, historico, preciosNuevos] = await Promise.all([
+  const [historial, pendientes, historico, preciosNuevos, correcciones] = await Promise.all([
     supabase.from('tradecars_tasador_cambios')
       .select('id,tipo,accion,objetivo,valor_anterior,valor_nuevo,resumen,motivo,estado,origen,solicitado_por,notas_alef,resuelto_at,created_at')
       .order('created_at', { ascending: false })
@@ -43,6 +43,13 @@ export default defineEventHandler(async (event) => {
       .select('id', { count: 'exact', head: true }),
     supabase.from('tradecars_data_precios_vehiculos_nuevos')
       .select('id', { count: 'exact', head: true }),
+    // Si sql/tradecars_tasador_correcciones.sql todavía no se corrió, esto vuelve
+    // con error y `.data` queda null — se resuelve como lista vacía más abajo,
+    // igual que el resto de consultas de este endpoint.
+    supabase.from('tradecars_tasador_correcciones')
+      .select('id,marca,modelo,anio,km,contexto,precio_tasado_bot,precio_correcto,motivo,registrado_por,created_at')
+      .order('created_at', { ascending: false })
+      .limit(limite),
   ])
 
   const nParametros = config.parametros_detalle.length
@@ -65,6 +72,7 @@ export default defineEventHandler(async (event) => {
     ...config,
     historial: historial.data || [],
     pendientes_alef: pendientes.data || [],
+    correcciones: correcciones.data || [],
     puede_editar: puedeEditarTasador(sesion),
     salud: {
       operativo: bloqueos.length === 0,

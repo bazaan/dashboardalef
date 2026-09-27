@@ -11,6 +11,15 @@
  *     tasación (workflow "TRADECARS | WHATSAPP | Agente Tasador", tool
  *     `obtener_configuracion`). No hay copia paralela ni redeploy de por medio.
  *
+ *  3. GUARDA CORRECCIONES PUNTUALES DE LOS ASESORES (27/09/2026) — cuando un
+ *     asesor le dice al chat que se equivocó en un caso concreto, queda guardado
+ *     en `tradecars_tasador_correcciones` (tools registrar_correccion_tasacion /
+ *     buscar_correcciones_similares) y se consulta antes de la siguiente
+ *     tasación parecida. NO pasa por el sistema de propuesta/confirmación:
+ *     no es un cambio de configuración general, así que cualquier asesor puede
+ *     dejarlo. Ojo: esto alimenta este chat, NO al Agente de WhatsApp — ver el
+ *     aviso de alcance en sql/tradecars_tasador_correcciones.sql.
+ *
  * SISTEMA DE DOS NIVELES (acordado con el cliente el 26/08/2026):
  *
  *   · Nivel 1 — parámetros de tasación, reglas por marca/modelo y modelos de
@@ -227,6 +236,55 @@ const TOOLS = [
     },
   },
 
+  /* ───── Memoria de correcciones (27/09/2026) ───── */
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_correccion_tasacion',
+      description:
+        'Guarda un caso puntual cuando un asesor corrige al Tasador: le dice que el precio de un auto ' +
+        'concreto debería ser otro, o que se equivocó por algo específico del auto. NO cambia ningún ' +
+        'parámetro general — es un caso de referencia que el Tasador va a consultar la próxima vez que ' +
+        'tase un auto parecido. Por eso no requiere confirmación con botón (a diferencia de las tools ' +
+        'proponer_*): cualquier asesor puede dejar una corrección, no sólo administración. Usar en cuanto ' +
+        'el asesor exprese una corrección, sin esperar a que lo pida explícitamente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          marca: { type: 'string' },
+          modelo: { type: 'string' },
+          anio: { type: 'integer', description: 'Año de fabricación del auto. Opcional.' },
+          km: { type: 'integer', description: 'Kilometraje del auto. Opcional.' },
+          contexto: { type: 'string', description: 'Detalles del auto que explican la corrección: versión, full equipo, GNV/GLP, estado, etc. Opcional.' },
+          precio_tasado_bot: { type: 'number', description: 'Lo que el Tasador había dicho para este auto, si se sabe. Opcional.' },
+          precio_correcto: { type: 'number', description: 'Lo que el asesor dice que debería haber sido, en USD.' },
+          motivo: { type: 'string', description: 'Por qué, en las palabras del asesor. Es lo que el Tasador va a citar después.' },
+        },
+        required: ['marca', 'modelo', 'precio_correcto', 'motivo'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_correcciones_similares',
+      description:
+        'Revisa si hay correcciones que un asesor ya dejó antes para una marca/modelo — casos reales ' +
+        'donde se corrigió al Tasador. Consultar SIEMPRE junto con buscar_comparables_historicos antes ' +
+        'de dar una tasación, y si aparece algo, usarlo como ejemplo concreto citando el motivo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          marca: { type: 'string' },
+          modelo: { type: 'string' },
+          anio_desde: { type: 'integer' },
+          anio_hasta: { type: 'integer' },
+        },
+        required: ['marca'],
+      },
+    },
+  },
+
   /* ───── Dashboard: funnel, asesores, campañas ───── */
   {
     type: 'function',
@@ -412,7 +470,7 @@ async function ejecutarTool(
   supabase: any,
   nombre: string,
   args: any,
-  ctx: { propuestas: any[]; puedeEditar: boolean },
+  ctx: { propuestas: any[]; puedeEditar: boolean; email: string },
 ) {
   /* ───── Configuración ───── */
   if (nombre === 'ver_configuracion_tasador') {
@@ -590,6 +648,59 @@ async function ejecutarTool(
           propuesta_inicial: f.monto_propuesta_inicial, monto_final: f.monto_mejorado, fecha: f.fecha_compra,
         })),
         nota: 'Si ambos vienen vacíos, Trade Cars no tiene registros propios de este modelo — decirlo explícitamente antes de dar cualquier referencia general.',
+      }
+    }
+
+    /* ───── Memoria de correcciones ───── */
+    case 'registrar_correccion_tasacion': {
+      if (!args.marca || !args.modelo || args.precio_correcto == null || !args.motivo) {
+        return { error: 'Faltan datos: marca, modelo, precio_correcto y motivo son obligatorios.' }
+      }
+      const { data, error } = await supabase.from('tradecars_tasador_correcciones').insert({
+        marca: args.marca,
+        modelo: args.modelo,
+        anio: args.anio ?? null,
+        km: args.km ?? null,
+        contexto: args.contexto ?? null,
+        precio_tasado_bot: args.precio_tasado_bot ?? null,
+        precio_correcto: args.precio_correcto,
+        motivo: args.motivo,
+        registrado_por: ctx.email,
+      }).select().single()
+      if (error) {
+        return { error: `No se pudo guardar (¿falta correr sql/tradecars_tasador_correcciones.sql?): ${error.message}` }
+      }
+      return {
+        correccion_registrada: true,
+        id: data.id,
+        nota: 'Este caso quedó guardado. La próxima vez que se tase un auto parecido (misma marca/modelo), ' +
+          'se va a consultar automáticamente. No cambió ningún parámetro general — si este tipo de corrección ' +
+          'se repite varias veces para el mismo modelo, se puede proponer una regla formal con proponer_regla_marca_modelo.',
+      }
+    }
+
+    case 'buscar_correcciones_similares': {
+      let q = supabase.from('tradecars_tasador_correcciones')
+        .select('marca,modelo,anio,km,contexto,precio_tasado_bot,precio_correcto,motivo,registrado_por,created_at')
+        .order('created_at', { ascending: false })
+        .limit(LIMITE_FILAS)
+      if (args.marca) q = q.ilike('marca', comodin(args.marca)!)
+      if (args.modelo) q = q.ilike('modelo', comodin(args.modelo)!)
+      const { data, error } = await q
+      if (error) return { error: error.message }
+
+      const filas = (data || []).filter((r: any) => {
+        if (args.anio_desde && r.anio && r.anio < args.anio_desde) return false
+        if (args.anio_hasta && r.anio && r.anio > args.anio_hasta) return false
+        return true
+      })
+
+      return {
+        total: filas.length,
+        correcciones: filas,
+        nota: filas.length
+          ? 'Casos reales donde un asesor corrigió al Tasador. Úsalos como ejemplo concreto en la respuesta, citando el motivo.'
+          : 'No hay correcciones registradas todavía para este modelo.',
       }
     }
 
@@ -793,7 +904,7 @@ async function ejecutarTool(
 
 function systemPrompt(puedeEditar: boolean) {
   return `Eres el Tasador IA de Trade Cars Perú, empresa de compra-venta de autos usados en Lima.
-Trabajas dentro del dashboard de la empresa y tienes dos funciones.
+Trabajas dentro del dashboard de la empresa y tienes tres funciones.
 
 FUNCIÓN 1 — Responder sobre el negocio.
 Tienes acceso de lectura a todo el dashboard: el embudo de compras, los leads y su estado, el
@@ -820,6 +931,23 @@ cuánto paga por un auto.
     · Crear un parámetro que hoy no existe, o un comportamiento nuevo.
   En estos casos explica con naturalidad que ese cambio lo tiene que implementar el equipo técnico
   de Alef, y deja la solicitud registrada. Nunca prometas que algo se configuró si no se puede.
+
+FUNCIÓN 3 — Aprender de las correcciones puntuales de los asesores.
+Cuando un asesor te dice que te equivocaste en un caso concreto ("este auto vale más porque tiene
+full equipo", "ese precio estaba mal, debió ser X"), NO es lo mismo que pedirte cambiar un parámetro
+general: es un caso puntual. Llama a registrar_correccion_tasacion apenas lo detectes, sin esperar a
+que te lo pidan explícitamente y SIN pedir confirmación con botón — esto no toca la configuración con
+la que se cotiza a todos los clientes, así que cualquier asesor puede dejarlo, no sólo administración.
+Después de guardarlo, dile en una frase que quedó registrado y que lo vas a tener en cuenta la próxima
+vez que aparezca un auto parecido.
+
+Al revés: ANTES de dar cualquier tasación o precio de referencia, llama también a
+buscar_correcciones_similares (junto con buscar_comparables_historicos) para esa marca/modelo. Si hay
+casos guardados, mencionalos explícitamente en tu respuesta citando el motivo — es la forma en que vas
+"aprendiendo" de lo que te enseñan en la conversación.
+Si el mismo tipo de corrección se repite varias veces para un modelo, dilo y sugiere formalizarla como
+regla con proponer_regla_marca_modelo (esa sí requiere confirmación, porque ahí ya cambiaría lo que
+cotiza el Agente de WhatsApp a clientes reales — una corrección puntual guardada aquí no lo hace).
 
 CÓMO PROPONER UN CAMBIO
 1. Consulta ver_configuracion_tasador para saber el valor actual y la clave exacta.
@@ -857,7 +985,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'messages requerido (array no vacío)' })
   }
 
-  const ctx = { propuestas: [] as any[], puedeEditar }
+  const ctx = { propuestas: [] as any[], puedeEditar, email: sesion.email }
   const toolsUsadas: string[] = []
 
   const historial: any[] = [

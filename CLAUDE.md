@@ -914,6 +914,52 @@ Cars** vía el cuestionario de 32 preguntas, que sigue sin responderse.
 
 ---
 
+### Memoria de correcciones del Tasador — `sql/tradecars_tasador_correcciones.sql` (27/09/2026)
+
+Pedido del cliente: que el Tasador "vaya aprendiendo" de lo que le dicen los asesores en el chat,
+sin que cada corrección puntual tenga que pasar por el sistema de propuesta/confirmación de la
+sección anterior (eso serviría si el cambio debe aplicar a **todos** los autos de una marca/modelo,
+pero un asesor corrigiendo un auto puntual — "este Yaris vale más porque tiene full equipo" — no
+debería requerir que un admin confirme nada).
+
+**Cómo funciona** (tools nuevas en `server/api/tradecars/tasador-chat.post.ts`):
+
+| Tool | Qué hace |
+|---|---|
+| `registrar_correccion_tasacion` | Guarda el caso (marca, modelo, año, km, contexto, lo que tasó el bot si se sabe, lo que dijo el asesor que debía ser, y el motivo) en `tradecars_tasador_correcciones`. **Escribe directo, sin propuesta ni confirmación** — no es config general |
+| `buscar_correcciones_similares` | Se consulta junto con `buscar_comparables_historicos` antes de cualquier tasación: trae casos guardados para esa marca/modelo para que el bot los cite como ejemplo real |
+
+- **Cualquier sesión de Trade Cars puede registrar una corrección, no sólo `admin`/`superadmin`**
+  (a diferencia de las tools `proponer_*`, que sí exigen `puedeEditarTasador()`) — justamente
+  porque no toca los números con los que se cotiza a todos los clientes, sólo dice "este caso
+  puntual fue así". El prompt le pide al modelo llamar a la tool en cuanto detecta una corrección,
+  sin esperar a que el asesor lo pida explícitamente.
+- **Si el mismo tipo de corrección se repite varias veces para un modelo**, el prompt le indica al
+  Tasador que lo diga y sugiera formalizarlo con `proponer_regla_marca_modelo` — esa sí exige
+  confirmación de admin, porque ahí sí cambiaría lo que cotiza el Agente de WhatsApp a clientes
+  reales.
+- **Se ve en el dashboard** en el módulo Tasador → pestaña Historial → "Correcciones de los
+  asesores" (`GET /api/tradecars/tasador-config` ahora también devuelve `correcciones`).
+- **Sin policy para `anon`** (mismo criterio que `tradecars_data_historico_compras_ventas`): son
+  precios reales de la empresa, y todo el acceso pasa por los endpoints del servidor con
+  `service_role`.
+
+**Límite real de alcance — no confundirlo con "el bot de WhatsApp ya aprendió":** esta memoria
+alimenta el **chat interno del dashboard** (el que usan asesores y admin para consultar y afinar
+precios). El Agente Tasador que atiende WhatsApp en n8n **no lee esta tabla** — sigue leyendo
+únicamente las 3 tablas de `tradecars_tasador_config.sql` vía su tool `obtener_configuracion`. Para
+que una corrección puntual llegue al bot que habla con clientes reales hace falta, o (a) que se
+formalice como regla confirmada (sí llega, por el mecanismo ya existente), o (b) que Alef agregue
+una tool nueva en n8n que consulte `tradecars_tasador_correcciones` directamente — eso quedaría como
+una `solicitud_alef` si el cliente lo pide.
+
+**Migración: no corrida todavía** — hay que correr `sql/tradecars_tasador_correcciones.sql` una vez
+en Supabase antes de que las tools funcionen. Sin la migración, `registrar_correccion_tasacion`
+devuelve un error explicando qué archivo correr, y la pestaña Historial simplemente no muestra
+correcciones (mismo patrón de degradación que el resto del módulo cuando falta una migración).
+
+---
+
 ### Carga del histórico por Excel / CSV / PDF — `server/api/tradecars/tasador-datos.post.ts`
 
 Las dos tablas de datos del Tasador se llenan desde la pestaña **Datos** del módulo, sin scripts.

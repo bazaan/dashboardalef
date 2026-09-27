@@ -1,7 +1,7 @@
 <!--
   Trade Cars — Módulo: Tasador IA
   --------------------------------
-  Dos cosas en una pantalla:
+  Tres cosas en una pantalla:
 
   1. CHAT SOBRE EL NEGOCIO — el asesor le pregunta por precios de referencia,
      el embudo, el rendimiento del equipo, campañas, stock o ventas. Todo el
@@ -12,14 +12,19 @@
   2. ENSEÑARLE AL AGENTE TASADOR DE WHATSAPP — los parámetros, reglas y modelos
      de alta rotación que se ven acá son LOS MISMOS que el agente de n8n lee en
      cada tasación. Cambiarlos acá cambia lo que el bot le cotiza a un cliente
-     real en la próxima conversación.
+     real en la próxima conversación. Por eso el chat nunca escribe solo:
+     PROPONE, y la persona confirma con un botón (pestañas Parámetros / Reglas
+     y rotación). Las propuestas viajan en la respuesta del chat y se aplican
+     por /api/tradecars/tasador-config, que valida rangos y deja historial. Lo
+     que toca la lógica de cálculo o el flujo de conversación del agente no se
+     puede cambiar desde acá — queda como solicitud para el equipo de Alef.
 
-  Por eso el chat nunca escribe solo: PROPONE, y la persona confirma con un
-  botón. Las propuestas viajan en la respuesta del chat y se aplican por
-  /api/tradecars/tasador-config, que valida rangos y deja historial.
-
-  Lo que toca la lógica de cálculo o el flujo de conversación del agente no se
-  puede cambiar desde acá — queda como solicitud para el equipo de Alef.
+  3. MEMORIA DE CORRECCIONES PUNTUALES (27/09/2026) — si un asesor le dice al
+     chat que se equivocó en un auto concreto, queda guardado sin pedir
+     confirmación (no es config general) y se consulta solo antes de la
+     siguiente tasación parecida. Se ve en la pestaña Historial. Ojo: esto
+     alimenta este chat, no al Agente de WhatsApp — ver el aviso de alcance en
+     sql/tradecars_tasador_correcciones.sql.
 -->
 <template>
   <div class="view-container">
@@ -73,7 +78,9 @@
             <p class="tasador-bienvenida-texto">
               Pregúntame por precios de referencia, el embudo, el rendimiento del equipo o las campañas.
               También puedes enseñarle al agente que atiende WhatsApp: pídeme que cambie un descuento,
-              un margen o una regla de marca, y te lo dejo listo para confirmar.
+              un margen o una regla de marca, y te lo dejo listo para confirmar. Y si tasé mal un auto
+              puntual, dímelo y lo dejo guardado para la próxima vez que aparezca uno parecido — sin
+              necesidad de que nadie confirme nada.
             </p>
             <div class="tasador-sugerencias">
               <button v-for="s in sugerencias" :key="s" class="tasador-chip" @click="enviarMensaje(s)">
@@ -375,6 +382,34 @@
             </div>
           </div>
         </template>
+
+        <h3 class="tasador-grupo-titulo">Correcciones de los asesores</h3>
+        <p class="tasador-ayuda">
+          Casos puntuales que un asesor le corrigió al Tasador en el chat. Se consultan solas antes de
+          la siguiente tasación parecida — no son cambios de configuración, así que no necesitan
+          confirmación.
+        </p>
+        <v-table density="compact" class="mb-6">
+          <thead>
+            <tr><th>Fecha</th><th>Auto</th><th class="text-right">Bot dijo</th><th class="text-right">Correcto</th><th>Motivo</th><th>Quién</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in config?.correcciones || []" :key="c.id">
+              <td class="tasador-td-cond">{{ fechaCorta(c.created_at) }}</td>
+              <td>
+                {{ c.marca }} {{ c.modelo }}<span v-if="c.anio"> {{ c.anio }}</span>
+                <p v-if="c.contexto" class="tasador-param-meta">{{ c.contexto }}</p>
+              </td>
+              <td class="text-right tasador-td-cond">{{ c.precio_tasado_bot != null ? `$${c.precio_tasado_bot}` : '—' }}</td>
+              <td class="text-right">${{ c.precio_correcto }}</td>
+              <td class="tasador-td-desc">{{ c.motivo }}</td>
+              <td class="tasador-td-cond">{{ c.registrado_por || '—' }}</td>
+            </tr>
+            <tr v-if="!config?.correcciones?.length">
+              <td colspan="6" class="tasador-vacio">Todavía ningún asesor corrigió una tasación por el chat.</td>
+            </tr>
+          </tbody>
+        </v-table>
 
         <h3 class="tasador-grupo-titulo">Todos los cambios</h3>
         <v-table density="compact">

@@ -397,7 +397,7 @@
             <tr v-for="c in config?.correcciones || []" :key="c.id">
               <td class="tasador-td-cond">{{ fechaCorta(c.created_at) }}</td>
               <td>
-                {{ c.marca }} {{ c.modelo }}<span v-if="c.anio"> {{ c.anio }}</span>
+                {{ c.marca }} {{ c.modelo }}{{ c.anio ? ' ' + c.anio : '' }}
                 <p v-if="c.contexto" class="tasador-param-meta">{{ c.contexto }}</p>
               </td>
               <td class="text-right tasador-td-cond">{{ c.precio_tasado_bot != null ? `$${c.precio_tasado_bot}` : '—' }}</td>

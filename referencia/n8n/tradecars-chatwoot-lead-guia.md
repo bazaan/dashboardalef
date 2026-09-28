@@ -89,6 +89,14 @@ texto del formulario ("Phone number: 972619000"). Probado en vivo el 28/09/2026 
 real de Instagram: sin este respaldo, el endpoint rechazaba el lead con 400 "Falta el
 teléfono".
 
+> **Si editas el "JSON Example" del nodo "Formato de salida" a mano**, el nombre de cada
+> campo tiene que salir EXACTO como lo escribas ahí (ej. si pones `"Telefono"` con mayúscula,
+> el dato real sale con esa mayúscula). El nodo "Armar payload" ya busca cada campo sin
+> importar mayúsculas/minúsculas, así que no hace falta que coincida letra por letra con el
+> ejemplo de esta guía — pero si un campo nuevo no aparece nunca, lo primero a revisar es que
+> el nombre esté bien escrito en los dos lados (el ejemplo del parser y el `campo(...)` de
+> "Armar payload").
+
 Si prefieren usar otro modelo/proveedor (Claude, Gemini, etc.), solo hay que cambiar el nodo
 "OpenAI Chat Model" por el equivalente de ese proveedor y volver a conectarlo al AI Agent — el
 resto del flujo no cambia.

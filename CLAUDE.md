@@ -1275,8 +1275,16 @@ dashboard ya con el JSON estructurado.
   la fuente que manda, pero **los contactos de Instagram/Facebook casi nunca lo tienen** (solo tienen su
   usuario de esa red) — para esos leads el único lugar donde aparece el teléfono real es el propio texto
   del mensaje ("Phone number: 972619000"). Por eso la IA también extrae `telefono` del texto como
-  respaldo (`campos.telefono`), y "Armar payload" usa `base.telefono || campos.telefono`. Sin esto, todo
-  lead que llegue por IG/FB rebotaba con 400 "Falta el teléfono" — confirmado en vivo con un lead real.
+  respaldo (`campos.telefono`), y "Armar payload" usa `base.telefono || campo(campos, 'telefono')`. Sin
+  esto, todo lead que llegue por IG/FB rebotaba con 400 "Falta el teléfono" — confirmado en vivo con un
+  lead real.
+- ⚠️ **La lectura de los campos de la IA es sin distinguir mayúsculas/minúsculas, a propósito.** El
+  "Schema Type: Generate From JSON Example" del Structured Output Parser usa EXACTAMENTE las claves que
+  se le escriban en el ejemplo — al probar en vivo, el cliente editó el ejemplo a mano y puso `"Telefono"`
+  con mayúscula en vez de `"telefono"`, y el campo real salió así. `campo(obj, nombre)` en "Armar payload"
+  busca primero tal cual y si no, la misma clave ignorando mayúsculas — para que un typo de mayúscula en
+  el ejemplo del nodo (algo que el cliente edita a mano en n8n, no algo que yo controle) no vuelva a tumbar
+  silenciosamente el dato.
 - **Deduplicado por TELÉFONO, a pedido explícito**: si ya existe un lead con ese teléfono (normalizado —
   se le quita el prefijo `51` si quedó de 11 dígitos), **no se toca nada** — ni se actualiza, ni se pisa
   lo que el equipo ya haya trabajado sobre ese lead. Devuelve `duplicado: true` con el `id` existente, 200

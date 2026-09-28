@@ -3,12 +3,35 @@
 Guía para dejar funcionando **Solicitudes - formularios → Formularios IG / FB / TIKTOK / ZAPPIER (Sin plataforma)**.
 Cada pestaña lee una hoja de Google en vivo y la muestra como tarjetas.
 
-> Estado a 28/09/2026: el código está probado de punta a punta contra la hoja REAL que mandó Trade Cars
-> (`1ZbYYFdgeejeoUhFp0NSvf0JBuzuaUBUWuO2BDQZW3sQ`) usando un Google simulado en desarrollo — el detector de
-> columnas, el reparto por PLATAFORMA y el kilometraje ("107k", "85mil") se verificaron contra sus datos
-> reales. Lo único que falta es que un Administrador haga el **login real de Google** desde el dashboard
-> (paso 1 de abajo): eso no lo puedo hacer yo, entrar a una cuenta de Google real no es algo que pueda
-> hacer por ustedes.
+> Estado a 29/09/2026: el código está probado de punta a punta contra la hoja REAL que mandó Trade Cars
+> (`1ZbYYFdgeejeoUhFp0NSvf0JBuzuaUBUWuO2BDQZW3sQ`) — el detector de columnas, el reparto por PLATAFORMA y
+> el kilometraje ("107k", "85mil") se verificaron contra sus datos reales. La conexión con Google ahora es
+> por **cuenta de servicio** (ver §1 más abajo) — no hace falta login de nadie ni volver a conectar cada
+> 7 días.
+
+## Método recomendado: cuenta de servicio (sin login, no expira)
+
+Trade Cars creó una **cuenta de servicio** de Google (`leads-alef-tradecars@tradecars-510019.iam.gserviceaccount.com`)
+y la compartió como **Editor** en la hoja de Zapier. Es el método preferido: a diferencia del login de un
+Administrador real (§1b más abajo), una cuenta de servicio **no expira a los 7 días** por estar el proyecto
+en modo "Testing" en Google Cloud, y **no le pide a nadie iniciar sesión** — el servidor se autentica solo,
+firmando un JWT con la clave privada de esa cuenta (mismo mecanismo que ya usa Vonage en este proyecto,
+`server/utils/google-service-account.ts`).
+
+**Cómo se activa:**
+
+1. En Google Cloud Console → el proyecto `tradecars-510019` → esa cuenta de servicio → pestaña **Keys** →
+   **Add Key → Create new key → JSON**. Descarga el archivo.
+2. Abre el archivo descargado, copia **todo su contenido** (es un JSON que empieza con `{ "type":
+   "service_account", ... }`).
+3. Netlify → Site settings → Environment variables → pega ese contenido completo en
+   **`TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON`**.
+4. Redeploy. Listo — **"Solicitudes - formularios" ya no necesita que nadie haga clic en "Conectar con
+   Google"**: `tokenGoogle()` (`server/utils/tradecars-formularios.ts`) usa la cuenta de servicio primero,
+   automáticamente, en cuanto esa variable existe.
+
+Si algún día se comparte OTRA hoja con Trade Cars, solo hay que compartirla también con el email de esa
+cuenta de servicio (Editor o Lector, como con cualquier persona) — no hay que tocar Google Cloud de nuevo.
 
 ## El caso real: UNA hoja con todas las redes juntas
 
@@ -36,10 +59,10 @@ pestaña a su propio enlace — el sistema sigue funcionando igual, columna PLAT
 
 | Necesitas | Dónde | Estado |
 |---|---|---|
-| El SQL corrido | Supabase → SQL Editor → `sql/tradecars_formularios_sheets.sql` **y luego** `sql/tradecars_formularios_plataforma.sql` (agrega la pestaña "ZAPPIER (Sin plataforma)") | **Pendiente** (una vez cada uno, idempotentes) |
-| `TRADECARS_GOOGLE_CLIENT_ID` y `TRADECARS_GOOGLE_CLIENT_SECRET` | Netlify → Environment variables | **Hecho** (28/09/2026, proyecto propio de Google Cloud `tradecars-510019`, cuenta aipartnerstudio@gmail.com) |
-| Un usuario **Administrador** de Trade Cars | Solo un administrador conecta hojas | — |
-| Una cuenta de Google que **vea las 3 hojas** | La cuenta aipartnerstudio@gmail.com, a la que Trade Cars compartió la hoja | Hecho |
+| El SQL corrido | Supabase → SQL Editor → `sql/tradecars_formularios_sheets.sql` **y luego** `sql/tradecars_formularios_plataforma.sql` (agrega la pestaña "ZAPPIER (Sin plataforma)") | **Hecho** (28-29/09/2026, ambos corridos) |
+| `TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON` | Netlify → Environment variables | **Método recomendado** (29/09/2026) — ver más abajo |
+| `TRADECARS_GOOGLE_CLIENT_ID` y `TRADECARS_GOOGLE_CLIENT_SECRET` | Netlify → Environment variables | Alternativa de respaldo (28/09/2026, OAuth de usuario) — solo hace falta si no se usa la cuenta de servicio |
+| La hoja compartida con la cuenta de servicio (Editor) | `leads-alef-tradecars@tradecars-510019.iam.gserviceaccount.com` | **Hecho** |
 
 **28/09/2026 — Trade Cars tiene su PROPIO proyecto de Google Cloud, independiente de Healup/Davila.**
 Al principio se intentó reusar el callback compartido (`/api/healup/gcal-callback`, `state=tradecars`),
@@ -51,7 +74,11 @@ credenciales de `TRADECARS_GOOGLE_CLIENT_ID`/`TRADECARS_GOOGLE_CLIENT_SECRET` en
 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` compartidas — ver `server/utils/tradecars-formularios.ts`
 (`credencialesGoogleTradeCars()`) y `server/api/tradecars/gcal-callback.get.ts`.
 
-## 1. Conectar la cuenta de Google (una sola vez para los tres canales)
+## 1b. Alternativa: OAuth de un Administrador (respaldo, no el método activo)
+
+Solo hace falta si la cuenta de servicio deja de funcionar o se prefiere usar el login real de un
+Administrador en vez de una cuenta de servicio. Mientras `TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON` esté
+configurada, este método queda ignorado (el botón "Conectar con Google" ni siquiera se muestra en pantalla).
 
 1. Entra al dashboard de Trade Cars como **Administrador**.
 2. **Solicitudes - formularios** → pestaña **Formularios IG** → botón **Conectar hoja**.
@@ -144,7 +171,7 @@ La pantalla explica cada caso y dice qué hacer:
 
 | Mensaje | Qué pasó | Qué hacer |
 |---|---|---|
-| *Falta conectar Google* | No hay token guardado | **Conectar con Google** (paso 1) |
+| *Falta conectar Google* | Ni `TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON` ni un token de OAuth guardado | Configurar la cuenta de servicio (recomendado) o **Conectar con Google** (§1b) |
 | *La conexión con Google venció* | El token expiró (`invalid_grant`) | **Reconectar Google** |
 | *La cuenta conectada no ve esta hoja* | Google devolvió 403 | Compartir la hoja con la cuenta conectada (basta como lector) |
 | *No se encuentra la hoja o la pestaña* | Enlace incorrecto, hoja borrada o pestaña renombrada | Revisar el enlace / nombre de pestaña en **Conectar hoja** |

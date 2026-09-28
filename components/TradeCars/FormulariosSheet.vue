@@ -253,6 +253,11 @@
             </p>
             <div class="fs-paso-fila">
               <v-chip v-if="google.cargando" size="small">Revisando…</v-chip>
+              <v-chip v-else-if="google.metodo === 'service_account'" size="small" color="success" variant="tonal"
+                prepend-icon="mdi-shield-check">
+                Conectado con cuenta de servicio<template v-if="google.email"> ({{ google.email }})</template>
+                — no requiere renovar
+              </v-chip>
               <v-chip v-else-if="google.connected && !google.vencido" size="small" color="success" variant="tonal"
                 prepend-icon="mdi-check-circle">
                 Conectado<template v-if="google.email"> como {{ google.email }}</template>
@@ -261,7 +266,8 @@
                 La conexión venció
               </v-chip>
               <v-chip v-else size="small" color="grey" variant="tonal" prepend-icon="mdi-link-off">Sin conectar</v-chip>
-              <v-btn size="small" :variant="google.connected && !google.vencido ? 'text' : 'flat'"
+              <v-btn v-if="google.metodo !== 'service_account'" size="small"
+                :variant="google.connected && !google.vencido ? 'text' : 'flat'"
                 :color="google.connected && !google.vencido ? undefined : 'primary'" prepend-icon="mdi-google"
                 href="/api/tradecars/google-auth">
                 {{ google.connected ? 'Cambiar cuenta' : 'Conectar con Google' }}
@@ -589,7 +595,7 @@ const conexion = reactive<{
   abierto: false, url: '', pestana: '', probando: false, guardando: false, prueba: null, correcciones: {},
   aplicarATodos: true,
 })
-const google = reactive<{ cargando: boolean; connected: boolean; email?: string; vencido?: boolean }>({
+const google = reactive<{ cargando: boolean; connected: boolean; email?: string; vencido?: boolean; metodo?: string }>({
   cargando: false, connected: false,
 })
 
@@ -621,7 +627,7 @@ async function abrirConexion() {
   google.cargando = true
   try {
     const r = await $fetch<any>('/api/tradecars/google-status', { cache: 'no-store' })
-    google.connected = !!r.connected; google.email = r.email; google.vencido = !!r.vencido
+    google.connected = !!r.connected; google.email = r.email; google.vencido = !!r.vencido; google.metodo = r.metodo
   } catch { google.connected = false } finally { google.cargando = false }
 }
 

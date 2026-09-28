@@ -1242,6 +1242,38 @@ aparte.
   verificó que el proyecto compile y que las funciones nuevas reciban y usen las credenciales correctas;
   la prueba de punta a punta la hace el Administrador de Trade Cars conectando desde el dashboard.
 
+### El OAuth de usuario se reemplazó por una CUENTA DE SERVICIO (29/09/2026)
+
+El OAuth de arriba seguía dando problemas en vivo: el token quedaba ligado a la cuenta real de
+`aipartnerstudio@gmail.com`, y el proyecto de Google Cloud sigue en modo "Testing" (no verificado) — eso
+significa que **el refresh token expira a los 7 días**, sin importar cuántas veces se reconecte, hasta que
+alguien publique la app. Trade Cars resolvió esto por su cuenta: creó una **cuenta de servicio**
+(`leads-alef-tradecars@tradecars-510019.iam.gserviceaccount.com`, en el mismo proyecto
+`tradecars-510019`) y la compartió como **Editor** en la hoja de Zapier.
+
+- **Es el método PREFERIDO desde ahora.** `server/utils/google-service-account.ts` (nuevo, mismo enfoque
+  que `vonage-auth.ts`: JWT RS256 firmado a mano con `node:crypto`, 0 dependencias) implementa el flujo
+  "JWT Bearer" de Google (`grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`) — sin login de nadie,
+  sin expirar a los 7 días (eso solo le pasa a los refresh tokens de OAuth de usuario en apps sin publicar,
+  no a las cuentas de servicio).
+- **`tokenGoogle()` (`server/utils/tradecars-formularios.ts`) prueba la cuenta de servicio PRIMERO**
+  (`TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON`) y solo cae al OAuth de usuario si esa env var no está puesta —
+  el OAuth de arriba queda como respaldo, sin tocar su código.
+- **Scope de solo lectura** (`spreadsheets.readonly`), no el de lectura/escritura que usa el OAuth de
+  usuario — la cuenta de servicio solo necesita leer la hoja, nunca escribe en ella.
+- **`GET /api/tradecars/google-status` reporta cuál de los dos métodos está activo** (`metodo:
+  'service_account' | 'oauth'`) — el diálogo "Conectar hoja" (`FormulariosSheet.vue`) muestra "Conectado
+  con cuenta de servicio — no requiere renovar" y **oculta el botón "Conectar con Google"** cuando la
+  cuenta de servicio está configurada, para no confundir con un paso que ya no hace falta.
+- **Probado**: la firma RS256 del JWT se verificó con un par de llaves de prueba (firma válida, estructura
+  de 3 partes correcta), y una petición real a `oauth2.googleapis.com/token` con una cuenta de servicio
+  inventada devolvió `invalid_grant: account not found` — confirma que Google acepta el FORMATO de la
+  petición; falta la prueba de punta a punta con la clave JSON real, que el cliente pega directo en Netlify
+  (nunca se compartió por chat).
+- **Si algún día se necesita ESCRITURA en Sheets** (no es el caso hoy: la hoja es de solo lectura) o acceso
+  a Calendar con esta misma cuenta, hay que ampliar el `scope` que recibe `getGoogleServiceAccountToken()`
+  y volver a compartir el recurso con el email de la cuenta de servicio.
+
 ### Captura de leads desde mensajes de Chatwoot, con IA en n8n (28/09/2026) — `sql/tradecars_leads_chatwoot.sql`
 
 Pedido explícito del cliente, paso PREVIO a "asignar las tarjetas de Solicitudes - formularios a los 4
@@ -1415,9 +1447,10 @@ TRADECARS_SHEET_IG_ID=                     # enlace o ID de la hoja de IG (respa
 TRADECARS_SHEET_FB_ID=                     # ídem FB
 TRADECARS_SHEET_TIKTOK_ID=                 # ídem TikTok
 TRADECARS_SHEET_IG_TAB= / TRADECARS_SHEET_FB_TAB= / TRADECARS_SHEET_TIKTOK_TAB=   # nombre de pestaña (default: la del enlace o la primera)
-# Trade Cars — Conexión de Google INDEPENDIENTE (28/09/2026, proyecto propio tradecars-510019, cuenta aipartnerstudio@gmail.com). REQUERIDAS para conectar Google.
-TRADECARS_GOOGLE_CLIENT_ID=                # Client ID del OAuth client de ESE proyecto (no el de Healup/Davila)
-TRADECARS_GOOGLE_CLIENT_SECRET=            # Client secret del mismo OAuth client
+# Trade Cars — Conexión de Google INDEPENDIENTE (28/09/2026, proyecto propio tradecars-510019, cuenta aipartnerstudio@gmail.com).
+TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON=     # RECOMENDADA (29/09/2026) — contenido completo del JSON de la cuenta de servicio (leads-alef-tradecars@tradecars-510019.iam.gserviceaccount.com, compartida como Editor en la hoja). Sin login, no expira. Si está puesta, el OAuth de abajo se ignora.
+TRADECARS_GOOGLE_CLIENT_ID=                # Respaldo (OAuth de usuario) — Client ID del OAuth client de ESE proyecto (no el de Healup/Davila)
+TRADECARS_GOOGLE_CLIENT_SECRET=            # Respaldo (OAuth de usuario) — Client secret del mismo OAuth client
 TRADECARS_GOOGLE_REDIRECT_URI=             # opcional (default: <dominio>/api/tradecars/gcal-callback) — debe calzar con la "Authorized redirect URI" registrada en ese OAuth client
 ```
 

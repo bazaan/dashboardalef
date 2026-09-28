@@ -16,6 +16,7 @@
  */
 
 import { getGoogleAccessToken, hasRefreshToken, type GoogleClientCredentials } from './google-auth'
+import { getGoogleServiceAccountToken, emailDeServiceAccount } from './google-service-account'
 import {
   CANALES_FORMULARIO, canalDePlataforma, extraerReferenciaHoja, hojaALeads,
   type CanalFormulario, type LeadFormulario,
@@ -30,6 +31,7 @@ export const TODOS_LOS_CANALES: CanalFormulario[] = ['sin_plataforma', 'ig', 'fb
 
 export const EMPRESA_GOOGLE = 'tradecars'
 const API_SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets'
+const SCOPE_SHEETS_LECTURA = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 
 /**
  * Trade Cars tiene su PROPIO proyecto de Google Cloud (28/09/2026, cuenta aipartnerstudio@gmail.com)
@@ -43,6 +45,22 @@ export function credencialesGoogleTradeCars(): GoogleClientCredentials {
     throw new ErrorHoja('sin_google', 'Falta configurar TRADECARS_GOOGLE_CLIENT_ID y TRADECARS_GOOGLE_CLIENT_SECRET en Netlify.')
   }
   return { clientId, clientSecret }
+}
+
+/**
+ * 29/09/2026: además del OAuth de usuario de arriba, Trade Cars puede leer la hoja con una
+ * CUENTA DE SERVICIO (leads-alef-tradecars@tradecars-510019.iam.gserviceaccount.com, compartida
+ * como Editor en la hoja de Zapier). Es el método PREFERIDO cuando está configurada — sin login
+ * de nadie, sin expirar a los 7 días por el modo "Testing" del proyecto. `tokenGoogle()` la usa
+ * primero y solo cae al OAuth de usuario si esta env var no está puesta.
+ */
+export function tieneServiceAccountGoogle(): boolean {
+  return !!process.env.TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON
+}
+
+export function emailServiceAccountGoogle(): string | null {
+  const raw = process.env.TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON
+  return raw ? emailDeServiceAccount(raw) : null
 }
 
 export type CausaErrorHoja = 'sin_google' | 'token' | 'sin_alcance' | 'sin_acceso' | 'no_encontrada' | 'otro'
@@ -139,6 +157,15 @@ export async function guardarConfigHoja(
 const cacheTitulos = new Map<string, { titulo: string; documento: string | null; vence: number }>()
 
 async function tokenGoogle(): Promise<string> {
+  const saJson = process.env.TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON
+  if (saJson) {
+    try {
+      return await getGoogleServiceAccountToken(saJson, SCOPE_SHEETS_LECTURA)
+    } catch (e: any) {
+      throw new ErrorHoja('sin_google', `No se pudo autenticar con la cuenta de servicio de Google: ${e?.message || e}`)
+    }
+  }
+
   try {
     return await getGoogleAccessToken(EMPRESA_GOOGLE, credencialesGoogleTradeCars())
   } catch (e: any) {
@@ -251,7 +278,7 @@ export async function leerHojaGoogle(ref: { sheetId: string; pestana?: string | 
   return { titulo_documento: tituloDoc, pestana, valores: Array.isArray(datos?.values) ? datos.values : [] }
 }
 
-export const googleConectado = () => hasRefreshToken(EMPRESA_GOOGLE)
+export const googleConectado = async () => tieneServiceAccountGoogle() || (await hasRefreshToken(EMPRESA_GOOGLE))
 
 /* ══════════════════════════ Estado de cada tarjeta ══════════════════════════ */
 

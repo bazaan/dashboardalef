@@ -31,7 +31,7 @@ export const TODOS_LOS_CANALES: CanalFormulario[] = ['sin_plataforma', 'ig', 'fb
 export const EMPRESA_GOOGLE = 'tradecars'
 const API_SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets'
 
-export type CausaErrorHoja = 'sin_google' | 'token' | 'sin_acceso' | 'no_encontrada' | 'otro'
+export type CausaErrorHoja = 'sin_google' | 'token' | 'sin_alcance' | 'sin_acceso' | 'no_encontrada' | 'otro'
 
 /** Un fallo esperable al leer la hoja: se le cuenta a la pantalla en vez de romperla con un 500. */
 export class ErrorHoja extends Error {
@@ -152,7 +152,18 @@ async function pedirGoogle(url: string, token: string): Promise<any> {
   try { detalle = (await r.json())?.error?.message || '' } catch { /* cuerpo no JSON */ }
   if (r.status === 401) throw new ErrorHoja('token', 'La conexión con Google venció. Vuelve a conectarla desde "Conectar hoja".')
   if (r.status === 403) {
-    throw new ErrorHoja('sin_acceso', 'La cuenta de Google conectada no tiene permiso sobre esa hoja. Compártela con esa cuenta (basta como lector).')
+    // Google devuelve 403 tanto si el archivo no está compartido con la cuenta como si la cuenta SÍ
+    // tiene acceso al archivo pero el TOKEN no tiene el permiso de Sheets (por ejemplo, si el consentimiento
+    // de Google no llegó a otorgar ese scope). Son arreglos distintos — compartir el archivo no sirve para
+    // lo segundo — así que se muestra el motivo real de Google, no una sola frase genérica para las dos cosas.
+    if (/insufficient.*(scope|permission)|scope.*insufficient/i.test(detalle)) {
+      throw new ErrorHoja('sin_alcance',
+        'La conexión con Google no tiene el permiso de Google Sheets (aunque la cuenta sí tenga acceso al archivo). '
+        + 'Hay que reconectar Google desde "Conectar hoja" → "Cambiar cuenta", autorizando de nuevo con esa cuenta.')
+    }
+    throw new ErrorHoja('sin_acceso',
+      `La cuenta de Google conectada no tiene permiso sobre esa hoja. Compártela con esa cuenta (basta como lector).`
+      + (detalle ? ` [Google dijo: ${detalle}]` : ''))
   }
   if (r.status === 404) {
     throw new ErrorHoja('no_encontrada', 'No encuentro esa hoja. Revisa el enlace, o que la cuenta de Google conectada tenga acceso.')

@@ -1,5 +1,5 @@
 /**
- * GET /api/tradecars/formularios?canal=ig|fb|tiktok[&limite=1500]
+ * GET /api/tradecars/formularios?canal=ig|fb|tiktok|sin_plataforma[&limite=1500]
  *
  * Lee EN VIVO la hoja de Google del canal y devuelve las tarjetas con su estado. El dashboard lo
  * llama cada vez que se abre el submódulo (y al tocar "Actualizar"), así que lo que se ve es lo
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const canal = String(q.canal || '')
   if (!esCanalFormulario(canal)) {
-    throw createError({ statusCode: 400, statusMessage: 'Canal desconocido: usa ig, fb o tiktok' })
+    throw createError({ statusCode: 400, statusMessage: 'Canal desconocido: usa ig, fb, tiktok o sin_plataforma' })
   }
   const limite = Math.min(LIMITE_MAXIMO, Math.max(50, Number(q.limite) || LIMITE_POR_DEFECTO))
 
@@ -65,6 +65,8 @@ export default defineEventHandler(async (event) => {
     sin_mapear: [] as string[],
     filas_omitidas: 0,
     tabla_estado_disponible: true,
+    total_en_hoja: 0,
+    distribucion_plataforma: null as Record<string, number> | null,
     error: null as null | { causa: string; mensaje: string },
   }
 

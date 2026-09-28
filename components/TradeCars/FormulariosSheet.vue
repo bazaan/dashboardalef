@@ -70,6 +70,22 @@
         La hoja tiene {{ resp.total }} leads; se muestran los {{ tarjetas.length }} más recientes.
       </v-alert>
 
+      <!-- Distribución por plataforma: útil para ver que la hoja SÍ tiene datos, aunque en este
+           canal en particular no aparezca nada todavía (porque la columna PLATAFORMA está vacía). -->
+      <v-alert v-if="mostrarDistribucion" type="info" variant="tonal" density="compact" class="mb-3">
+        <template v-if="props.canal === 'sin_plataforma'">
+          Esta hoja tiene {{ resp.total_en_hoja }} lead(s) en total. Ninguno tiene todavía la columna
+          <b>PLATAFORMA</b> completa, así que aparecen todos aquí. En cuanto Trade Cars la llene con
+          Instagram, Facebook o TikTok, se moverán solos a su pestaña.
+        </template>
+        <template v-else>
+          Esta hoja tiene {{ resp.total_en_hoja }} lead(s) en total: {{ resp.distribucion_plataforma.ig }} en
+          Instagram · {{ resp.distribucion_plataforma.fb }} en Facebook · {{ resp.distribucion_plataforma.tiktok }}
+          en TikTok · {{ resp.distribucion_plataforma.sin_plataforma }} todavía sin plataforma asignada
+          (pestaña «{{ CANALES_FORMULARIO.sin_plataforma.etiqueta }}»).
+        </template>
+      </v-alert>
+
       <div class="sol-toolbar">
         <div class="sol-filtros">
           <v-chip v-for="e in ['todos', ...ESTADOS_FORMULARIO]" :key="e" size="small"
@@ -220,7 +236,11 @@
       <v-card>
         <v-card-title class="pt-4">
           Conectar la hoja de {{ etiqueta.replace('Formularios ', '') }}
-          <div class="fs-sub">Cada canal tiene su propia hoja de Google, donde Zapier guarda los leads.</div>
+          <div class="fs-sub">
+            Lo más común es que sea la MISMA hoja de Zapier para las 4 pestañas, con una columna
+            PLATAFORMA que reparte cada lead solo. Si en algún momento hay una hoja propia por red, se
+            puede desmarcar la casilla de abajo y conectar cada una por separado.
+          </div>
         </v-card-title>
 
         <v-card-text>
@@ -261,6 +281,14 @@
               placeholder="https://docs.google.com/spreadsheets/d/…" />
             <v-text-field v-model="conexion.pestana" label="Nombre de la pestaña (opcional)" density="compact"
               variant="outlined" hide-details class="mt-3" style="max-width: 320px;" />
+
+            <v-checkbox v-model="conexion.aplicarATodos" density="compact" hide-details class="mt-2"
+              label="Usar esta misma hoja para las otras 3 pestañas (IG, FB, TikTok, Sin plataforma)" />
+            <p class="fs-txt-chico" style="margin-top: -2px;">
+              Recomendado si es la hoja de Zapier con todas las redes juntas: la columna PLATAFORMA de cada
+              lead decide sola en qué pestaña aparece, así que basta con conectarla una vez.
+            </p>
+
             <div class="fs-paso-fila mt-3">
               <v-btn size="small" variant="tonal" prepend-icon="mdi-flask-outline" :loading="conexion.probando"
                 :disabled="!conexion.url.trim()" @click="probarConexion">Probar lectura</v-btn>
@@ -353,8 +381,10 @@ const etiqueta = computed(() => CANALES_FORMULARIO[props.canal].etiqueta)
 const notify = (t: string, c = 'success') => emit('notificar', t, c)
 
 /* ── Apariencia por canal ── */
-const iconoCanal = computed(() => ({ ig: 'mdi-instagram', fb: 'mdi-facebook', tiktok: 'mdi-music-note' }[props.canal]))
-const colorCanal = computed(() => ({ ig: 'pink', fb: 'info', tiktok: 'cyan' }[props.canal]))
+const iconoCanal = computed(() => ({
+  ig: 'mdi-instagram', fb: 'mdi-facebook', tiktok: 'mdi-music-note', sin_plataforma: 'mdi-tag-off-outline',
+}[props.canal]))
+const colorCanal = computed(() => ({ ig: 'pink', fb: 'info', tiktok: 'cyan', sin_plataforma: 'grey' }[props.canal]))
 function colorEstado(e: string) {
   const m: Record<string, string> = {
     nuevo: 'info', contactado: 'warning', tasado: 'purple', comprado: 'success', descartado: 'error', todos: 'primary',
@@ -373,6 +403,10 @@ const horaLectura = computed(() => {
   const d = new Date(resp.value?.actualizado_en || Date.now())
   return d.toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
+// Se muestra siempre que la hoja tenga algo: ayuda a entender por qué una pestaña se ve vacía
+// aunque la hoja de Zapier sí tenga leads (todavía no clasificados por PLATAFORMA, o clasificados
+// para otra red).
+const mostrarDistribucion = computed(() => !!resp.value?.distribucion_plataforma && (resp.value?.total_en_hoja || 0) > 0)
 
 async function cargar(silencioso = false) {
   if (cargando.value) return
@@ -512,7 +546,7 @@ async function crearCliente(s: any) {
     telefono: s.celular || null,
     correo: s.correo || null,
     distrito: s.distrito || null,
-    canal: ({ ig: 'instagram', fb: 'facebook', tiktok: 'tiktok' } as const)[props.canal],
+    canal: ({ ig: 'instagram', fb: 'facebook', tiktok: 'tiktok', sin_plataforma: 'sin_plataforma' } as const)[props.canal],
     estado: 'contactado',
     notas: s.mensaje || null,
   }
@@ -548,7 +582,12 @@ const conexion = reactive<{
   prueba: any
   /** Correcciones a la detección automática: campo → encabezado de la hoja ('' = ninguna columna). */
   correcciones: Record<string, string>
-}>({ abierto: false, url: '', pestana: '', probando: false, guardando: false, prueba: null, correcciones: {} })
+  /** true = guardar esta hoja en los 4 canales de una vez (el caso real: una sola hoja de Zapier). */
+  aplicarATodos: boolean
+}>({
+  abierto: false, url: '', pestana: '', probando: false, guardando: false, prueba: null, correcciones: {},
+  aplicarATodos: true,
+})
 const google = reactive<{ cargando: boolean; connected: boolean; email?: string; vencido?: boolean }>({
   cargando: false, connected: false,
 })
@@ -575,6 +614,7 @@ async function abrirConexion() {
   conexion.url = resp.value?.conexion?.url || ''
   conexion.pestana = resp.value?.conexion?.pestana || ''
   conexion.prueba = null
+  conexion.aplicarATodos = true
   // Lo que ya se había corregido antes se conserva: guardar de nuevo no debe borrarlo
   conexion.correcciones = { ...(resp.value?.conexion?.mapeo_guardado || {}) }
   google.cargando = true
@@ -604,10 +644,14 @@ async function guardarConexion() {
   try {
     const r = await $fetch<any>('/api/tradecars/formularios', {
       method: 'POST',
-      body: { accion: 'configurar', canal: props.canal, url: conexion.url, pestana: conexion.pestana, mapeo: conexion.correcciones },
+      body: {
+        accion: 'configurar', canal: props.canal, url: conexion.url, pestana: conexion.pestana,
+        mapeo: conexion.correcciones, aplicar_a_todos: conexion.aplicarATodos,
+      },
     })
     conexion.abierto = false
-    notify(r.prueba?.ok ? 'Hoja conectada' : 'Hoja guardada. ' + (r.prueba?.mensaje || ''), r.prueba?.ok ? 'success' : 'warning')
+    const destino = conexion.aplicarATodos ? 'en las 4 pestañas' : `en ${etiqueta.value}`
+    notify(r.prueba?.ok ? `Hoja conectada ${destino}` : 'Hoja guardada. ' + (r.prueba?.mensaje || ''), r.prueba?.ok ? 'success' : 'warning')
     await cargar()
   } catch (e: any) {
     notify(e?.data?.statusMessage || e?.message || 'No se pudo guardar la conexión', 'error')

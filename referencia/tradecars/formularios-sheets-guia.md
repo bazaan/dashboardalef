@@ -1,11 +1,34 @@
 # Trade Cars — conectar las hojas de Google de IG, FB y TikTok
 
-Guía para dejar funcionando **Solicitudes - formularios → Formularios IG / FB / TIKTOK**.
-Cada canal lee **una hoja de Google distinta** (la que llena Zapier), en vivo, y la muestra como tarjetas.
+Guía para dejar funcionando **Solicitudes - formularios → Formularios IG / FB / TIKTOK / ZAPPIER (Sin plataforma)**.
+Cada pestaña lee una hoja de Google en vivo y la muestra como tarjetas.
 
-> Estado a 23/09/2026: el código y la pantalla están listos. Faltaba tener acceso a las tres hojas, así que
-> **nada de esto se pudo probar contra hojas reales**: se probó con un Google simulado. Los pasos de abajo
-> son lo que hay que hacer el día que se tenga acceso.
+> Estado a 28/09/2026: el código está probado de punta a punta contra la hoja REAL que mandó Trade Cars
+> (`1ZbYYFdgeejeoUhFp0NSvf0JBuzuaUBUWuO2BDQZW3sQ`) usando un Google simulado en desarrollo — el detector de
+> columnas, el reparto por PLATAFORMA y el kilometraje ("107k", "85mil") se verificaron contra sus datos
+> reales. Lo único que falta es que un Administrador haga el **login real de Google** desde el dashboard
+> (paso 1 de abajo): eso no lo puedo hacer yo, entrar a una cuenta de Google real no es algo que pueda
+> hacer por ustedes.
+
+## El caso real: UNA hoja con todas las redes juntas
+
+Trade Cars no tiene tres hojas separadas — tiene **una sola hoja de Zapier** con Instagram, Facebook y
+TikTok mezclados, y una columna **PLATAFORMA** que hoy está vacía en todas las filas. El sistema ya sabe
+leer esto:
+
+- Se conecta **esa hoja UNA vez** (con la casilla "Usar esta misma hoja para las otras 3 pestañas" marcada,
+  que es el valor por defecto).
+- Cada lead se manda solo a su pestaña según el texto de su columna PLATAFORMA (`Instagram`/`IG` → **IG**,
+  `Facebook`/`FB` → **FB**, `TikTok` → **TikTok**). Vacío, o cualquier otra cosa, → **ZAPPIER (Sin plataforma)**.
+- Mientras Trade Cars no llene esa columna, **todos los leads aparecen en "ZAPPIER (Sin plataforma)"**. En
+  cuanto la llenen (aunque sea de a poco, fila por fila), esos leads se mueven solos a IG/FB/TikTok la
+  próxima vez que se abra o se actualice esa pestaña — no hace falta reconectar nada.
+- Arriba de las tarjetas de cada pestaña aparece un aviso con el total de la hoja y cómo se reparte entre
+  las 4 (p. ej. "9 leads en total: 1 en Instagram · 1 en Facebook · 1 en TikTok · 6 sin plataforma"), para
+  ver que la hoja sí tiene datos aunque una pestaña puntual se vea vacía.
+
+Si algún día Trade Cars sí separa una red en su propia hoja, se puede desmarcar esa casilla y conectar cada
+pestaña a su propio enlace — el sistema sigue funcionando igual, columna PLATAFORMA o no.
 
 ---
 
@@ -13,7 +36,7 @@ Cada canal lee **una hoja de Google distinta** (la que llena Zapier), en vivo, y
 
 | Necesitas | Dónde | Estado |
 |---|---|---|
-| El SQL corrido | Supabase → SQL Editor → `sql/tradecars_formularios_sheets.sql` | **Pendiente** (una vez, idempotente) |
+| El SQL corrido | Supabase → SQL Editor → `sql/tradecars_formularios_sheets.sql` **y luego** `sql/tradecars_formularios_plataforma.sql` (agrega la pestaña "ZAPPIER (Sin plataforma)") | **Pendiente** (una vez cada uno, idempotentes) |
 | `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` | Netlify → Environment variables | Ya están (los usan Healup y Davila) |
 | Un usuario **Administrador** de Trade Cars | Solo un administrador conecta hojas | — |
 | Una cuenta de Google que **vea las 3 hojas** | Por ejemplo la del gerente de marketing (la que recibe lo de Zapier) | Pendiente |
@@ -33,20 +56,22 @@ No hay que tocar Google Cloud Console: se reutiliza el mismo callback que Healup
 > está en modo *Testing* en Google Cloud. Hay que agregar esa cuenta como *usuario de prueba* o publicar la app.
 > Es lo mismo que ya pasaría con Healup/Davila.
 
-## 2. Conectar cada hoja
-
-Repetir para **IG**, **FB** y **TIKTOK** (cada uno con su propia hoja):
+## 2. Conectar la hoja
 
 1. Abre la hoja en Google. Si tiene varias pestañas, **abre la pestaña de los leads** antes de copiar: el enlace recuerda cuál es (`#gid=…`).
 2. Copia la dirección completa de la barra del navegador.
-3. En el dashboard: submódulo del canal → **Conectar hoja** → pega el enlace en el paso 2.
-   Si prefieres, escribe el **nombre de la pestaña** en el campo de abajo.
-4. **Probar lectura**. Aparece:
+3. En el dashboard, entra a **cualquiera** de las 4 pestañas (por ejemplo "ZAPPIER (Sin plataforma)", que es
+   donde van a estar todos al principio) → **Conectar hoja** → pega el enlace.
+   Si prefieres, escribe el **nombre de la pestaña de Google** en el campo de abajo.
+4. Deja marcada **"Usar esta misma hoja para las otras 3 pestañas"** (viene así por defecto) — es el caso
+   real de Trade Cars, una sola hoja para las 4. Solo desmárcala si de verdad son hojas distintas por red.
+5. **Probar lectura**. Aparece:
    - cuántas filas se leyeron,
-   - qué columna se asignó a cada dato (nombre, celular, correo, marca, modelo, año, placa, km, distrito, deuda, mensaje, fecha, campaña),
+   - qué columna se asignó a cada dato (nombre, celular, correo, marca, modelo, año, placa, km, distrito, deuda, mensaje, fecha, campaña, **plataforma**),
    - las 3 primeras tarjetas tal como se verán.
-5. Si alguna columna quedó mal asignada, elígela en el desplegable y **Volver a probar con estos cambios**.
-6. **Guardar conexión**. Listo: las tarjetas aparecen.
+6. Si alguna columna quedó mal asignada, elígela en el desplegable y **Volver a probar con estos cambios**.
+7. **Guardar conexión**. Listo: se conecta en las 4 pestañas de una vez (o solo en la actual, si desmarcaste
+   la casilla) y las tarjetas aparecen repartidas solas según la columna PLATAFORMA de cada una.
 
 ### Alternativa sin pantalla: variables de entorno (Netlify)
 
@@ -92,9 +117,14 @@ TikTok Lead Ads vía Zapier (`created_time`, `full_name`, `phone_number`, `email
 
 - **Nada se descarta:** las columnas que no se reconocen (preguntas propias del formulario) salen en cada tarjeta como
   *"Otros datos del formulario"*.
-- El teléfono de Meta (`p:+51987654321`) se limpia a `+51987654321`.
-- Un kilometraje escrito como texto ("85 mil") **no se inventa**: queda en "Otros datos".
+- El teléfono de Meta (`p:+51987654321`) se limpia a `+51987654321`; el de esta hoja de Trade Cars ya viene
+  sin el `p:`, se guarda tal cual (`51920451027`).
+- El kilometraje entiende **"107k" y "85 mil" / "120mil"** (×1000) además de "85,000" o "108 000" —
+  son la forma más común en que Trade Cars lo escribe, no una estimación ambigua. Lo que sí sigue sin
+  inventarse es texto genuinamente impreciso ("bastante uso", "poco kilometraje").
 - Las fechas de Sheets se leen sin ambigüedad; si vienen como texto, `dd/mm/aaaa` (día primero) o ISO.
+- **PLATAFORMA** decide a qué pestaña va cada lead (ver la sección de arriba). Vacío o un valor que no sea
+  claramente Instagram/Facebook/TikTok → va a "ZAPPIER (Sin plataforma)".
 - **La primera fila con al menos 2 celdas llenas es el encabezado.** Zapier agrega los leads nuevos al final.
 - Si un día cambian el **nombre** de una columna en la hoja, conviene volver a **Conectar hoja → Probar lectura**
   y revisar que siga bien asignada.

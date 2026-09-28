@@ -6,8 +6,12 @@
  *        → estado/notas/precio de UNA tarjeta. Exige poder EDITAR el módulo Comercial.
  *   { accion: 'probar',     canal, url, pestana?, mapeo? }
  *        → lee la hoja SIN guardar nada y devuelve las columnas y las primeras filas. Solo Administrador.
- *   { accion: 'configurar', canal, url, pestana?, mapeo? }
+ *   { accion: 'configurar', canal, url, pestana?, mapeo?, aplicar_a_todos? }
  *        → guarda qué hoja es la de ese canal (y, si Google ya está conectado, la prueba). Solo Administrador.
+ *        `aplicar_a_todos: true` guarda la MISMA hoja en los 4 canales (ig/fb/tiktok/sin_plataforma):
+ *        es el caso real de Trade Cars, que trae todas las redes juntas en una sola hoja de Zapier
+ *        con una columna PLATAFORMA — conectarla una vez alcanza, y `canalDePlataforma()` reparte
+ *        cada lead a su pestaña sola.
  *   { accion: 'quitar',     canal }
  *        → desconecta la hoja de ese canal. Solo Administrador.
  *
@@ -19,7 +23,7 @@ import {
   resolverPerfilTradeCars, exigirModuloTradeCars, exigirAdminTradeCars,
 } from '../../utils/tradecars'
 import {
-  ErrorHoja, googleConectado, guardarConfigHoja, leerHojaGoogle,
+  ErrorHoja, googleConectado, guardarConfigHoja, leerHojaGoogle, restriccionCanalFaltante, TODOS_LOS_CANALES,
 } from '../../utils/tradecars-formularios'
 import {
   CAMPOS_FORMULARIO, ESTADOS_FORMULARIO, esCanalFormulario, extraerReferenciaHoja, hojaALeads,
@@ -50,7 +54,7 @@ export default defineEventHandler(async (event) => {
 
   const canal = String(body?.canal || '')
   if (!esCanalFormulario(canal)) {
-    throw createError({ statusCode: 400, statusMessage: 'Canal desconocido: usa ig, fb o tiktok' })
+    throw createError({ statusCode: 400, statusMessage: 'Canal desconocido: usa ig, fb, tiktok o sin_plataforma' })
   }
 
   /* ══════════ Guardar el trabajo sobre una tarjeta ══════════ */
@@ -108,6 +112,12 @@ export default defineEventHandler(async (event) => {
           statusMessage: 'Falta correr sql/tradecars_formularios_sheets.sql en Supabase para poder guardar el estado de las tarjetas.',
         })
       }
+      if (restriccionCanalFaltante(error)) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'Falta correr sql/tradecars_formularios_plataforma.sql en Supabase para poder usar la pestaña "ZAPPIER (Sin plataforma)".',
+        })
+      }
       throw createError({ statusCode: 400, statusMessage: error.message })
     }
     return { ok: true, tarjeta: data }
@@ -160,8 +170,13 @@ export default defineEventHandler(async (event) => {
 
     if (accion === 'probar') return { ok: true, prueba }
 
-    await guardarConfigHoja(supabase, canal, { sheet_id: ref.sheetId, pestana, gid: ref.gid, mapeo }, perfil.email)
-    return { ok: true, guardado: true, prueba }
+    // El caso real: es la MISMA hoja de Zapier para las 4 pestañas, así que se guarda una vez y
+    // listo — no hace falta repetir "Conectar hoja" 4 veces con el mismo enlace.
+    const canales = body?.aplicar_a_todos === true ? TODOS_LOS_CANALES : [canal]
+    for (const c of canales) {
+      await guardarConfigHoja(supabase, c, { sheet_id: ref.sheetId, pestana, gid: ref.gid, mapeo }, perfil.email)
+    }
+    return { ok: true, guardado: true, prueba, canales_conectados: canales }
   }
 
   throw createError({ statusCode: 400, statusMessage: `Acción desconocida: ${accion}` })

@@ -15,22 +15,44 @@
  * Este archivo no toca red, ni base, ni Nitro: se puede probar suelto con node.
  */
 
-export type CanalFormulario = 'ig' | 'fb' | 'tiktok'
+export type CanalFormulario = 'ig' | 'fb' | 'tiktok' | 'sin_plataforma'
 
 export const CANALES_FORMULARIO: Record<CanalFormulario, { etiqueta: string; envId: string; envPestana: string }> = {
   ig: { etiqueta: 'Formularios IG', envId: 'TRADECARS_SHEET_IG_ID', envPestana: 'TRADECARS_SHEET_IG_TAB' },
   fb: { etiqueta: 'Formularios FB', envId: 'TRADECARS_SHEET_FB_ID', envPestana: 'TRADECARS_SHEET_FB_TAB' },
   tiktok: { etiqueta: 'Formularios TIKTOK', envId: 'TRADECARS_SHEET_TIKTOK_ID', envPestana: 'TRADECARS_SHEET_TIKTOK_TAB' },
+  // 28/09/2026: Trade Cars no tiene 3 hojas separadas — tiene UNA hoja de Zapier con todas las
+  // redes juntas y una columna PLATAFORMA que (todavía) no llenan. Mientras esa columna esté
+  // vacía, todo cae acá. Cuando la llenen, canalDePlataforma() lo manda solo a IG/FB/TikTok.
+  sin_plataforma: { etiqueta: 'ZAPPIER (Sin plataforma)', envId: 'TRADECARS_SHEET_SIN_PLATAFORMA_ID', envPestana: 'TRADECARS_SHEET_SIN_PLATAFORMA_TAB' },
 }
 
-export const esCanalFormulario = (v: any): v is CanalFormulario => v === 'ig' || v === 'fb' || v === 'tiktok'
+export const esCanalFormulario = (v: any): v is CanalFormulario =>
+  v === 'ig' || v === 'fb' || v === 'tiktok' || v === 'sin_plataforma'
+
+/**
+ * A qué pestaña pertenece un lead según el texto de su columna PLATAFORMA — no según en qué
+ * pestaña se conectó la hoja. Así, aunque IG/FB/TikTok y "Sin plataforma" lean la MISMA hoja de
+ * Zapier (ver `aplicar_a_todos` en el endpoint), cada una muestra solo lo suyo.
+ *
+ * Vacío, o un valor que no es claramente Instagram/Facebook/TikTok (p. ej. "Meta", "WhatsApp"),
+ * devuelve null: ese lead queda en "Sin plataforma" hasta que alguien lo clasifique.
+ */
+export function canalDePlataforma(valor: string | null | undefined): 'ig' | 'fb' | 'tiktok' | null {
+  const v = norm(valor)
+  if (!v) return null
+  if (v.includes('instagram') || v === 'ig') return 'ig'
+  if (v.includes('facebook') || v === 'fb') return 'fb'
+  if (v.includes('tiktok')) return 'tiktok'
+  return null
+}
 
 /** Estados de una tarjeta. Son los mismos de "Quieren VENDER su auto" en Solicitudes web. */
 export const ESTADOS_FORMULARIO = ['nuevo', 'contactado', 'tasado', 'comprado', 'descartado']
 
 export const CAMPOS_FORMULARIO = [
   'lead_id', 'fecha', 'correo', 'celular', 'placa', 'nombre', 'campana',
-  'marca', 'modelo', 'anio', 'kilometraje', 'distrito', 'tiene_deuda', 'mensaje',
+  'marca', 'modelo', 'anio', 'kilometraje', 'distrito', 'tiene_deuda', 'mensaje', 'plataforma',
 ] as const
 export type CampoFormulario = typeof CAMPOS_FORMULARIO[number]
 
@@ -38,6 +60,7 @@ export const ETIQUETA_CAMPO: Record<CampoFormulario, string> = {
   lead_id: 'ID del lead', fecha: 'Fecha', correo: 'Correo', celular: 'Celular', placa: 'Placa',
   nombre: 'Nombre', campana: 'Campaña / formulario', marca: 'Marca', modelo: 'Modelo', anio: 'Año',
   kilometraje: 'Kilometraje', distrito: 'Distrito', tiene_deuda: '¿Tiene deuda?', mensaje: 'Mensaje',
+  plataforma: 'Plataforma / red social',
 }
 
 /** Mayúsculas, tildes, espacios y símbolos no cuentan: "Número de Teléfono" == "numero_de_telefono". */
@@ -118,6 +141,10 @@ const REGLAS: Record<CampoFormulario, ReglaCampo> = {
   mensaje: {
     exacto: ['mensaje', 'message', 'comentarios', 'comentario', 'comments', 'observaciones', 'notas', 'detalle'],
     contiene: ['mensaje', 'comentario', 'observ'],
+  },
+  plataforma: {
+    exacto: ['plataforma', 'platform', 'redsocial'],
+    contiene: ['plataforma', 'platform', 'redsocial'],
   },
 }
 
@@ -211,11 +238,24 @@ export function limpiarAnio(v: any): number | null {
   return m ? Number(m[1]) : null
 }
 
-/** "85,000", "85.000", "85000 km" → 85000. Texto como "85 mil" NO se interpreta (devuelve null). */
+/**
+ * "85,000", "85.000", "85000 km", "108 000" → 85000/108000. "107k" y "85 mil" / "120mil" también
+ * se interpretan (×1000): en la base real de Trade Cars son la forma más común de escribir el
+ * kilometraje, no una estimación ambigua — "mil" y "k" son notaciones exactas, no un "como cien
+ * mil". Lo que sí sigue sin inventarse es texto genuinamente impreciso ("bastante", "poco uso"…).
+ */
 export function limpiarKilometraje(v: any): number | null {
   if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? Math.round(v) : null
-  const s = texto(v).toLowerCase().replace(/km[s]?\.?/g, '').trim()
-  if (!s || !/^[\d.,\s]+$/.test(s)) return null
+  const s = texto(v).toLowerCase().replace(/kms?\.?/g, '').trim()
+  if (!s) return null
+
+  const miles = /^(\d+(?:[.,]\d+)?)\s*(mil|k)$/.exec(s)
+  if (miles) {
+    const base = Number(miles[1].replace(',', '.'))
+    return Number.isFinite(base) ? Math.round(base * 1000) : null
+  }
+
+  if (!/^[\d.,\s]+$/.test(s)) return null
   const digitos = s.replace(/[^\d]/g, '')
   return digitos ? Number(digitos) : null
 }
@@ -300,6 +340,8 @@ export interface LeadFormulario {
   mensaje: string
   campana: string
   lead_id: string
+  /** Texto crudo de la columna PLATAFORMA, tal cual está en la hoja. Ver `canalDePlataforma()`. */
+  plataforma: string
   /** Columnas que no se reconocieron (preguntas propias del formulario). Nada se descarta. */
   extras: { campo: string; valor: string }[]
 }
@@ -397,6 +439,7 @@ export function hojaALeads(
       mensaje: texto(celda(fila, 'mensaje')),
       campana: texto(celda(fila, 'campana')),
       lead_id: leadId,
+      plataforma: texto(celda(fila, 'plataforma')),
       extras,
     })
   })

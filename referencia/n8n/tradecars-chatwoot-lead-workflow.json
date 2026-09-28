@@ -7,21 +7,21 @@
         "path": "tradecars-chatwoot-lead",
         "options": {}
       },
-      "id": "6b1f2a10-1a2b-4c3d-9e4f-5a6b7c8d9e0a",
+      "id": "8eb5388c-1e47-4e12-b596-112861f49f93",
       "name": "Webhook Chatwoot",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-880, 400]
+      "position": [-736, 0]
     },
     {
       "parameters": {
         "jsCode": "// Trade Cars — Lead desde mensaje de Chatwoot. Desenvuelve el payload real de Chatwoot\n// (el Webhook de n8n SIEMPRE lo entrega dentro de item.json.body, nunca al nivel raiz —\n// mismo detalle que ya costo un bug real en el flujo del funnel, ver tradecars-funnel-guia.md)\n// y decide si el mensaje ENTRANTE parece la notificacion de un formulario completado.\n//\n// Ajusta FRASES_FORMULARIO al texto real que use tu bot de Meta/Zapier al avisar por\n// WhatsApp que alguien lleno el formulario.\n\nconst FRASES_FORMULARIO = [\n  'completé el formulario',\n  'complete el formulario',\n  'obtener más información sobre el negocio',\n  'obtener mas informacion sobre el negocio',\n];\n\nconst salida = [];\n\nfor (const item of $input.all()) {\n  const raw = item.json || {};\n  const c = raw.body !== undefined && raw.body !== null ? raw.body : raw;\n\n  const conv = c.conversation || c;\n  const meta = conv.meta || c.meta || {};\n  const sender = meta.sender || {};\n\n  const messageType = String(c.message_type || conv.message_type || '').toLowerCase();\n  const esEntrante = messageType === 'incoming' || messageType === '0';\n\n  const contenido = String(c.content || conv.content || '').trim();\n  const contenidoNorm = contenido.toLowerCase();\n  const pareceFormulario = esEntrante && FRASES_FORMULARIO.some((f) => contenidoNorm.includes(f));\n\n  const conversationId = conv.id !== undefined ? conv.id : null;\n  const accountIdRaw = conv.account_id !== undefined ? conv.account_id\n    : (c.account && c.account.id !== undefined ? c.account.id\n    : (conv.messages && conv.messages[0] ? conv.messages[0].account_id : undefined));\n  const inboxId = conv.inbox_id !== undefined ? conv.inbox_id : (c.inbox_id !== undefined ? c.inbox_id : null);\n\n  salida.push({\n    json: {\n      _procesar: pareceFormulario,\n      mensaje: contenido,\n      telefono: sender.phone_number || '',\n      nombre_chatwoot: sender.name || '',\n      conversation_id: conversationId,\n      account_id: accountIdRaw !== undefined && accountIdRaw !== null ? Number(accountIdRaw) : null,\n      inbox_id: inboxId !== null ? Number(inboxId) : null,\n    },\n  });\n}\n\nreturn salida;\n"
       },
-      "id": "7c2e3b21-2b3c-4d4e-af5f-6b7c8d9e0a1b",
+      "id": "76221883-e896-494d-affa-6fcd950aa3eb",
       "name": "Leer mensaje",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-656, 400]
+      "position": [-512, 0]
     },
     {
       "parameters": {
@@ -29,8 +29,8 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
@@ -48,50 +48,50 @@
         },
         "options": {}
       },
-      "id": "8d3f4c32-3c4d-4e5f-b06a-7c8d9e0a1b2c",
+      "id": "69819b7b-c2a1-4b58-9174-99795f7a14ff",
       "name": "¿Parece un formulario?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-432, 400]
+      "position": [-288, 0]
     },
     {
       "parameters": {},
-      "id": "9e405d43-4d5e-4f6a-c17b-8d9e0a1b2c3d",
+      "id": "aad53840-e990-4a8d-bd05-34de0ba8b1cd",
       "name": "No es formulario - no hacer nada",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [-208, 560]
+      "position": [-64, 160]
     },
     {
       "parameters": {
-        "resource": "text",
-        "operation": "message",
-        "modelId": {
+        "promptType": "define",
+        "text": "={{ $json.mensaje }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Eres un extractor de datos para Trade Cars Perú. Lees un mensaje de WhatsApp donde alguien completó un formulario para vender su auto y extraes los datos del vehículo y del contacto que encuentres, literalmente, en el texto.\n\nReglas:\n- Si un dato NO aparece explícitamente en el mensaje, déjalo vacío/null. Nunca inventes ni asumas un valor (ni un distrito, ni una marca, ni un año).\n- El kilometraje y el año van como número, sin texto ni unidades (ej. 110000, no \"110,000 km\").\n- La placa va tal cual la escribió la persona, sin agregar guiones si no los tiene.\n- No proceses nada que no sea un dato del formulario (ignora saludos, firmas, emojis)."
+        }
+      },
+      "id": "e56b3666-32e5-4370-ae48-be4f025aa9a4",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [-96, -352]
+    },
+    {
+      "parameters": {
+        "model": {
           "__rl": true,
-          "value": "gpt-4o-mini",
           "mode": "list",
-          "cachedResultName": "gpt-4o-mini"
+          "value": "gpt-4.1-mini"
         },
-        "messages": {
-          "values": [
-            {
-              "role": "system",
-              "content": "Eres un extractor de datos. Lees un mensaje de WhatsApp donde alguien completó un formulario para vender su auto y devuelves SOLO un JSON con los campos que encuentres. Si un campo no aparece en el mensaje, ponlo en null — nunca inventes un valor. No agregues texto fuera del JSON.\n\nFormato exacto de salida:\n{\n  \"marca\": string|null,\n  \"modelo\": string|null,\n  \"anio\": number|null,\n  \"kilometraje\": number|null,\n  \"placa\": string|null,\n  \"distrito\": string|null,\n  \"correo\": string|null\n}"
-            },
-            {
-              "role": "user",
-              "content": "={{ $json.mensaje }}"
-            }
-          ]
-        },
-        "jsonOutput": true,
+        "builtInTools": {},
         "options": {}
       },
-      "id": "0a516e54-5e6f-4a7b-d28c-9e0a1b2c3d4e",
-      "name": "Extraer datos con IA",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1.6,
-      "position": [-208, 320],
+      "id": "29c8a91c-3ac7-4b04-b167-41cef6c9bb96",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [-112, -176],
       "credentials": {
         "openAiApi": {
           "id": "PEGAR_AQUI_TU_CREDENCIAL_OPENAI",
@@ -101,13 +101,24 @@
     },
     {
       "parameters": {
-        "jsCode": "// Combina lo que ya se sabia por Chatwoot (telefono, nombre, conversation_id...) con lo que\n// extrajo el nodo de IA. Defensivo con la forma exacta de la respuesta porque cambia segun la\n// version de n8n (a veces ya viene parseada en el propio $json, a veces como texto adentro de\n// $json.message.content o $json.content).\n\nconst base = $('Leer mensaje').first().json;\nconst resp = $input.first().json || {};\n\nfunction extraerJson(valor) {\n  if (valor && typeof valor === 'object' && !Array.isArray(valor)) return valor;\n  if (typeof valor !== 'string') return null;\n  try { return JSON.parse(valor); } catch {}\n  const m = valor.match(/\\{[\\s\\S]*\\}/);\n  if (m) { try { return JSON.parse(m[0]); } catch {} }\n  return null;\n}\n\nconst candidatos = [resp, resp.message && resp.message.content, resp.content,\n  resp.choices && resp.choices[0] && resp.choices[0].message && resp.choices[0].message.content];\n\nlet campos = null;\nfor (const c of candidatos) {\n  campos = extraerJson(c);\n  if (campos) break;\n}\ncampos = campos || {};\n\nreturn [{\n  json: {\n    telefono: base.telefono,\n    nombre_chatwoot: base.nombre_chatwoot,\n    correo: campos.correo ?? null,\n    marca: campos.marca ?? null,\n    modelo: campos.modelo ?? null,\n    anio: campos.anio ?? null,\n    kilometraje: campos.kilometraje ?? null,\n    placa: campos.placa ?? null,\n    distrito: campos.distrito ?? null,\n    mensaje_original: base.mensaje,\n    conversation_id: base.conversation_id,\n    account_id: base.account_id,\n    inbox_id: base.inbox_id,\n  },\n}];\n"
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"marca\": \"Toyota\",\n  \"modelo\": \"Yaris\",\n  \"anio\": 2019,\n  \"kilometraje\": 45000,\n  \"placa\": \"ABC-123\",\n  \"distrito\": \"Miraflores\",\n  \"correo\": \"correo@ejemplo.com\"\n}"
       },
-      "id": "1b627f65-6f7a-4b8c-e39d-0a1b2c3d4e5f",
+      "id": "5f3a2c10-9b41-4e2a-8c77-1d6e4f9a3b02",
+      "name": "Formato de salida",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [80, -176]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combina lo que ya se sabia por Chatwoot (telefono, nombre, conversation_id...) con lo que\n// extrajo el AI Agent. Defensivo con la forma exacta de la respuesta: con el \"Formato de\n// salida\" (Structured Output Parser) conectado, lo normal es que $json.output YA sea el\n// objeto {marca, modelo, ...} listo. Sin parser, o en otras versiones de n8n, puede venir\n// como texto (a veces con algo de charla alrededor) en .output, .text u otros campos — por\n// eso se prueba en ese orden y, si es texto, se intenta JSON.parse y si no, se recorta el\n// primer bloque {...} que aparezca.\n\nconst base = $('Leer mensaje').first().json;\nconst resp = $input.first().json || {};\n\nfunction extraerJson(valor) {\n  if (valor && typeof valor === 'object' && !Array.isArray(valor)) return valor;\n  if (typeof valor !== 'string') return null;\n  try { return JSON.parse(valor); } catch {}\n  const m = valor.match(/\\{[\\s\\S]*\\}/);\n  if (m) { try { return JSON.parse(m[0]); } catch {} }\n  return null;\n}\n\nconst candidatos = [\n  resp.output,\n  resp.text,\n  resp,\n  resp.message && resp.message.content,\n  resp.content,\n  resp.choices && resp.choices[0] && resp.choices[0].message && resp.choices[0].message.content,\n];\n\nlet campos = null;\nfor (const c of candidatos) {\n  campos = extraerJson(c);\n  if (campos) break;\n}\ncampos = campos || {};\n\nreturn [{\n  json: {\n    telefono: base.telefono,\n    nombre_chatwoot: base.nombre_chatwoot,\n    correo: campos.correo ?? null,\n    marca: campos.marca ?? null,\n    modelo: campos.modelo ?? null,\n    anio: campos.anio ?? null,\n    kilometraje: campos.kilometraje ?? null,\n    placa: campos.placa ?? null,\n    distrito: campos.distrito ?? null,\n    mensaje_original: base.mensaje,\n    conversation_id: base.conversation_id,\n    account_id: base.account_id,\n    inbox_id: base.inbox_id,\n  },\n}];\n"
+      },
+      "id": "eec87a54-6ea3-4b33-aa67-30009fb0d4ff",
       "name": "Armar payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [16, 320]
+      "position": [208, -352]
     },
     {
       "parameters": {
@@ -134,11 +145,11 @@
           }
         }
       },
-      "id": "2c738a76-7a8b-4c9d-f4ae-1b2c3d4e5f6a",
+      "id": "a635817f-4936-4bea-a467-e353ab57045f",
       "name": "Guardar lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [240, 320]
+      "position": [416, -352]
     }
   ],
   "connections": {
@@ -168,7 +179,7 @@
       "main": [
         [
           {
-            "node": "Extraer datos con IA",
+            "node": "AI Agent",
             "type": "main",
             "index": 0
           }
@@ -182,12 +193,34 @@
         ]
       ]
     },
-    "Extraer datos con IA": {
+    "AI Agent": {
       "main": [
         [
           {
             "node": "Armar payload",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formato de salida": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
             "index": 0
           }
         ]

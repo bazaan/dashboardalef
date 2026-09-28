@@ -7,22 +7,21 @@ antes.
 
 > **Para copiar y pegar directo:** `tradecars-chatwoot-lead-workflow.json` (en esta misma
 > carpeta) es el flujo completo, listo para importar en n8n (**Import from File / Import from
-> URL / pegar el JSON**). Arma los 6 nodos de abajo con las conexiones ya hechas — solo falta
-> que abras el nodo **"Extraer datos con IA"** y le pongas TU credencial de OpenAI (las
-> credenciales nunca se exportan en el JSON, por seguridad), y que confirmes que el nodo
-> **"Webhook Chatwoot"** apunte al mismo evento de Chatwoot (`message_created`) que ya usan
-> los demás flujos de Trade Cars. Si tu n8n usa los nodos más nuevos de IA (LangChain / "AI
-> Agent") en vez del nodo clásico "OpenAI", reemplaza ese nodo — el resto del flujo no cambia.
+> URL / pegar el JSON**). Usa los nodos de IA más nuevos de n8n (**AI Agent + OpenAI Chat
+> Model + Structured Output Parser**, del paquete LangChain), confirmado contra lo que ya
+> tienen instalado. Arma los 9 nodos con las conexiones ya hechas — solo falta abrir el nodo
+> **"OpenAI Chat Model"** y ponerle TU credencial de OpenAI (las credenciales nunca se
+> exportan en el JSON, por seguridad) y registrar el webhook en Chatwoot (§4 más abajo).
 
 ## 0. Qué hay que tener antes
 
 | Necesitas | Estado |
 |---|---|
-| El SQL corrido: `sql/tradecars_leads_chatwoot.sql` | Pendiente |
+| El SQL corrido: `sql/tradecars_leads_chatwoot.sql` | **Hecho** (28/09/2026) |
 | Credencial de IA en n8n (OpenAI, o la que ya usen en otros flujos) | Ya deben tenerla — la usa el Tasador |
 | Credencial/token de Chatwoot en n8n | Ya la tienen — la usan las 17 automatizaciones existentes |
 
-## 1. El flujo, en 4 pasos
+## 1. El flujo, en 5 pasos
 
 ```
 Webhook Chatwoot (message_created, entrante)
@@ -31,10 +30,13 @@ Webhook Chatwoot (message_created, entrante)
 ¿Es un mensaje que parece formulario?  (filtro simple, ver §2)
         │ sí
         ▼
-Nodo de IA — extrae los campos del texto  (ver §3, el prompt)
+AI Agent + OpenAI Chat Model + Structured Output Parser  (ver §3, el prompt)
         │
         ▼
-HTTP Request → POST /api/tradecars/chatwoot-lead  (ver §4)
+Armar payload  (junta lo que sacó la IA con teléfono/nombre/conversation_id de Chatwoot)
+        │
+        ▼
+HTTP Request → POST /api/tradecars/chatwoot-lead  (ver §5)
 ```
 
 ### §2. Filtro: ¿vale la pena mandarlo al IA?
@@ -50,66 +52,71 @@ mensaje, filtra por algo que SIEMPRE traiga el mensaje de formulario, por ejempl
 
 Si el mensaje no calza con el filtro, el flujo simplemente no continúa (nodo IF).
 
-### §3. Nodo de IA — el prompt
+### §3. Los 3 nodos de IA
 
-Usa un nodo de IA (OpenAI Chat, o el que ya tengan configurado) en modo **structured
-output / JSON** para que la respuesta sea siempre parseable. Prompt sugerido:
+El flujo usa el trío estándar de n8n para extracción estructurada (el que ya viene instalado
+si usan **AI Agent** en otros flujos, como el Tasador):
 
-**System:**
+| Nodo | Qué hace |
+|---|---|
+| **OpenAI Chat Model** | El modelo (`gpt-4.1-mini` por defecto — cámbialo si prefieren otro). Acá va TU credencial de OpenAI |
+| **Formato de salida** (Structured Output Parser) | Obliga a que la respuesta sea el JSON con exactamente estos 7 campos: `marca, modelo, anio, kilometraje, placa, distrito, correo`. Sin esto, un modelo de IA a veces agrega texto alrededor del JSON ("Claro, aquí está:") y rompe el parseo |
+| **AI Agent** | El que recibe el mensaje (`{{ $json.mensaje }}`) y trae ya escrito el prompt de sistema |
+
+**El prompt de sistema** (ya viene en el nodo AI Agent → pestaña Options → System Message):
 ```
-Eres un extractor de datos. Lees un mensaje de WhatsApp donde alguien completó un
-formulario para vender su auto y devuelves SOLO un JSON con los campos que encuentres.
-Si un campo no aparece en el mensaje, ponlo en null — nunca inventes un valor.
-No agregues texto fuera del JSON.
+Eres un extractor de datos para Trade Cars Perú. Lees un mensaje de WhatsApp donde alguien
+completó un formulario para vender su auto y extraes los datos del vehículo y del contacto
+que encuentres, literalmente, en el texto.
 
-Formato exacto de salida:
-{
-  "marca": string|null,
-  "modelo": string|null,
-  "anio": number|null,
-  "kilometraje": number|null,
-  "placa": string|null,
-  "distrito": string|null,
-  "correo": string|null
-}
+Reglas:
+- Si un dato NO aparece explícitamente en el mensaje, déjalo vacío/null. Nunca inventes ni
+  asumas un valor (ni un distrito, ni una marca, ni un año).
+- El kilometraje y el año van como número, sin texto ni unidades (ej. 110000, no "110,000 km").
+- La placa va tal cual la escribió la persona, sin agregar guiones si no los tiene.
+- No proceses nada que no sea un dato del formulario (ignora saludos, firmas, emojis).
 ```
-
-**User:** el texto del mensaje (`{{ $json.content }}` o el campo que traiga el body del
-webhook de Chatwoot).
 
 El **teléfono** y el **nombre del contacto** NO se le piden a la IA — se leen directo del
-contacto de Chatwoot (`conversation.meta.sender.phone_number` y `.name` en el payload del
-webhook), son datos que Chatwoot ya trae confirmados y no hace falta que la IA los adivine
-del texto.
+contacto de Chatwoot (`conversation.meta.sender.phone_number` y `.name`, ya extraídos por el
+nodo "Leer mensaje" antes de llegar a la IA), son datos que Chatwoot ya trae confirmados y no
+hace falta que la IA los adivine del texto.
 
-### §4. Guardar — llamada HTTP
+Si prefieren usar otro modelo/proveedor (Claude, Gemini, etc.), solo hay que cambiar el nodo
+"OpenAI Chat Model" por el equivalente de ese proveedor y volver a conectarlo al AI Agent — el
+resto del flujo no cambia.
 
-**Nodo HTTP Request**, método POST:
+### §4. El webhook en Chatwoot
+
+**Settings → Integrations → Webhooks → Add new webhook**
+
+- **URL:** la Production URL del nodo "Webhook Chatwoot" (ábrelo y cópiala — solo aparece
+  completa cuando el workflow está **activado**)
+- **Events:** marcar **`Message created`**
+
+A diferencia del flujo del Funnel (que escucha `Conversation updated`), acá hace falta
+`Message created` porque lo que dispara todo es el TEXTO del mensaje que llega, no un cambio
+de atributo. El nodo "Leer mensaje" ya descarta los mensajes salientes (los que manda el
+asesor) — solo sigue con los `message_type: incoming`.
+
+### §5. Guardar — llamada HTTP
+
+Dos nodos, ya conectados en el JSON:
+
+1. **"Armar payload"** (Code) — junta lo que ya se sabía por Chatwoot (`telefono`,
+   `nombre_chatwoot`, `conversation_id`, `account_id`, `inbox_id`, `mensaje_original`, todo
+   leído en el nodo "Leer mensaje") con lo que sacó la IA (`marca`, `modelo`, `anio`,
+   `kilometraje`, `placa`, `distrito`, `correo`), en un solo objeto con exactamente los
+   nombres de campo que espera el endpoint. Es defensivo con la forma exacta de la
+   respuesta de la IA (a veces viene ya parseada, a veces como texto) — no debería hacer
+   falta tocarlo.
+2. **"Guardar lead"** (HTTP Request) — POST directo con `JSON.stringify($json)` de lo que
+   armó el nodo anterior:
 
 ```
 URL:     https://dashboard.alef.company/api/tradecars/chatwoot-lead
 Headers: x-api-key: tradecars-chatwoot-lead-2026
-         Content-Type: application/json
-Body (JSON):
-{
-  "telefono": "{{ $('Webhook Chatwoot').item.json.body.conversation.meta.sender.phone_number }}",
-  "nombre_chatwoot": "{{ $('Webhook Chatwoot').item.json.body.conversation.meta.sender.name }}",
-  "correo": "{{ $json.correo }}",
-  "marca": "{{ $json.marca }}",
-  "modelo": "{{ $json.modelo }}",
-  "anio": {{ $json.anio }},
-  "kilometraje": {{ $json.kilometraje }},
-  "placa": "{{ $json.placa }}",
-  "distrito": "{{ $json.distrito }}",
-  "mensaje_original": "{{ $('Webhook Chatwoot').item.json.body.content }}",
-  "conversation_id": {{ $('Webhook Chatwoot').item.json.body.conversation.id }},
-  "account_id": {{ $('Webhook Chatwoot').item.json.body.account.id }},
-  "inbox_id": {{ $('Webhook Chatwoot').item.json.body.inbox.id }}
-}
 ```
-
-Ajusta las rutas `$json...` al nombre real de tus nodos — esto es la forma, no una copia
-exacta (cada instalación de n8n nombra los nodos distinto).
 
 **Respuesta del endpoint** (siempre 200, salvo 400/401/409 — nunca hace falta reintentar):
 

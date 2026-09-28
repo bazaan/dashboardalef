@@ -1263,8 +1263,20 @@ dashboard ya con el JSON estructurado.
   `tradecars-chatwoot-lead-2026`. Body: `{ telefono, nombre_chatwoot, correo, marca, modelo, anio,
   kilometraje, placa, distrito, mensaje_original, conversation_id, account_id, inbox_id }`.
 - **Flujo de n8n importable**: `referencia/n8n/tradecars-chatwoot-lead-workflow.json` (Webhook Chatwoot →
-  desenvolver+filtrar → nodo IA "OpenAI: Message a Model" con `jsonOutput` → armar payload → HTTP Request
-  al endpoint). Solo falta pegar la credencial de OpenAI al importar — no viaja en el JSON.
+  desenvolver+filtrar → **AI Agent + OpenAI Chat Model + Structured Output Parser** [nodos LangChain, lo
+  que Trade Cars ya tiene instalado — no el nodo clásico "OpenAI"] → armar payload → HTTP Request al
+  endpoint). Solo falta pegar la credencial de OpenAI al importar — no viaja en el JSON.
+- ⚠️ **El webhook de Chatwoot necesita el evento `Message Created`, no solo `Conversation Created`.**
+  Probado en vivo el 28/09/2026: con solo `Conversation Created` marcado, el flujo SÍ ejecuta (sin error
+  visible, "verde" en n8n) pero nunca encuentra `content`/`message_type` — ese evento se dispara al abrir
+  la conversación, ANTES de que exista el mensaje con el texto del formulario. Cae siempre por "No es
+  formulario" en silencio. `Conversation Created` puede quedar marcado también (el flujo lo ignora solo).
+- ⚠️ **El teléfono hay que pedirlo en DOS lados, no solo a Chatwoot.** `sender.phone_number` de Chatwoot es
+  la fuente que manda, pero **los contactos de Instagram/Facebook casi nunca lo tienen** (solo tienen su
+  usuario de esa red) — para esos leads el único lugar donde aparece el teléfono real es el propio texto
+  del mensaje ("Phone number: 972619000"). Por eso la IA también extrae `telefono` del texto como
+  respaldo (`campos.telefono`), y "Armar payload" usa `base.telefono || campos.telefono`. Sin esto, todo
+  lead que llegue por IG/FB rebotaba con 400 "Falta el teléfono" — confirmado en vivo con un lead real.
 - **Deduplicado por TELÉFONO, a pedido explícito**: si ya existe un lead con ese teléfono (normalizado —
   se le quita el prefijo `51` si quedó de 11 dígitos), **no se toca nada** — ni se actualiza, ni se pisa
   lo que el equipo ya haya trabajado sobre ese lead. Devuelve `duplicado: true` con el `id` existente, 200

@@ -60,7 +60,7 @@ si usan **AI Agent** en otros flujos, como el Tasador):
 | Nodo | Qué hace |
 |---|---|
 | **OpenAI Chat Model** | El modelo (`gpt-4.1-mini` por defecto — cámbialo si prefieren otro). Acá va TU credencial de OpenAI |
-| **Formato de salida** (Structured Output Parser) | Obliga a que la respuesta sea el JSON con exactamente estos 7 campos: `marca, modelo, anio, kilometraje, placa, distrito, correo`. Sin esto, un modelo de IA a veces agrega texto alrededor del JSON ("Claro, aquí está:") y rompe el parseo |
+| **Formato de salida** (Structured Output Parser) | Obliga a que la respuesta sea el JSON con exactamente estos 8 campos: `telefono, marca, modelo, anio, kilometraje, placa, distrito, correo`. Sin esto, un modelo de IA a veces agrega texto alrededor del JSON ("Claro, aquí está:") y rompe el parseo |
 | **AI Agent** | El que recibe el mensaje (`{{ $json.mensaje }}`) y trae ya escrito el prompt de sistema |
 
 **El prompt de sistema** (ya viene en el nodo AI Agent → pestaña Options → System Message):
@@ -77,10 +77,17 @@ Reglas:
 - No proceses nada que no sea un dato del formulario (ignora saludos, firmas, emojis).
 ```
 
-El **teléfono** y el **nombre del contacto** NO se le piden a la IA — se leen directo del
-contacto de Chatwoot (`conversation.meta.sender.phone_number` y `.name`, ya extraídos por el
-nodo "Leer mensaje" antes de llegar a la IA), son datos que Chatwoot ya trae confirmados y no
-hace falta que la IA los adivine del texto.
+El **nombre del contacto** NO se le pide a la IA — se lee directo del contacto de Chatwoot
+(`conversation.meta.sender.name`, ya extraído por el nodo "Leer mensaje").
+
+**El teléfono es distinto: se pide en los DOS lados, con Chatwoot mandando.** El nodo "Armar
+payload" usa `sender.phone_number` de Chatwoot cuando existe (WhatsApp), y si viene vacío usa
+el que la IA sacó del texto del mensaje. Esto importa porque **los contactos que escriben por
+Instagram o Facebook casi nunca tienen `phone_number` en Chatwoot** — solo tienen su usuario de
+IG/FB — así que para esos leads el único lugar donde aparece el teléfono real es el propio
+texto del formulario ("Phone number: 972619000"). Probado en vivo el 28/09/2026 con un lead
+real de Instagram: sin este respaldo, el endpoint rechazaba el lead con 400 "Falta el
+teléfono".
 
 Si prefieren usar otro modelo/proveedor (Claude, Gemini, etc.), solo hay que cambiar el nodo
 "OpenAI Chat Model" por el equivalente de ese proveedor y volver a conectarlo al AI Agent — el
@@ -98,6 +105,14 @@ A diferencia del flujo del Funnel (que escucha `Conversation updated`), acá hac
 `Message created` porque lo que dispara todo es el TEXTO del mensaje que llega, no un cambio
 de atributo. El nodo "Leer mensaje" ya descarta los mensajes salientes (los que manda el
 asesor) — solo sigue con los `message_type: incoming`.
+
+> ⚠️ **Probado en vivo el 28/09/2026: si solo marcas "Conversation Created" (sin "Message
+> Created"), el flujo SÍ ejecuta pero nunca encuentra nada que procesar** — ese evento se
+> dispara al abrir la conversación, antes de que exista el mensaje con el texto del
+> formulario, así que no trae `content` ni `message_type`. Cae siempre por la rama "No es
+> formulario", sin ningún error visible en n8n — se ve "verde" igual. Confirma que **"Message
+> Created" esté marcado** (puedes dejar "Conversation Created" también marcado si quieres; el
+> flujo la ignora sola, sin problema).
 
 ### §5. Guardar — llamada HTTP
 

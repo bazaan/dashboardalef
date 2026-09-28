@@ -1301,9 +1301,56 @@ dashboard ya con el JSON estructurado.
   `error.message` — sin eso, un INSERT sobre la tabla faltante devolvía un 500 genérico
   ("Error guardando el lead: undefined") en vez del 409 claro que dice qué SQL correr. Ojo con este mismo
   patrón en cualquier endpoint nuevo de Trade Cars que haga INSERT antes de que su migración haya corrido.
-- **Migración: no corrida todavía** — hay que correr `sql/tradecars_leads_chatwoot.sql` una vez en
-  Supabase. El endpoint ya está probado contra el caso "tabla faltante" (da el 409 correcto); falta
-  probar el insert y la deduplicación reales una vez corra el SQL.
+- **Migración: CORRIDA y probada en producción el 28/09/2026** — `sql/tradecars_leads_chatwoot.sql`.
+  Insert real, deduplicación por conversación y el respaldo de teléfono para IG/FB, todos probados
+  contra la base real (limpiado después).
+
+### Asignar la conversación a un asesor, con continuidad por teléfono (29/09/2026) — `sql/tradecars_leads_chatwoot_asesor.sql`
+
+El cliente construyó su propio flujo de n8n (**"ASIGNACION ASESOR-TRADECARS"**, webhook
+`asignaciontradecars`) que reparte cada conversación nueva sin asignar entre 4 asesores por
+round robin, y la asigna de verdad en Chatwoot (`POST .../conversations/{id}/assignments`).
+Pidió una mejora: **si el teléfono ya tuvo una conversación anterior con asesor asignado, la
+conversación nueva se deriva al MISMO asesor** en vez de a uno al azar (continuidad).
+
+- **Requisito que casi rompe la función: la deduplicación de `tradecars_leads_chatwoot` era por
+  TELÉFONO ("un teléfono = una fila para siempre"), no por conversación.** Eso bloqueaba en
+  silencio la fila de la segunda conversación de un cliente que repite — y el paso final del
+  flujo de asignación (`UPDATE ... WHERE conversation_id=X`) nunca encontraba nada que
+  actualizar para esa conversación nueva. `sql/tradecars_leads_chatwoot_asesor.sql` cambia la
+  clave única de `telefono` a `conversation_id`: ahora CADA conversación tiene su propia fila
+  (lo que se sigue evitando duplicar es la MISMA conversación reprocesada, no las
+  conversaciones nuevas de un cliente que repite). El endpoint
+  `POST /api/tradecars/chatwoot-lead` se actualizó igual (deduplica por `conversation_id`).
+- **Columnas nuevas**: `asesor_asignado` (texto) / `id_asesor_asignado` (entero) en
+  `tradecars_leads_chatwoot` — las escribe el flujo de n8n directo por Supabase (no pasan por
+  el endpoint del dashboard), ya las había agregado el cliente a mano antes de que se
+  documentaran acá.
+- **Endpoint nuevo**: `GET /api/tradecars/chatwoot-asesor-previo?telefono=` (misma api_key que
+  `/chatwoot-lead`) — busca la fila MÁS RECIENTE con ese teléfono que tenga
+  `id_asesor_asignado` no nulo. `{ ok:true, encontrado:false }` o `{ ok:true, encontrado:true,
+  asesor_asignado, id_asesor_asignado }`.
+- ⚠️ **El teléfono para esta decisión se saca del propio webhook, SIN esperar al otro flujo.**
+  El flujo de asignación dispara con `conversation_created` — ANTES de que exista la fila de
+  esta conversación en `tradecars_leads_chatwoot` (esa la crea "Lead desde mensaje de
+  Chatwoot" al leer el mensaje con IA, en `message_created`, unos segundos después). Si
+  esperara esa fila, la decisión de a quién asignar llegaría tarde. En cambio, el nodo
+  "Extraer teléfono" lee `meta.sender.phone_number` cuando existe (WhatsApp) y, si no (IG/FB),
+  saca el teléfono con una expresión regular del propio texto del primer mensaje que
+  `conversation_created` YA incluye (`messages[0].content`, mismo patrón "Phone number: ..."
+  que usa el otro flujo). Probado en vivo contra el payload real de Instagram.
+- **El resto del flujo de n8n ("Asignar Asesor" y "Update a row") no se tocó** salvo UNA
+  referencia: el filtro de "Update a row" apuntaba a `$('Round Robin Asesores').item...` para
+  el `conversation_id`, que se rompe si la conversación se asignó por el camino de "asesor
+  previo" (ese nodo nunca corre en esa rama). Se cambió a `$('Extraer teléfono').item...`, que
+  SIEMPRE corre antes de la bifurcación.
+- **Guía**: `referencia/n8n/tradecars-asignacion-asesor-guia.md`. Flujo importable (plantilla,
+  sin credenciales ni tokens): `referencia/n8n/tradecars-asignacion-asesor-workflow.json`.
+- **Pendiente del cliente**: el "Round Robin Asesores" sigue con nombres placeholder ("Asesor
+  1".."Asesor 4") sobre los ids reales de Chatwoot (55-58) — el id 55 ya se confirmó en vivo
+  que es Rodrigo Paredes; hay que confirmar y poner los otros 3 nombres (candidatos por
+  `tradecars_asesores`: Jose Flores, Brado Alvarado, Gino Hurtado, pero sin confirmar el id de
+  cada uno todavía).
 
 ---
 

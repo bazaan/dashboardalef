@@ -1,6 +1,11 @@
 -- ══════════════════════════════════════════════════════════════════════════
 -- TRADE CARS — Leads capturados desde mensajes de Chatwoot (28/09/2026)
 --
+-- ⚠️ Superado en parte el 29/09/2026 por sql/tradecars_leads_chatwoot_asesor.sql (correr
+-- ESE archivo TAMBIÉN, después de este): el índice único de acá quedó sobre `telefono`,
+-- pero se reemplazó por uno sobre `conversation_id` para poder asignar cada conversación
+-- nueva de un cliente que repite a su mismo asesor. Ver ese archivo para el motivo completo.
+--
 -- Cuando alguien llena un formulario de Meta (IG/FB) y el mensaje llega como
 -- texto libre a una conversación de Chatwoot (ej. "¡Hola! Completé el
 -- formulario... Marca: Suzuki, Modelo: Ciaz, ..."), un flujo de n8n con un

@@ -5,7 +5,7 @@
  * Chatwoot (28/09/2026) — cuando alguien llena un formulario de Meta y el mensaje llega como
  * texto libre a una conversación (ej. "¡Hola! Completé el formulario... Marca: Suzuki..."),
  * n8n lo parsea con IA y manda acá el JSON ya ordenado. Este endpoint NO interpreta texto:
- * solo valida, deduplica por teléfono y guarda.
+ * solo valida, deduplica y guarda.
  *
  * ── AUTENTICACIÓN ────────────────────────────────────────────────────────────
  *   Header: x-api-key: tradecars-chatwoot-lead-2026
@@ -13,7 +13,7 @@
  *
  * ── BODY ─────────────────────────────────────────────────────────────────────
  *   {
- *     "telefono": "962942416",              // REQUERIDO — es la clave de deduplicación
+ *     "telefono": "962942416",              // REQUERIDO
  *     "nombre_chatwoot": "Marco Cusicuna",   // nombre del contacto en Chatwoot
  *     "correo": "marcocusicuna.23@gmail.com",
  *     "marca": "Suzuki", "modelo": "Ciaz", "anio": 2017, "kilometraje": 110000,
@@ -22,14 +22,19 @@
  *     "conversation_id": 1858, "account_id": 17, "inbox_id": 83
  *   }
  *
- * ── DEDUPLICACIÓN ────────────────────────────────────────────────────────────
- *   Si YA existe un lead con ese teléfono (normalizado), NO se toca nada — se devuelve
- *   `duplicado: true` con el `id` del que ya había. No se actualiza ni se pisa nada que
- *   el equipo ya haya trabajado sobre ese lead.
+ * ── DEDUPLICACIÓN — por CONVERSATION_ID, no por teléfono (cambiado el 29/09/2026) ──────
+ *   Antes deduplicaba por teléfono ("un teléfono = una fila para siempre"), pero eso
+ *   bloqueaba la SEGUNDA conversación real de un cliente que vuelve a escribir: nunca se
+ *   creaba su fila, y el flujo de asignación de asesor (que busca `WHERE conversation_id=X`
+ *   para anotar a quién se derivó) no tenía nada que actualizar. Ahora CADA conversación
+ *   tiene su propia fila — lo que se evita duplicar es la MISMA conversación reprocesada
+ *   (reintentos de webhook), no las conversaciones nuevas de un cliente que repite.
+ *   Si ya existe una fila con ese `conversation_id`, no se toca nada — se devuelve
+ *   `duplicado: true` con el `id` de esa fila.
  *
  * ── RESPUESTA (siempre 200 salvo 400/401, para que n8n no reintente en bucle) ──
  *   { ok: true, duplicado: false, id: "uuid" }   → insertado
- *   { ok: true, duplicado: true,  id: "uuid" }   → ya existía, no se hizo nada
+ *   { ok: true, duplicado: true,  id: "uuid" }   → ya existía esa conversación, no se hizo nada
  *
  * Log: agent_tool_logs (company_id='tradecars', tool_name='Lead desde Chatwoot')
  */
@@ -100,12 +105,13 @@ export default defineEventHandler(async (event) => {
     status === 404 || (!!error && (error.code === '42P01' || error.code === 'PGRST205'
       || /does not exist|schema cache/i.test(String(error.message || ''))))
 
-  // Deduplicación por teléfono: si ya existe, no se toca nada.
-  const { data: existente, error: errorBusqueda, status: statusBusqueda } = await supabase
-    .from('tradecars_leads_chatwoot')
-    .select('id')
-    .eq('telefono', telefono)
-    .maybeSingle()
+  // Deduplicación por conversation_id: si ya existe una fila de ESA conversación, no se toca
+  // nada. Sin conversation_id (ej. probando el endpoint a mano) no hay con qué deduplicar —
+  // se deja pasar directo al insert.
+  const existenteQuery = conversation_id !== null
+    ? await supabase.from('tradecars_leads_chatwoot').select('id').eq('conversation_id', conversation_id).maybeSingle()
+    : { data: null, error: null, status: 200 as number }
+  const { data: existente, error: errorBusqueda, status: statusBusqueda } = existenteQuery
 
   if (tablaFaltante(errorBusqueda, statusBusqueda)) {
     throw createError({
@@ -114,7 +120,7 @@ export default defineEventHandler(async (event) => {
     })
   }
   if (errorBusqueda) {
-    throw createError({ statusCode: 400, statusMessage: errorBusqueda.message })
+    throw createError({ statusCode: 400, statusMessage: (errorBusqueda as any).message })
   }
   if (existente) {
     try {
@@ -144,9 +150,10 @@ export default defineEventHandler(async (event) => {
 
   if (error) {
     if (error.code === '23505') {
-      // Carrera con otro request para el mismo teléfono: el índice único ganó. No es un error real.
-      const { data: yaExiste } = await supabase
-        .from('tradecars_leads_chatwoot').select('id').eq('telefono', telefono).maybeSingle()
+      // Carrera con otro request para la misma conversación: el índice único ganó. No es un error real.
+      const { data: yaExiste } = conversation_id !== null
+        ? await supabase.from('tradecars_leads_chatwoot').select('id').eq('conversation_id', conversation_id).maybeSingle()
+        : { data: null }
       return { ok: true, duplicado: true, id: yaExiste?.id ?? null }
     }
     if (tablaFaltante(error, statusInsert)) {

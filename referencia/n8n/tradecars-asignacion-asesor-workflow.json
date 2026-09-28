@@ -1,0 +1,350 @@
+{
+  "name": "ASIGNACION ASESOR-TRADECARS",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "asignaciontradecars",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "22bba364-9034-4baf-a0eb-edfd4bcac745",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-evento",
+              "leftValue": "={{ $json.body.event }}",
+              "rightValue": "conversation_created",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-sin-asignar",
+              "leftValue": "={{ !!$json.body.meta?.assignee }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "15b19f05-169e-4ab6-ba72-621fa1c5b579",
+      "name": "Es Conversación Nueva y Sin Asignar",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [176, 0]
+    },
+    {
+      "parameters": {},
+      "id": "2652dfc0-a7b2-4d15-ad19-c687b3bdf4e6",
+      "name": "No Aplica",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [432, 112]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Trade Cars — Asignación de asesor. Extrae el teléfono directo del payload del webhook\n// (conversation_created) — TODAVÍA no existe la fila en tradecars_leads_chatwoot para esta\n// conversación (esa la crea el OTRO flujo, \"Lead desde mensaje de Chatwoot\", al leer el\n// mensaje con IA — puede tardar unos segundos). Por eso el teléfono se saca acá mismo, sin\n// esperar a ese otro flujo:\n//   - WhatsApp: meta.sender.phone_number ya viene confirmado por Chatwoot.\n//   - Instagram/Facebook: ese campo viene null — se busca con una expresión regular en el\n//     texto del primer mensaje (\"Phone number: 972619000\"), el mismo patrón que ya usa el\n//     otro flujo como respaldo.\n\nconst item = $input.first().json;\nconst raw = item.body ?? item;\n\nconst conversationId = raw.id ?? raw.conversation?.id ?? null;\nconst accountId = raw.account_id ?? raw.messages?.[0]?.account_id ?? null;\nconst sender = raw.meta?.sender ?? {};\nconst contacto = sender.name ?? null;\n\nfunction normalizarTelefono(valor) {\n  let digitos = String(valor ?? '').replace(/[^\\d]/g, '');\n  if (digitos.length === 11 && digitos.startsWith('51')) digitos = digitos.slice(2);\n  return digitos;\n}\n\nlet telefono = normalizarTelefono(sender.phone_number);\nif (!telefono) {\n  const texto = String(raw.messages?.[0]?.content ?? '');\n  const m = texto.match(/phone\\s*number[:\\s]*([\\d\\s+()-]{6,})/i);\n  if (m) telefono = normalizarTelefono(m[1]);\n}\n\nreturn [{\n  json: {\n    conversation_id: conversationId,\n    account_id: accountId,\n    contacto,\n    telefono,\n  },\n}];\n"
+      },
+      "id": "a1b2c3d4-1111-4a2b-9c3d-4e5f6a7b8c9d",
+      "name": "Extraer teléfono",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [432, -160]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://dashboard.alef.company/api/tradecars/chatwoot-asesor-previo?telefono={{ $json.telefono }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "tradecars-chatwoot-lead-2026"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-2222-4a2b-9c3d-4e5f6a7b8c9d",
+      "name": "Buscar asesor previo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [656, -160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-tiene-previo",
+              "leftValue": "={{ $json.encontrado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "a1b2c3d4-3333-4a2b-9c3d-4e5f6a7b8c9d",
+      "name": "¿Tiene asesor previo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, -160]
+    },
+    {
+      "parameters": {
+        "jsCode": "// El telefono ya tuvo una conversacion anterior con asesor asignado — se deriva la\n// conversacion NUEVA al mismo asesor, sin pasar por el round robin.\nconst datos = $('Extraer teléfono').first().json;\nconst previo = $input.first().json;\n\nreturn [{\n  json: {\n    conversation_id: datos.conversation_id,\n    account_id: datos.account_id,\n    assignee_id: previo.id_asesor_asignado,\n    asesor_nombre: previo.asesor_asignado,\n    contacto: datos.contacto,\n  },\n}];\n"
+      },
+      "id": "a1b2c3d4-4444-4a2b-9c3d-4e5f6a7b8c9d",
+      "name": "Usar asesor previo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1104, -320]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- CONFIGURA TUS 4 ASESORES (ids reales de Chatwoot) ----\nconst ASESORES = [\n  { id: 55, nombre: 'Asesor 1' },\n  { id: 56, nombre: 'Asesor 2' },\n  { id: 57, nombre: 'Asesor 3' },\n  { id: 58, nombre: 'Asesor 4' },\n];\n\n// Estado persistente del workflow (solo persiste en ejecuciones de produccion)\nconst state = $getWorkflowStaticData('global');\nif (typeof state.rrIndex !== 'number') state.rrIndex = -1;\nif (!Array.isArray(state.procesadas)) state.procesadas = [];\n\n// El telefono/conversation_id/account_id ya se extrajeron en \"Extraer teléfono\" (antes de\n// consultar si hay un asesor previo) — se leen de ahi, no del input directo de este nodo\n// (que ahora es la respuesta de \"Buscar asesor previo\", sin esos datos).\nconst datos = $('Extraer teléfono').first().json;\nconst conversationId = datos.conversation_id;\nconst accountId = datos.account_id;\n\nif (!conversationId || !accountId) return [];\n\n// Anti-duplicado: si Chatwoot reenvia el webhook, no volvemos a asignar\nif (state.procesadas.includes(conversationId)) return [];\nstate.procesadas.push(conversationId);\nif (state.procesadas.length > 300) state.procesadas.shift();\n\n// Round robin 1 a 1\nstate.rrIndex = (state.rrIndex + 1) % ASESORES.length;\nconst asesor = ASESORES[state.rrIndex];\n\nreturn [{\n  json: {\n    conversation_id: conversationId,\n    account_id: accountId,\n    assignee_id: asesor.id,\n    asesor_nombre: asesor.nombre,\n    turno: state.rrIndex + 1,\n    contacto: datos.contacto,\n  },\n}];"
+      },
+      "id": "1bddc5fe-32a1-4acb-baf8-b004a1cdf5e3",
+      "name": "Round Robin Asesores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1104, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://chats.alef.company/api/v1/accounts/{{ $('Es Conversación Nueva y Sin Asignar').item.json.body.messages[0].account_id }}/conversations/{{ $json.conversation_id }}/assignments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "PEGAR_AQUI_EL_TOKEN_DE_CHATWOOT"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assignee_id\": {{ $json.assignee_id }}\n}",
+        "options": {}
+      },
+      "id": "2deb0036-5784-489d-9034-b620c8de0017",
+      "name": "Asignar Asesor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1328, -160]
+    },
+    {
+      "parameters": {
+        "amount": 12
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1552, -160],
+      "id": "973a42b6-49df-439e-b4e1-94d003d6d79a",
+      "name": "Wait"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "tradecars_leads_chatwoot",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "conversation_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Extraer teléfono').item.json.conversation_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "asesor_asignado",
+              "fieldValue": "={{ $('Asignar Asesor').item.json.available_name }}"
+            },
+            {
+              "fieldId": "id_asesor_asignado",
+              "fieldValue": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1776, -160],
+      "id": "06c0569d-d3a5-49ec-967a-408cd0a8baad",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "PEGAR_AQUI_TU_CREDENCIAL_SUPABASE",
+          "name": "SUPABASE.COM"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Es Conversación Nueva y Sin Asignar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es Conversación Nueva y Sin Asignar": {
+      "main": [
+        [
+          {
+            "node": "Extraer teléfono",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Aplica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer teléfono": {
+      "main": [
+        [
+          {
+            "node": "Buscar asesor previo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar asesor previo": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene asesor previo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene asesor previo?": {
+      "main": [
+        [
+          {
+            "node": "Usar asesor previo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Round Robin Asesores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usar asesor previo": {
+      "main": [
+        [
+          {
+            "node": "Asignar Asesor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Round Robin Asesores": {
+      "main": [
+        [
+          {
+            "node": "Asignar Asesor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asignar Asesor": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

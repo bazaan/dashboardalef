@@ -15,7 +15,7 @@
  *                               el mismo mecanismo que ya usan Healup y Davila.
  */
 
-import { getGoogleAccessToken, hasRefreshToken } from './google-auth'
+import { getGoogleAccessToken, hasRefreshToken, type GoogleClientCredentials } from './google-auth'
 import {
   CANALES_FORMULARIO, canalDePlataforma, extraerReferenciaHoja, hojaALeads,
   type CanalFormulario, type LeadFormulario,
@@ -30,6 +30,20 @@ export const TODOS_LOS_CANALES: CanalFormulario[] = ['sin_plataforma', 'ig', 'fb
 
 export const EMPRESA_GOOGLE = 'tradecars'
 const API_SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets'
+
+/**
+ * Trade Cars tiene su PROPIO proyecto de Google Cloud (28/09/2026, cuenta aipartnerstudio@gmail.com)
+ * — independiente del que comparten Healup y Davila. `TRADECARS_GOOGLE_CLIENT_ID`/`_SECRET` son
+ * REQUERIDAS para este canal: sin ellas no hay fallback al client compartido (mezclaría cuentas).
+ */
+export function credencialesGoogleTradeCars(): GoogleClientCredentials {
+  const clientId = process.env.TRADECARS_GOOGLE_CLIENT_ID
+  const clientSecret = process.env.TRADECARS_GOOGLE_CLIENT_SECRET
+  if (!clientId || !clientSecret) {
+    throw new ErrorHoja('sin_google', 'Falta configurar TRADECARS_GOOGLE_CLIENT_ID y TRADECARS_GOOGLE_CLIENT_SECRET en Netlify.')
+  }
+  return { clientId, clientSecret }
+}
 
 export type CausaErrorHoja = 'sin_google' | 'token' | 'sin_alcance' | 'sin_acceso' | 'no_encontrada' | 'otro'
 
@@ -126,8 +140,9 @@ const cacheTitulos = new Map<string, { titulo: string; documento: string | null;
 
 async function tokenGoogle(): Promise<string> {
   try {
-    return await getGoogleAccessToken(EMPRESA_GOOGLE)
+    return await getGoogleAccessToken(EMPRESA_GOOGLE, credencialesGoogleTradeCars())
   } catch (e: any) {
+    if (e instanceof ErrorHoja) throw e
     const m = String(e?.message || '')
     if (/no encontrado|GOOGLE_CLIENT/i.test(m)) {
       throw new ErrorHoja('sin_google', 'Falta conectar la cuenta de Google que tiene acceso a las hojas de Trade Cars.')

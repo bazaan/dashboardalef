@@ -1143,13 +1143,14 @@ siendo `solicitudes` porque se recuerda entre sesiones) y tiene **4 submódulos*
   nombre) y **nada se descarta**: lo no reconocido sale como "Otros datos del formulario". El administrador corrige el mapeo
   desde "Conectar hoja" (`tradecars_formularios_config.mapeo`, que manda sobre la detección). Limpieza: `p:+51…` de Meta →
   `+51…`; "85,000" → 85000 pero "85 mil" NO se inventa; fechas de Sheets (número serial) y texto ISO/dd-mm-aaaa.
-- **Conexión con Google = el mismo OAuth por empresa que Healup/Davila**: `state=tradecars` en el callback compartido
-  `/api/healup/gcal-callback` → token en `app_settings.google_refresh_token_tradecars`. Sin tocar Google Cloud Console.
+- **Conexión con Google: proyecto de Google Cloud PROPIO desde el 28/09/2026** (ver la sección de esa fecha más abajo) —
+  token en `app_settings.google_refresh_token_tradecars`, igual que antes, pero por su callback dedicado
+  `/api/tradecars/gcal-callback`, no por el compartido de Healup/Davila.
   Endpoints: `GET /api/tradecars/formularios?canal=` (lee y fusiona), `POST /api/tradecars/formularios`
   (`guardar` | `probar` | `configurar` | `quitar`), `GET /api/tradecars/google-auth` y `google-status`.
 - **Seguridad:** conectar Google y las hojas es **solo Administrador** (verificado en el servidor); ver exige `comercial.view`
-  y guardar `comercial.edit`. El callback compartido es público: para `state=tradecars` ahora exige además sesión de
-  Administrador (sin eso cualquiera con el `client_id` —que viaja en la URL— podía reemplazar la cuenta conectada).
+  y guardar `comercial.edit`. El callback es público: exige además sesión de Administrador antes de guardar el token
+  (sin eso cualquiera con el `client_id` —que viaja en la URL— podía reemplazar la cuenta conectada).
   Las tablas nuevas **no tienen policy `anon`**. Los fallos de conexión con la hoja NO son un 500: el GET responde 200 con
   `error: { causa, mensaje }` (sin_google | token | sin_acceso | no_encontrada | otro) y la pantalla explica qué hacer.
 - **Se muestran los 1.500 leads más recientes** (`?limite=`, tope 5.000) y la pantalla avisa si hay más.
@@ -1208,6 +1209,81 @@ DESPUÉS de `sql/tradecars_formularios_sheets.sql`** (idempotente).
 - **Lo único que falta: que un Administrador conecte Google de verdad.** Eso es un login real a una cuenta
   de Google de producción — no algo que se pueda hacer por fuera del dashboard ni simular. El resto (todo
   lo anterior) ya está probado y listo para cuando se haga ese login y se pegue el enlace de la hoja.
+
+### Google de Trade Cars pasó a ser INDEPENDIENTE de Healup/Davila (28/09/2026)
+
+Al intentar el login real de arriba, la conexión seguía fallando con 403 aunque la hoja ya estaba
+compartida como Editor con `aipartnerstudio@gmail.com`. La causa real, encontrada mejorando el mensaje de
+error (ver `sin_alcance` más arriba): la **Google Sheets API nunca se había habilitado** en el proyecto de
+Google Cloud compartido (`635801789504`, el mismo de Healup) — no era un problema de scope ni de sharing.
+Al intentar habilitarla, la cuenta `aipartnerstudio@gmail.com` no tenía acceso a ESE proyecto (es el de
+Healup, de otra cuenta de Google). El cliente entonces pidió explícitamente que la conexión de Trade Cars
+sea **independiente** de Healup: la hoja es de la cuenta `aipartnerstudio@gmail.com`, un proyecto y negocio
+aparte.
+
+- **Se creó un proyecto de Google Cloud nuevo y propio**: `tradecars-510019` (número `1076708605798`), bajo
+  la cuenta `aipartnerstudio@gmail.com`, con su propio OAuth client (Web application).
+- **Nuevas env vars, solo para Trade Cars**: `TRADECARS_GOOGLE_CLIENT_ID` / `TRADECARS_GOOGLE_CLIENT_SECRET`
+  (puestas en Netlify, nunca pasadas por chat). **No hay fallback a las `GOOGLE_CLIENT_ID`/`_SECRET`
+  compartidas** — si faltan, `credencialesGoogleTradeCars()` (`server/utils/tradecars-formularios.ts`) tira
+  `ErrorHoja('sin_google', ...)` explícito en vez de mezclar cuentas por accidente.
+- **Callback propio**: `server/api/tradecars/gcal-callback.get.ts` (antes usaba el compartido
+  `/api/healup/gcal-callback` con `state=tradecars`). Es la "Authorized redirect URI" registrada en el
+  OAuth client nuevo — `https://dashboard.alef.company/api/tradecars/gcal-callback`. El callback compartido
+  de Healup/Davila quedó simplificado, sin el caso `tradecars` que tenía desde el 23/09.
+- **`server/utils/google-auth.ts` se parametrizó** (`getGoogleAuthUrl`/`exchangeCodeForTokens`/
+  `getGoogleAccessToken` aceptan un `credentials?: GoogleClientCredentials` opcional) para poder dar
+  credenciales de cliente OAuth distintas sin tocar el comportamiento de Healup/Davila, que siguen sin
+  pasarlo (usan las env vars compartidas de siempre).
+- **El token en Supabase no cambió de lugar**: sigue en `app_settings.google_refresh_token_tradecars` — solo
+  cambió DE QUÉ proyecto de Google Cloud sale, no dónde se guarda ni cómo lo lee el resto del código
+  (`leerTarjetas()`, `google-status.get.ts`, etc.).
+- **No se pudo probar el intercambio real de código por tokens** (necesita un login real de Google): se
+  verificó que el proyecto compile y que las funciones nuevas reciban y usen las credenciales correctas;
+  la prueba de punta a punta la hace el Administrador de Trade Cars conectando desde el dashboard.
+
+### Captura de leads desde mensajes de Chatwoot, con IA en n8n (28/09/2026) — `sql/tradecars_leads_chatwoot.sql`
+
+Pedido explícito del cliente, paso PREVIO a "asignar las tarjetas de Solicitudes - formularios a los 4
+asesores" (que sigue sin implementarse, a propósito): cuando alguien llena un formulario de Meta y el
+mensaje llega como texto libre a una conversación de Chatwoot (ej. "¡Hola! Completé el formulario...
+Marca: Suzuki, Modelo: Ciaz, Año: 2017..."), un flujo de **n8n** con un **nodo de IA propio de n8n** (no
+del dashboard — decisión explícita del cliente) lee ese mensaje, lo ordena en campos, y llama al
+dashboard ya con el JSON estructurado.
+
+- **Tabla nueva y separada, a propósito**: `tradecars_leads_chatwoot` — el cliente eligió explícitamente
+  NO reutilizar `tradecars_solicitudes_venta` (la de "Formularios web", que tiene casi las mismas
+  columnas) para no mezclar este pipeline nuevo con el del formulario de la web.
+- **El parseo con IA vive en n8n, no en el servidor del dashboard** — a diferencia del patrón que usan
+  Tasador y "Compra concretada" (IA server-side con `OPENAI_API_KEY`). Acá es al revés: n8n arma el JSON
+  ya estructurado con su propio nodo de IA y el endpoint del dashboard NO interpreta texto, solo valida,
+  deduplica y guarda. Ver `referencia/n8n/tradecars-chatwoot-lead-guia.md` para el prompt sugerido y el
+  diseño del flujo (Webhook Chatwoot → filtro → nodo IA → HTTP Request).
+- **Endpoint**: `POST /api/tradecars/chatwoot-lead` (`server/api/tradecars/chatwoot-lead.post.ts`), api_key
+  `tradecars-chatwoot-lead-2026`. Body: `{ telefono, nombre_chatwoot, correo, marca, modelo, anio,
+  kilometraje, placa, distrito, mensaje_original, conversation_id, account_id, inbox_id }`.
+- **Flujo de n8n importable**: `referencia/n8n/tradecars-chatwoot-lead-workflow.json` (Webhook Chatwoot →
+  desenvolver+filtrar → nodo IA "OpenAI: Message a Model" con `jsonOutput` → armar payload → HTTP Request
+  al endpoint). Solo falta pegar la credencial de OpenAI al importar — no viaja en el JSON.
+- **Deduplicado por TELÉFONO, a pedido explícito**: si ya existe un lead con ese teléfono (normalizado —
+  se le quita el prefijo `51` si quedó de 11 dígitos), **no se toca nada** — ni se actualiza, ni se pisa
+  lo que el equipo ya haya trabajado sobre ese lead. Devuelve `duplicado: true` con el `id` existente, 200
+  (nunca error, para que n8n no reintente en bucle). Doble seguro: además del `SELECT` antes de insertar,
+  hay un índice único en `telefono` — si dos webhooks llegan a la vez para el mismo número, el segundo
+  INSERT choca contra el índice (`23505`) y el endpoint lo resuelve igual como "ya existía", no como error.
+- **Deliberadamente NO tiene columna de asesor/asignación todavía** — ese es el siguiente paso, que el
+  cliente pidió explícitamente dejar para después de esta captura.
+- ⚠️ **Un INSERT contra una tabla que no existe en Supabase devuelve un `error: {}` completamente VACÍO en
+  supabase-js** (a diferencia de un SELECT contra la misma tabla faltante, que sí trae `code: '42P01'` y
+  el mensaje completo) — el único rastro confiable ahí es el `status` HTTP de la respuesta (`404`).
+  Verificado en vivo contra la base real antes de que corriera la migración. Por eso la detección de
+  "falta la migración" (`tablaFaltante()` en el endpoint) revisa el `status`, no solo `error.code`/
+  `error.message` — sin eso, un INSERT sobre la tabla faltante devolvía un 500 genérico
+  ("Error guardando el lead: undefined") en vez del 409 claro que dice qué SQL correr. Ojo con este mismo
+  patrón en cualquier endpoint nuevo de Trade Cars que haga INSERT antes de que su migración haya corrido.
+- **Migración: no corrida todavía** — hay que correr `sql/tradecars_leads_chatwoot.sql` una vez en
+  Supabase. El endpoint ya está probado contra el caso "tabla faltante" (da el 409 correcto); falta
+  probar el insert y la deduplicación reales una vez corra el SQL.
 
 ---
 
@@ -1272,6 +1348,10 @@ TRADECARS_SHEET_IG_ID=                     # enlace o ID de la hoja de IG (respa
 TRADECARS_SHEET_FB_ID=                     # ídem FB
 TRADECARS_SHEET_TIKTOK_ID=                 # ídem TikTok
 TRADECARS_SHEET_IG_TAB= / TRADECARS_SHEET_FB_TAB= / TRADECARS_SHEET_TIKTOK_TAB=   # nombre de pestaña (default: la del enlace o la primera)
+# Trade Cars — Conexión de Google INDEPENDIENTE (28/09/2026, proyecto propio tradecars-510019, cuenta aipartnerstudio@gmail.com). REQUERIDAS para conectar Google.
+TRADECARS_GOOGLE_CLIENT_ID=                # Client ID del OAuth client de ESE proyecto (no el de Healup/Davila)
+TRADECARS_GOOGLE_CLIENT_SECRET=            # Client secret del mismo OAuth client
+TRADECARS_GOOGLE_REDIRECT_URI=             # opcional (default: <dominio>/api/tradecars/gcal-callback) — debe calzar con la "Authorized redirect URI" registrada en ese OAuth client
 ```
 
 > **Tool "Calendario FB/IG"** (`POST /api/healup/calendario-fbig`, api_key `healup-calendario-fbig-2026`):

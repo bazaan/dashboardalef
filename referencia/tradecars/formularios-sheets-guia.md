@@ -37,12 +37,19 @@ pestaña a su propio enlace — el sistema sigue funcionando igual, columna PLAT
 | Necesitas | Dónde | Estado |
 |---|---|---|
 | El SQL corrido | Supabase → SQL Editor → `sql/tradecars_formularios_sheets.sql` **y luego** `sql/tradecars_formularios_plataforma.sql` (agrega la pestaña "ZAPPIER (Sin plataforma)") | **Pendiente** (una vez cada uno, idempotentes) |
-| `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` | Netlify → Environment variables | Ya están (los usan Healup y Davila) |
+| `TRADECARS_GOOGLE_CLIENT_ID` y `TRADECARS_GOOGLE_CLIENT_SECRET` | Netlify → Environment variables | **Hecho** (28/09/2026, proyecto propio de Google Cloud `tradecars-510019`, cuenta aipartnerstudio@gmail.com) |
 | Un usuario **Administrador** de Trade Cars | Solo un administrador conecta hojas | — |
-| Una cuenta de Google que **vea las 3 hojas** | Por ejemplo la del gerente de marketing (la que recibe lo de Zapier) | Pendiente |
+| Una cuenta de Google que **vea las 3 hojas** | La cuenta aipartnerstudio@gmail.com, a la que Trade Cars compartió la hoja | Hecho |
 
-No hay que tocar Google Cloud Console: se reutiliza el mismo callback que Healup y Davila
-(`/api/healup/gcal-callback`), que distingue la empresa por el parámetro `state=tradecars`.
+**28/09/2026 — Trade Cars tiene su PROPIO proyecto de Google Cloud, independiente de Healup/Davila.**
+Al principio se intentó reusar el callback compartido (`/api/healup/gcal-callback`, `state=tradecars`),
+pero ese proyecto de Google Cloud es el de Healup (`635801789504`) y la cuenta aipartnerstudio@gmail.com
+no tenía acceso a habilitar la API de Sheets ahí. Se creó un proyecto nuevo (`tradecars-510019`) con su
+propio OAuth client, así que Trade Cars usa su propio callback dedicado: `/api/tradecars/gcal-callback`
+(esa es la "Authorized redirect URI" registrada en ese OAuth client, no la de Healup). El código lee las
+credenciales de `TRADECARS_GOOGLE_CLIENT_ID`/`TRADECARS_GOOGLE_CLIENT_SECRET` en vez de las
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` compartidas — ver `server/utils/tradecars-formularios.ts`
+(`credencialesGoogleTradeCars()`) y `server/api/tradecars/gcal-callback.get.ts`.
 
 ## 1. Conectar la cuenta de Google (una sola vez para los tres canales)
 

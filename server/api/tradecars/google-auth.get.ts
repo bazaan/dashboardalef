@@ -3,12 +3,11 @@
  *
  * Inicia el login de Google para conectar la cuenta que tiene acceso a las hojas de formularios
  * (IG, FB y TikTok) de Trade Cars. La persona que lo hace tiene que entrar con la cuenta de Google
- * que ve esas tres hojas.
+ * que ve esas hojas (aipartnerstudio@gmail.com).
  *
- * Reutiliza el callback YA REGISTRADO en Google Cloud (/api/healup/gcal-callback), igual que Davila:
- * `state=tradecars` hace que el callback guarde el token en `google_refresh_token_tradecars`
- * —independiente del de Healup y Davila— y vuelva al dashboard de Trade Cars. No hay que tocar
- * Google Cloud Console.
+ * 28/09/2026: Trade Cars tiene su PROPIO proyecto de Google Cloud y su propio OAuth client
+ * (`TRADECARS_GOOGLE_CLIENT_ID`/`_SECRET`) — independiente del que comparten Healup y Davila — así
+ * que usa su propio callback dedicado (`/api/tradecars/gcal-callback`), no el compartido.
  *
  * Solo un Administrador de Trade Cars puede iniciarlo: quien conecta decide de qué cuenta de Google
  * salen los leads. (El callback lo vuelve a exigir.)
@@ -16,6 +15,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { resolverPerfilTradeCars, exigirAdminTradeCars } from '../../utils/tradecars'
 import { getGoogleAuthUrl } from '../../utils/google-auth'
+import { credencialesGoogleTradeCars } from '../../utils/tradecars-formularios'
 
 export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
@@ -24,8 +24,7 @@ export default defineEventHandler(async (event) => {
 
   const host = getRequestHeader(event, 'host') || 'localhost:3000'
   const protocolo = host.includes('localhost') ? 'http' : 'https'
-  // MISMO redirect_uri que Healup y Davila (el registrado en Google)
-  const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || `${protocolo}://${host}/api/healup/gcal-callback`
+  const REDIRECT_URI = process.env.TRADECARS_GOOGLE_REDIRECT_URI || `${protocolo}://${host}/api/tradecars/gcal-callback`
 
-  return sendRedirect(event, getGoogleAuthUrl(REDIRECT_URI, 'tradecars'))
+  return sendRedirect(event, getGoogleAuthUrl(REDIRECT_URI, undefined, credencialesGoogleTradeCars()))
 })

@@ -1213,6 +1213,10 @@ const FORM_SUBMODULOS = [
   { id: 'ig', label: 'Formularios IG', icon: 'mdi-instagram' },
   { id: 'fb', label: 'Formularios FB', icon: 'mdi-facebook' },
   { id: 'tiktok', label: 'Formularios TIKTOK', icon: 'mdi-music-note' },
+  // 28/09/2026: Trade Cars trae Instagram, Facebook y TikTok juntos en UNA hoja de Zapier con una
+  // columna PLATAFORMA que todavía no llenan. Mientras esté vacía, todo cae acá (ver
+  // canalDePlataforma() en utils/tradecarsFormularios.ts).
+  { id: 'sin_plataforma', label: 'ZAPPIER (Sin plataforma)', icon: 'mdi-tag-off-outline' },
 ]
 const formSub = usePersistente('tradecars:formSub', 'web')
 // Un valor viejo o inválido guardado en el navegador no debe dejar la pantalla en blanco

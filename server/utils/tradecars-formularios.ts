@@ -17,9 +17,16 @@
 
 import { getGoogleAccessToken, hasRefreshToken } from './google-auth'
 import {
-  CANALES_FORMULARIO, extraerReferenciaHoja, hojaALeads,
+  CANALES_FORMULARIO, canalDePlataforma, extraerReferenciaHoja, hojaALeads,
   type CanalFormulario, type LeadFormulario,
 } from '../../utils/tradecarsFormularios'
+
+/**
+ * Los 4 canales. `sin_plataforma` va PRIMERO a propósito: si el SQL del 28/09 todavía no se
+ * corrió, `guardarConfigHoja()` falla ahí antes de tocar ig/fb/tiktok — un "aplicar a todos" a
+ * medio camino no deja 3 canales guardados y uno roto.
+ */
+export const TODOS_LOS_CANALES: CanalFormulario[] = ['sin_plataforma', 'ig', 'fb', 'tiktok']
 
 export const EMPRESA_GOOGLE = 'tradecars'
 const API_SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets'
@@ -51,6 +58,10 @@ export interface ConfigHoja {
 
 const tablaFaltante = (error: any) =>
   !!error && (error.code === '42P01' || error.code === 'PGRST205' || /does not exist|schema cache/i.test(String(error.message || '')))
+
+/** El canal 'sin_plataforma' existe en el código pero todavía no en el CHECK de la base (falta el SQL del 28/09). */
+export const restriccionCanalFaltante = (error: any) =>
+  !!error && error.code === '23514' && /canal/i.test(String(error.message || ''))
 
 export async function leerConfigHoja(supabase: any, canal: CanalFormulario): Promise<{ config: ConfigHoja; tablaDisponible: boolean }> {
   const vacia: ConfigHoja = { canal, sheet_id: null, pestana: null, gid: null, mapeo: {}, origen: null }
@@ -97,6 +108,12 @@ export async function guardarConfigHoja(
       throw createError({
         statusCode: 409,
         statusMessage: 'Falta correr sql/tradecars_formularios_sheets.sql en Supabase para poder guardar la conexión.',
+      })
+    }
+    if (restriccionCanalFaltante(error)) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Falta correr sql/tradecars_formularios_plataforma.sql en Supabase para poder usar la pestaña "ZAPPIER (Sin plataforma)".',
       })
     }
     throw createError({ statusCode: 400, statusMessage: error.message })
@@ -288,14 +305,32 @@ export function fusionarEstados(leads: LeadFormulario[], estados: Map<string, Es
   return tarjetas
 }
 
-/** Lee la hoja de un canal y la devuelve ya convertida en tarjetas (con su estado). Lo usa el GET. */
+/** Cuenta cuántos leads de una hoja ya leída caen en cada uno de los 4 canales. */
+function distribuirPorPlataforma(leads: LeadFormulario[]): Record<CanalFormulario, number> {
+  const dist: Record<CanalFormulario, number> = { ig: 0, fb: 0, tiktok: 0, sin_plataforma: 0 }
+  for (const l of leads) dist[canalDePlataforma(l.plataforma) || 'sin_plataforma']++
+  return dist
+}
+
+/**
+ * Lee la hoja de un canal y la devuelve ya convertida en tarjetas (con su estado). Lo usa el GET.
+ *
+ * 28/09/2026: Trade Cars no tiene una hoja por red — tiene UNA hoja de Zapier con todas las redes
+ * juntas y una columna PLATAFORMA. Por eso IG, FB, TikTok y "Sin plataforma" pueden compartir el
+ * MISMO `config.sheet_id` (ver `aplicar_a_todos` en el endpoint POST): acá es donde se separa una
+ * lectura completa de la hoja en lo que le toca a CADA canal, según `canalDePlataforma()`.
+ */
 export async function leerTarjetas(
   supabase: any, canal: CanalFormulario, config: ConfigHoja, limite: number,
 ) {
   const hoja = await leerHojaGoogle({ sheetId: config.sheet_id as string, pestana: config.pestana, gid: config.gid })
   const r = hojaALeads(hoja.valores, config.mapeo, canal)
+
+  const distribucion = distribuirPorPlataforma(r.leads)
+  const delCanal = r.leads.filter(l => (canalDePlataforma(l.plataforma) || 'sin_plataforma') === canal)
+
   const { estados, disponible } = await leerEstados(supabase, canal)
-  const todas = fusionarEstados(r.leads, estados)
+  const todas = fusionarEstados(delCanal, estados)
   return {
     hoja: { titulo: hoja.titulo_documento, pestana: hoja.pestana },
     tarjetas: todas.slice(0, limite),
@@ -305,5 +340,10 @@ export async function leerTarjetas(
     sin_mapear: r.sin_mapear,
     filas_omitidas: r.filas_omitidas,
     tabla_estado_disponible: disponible,
+    // Cuántos leads hay en TOTAL en esta hoja y cómo se reparten entre los 4 canales — para que la
+    // pantalla pueda avisar "hay 40 leads en la hoja, todos sin plataforma todavía" aunque este
+    // canal en particular muestre 0.
+    total_en_hoja: r.leads.length,
+    distribucion_plataforma: distribucion,
   }
 }

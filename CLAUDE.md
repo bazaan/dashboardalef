@@ -1117,6 +1117,11 @@ cliente) — sólo se excluyen las de auditoría/sincronización (`id`, `created
 
 ### Solicitudes - formularios: web + IG + FB + TikTok (23/09/2026) — `sql/tradecars_formularios_sheets.sql`
 
+> **Superado en parte el 28/09/2026** (ver esa sección más abajo): esta primera versión asumía una hoja de
+> Google por red social. La hoja real de Trade Cars es UNA sola, con una columna PLATAFORMA — la mecánica de
+> lectura en vivo y el estado de cada tarjeta que se describe acá sigue siendo la misma, sólo cambió cómo
+> se decide a qué pestaña pertenece cada lead.
+
 El módulo **"Solicitudes Web" pasó a llamarse "Solicitudes - formularios"** (menú y título; el `id` interno sigue
 siendo `solicitudes` porque se recuerda entre sesiones) y tiene **4 submódulos**: Formularios web · IG · FB · TIKTOK
 (selector de botones en `pages/pruebas/TradeCars.vue`, `formSub`, recordado en `tradecars:formSub`).
@@ -1156,6 +1161,53 @@ siendo `solicitudes` porque se recuerda entre sesiones) y tiene **4 submódulos*
 - **Guía paso a paso para conectar:** `referencia/tradecars/formularios-sheets-guia.md`.
 - **Ojo:** pedido a futuro por Trade Cars (reunión 18/09) — cruzar estos leads contra los chats existentes y repartirlos
   entre los 4 asesores ("Asignado / Sin asignar") — **no está hecho**: aquí no hay columna de asesor todavía.
+
+### Solicitudes - formularios: el caso real es UNA hoja con columna PLATAFORMA (28/09/2026) — `sql/tradecars_formularios_plataforma.sql`
+
+Trade Cars mandó la hoja real de Zapier (`1ZbYYFdgeejeoUhFp0NSvf0JBuzuaUBUWuO2BDQZW3sQ`) y resultó que **no
+son 3 hojas por red** como se asumió el 23/09 — es **una sola hoja** con Instagram, Facebook y TikTok
+mezclados, y una columna **PLATAFORMA** que hoy está vacía en todas las filas ("por ahora pongas todos ahí,
+hasta que Trade Cars ponga la plataforma de cada uno"). **Correr una vez `sql/tradecars_formularios_plataforma.sql`
+DESPUÉS de `sql/tradecars_formularios_sheets.sql`** (idempotente).
+
+- **Pestaña nueva: "ZAPPIER (Sin plataforma)".** 5.º submódulo de Solicitudes - formularios (junto a Web,
+  IG, FB, TIKTOK), 4.º valor del tipo `CanalFormulario` (`sin_plataforma`). Mismas tarjetas, mismo flujo.
+- **`canalDePlataforma()`** (`utils/tradecarsFormularios.ts`) lee el texto crudo de la columna PLATAFORMA de
+  cada lead y decide su pestaña: contiene "instagram" o es exactamente "ig" → **ig**; "facebook"/"fb" →
+  **fb**; "tiktok" → **tiktok**; cualquier otra cosa (vacío, "WhatsApp", "Meta" ambiguo…) → **null**, que
+  cuenta como **sin_plataforma**. `leerTarjetas()` (`server/utils/tradecars-formularios.ts`) lee la hoja
+  COMPLETA una vez y la filtra en memoria por esta función — nunca por en qué pestaña se conectó la hoja.
+- **Por eso los 4 canales pueden compartir el MISMO `tradecars_formularios_config.sheet_id`** — de hecho
+  ese es ahora el caso normal. "Conectar hoja" tiene una casilla **"Usar esta misma hoja para las otras 3
+  pestañas"**, marcada por defecto, que guarda la conexión en los 4 canales de una sola vez
+  (`POST /api/tradecars/formularios { accion:'configurar', aplicar_a_todos:true }` → escribe en
+  `TODOS_LOS_CANALES`). Mientras la columna PLATAFORMA esté vacía, las otras 3 pestañas se ven vacías con
+  la hoja igual conectada — no es un error, es literalmente lo que pidió el cliente.
+- **`TODOS_LOS_CANALES` empieza por `sin_plataforma` a propósito**: si el SQL de este archivo no se corrió
+  todavía, `guardarConfigHoja()` falla ahí ANTES de tocar ig/fb/tiktok — un "aplicar a todos" a medio
+  camino no deja 3 canales guardados y uno roto. El error es un 409 que nombra este archivo SQL
+  (`restriccionCanalFaltante()`, detecta el código `23514` del CHECK viejo — distinto del 42P01/PGRST205
+  de "falta la tabla" que ya manejaba `tablaFaltante()`).
+- **Aviso de distribución en cada pestaña**: el GET devuelve `total_en_hoja` y `distribucion_plataforma`
+  (conteo por los 4 canales, calculado sobre la hoja completa ANTES de filtrar). La pantalla lo muestra
+  arriba de las tarjetas — así se ve que la hoja sí tiene leads aunque la pestaña actual esté vacía, y
+  cuántos les falta clasificar a Trade Cars.
+- **Kilometraje: ahora entiende "107k" y "85 mil"/"120mil" (×1000).** El 23/09 se asumió que esto era una
+  estimación ambigua y no se parseaba; la hoja real de Trade Cars lo usa constantemente (es la forma más
+  común de escribir el km en su base), así que es una notación exacta, no un "como cien mil" — se cambió
+  `limpiarKilometraje()` para interpretarlo. Sigue sin inventar nada de texto genuinamente impreciso.
+- **La columna real trae "Campaign Name", "Ad Set Name" y "Ad Name" por separado** (formato de export de
+  Meta Ads Manager vía Zapier, no el `campaign_name` simple que se probó el 23/09). Los tres calzan con la
+  detección de `campana`; como sólo puede haber una columna por campo, gana "Campaign Name" (aparece
+  primero) y "Ad Set Name"/"Ad Name" quedan como "Otros datos" en la tarjeta — nada se pierde.
+- **Probado contra la hoja real** (con un Google simulado que sirve exactamente sus filas y columnas, más
+  las 33 pruebas de lógica pura sobre esos mismos datos): detección de las 13 columnas, "Campaign Name"
+  gana sobre "Ad Set Name"/"Ad Name", reparto correcto de leads con PLATAFORMA="Instagram"/"Facebook"/
+  "TikTok" a su pestaña y el resto a "Sin plataforma", `total_en_hoja`/`distribucion_plataforma` exactos,
+  el 409 "todo o nada" del `aplicar_a_todos`, y los mensajes de error en pantalla.
+- **Lo único que falta: que un Administrador conecte Google de verdad.** Eso es un login real a una cuenta
+  de Google de producción — no algo que se pueda hacer por fuera del dashboard ni simular. El resto (todo
+  lo anterior) ya está probado y listo para cuando se haga ese login y se pegue el enlace de la hoja.
 
 ---
 

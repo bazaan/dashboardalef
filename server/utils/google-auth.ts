@@ -12,12 +12,23 @@
  * Compatibilidad: todas las funciones tienen `companyKey` con default
  * 'healup', así el código existente de Healup sigue funcionando sin cambios.
  *
- * Client ID / Client Secret son compartidos (un solo OAuth client de Google
- * Cloud). Cada empresa solo necesita su propia URI de callback registrada
- * en las "Authorized redirect URIs" del OAuth client.
+ * Client ID / Client Secret son compartidos por defecto (un solo OAuth client
+ * de Google Cloud para Healup/Davila) — cada empresa solo necesita su propia
+ * URI de callback registrada en las "Authorized redirect URIs" del client.
+ *
+ * Trade Cars es la excepción: tiene su PROPIO proyecto de Google Cloud (cuenta
+ * aipartnerstudio@gmail.com, credenciales `TRADECARS_GOOGLE_CLIENT_ID`/`_SECRET`),
+ * así que las funciones aceptan un `credentials` opcional — sin pasarlo, usan
+ * las env vars compartidas (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`) y el
+ * comportamiento de Healup/Davila no cambia.
  */
 
 import { createClient } from '@supabase/supabase-js'
+
+export interface GoogleClientCredentials {
+  clientId: string
+  clientSecret: string
+}
 
 // Caches por empresa
 const tokenCache = new Map<string, { token: string; expires: number }>()
@@ -98,14 +109,14 @@ export async function hasRefreshToken(companyKey = 'healup'): Promise<boolean> {
  * Obtiene un access token de Google usando el refresh token de la empresa.
  * Cachea el token (por empresa) hasta que expire (~1 hora).
  */
-export async function getGoogleAccessToken(companyKey = 'healup'): Promise<string> {
+export async function getGoogleAccessToken(companyKey = 'healup', credentials?: GoogleClientCredentials): Promise<string> {
   const cached = tokenCache.get(companyKey)
   if (cached && Date.now() < cached.expires - 60_000) {
     return cached.token
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+  const clientId = credentials?.clientId || process.env.GOOGLE_CLIENT_ID
+  const clientSecret = credentials?.clientSecret || process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
     throw new Error('GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET son requeridos en env vars')
   }
@@ -155,8 +166,8 @@ export async function getGoogleAccessToken(companyKey = 'healup'): Promise<strin
  * Genera la URL de autorización de Google OAuth2.
  * `state` permite saber qué empresa inició el flujo en el callback.
  */
-export function getGoogleAuthUrl(redirectUri: string, state?: string): string {
-  const clientId = process.env.GOOGLE_CLIENT_ID
+export function getGoogleAuthUrl(redirectUri: string, state?: string, credentials?: GoogleClientCredentials): string {
+  const clientId = credentials?.clientId || process.env.GOOGLE_CLIENT_ID
   if (!clientId) throw new Error('GOOGLE_CLIENT_ID no configurado')
 
   // calendar.events: leer/crear/editar eventos (agendar citas)
@@ -173,13 +184,13 @@ export function getGoogleAuthUrl(redirectUri: string, state?: string): string {
 /**
  * Intercambia un authorization code por tokens (access + refresh).
  */
-export async function exchangeCodeForTokens(code: string, redirectUri: string): Promise<{
+export async function exchangeCodeForTokens(code: string, redirectUri: string, credentials?: GoogleClientCredentials): Promise<{
   access_token: string
   refresh_token: string
   expires_in: number
 }> {
-  const clientId = process.env.GOOGLE_CLIENT_ID
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+  const clientId = credentials?.clientId || process.env.GOOGLE_CLIENT_ID
+  const clientSecret = credentials?.clientSecret || process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) throw new Error('GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET requeridos')
 
   const res = await fetch('https://oauth2.googleapis.com/token', {

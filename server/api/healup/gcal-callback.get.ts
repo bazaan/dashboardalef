@@ -10,17 +10,17 @@
  *   - 'davila'             → guarda google_refresh_token_davila, vuelve a Davila
  *
  * Así NO hace falta registrar una URL distinta por empresa en Google Cloud.
+ *
+ * Trade Cars YA NO usa este callback (28/09/2026): tiene su propio proyecto de Google Cloud y su
+ * propio callback dedicado, `/api/tradecars/gcal-callback` — ver esa ruta.
  */
 
-import { serverSupabaseServiceRole } from '#supabase/server'
 import { exchangeCodeForTokens, saveRefreshTokenToDB } from '~/server/utils/google-auth'
-import { resolverPerfilTradeCars } from '~/server/utils/tradecars'
 
 // empresa (state) → ruta del dashboard al que volver
 const DASHBOARD_PATH: Record<string, string> = {
   healup: '/pruebas/Healup',
   davila: '/pruebas/MiguelDavila',
-  tradecars: '/pruebas/TradeCars',
 }
 
 export default defineEventHandler(async (event) => {
@@ -40,19 +40,6 @@ export default defineEventHandler(async (event) => {
   }
   if (!code) {
     return sendRedirect(event, `${returnPath}?gcal_error=no_code`)
-  }
-
-  // Este callback es público, y cualquiera puede armar una autorización de Google con el client_id
-  // (que viaja en la URL) y mandarle acá su propio `code`. Para Healup y Davila eso ya era así; para
-  // Trade Cars se exige además que quien vuelve sea un Administrador con sesión: el token que se guarda
-  // decide de qué cuenta de Google salen los leads que ve el equipo.
-  if (company === 'tradecars') {
-    try {
-      const perfil = await resolverPerfilTradeCars(event, serverSupabaseServiceRole(event))
-      if (!perfil.esAdmin) return sendRedirect(event, `${returnPath}?gcal_error=sin_permiso`)
-    } catch {
-      return sendRedirect(event, `${returnPath}?gcal_error=sin_permiso`)
-    }
   }
 
   try {

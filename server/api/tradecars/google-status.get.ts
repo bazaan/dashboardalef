@@ -10,7 +10,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { resolverPerfilTradeCars, exigirAdminTradeCars } from '../../utils/tradecars'
 import { getGoogleAccessToken, hasRefreshToken } from '../../utils/google-auth'
-import { EMPRESA_GOOGLE } from '../../utils/tradecars-formularios'
+import { EMPRESA_GOOGLE, credencialesGoogleTradeCars } from '../../utils/tradecars-formularios'
 
 export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   let email: string | undefined
   let vencido = false
   try {
-    const token = await getGoogleAccessToken(EMPRESA_GOOGLE)
+    const token = await getGoogleAccessToken(EMPRESA_GOOGLE, credencialesGoogleTradeCars())
     const r = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${token}` } })
     if (r.ok) email = (await r.json() as any)?.email
   } catch (e: any) {

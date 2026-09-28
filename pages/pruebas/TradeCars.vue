@@ -2134,7 +2134,7 @@ onMounted(async () => {
   }
   applyTheme()
 
-  // Regreso de "Conectar con Google" (callback OAuth compartido con Healup/Davila): ?gcal_success / ?gcal_error
+  // Regreso de "Conectar con Google" (callback OAuth propio de Trade Cars desde el 28/09/2026): ?gcal_success / ?gcal_error
   const params = new URLSearchParams(window.location.search)
   if (params.get('gcal_success') || params.get('gcal_error')) {
     activeView.value = 'solicitudes'

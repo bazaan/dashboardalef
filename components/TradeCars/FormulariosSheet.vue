@@ -40,9 +40,9 @@
       <h3>{{ tituloError }}</h3>
       <p>{{ resp.error.mensaje }}</p>
       <div class="fs-aviso-botones">
-        <v-btn v-if="resp.es_admin && (resp.error.causa === 'sin_google' || resp.error.causa === 'token')"
+        <v-btn v-if="resp.es_admin && ['sin_google', 'token', 'sin_alcance'].includes(resp.error.causa)"
           color="primary" variant="flat" prepend-icon="mdi-google" href="/api/tradecars/google-auth">
-          {{ resp.error.causa === 'token' ? 'Reconectar Google' : 'Conectar Google' }}
+          {{ resp.error.causa === 'sin_google' ? 'Conectar Google' : 'Reconectar Google' }}
         </v-btn>
         <v-btn v-if="resp.es_admin" variant="tonal" prepend-icon="mdi-link-variant" @click="abrirConexion">
           Revisar la conexión
@@ -440,12 +440,13 @@ onBeforeUnmount(() => {
 })
 
 const iconoError = computed(() => ({
-  sin_google: 'mdi-google', token: 'mdi-key-alert-outline', sin_acceso: 'mdi-lock-alert-outline',
-  no_encontrada: 'mdi-file-question-outline',
+  sin_google: 'mdi-google', token: 'mdi-key-alert-outline', sin_alcance: 'mdi-shield-alert-outline',
+  sin_acceso: 'mdi-lock-alert-outline', no_encontrada: 'mdi-file-question-outline',
 }[resp.value?.error?.causa as string] || 'mdi-alert-circle-outline'))
 const tituloError = computed(() => ({
   sin_google: 'Falta conectar Google',
   token: 'La conexión con Google venció',
+  sin_alcance: 'Falta el permiso de Google Sheets',
   sin_acceso: 'La cuenta conectada no ve esta hoja',
   no_encontrada: 'No se encuentra la hoja o la pestaña',
 }[resp.value?.error?.causa as string] || 'No se pudo leer la hoja'))

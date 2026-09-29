@@ -431,9 +431,15 @@ function distribuirPorPlataforma(leads: LeadFormulario[]): Record<CanalFormulari
  */
 export async function leerTarjetas(
   supabase: any, canal: CanalFormulario, config: ConfigHoja, limite: number,
-  /** Si viene, solo se devuelven (y cuentan) las tarjetas de ESE asesor — filtrado ANTES del
-   * recorte por `limite`, para no perder tarjetas propias que hubieran quedado más allá del
-   * límite en la lista sin filtrar. */
+  /**
+   * Filtrado ANTES del recorte por `limite`, para no perder tarjetas propias que hubieran
+   * quedado más allá del límite en la lista sin filtrar. Tres estados, no dos:
+   *  - `undefined` → sin filtro (admin: ve todas).
+   *  - string → solo las de ESE asesor.
+   *  - `null` → la sesión no es admin y tampoco está registrada como asesor: no debe ver
+   *    NINGUNA tarjeta (default-deny), a diferencia de antes del 29/09/2026 donde esto
+   *    tampoco filtraba nada y terminaba mostrando todo.
+   */
   filtroAsesorEmail?: string | null,
 ) {
   const hoja = await leerHojaGoogle({ sheetId: config.sheet_id as string, pestana: config.pestana, gid: config.gid })
@@ -445,9 +451,9 @@ export async function leerTarjetas(
   const { estados, disponible } = await leerEstados(supabase, canal)
   if (disponible) await asignarNuevosLeads(supabase, canal, delCanal, estados)
   let todas = fusionarEstados(delCanal, estados)
-  if (filtroAsesorEmail) {
-    const email = filtroAsesorEmail.toLowerCase()
-    todas = todas.filter(t => t.asesor_email && t.asesor_email.toLowerCase() === email)
+  if (filtroAsesorEmail !== undefined) {
+    const email = (filtroAsesorEmail || '').toLowerCase()
+    todas = todas.filter(t => !!email && t.asesor_email && t.asesor_email.toLowerCase() === email)
   }
   return {
     hoja: { titulo: hoja.titulo_documento, pestana: hoja.pestana },

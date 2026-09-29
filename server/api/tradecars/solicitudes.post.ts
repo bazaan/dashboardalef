@@ -11,7 +11,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { resolverPerfilTradeCars, exigirModuloTradeCars } from '../../utils/tradecars'
-import { obtenerAsesorDeSesion } from '../../utils/tradecars-asignacion'
+import { resolverRestriccionAsesor } from '../../utils/tradecars-asignacion'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ESTADOS = ['nuevo', 'contactado', 'tasado', 'comprado', 'descartado']
@@ -41,13 +41,18 @@ export default defineEventHandler(async (event) => {
   const id = String(body?.id || '')
   if (!UUID.test(id)) throw createError({ statusCode: 400, statusMessage: 'Falta la solicitud (id)' })
 
-  // Un asesor (no admin) solo puede tocar sus propias solicitudes.
-  const miAsesor = perfil.esAdmin ? null : await obtenerAsesorDeSesion(supabase, perfil.email)
-  if (miAsesor) {
+  // Un asesor (no admin) solo puede tocar sus propias solicitudes. Un no-admin que no está
+  // registrado en tradecars_asesores (ej. una cuenta de "agente" recién creada) no puede tocar
+  // ninguna — default-deny, igual que en formularios.post.ts.
+  const restriccion = await resolverRestriccionAsesor(perfil, supabase)
+  if (restriccion.restringir) {
+    if (!restriccion.asesorEmail) {
+      throw createError({ statusCode: 403, statusMessage: 'Tu cuenta todavía no está registrada como asesor de Trade Cars.' })
+    }
     const { data: actual, error: eActual } = await supabase.from(tabla).select('asesor_email').eq('id', id).maybeSingle()
     lanzarSiFaltaMigracion(eActual)
     if (!actual) throw createError({ statusCode: 404, statusMessage: 'Solicitud no encontrada' })
-    if (actual.asesor_email && actual.asesor_email.toLowerCase() !== miAsesor.asesor_email.toLowerCase()) {
+    if (actual.asesor_email && actual.asesor_email.toLowerCase() !== restriccion.asesorEmail.toLowerCase()) {
       throw createError({ statusCode: 403, statusMessage: 'Esta solicitud está asignada a otro asesor.' })
     }
   }

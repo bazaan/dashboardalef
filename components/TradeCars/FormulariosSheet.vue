@@ -72,6 +72,9 @@
       <v-alert v-if="resp.asesor_sesion" type="info" variant="tonal" density="compact" class="mb-3" icon="mdi-account-tie">
         Estás viendo solo las tarjetas asignadas a ti ({{ resp.asesor_sesion }}).
       </v-alert>
+      <v-alert v-else-if="resp.sin_asesor_asignado" type="warning" variant="tonal" density="compact" class="mb-3" icon="mdi-account-alert">
+        Tu cuenta todavía no está registrada como asesor de Trade Cars, así que no tienes ninguna tarjeta asignada. Pide a un administrador que te agregue en la tabla de asesores.
+      </v-alert>
 
       <!-- Distribución por plataforma: útil para ver que la hoja SÍ tiene datos, aunque en este
            canal en particular no aparezca nada todavía (porque la columna PLATAFORMA está vacía). -->

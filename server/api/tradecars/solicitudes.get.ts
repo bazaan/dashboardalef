@@ -9,7 +9,7 @@
  */
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { resolverPerfilTradeCars, exigirModuloTradeCars } from '../../utils/tradecars'
-import { obtenerAsesorDeSesion } from '../../utils/tradecars-asignacion'
+import { resolverRestriccionAsesor } from '../../utils/tradecars-asignacion'
 
 export default defineEventHandler(async (event) => {
   const supabase = serverSupabaseServiceRole(event)
@@ -18,13 +18,22 @@ export default defineEventHandler(async (event) => {
 
   setHeader(event, 'Cache-Control', 'no-store')
 
-  const miAsesor = perfil.esAdmin ? null : await obtenerAsesorDeSesion(supabase, perfil.email)
+  // Admin ve todo. No-admin registrado como asesor ve solo lo suyo. No-admin SIN registrar en
+  // tradecars_asesores (ej. una cuenta de "agente" recién creada) no ve ninguna — default-deny.
+  const restriccion = await resolverRestriccionAsesor(perfil, supabase)
+  if (restriccion.restringir && !restriccion.asesorEmail) {
+    return {
+      ok: true, ventas: [], compras: [], es_admin: false,
+      puede_editar: perfil.permisos?.comercial?.can_edit === true,
+      asesor_sesion: null, sin_asesor_asignado: true,
+    }
+  }
 
   let ventasQ = supabase.from('tradecars_solicitudes_venta').select('*').order('created_at', { ascending: false })
   let comprasQ = supabase.from('tradecars_solicitudes_compra').select('*').order('created_at', { ascending: false })
-  if (miAsesor) {
-    ventasQ = ventasQ.ilike('asesor_email', miAsesor.asesor_email)
-    comprasQ = comprasQ.ilike('asesor_email', miAsesor.asesor_email)
+  if (restriccion.restringir && restriccion.asesorEmail) {
+    ventasQ = ventasQ.ilike('asesor_email', restriccion.asesorEmail)
+    comprasQ = comprasQ.ilike('asesor_email', restriccion.asesorEmail)
   }
 
   const [{ data: ventas, error: e1 }, { data: compras, error: e2 }] = await Promise.all([ventasQ, comprasQ])
@@ -44,6 +53,7 @@ export default defineEventHandler(async (event) => {
     compras: compras || [],
     es_admin: perfil.esAdmin,
     puede_editar: perfil.esAdmin || perfil.permisos?.comercial?.can_edit === true,
-    asesor_sesion: miAsesor?.asesor_nombre ?? null,
+    asesor_sesion: restriccion.asesorNombre,
+    sin_asesor_asignado: false,
   }
 })

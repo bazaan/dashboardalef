@@ -74,10 +74,9 @@ export async function resolverAsesorParaTelefono(supabase: any, telefonoCrudo: s
 
 /**
  * Si la sesión pertenece a uno de los asesores de tradecars_asesores (Rodrigo Paredes, Jose
- * Flores, Brado Alvarado, Gino Hurtado), devuelve su fila — hay que filtrarle las tarjetas a
- * solo las suyas. Si no (admin/superadmin, o alguien que no está en esa tabla — ej. Luis Cossa,
- * que es Jefe de Compras y no un asesor de round robin), devuelve null y NO se filtra nada: es
- * el mismo comportamiento que ya tenían antes de esta función.
+ * Flores, Brado Alvarado, Gino Hurtado), devuelve su fila. Si no, devuelve null — quien llama
+ * decide qué hacer (ver `resolverRestriccionAsesor`, que es lo que hay que usar para filtrar
+ * pantallas: acá abajo un null NO significa "sin filtro", solo "no matcheó").
  */
 export async function obtenerAsesorDeSesion(supabase: any, email: string): Promise<AsesorAsignado | null> {
   if (!email) return null
@@ -90,7 +89,34 @@ export async function obtenerAsesorDeSesion(supabase: any, email: string): Promi
       .maybeSingle()
     if (data?.email) return { asesor_nombre: data.nombre, asesor_email: data.email }
   } catch {
-    // tabla faltante u otro error: no se filtra nada
+    // tabla faltante u otro error: se trata igual que "no matcheó"
   }
   return null
+}
+
+export interface RestriccionAsesor {
+  /** false = admin/superadmin de Trade Cars — no hay que filtrar nada. */
+  restringir: boolean
+  /**
+   * Con `restringir=true`: el email del asesor al que hay que limitar la vista, o `null` si la
+   * sesión (un "agente" que no es admin) no está registrada en `tradecars_asesores` todavía —
+   * en ese caso NO debe ver ni tocar ninguna tarjeta (default-deny), no "verlas todas". Antes
+   * (hasta el 29/09/2026) un no-admin sin fila en tradecars_asesores veía todo — pensado para
+   * Luis Cossa (Jefe de Compras) — pero eso mismo dejaba a una cuenta de "agente" recién creada
+   * (que tampoco tiene fila todavía) viendo TODAS las tarjetas de TODOS los asesores, que es
+   * justo lo que se pidió evitar: "los que tienen rango de agente SOLAMENTE pueden ver... las
+   * que se les haya asignado a ELLOS". Alguien como Luis Cossa que necesite ver todo sin ser
+   * asesor de round robin tiene que entrar como admin del módulo, no vía este atajo.
+   */
+  asesorEmail: string | null
+  asesorNombre: string | null
+}
+
+/** Perfil mínimo que necesita `resolverRestriccionAsesor` (evita importar el tipo completo de tradecars.ts). */
+export interface PerfilParaRestriccion { email: string; esAdmin: boolean }
+
+export async function resolverRestriccionAsesor(perfil: PerfilParaRestriccion, supabase: any): Promise<RestriccionAsesor> {
+  if (perfil.esAdmin) return { restringir: false, asesorEmail: null, asesorNombre: null }
+  const asesor = await obtenerAsesorDeSesion(supabase, perfil.email)
+  return { restringir: true, asesorEmail: asesor?.asesor_email ?? null, asesorNombre: asesor?.asesor_nombre ?? null }
 }

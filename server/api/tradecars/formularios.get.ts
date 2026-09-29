@@ -14,7 +14,7 @@ import { resolverPerfilTradeCars, exigirModuloTradeCars } from '../../utils/trad
 import {
   ErrorHoja, googleConectado, leerConfigHoja, leerTarjetas,
 } from '../../utils/tradecars-formularios'
-import { obtenerAsesorDeSesion } from '../../utils/tradecars-asignacion'
+import { resolverRestriccionAsesor } from '../../utils/tradecars-asignacion'
 import { CANALES_FORMULARIO, esCanalFormulario } from '../../../utils/tradecarsFormularios'
 
 const LIMITE_POR_DEFECTO = 1500
@@ -37,9 +37,9 @@ export default defineEventHandler(async (event) => {
 
   const { config, tablaDisponible } = await leerConfigHoja(supabase, canal)
   const conectado = await googleConectado()
-  // Si la sesión es uno de los asesores de tradecars_asesores (no admin/superadmin, no alguien
-  // fuera de esa tabla como el Jefe de Compras), solo ve las tarjetas asignadas a él.
-  const miAsesor = perfil.esAdmin ? null : await obtenerAsesorDeSesion(supabase, perfil.email)
+  // Admin/superadmin ve todo. Un no-admin solo ve sus tarjetas si está en tradecars_asesores —
+  // si no está (ej. una cuenta de "agente" recién creada, todavía sin vincular), no ve NINGUNA.
+  const restriccion = await resolverRestriccionAsesor(perfil, supabase)
 
   const base = {
     ok: true,
@@ -72,7 +72,10 @@ export default defineEventHandler(async (event) => {
     total_en_hoja: 0,
     distribucion_plataforma: null as Record<string, number> | null,
     // Si no es null, la sesión es un asesor y las tarjetas ya vienen filtradas a solo las suyas.
-    asesor_sesion: miAsesor?.asesor_nombre ?? null,
+    asesor_sesion: restriccion.asesorNombre,
+    // true = la sesión no es admin y tampoco está registrada en tradecars_asesores: no tiene
+    // ninguna tarjeta asignada todavía (distinto de "asesor_sesion" real con 0 tarjetas).
+    sin_asesor_asignado: restriccion.restringir && !restriccion.asesorEmail,
     error: null as null | { causa: string; mensaje: string },
   }
 
@@ -82,7 +85,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const r = await leerTarjetas(supabase, canal, config, limite, miAsesor?.asesor_email)
+    const r = await leerTarjetas(supabase, canal, config, limite, restriccion.restringir ? restriccion.asesorEmail : undefined)
     return { ...base, ...r, actualizado_en: new Date().toISOString() }
   } catch (e: any) {
     if (e instanceof ErrorHoja) return { ...base, error: { causa: e.causa, mensaje: e.message } }

@@ -25,7 +25,7 @@ import {
 import {
   ErrorHoja, googleConectado, guardarConfigHoja, leerConfigHoja, leerHojaGoogle, restriccionCanalFaltante, TODOS_LOS_CANALES,
 } from '../../utils/tradecars-formularios'
-import { obtenerAsesorDeSesion } from '../../utils/tradecars-asignacion'
+import { resolverRestriccionAsesor } from '../../utils/tradecars-asignacion'
 import { asignarPendientesCanal, asignarPendientesSolicitudesWeb } from '../../utils/tradecars-asignacion-backfill'
 import {
   CAMPOS_FORMULARIO, ESTADOS_FORMULARIO, esCanalFormulario, extraerReferenciaHoja, hojaALeads,
@@ -104,16 +104,18 @@ export default defineEventHandler(async (event) => {
     if (!leadKey) throw createError({ statusCode: 400, statusMessage: 'Falta el lead a guardar' })
 
     // Un asesor (no admin) solo puede tocar SUS propias tarjetas — se re-verifica en el servidor,
-    // no alcanza con que la pantalla solo le muestre las suyas.
-    if (!perfil.esAdmin) {
-      const miAsesor = await obtenerAsesorDeSesion(supabase, perfil.email)
-      if (miAsesor) {
-        const { data: actual } = await supabase
-          .from('tradecars_formularios_estado')
-          .select('asesor_email').eq('canal', canal).eq('lead_key', leadKey).maybeSingle()
-        if (actual?.asesor_email && actual.asesor_email.toLowerCase() !== miAsesor.asesor_email.toLowerCase()) {
-          throw createError({ statusCode: 403, statusMessage: 'Esta tarjeta está asignada a otro asesor.' })
-        }
+    // no alcanza con que la pantalla solo le muestre las suyas. Una cuenta no-admin que no está
+    // registrada en tradecars_asesores no puede tocar ninguna (default-deny).
+    const restriccion = await resolverRestriccionAsesor(perfil, supabase)
+    if (restriccion.restringir) {
+      if (!restriccion.asesorEmail) {
+        throw createError({ statusCode: 403, statusMessage: 'Tu cuenta todavía no está registrada como asesor de Trade Cars.' })
+      }
+      const { data: actual } = await supabase
+        .from('tradecars_formularios_estado')
+        .select('asesor_email').eq('canal', canal).eq('lead_key', leadKey).maybeSingle()
+      if (actual?.asesor_email && actual.asesor_email.toLowerCase() !== restriccion.asesorEmail.toLowerCase()) {
+        throw createError({ statusCode: 403, statusMessage: 'Esta tarjeta está asignada a otro asesor.' })
       }
     }
 

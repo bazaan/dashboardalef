@@ -295,6 +295,9 @@
           <v-alert v-if="solicitudesAsesorSesion" type="info" variant="tonal" density="compact" class="mb-3" icon="mdi-account-tie">
             Estás viendo solo las solicitudes asignadas a ti ({{ solicitudesAsesorSesion }}).
           </v-alert>
+          <v-alert v-else-if="solicitudesSinAsesorAsignado" type="warning" variant="tonal" density="compact" class="mb-3" icon="mdi-account-alert">
+            Tu cuenta todavía no está registrada como asesor de Trade Cars, así que no tienes ninguna solicitud asignada. Pide a un administrador que te agregue en la tabla de asesores.
+          </v-alert>
           <div class="table-tabs">
             <button :class="['tab', { active: solTab === 'venta' }]" @click="solTab = 'venta'; expandedSol = null">
               Quieren VENDER su auto ({{ solicitudesVenta.length }})
@@ -1280,6 +1283,7 @@ function waLink(s: any) {
 }
 
 const solicitudesAsesorSesion = ref<string | null>(null)
+const solicitudesSinAsesorAsignado = ref(false)
 
 /**
  * 29/09/2026: dejó de leerse directo desde Supabase — pasa por el servidor, para que "un asesor
@@ -1291,6 +1295,7 @@ async function fetchSolicitudes() {
     solicitudesCompra.value = r.compras || []
     solicitudesVenta.value = r.ventas || []
     solicitudesAsesorSesion.value = r.asesor_sesion ?? null
+    solicitudesSinAsesorAsignado.value = !!r.sin_asesor_asignado
   } catch (e: any) {
     notify('Error cargando solicitudes: ' + (e?.data?.statusMessage || e?.message), 'error')
   }

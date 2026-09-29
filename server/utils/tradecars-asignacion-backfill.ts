@@ -61,9 +61,17 @@ export interface ResultadoAsignacionCanal {
   motivo?: string
 }
 
-/** Asigna asesor a todos los leads de UN canal de Solicitudes - formularios que todavía no tienen fila en tradecars_formularios_estado. */
+/**
+ * Asigna asesor a los leads de UN canal que todavía no tienen fila en tradecars_formularios_estado.
+ *
+ * `maxPorLlamada` (opcional): si el canal tiene un backlog grande (ej. "sin_plataforma" con miles de
+ * leads), procesar TODO en una sola llamada puede superar el tiempo máximo de una función de Netlify
+ * (~30s) — probado en vivo: una llamada sin tope cortó a los 30.8s con 502. Con este límite, cada
+ * llamada procesa como mucho esa cantidad y devuelve `total_pendientes` con lo que TODAVÍA falta —
+ * quien llama repite la llamada hasta que dé 0, controlando el tamaño del lote desde afuera.
+ */
 export async function asignarPendientesCanal(
-  supabase: any, canal: CanalFormulario, config: ConfigHoja,
+  supabase: any, canal: CanalFormulario, config: ConfigHoja, maxPorLlamada?: number,
 ): Promise<ResultadoAsignacionCanal> {
   if (!config.sheet_id) return { ok: false, asignados: 0, total_pendientes: 0, motivo: 'sin_hoja' }
 
@@ -74,8 +82,10 @@ export async function asignarPendientesCanal(
   const { estados, disponible } = await leerEstados(supabase, canal)
   if (!disponible) return { ok: false, asignados: 0, total_pendientes: 0, motivo: 'tabla_no_disponible' }
 
-  const pendientes = delCanal.filter(l => !estados.has(l.lead_key))
-  if (!pendientes.length) return { ok: true, asignados: 0, total_pendientes: 0 }
+  const pendientesTodos = delCanal.filter(l => !estados.has(l.lead_key))
+  if (!pendientesTodos.length) return { ok: true, asignados: 0, total_pendientes: 0 }
+  const pendientes = maxPorLlamada ? pendientesTodos.slice(0, maxPorLlamada) : pendientesTodos
+  const quedanPendientes = pendientesTodos.length - pendientes.length
 
   const asesoresActivos = await cargarAsesoresActivos(supabase)
   const asesorPorNombre = new Map(asesoresActivos.map(a => [a.nombre.toLowerCase(), a]))
@@ -116,7 +126,9 @@ export async function asignarPendientesCanal(
     if (!error) asignados += lote.length
   }
 
-  return { ok: true, asignados, total_pendientes: pendientes.length }
+  // `total_pendientes` es lo que TODAVÍA queda después de esta llamada (no lo que había antes) —
+  // así quien llama sabe si tiene que repetir la llamada (>0) o ya terminó (0).
+  return { ok: true, asignados, total_pendientes: quedanPendientes }
 }
 
 /** Asigna asesor a las solicitudes de "Formularios web" (venta/compra) que todavía no lo tienen. */

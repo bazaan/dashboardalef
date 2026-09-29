@@ -54,15 +54,35 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const accion = String(body?.accion || '')
 
-  /* ══════════ Asignación masiva del backlog (Administrador) — no pide canal, procesa los 4 ══════════ */
+  /* ══════════ Asignación masiva del backlog (Administrador) ══════════
+   * { accion:'asignar_pendientes', canal?, maximo? }
+   *   - sin `canal`: procesa los 4 canales + Formularios web (sirve para backlogs chicos)
+   *   - con `canal` ('ig'|'fb'|'tiktok'|'sin_plataforma'|'web'): procesa SOLO ese uno
+   *   - `maximo`: tope de leads a procesar EN ESTA llamada (para backlogs grandes, ej.
+   *     "sin_plataforma" con miles — probado en vivo: sin tope, una sola llamada corta a los
+   *     ~30s con 502 de Netlify). La respuesta trae `total_pendientes` con lo que queda: quien
+   *     llama repite hasta que dé 0.
+   */
   if (accion === 'asignar_pendientes') {
     exigirAdminTradeCars(perfil, 'la asignación masiva de asesores')
+    const canalPedido = String(body?.canal || '')
+    const maximo = body?.maximo ? Number(body.maximo) : undefined
+
+    if (canalPedido === 'web') {
+      const web = await asignarPendientesSolicitudesWeb(supabase)
+      return { ok: true, formularios_web: web }
+    }
+    if (esCanalFormulario(canalPedido)) {
+      const { config } = await leerConfigHoja(supabase, canalPedido)
+      const resultado = await asignarPendientesCanal(supabase, canalPedido, config, maximo)
+      return { ok: true, canal: canalPedido, ...resultado }
+    }
 
     const resultadoPorCanal: Record<string, any> = {}
     for (const c of TODOS_LOS_CANALES) {
       const { config } = await leerConfigHoja(supabase, c)
       try {
-        resultadoPorCanal[c] = await asignarPendientesCanal(supabase, c, config)
+        resultadoPorCanal[c] = await asignarPendientesCanal(supabase, c, config, maximo)
       } catch (e: any) {
         resultadoPorCanal[c] = { ok: false, asignados: 0, total_pendientes: 0, motivo: e?.message || 'error' }
       }

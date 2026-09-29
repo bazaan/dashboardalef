@@ -1107,14 +1107,15 @@ pero el prompt de Alef pide `urgencia (normal / alta / crítica)` — un ticket 
 manuales_tickets.sql` se corrigió para sacar el CHECK de adentro del `CREATE TABLE` (que con
 `IF NOT EXISTS` no vuelve a tocar una tabla que ya existe) y ponerlo aparte con
 `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`, así que **re-correr el archivo arregla también
-una base donde ya se había corrido la versión vieja**. Pendiente: falta que Roberto vuelva a
-correr `sql/tradecars_tasaciones_manuales_tickets.sql` en Supabase para que el CHECK en vivo
-quede corregido (sin eso, `crear_ticket` con `urgencia:'critica'` sigue fallando).
+una base donde ya se había corrido la versión vieja** — confirmado: Roberto volvió a correr
+`sql/tradecars_tasaciones_manuales_tickets.sql` el mismo día y el CHECK en vivo quedó corregido.
 
-Probado contra producción: `ver_tasaciones_pendientes`, `marcar_tasacion_atendida` y
-`crear_ticket` funcionan (filas de prueba creadas y borradas después) — y se confirmó en vivo
-que `crear_ticket` con `urgencia:'critica'` SÍ falla todavía contra el CHECK viejo, exactamente
-como se esperaba antes de que Roberto vuelva a correr la migración corregida.
+Probado contra producción, en dos pasadas: **antes** de re-correr la migración,
+`ver_tasaciones_pendientes` y `marcar_tasacion_atendida` funcionaban pero `crear_ticket` con
+`urgencia:'critica'` SÍ fallaba contra el CHECK viejo (confirmado el bug real, no hipotético);
+**después** de re-correr, `crear_ticket` con `urgencia:'critica'` crea el ticket bien
+(`TC-0005` en la prueba) y `urgencia:'baja'` (el valor viejo, que el prompt ya no usa) queda
+correctamente rechazado. Filas de prueba creadas y borradas en ambas pasadas.
 
 ---
 

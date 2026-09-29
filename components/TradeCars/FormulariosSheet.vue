@@ -107,6 +107,30 @@
           style="max-width: 320px;" />
       </div>
 
+      <!-- Filtro por asesor: solo admin/superadmin, que son quienes ven las tarjetas de todos -->
+      <div v-if="resp?.es_admin && (asesoresConteo.lista.length || asesoresConteo.sinAsignar)" class="sol-filtros sol-filtros-asesor">
+        <span class="sol-filtros-asesor-label"><v-icon icon="mdi-account-multiple-outline" size="14" /> Asesor</span>
+        <v-chip size="small" :variant="asesorFiltro === 'todos' ? 'flat' : 'tonal'"
+          :color="asesorFiltro === 'todos' ? 'primary' : undefined"
+          style="cursor: pointer;" @click="asesorFiltro = 'todos'">
+          Todos
+        </v-chip>
+        <v-chip v-for="a in asesoresConteo.lista" :key="a.email" size="small"
+          :variant="asesorFiltro === a.email ? 'flat' : 'tonal'"
+          :color="asesorFiltro === a.email ? 'primary' : undefined"
+          prepend-icon="mdi-account-tie" style="cursor: pointer;" @click="asesorFiltro = a.email">
+          {{ a.nombre }}
+          <span style="margin-left:5px; opacity:.75;">{{ a.count }}</span>
+        </v-chip>
+        <v-chip v-if="asesoresConteo.sinAsignar" size="small"
+          :variant="asesorFiltro === 'sin_asignar' ? 'flat' : 'tonal'"
+          :color="asesorFiltro === 'sin_asignar' ? 'warning' : undefined"
+          prepend-icon="mdi-account-question-outline" style="cursor: pointer;" @click="asesorFiltro = 'sin_asignar'">
+          Sin asignar
+          <span style="margin-left:5px; opacity:.75;">{{ asesoresConteo.sinAsignar }}</span>
+        </v-chip>
+      </div>
+
       <div v-if="tarjetasFiltradas.length" class="sol-grid">
         <v-card v-for="s in tarjetasFiltradas" :key="s.lead_key" class="sol-card"
           :class="{ 'sol-card--open': expandida === s.lead_key }" @click="alternar(s)">
@@ -472,9 +496,40 @@ const tituloError = computed(() => ({
 const estadoFiltro = ref('todos')
 const busqueda = ref('')
 const contarEstado = (e: string) => tarjetas.value.filter(s => s.estado === e).length
+
+/**
+ * Filtro por asesor — solo visible para admin/superadmin (los asesores ya ven únicamente las
+ * suyas, filtradas por el servidor, así que este chip no les aportaría nada). Los conteos salen
+ * de `tarjetas.value` (todas las cargadas, antes de aplicar cualquier filtro) para que reflejen
+ * el total real por asesor, igual que `contarEstado` con el estado.
+ */
+const asesorFiltro = ref('todos')
+const asesoresConteo = computed(() => {
+  const mapa = new Map<string, { nombre: string; count: number }>()
+  let sinAsignar = 0
+  for (const s of tarjetas.value) {
+    if (s.asesor_email) {
+      const key = String(s.asesor_email).toLowerCase()
+      if (!mapa.has(key)) mapa.set(key, { nombre: s.asesor_nombre || s.asesor_email, count: 0 })
+      mapa.get(key)!.count++
+    } else {
+      sinAsignar++
+    }
+  }
+  const lista = [...mapa.entries()]
+    .map(([email, v]) => ({ email, nombre: v.nombre, count: v.count }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre))
+  return { lista, sinAsignar }
+})
+
 const tarjetasFiltradas = computed(() => {
   let lista = tarjetas.value
   if (estadoFiltro.value !== 'todos') lista = lista.filter(s => s.estado === estadoFiltro.value)
+  if (resp.value?.es_admin && asesorFiltro.value !== 'todos') {
+    lista = asesorFiltro.value === 'sin_asignar'
+      ? lista.filter(s => !s.asesor_email)
+      : lista.filter(s => String(s.asesor_email || '').toLowerCase() === asesorFiltro.value)
+  }
   const q = busqueda.value.trim().toLowerCase()
   if (q) {
     lista = lista.filter(s =>
@@ -736,7 +791,12 @@ async function desconectar() {
 
 /* ---- Tarjetas: mismas reglas que "Solicitudes web" (pages/pruebas/TradeCars.vue) ---- */
 .sol-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
-.sol-filtros { display: flex; gap: 8px; flex-wrap: wrap; }
+.sol-filtros { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sol-filtros-asesor { margin: -8px 0 16px; }
+.sol-filtros-asesor-label {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .4px; opacity: .55; margin-right: 2px;
+}
 .sol-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; align-items: start; }
 .sol-card { padding: 16px; cursor: pointer; border-radius: 14px; transition: transform .15s ease, box-shadow .15s ease; }
 .sol-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 0, 0, .16); }

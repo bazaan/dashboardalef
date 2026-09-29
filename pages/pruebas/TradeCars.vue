@@ -322,6 +322,31 @@
               style="max-width: 320px;" />
           </div>
 
+          <!-- Filtro por asesor: solo admin/superadmin, que son quienes ven las solicitudes de todos -->
+          <div v-if="perfilTC?.es_admin && (solicitudesAsesoresConteo.lista.length || solicitudesAsesoresConteo.sinAsignar)"
+            class="sol-filtros sol-filtros-asesor">
+            <span class="sol-filtros-asesor-label"><v-icon icon="mdi-account-multiple-outline" size="14" /> Asesor</span>
+            <v-chip size="small" :variant="solAsesorFiltro === 'todos' ? 'flat' : 'tonal'"
+              :color="solAsesorFiltro === 'todos' ? 'primary' : undefined"
+              style="cursor: pointer;" @click="solAsesorFiltro = 'todos'">
+              Todos
+            </v-chip>
+            <v-chip v-for="a in solicitudesAsesoresConteo.lista" :key="a.email" size="small"
+              :variant="solAsesorFiltro === a.email ? 'flat' : 'tonal'"
+              :color="solAsesorFiltro === a.email ? 'primary' : undefined"
+              prepend-icon="mdi-account-tie" style="cursor: pointer;" @click="solAsesorFiltro = a.email">
+              {{ a.nombre }}
+              <span style="margin-left:5px; opacity:.75;">{{ a.count }}</span>
+            </v-chip>
+            <v-chip v-if="solicitudesAsesoresConteo.sinAsignar" size="small"
+              :variant="solAsesorFiltro === 'sin_asignar' ? 'flat' : 'tonal'"
+              :color="solAsesorFiltro === 'sin_asignar' ? 'warning' : undefined"
+              prepend-icon="mdi-account-question-outline" style="cursor: pointer;" @click="solAsesorFiltro = 'sin_asignar'">
+              Sin asignar
+              <span style="margin-left:5px; opacity:.75;">{{ solicitudesAsesoresConteo.sinAsignar }}</span>
+            </v-chip>
+          </div>
+
           <div v-if="solicitudesFiltradas.length" class="sol-grid">
             <v-card v-for="s in solicitudesFiltradas" :key="s.id" class="sol-card"
               :class="{ 'sol-card--open': expandedSol === s.id }" @click="toggleSol(s.id)">
@@ -1247,10 +1272,39 @@ function contarEstado(e: string) {
   return solicitudesActuales.value.filter(s => (s.estado || 'nuevo') === e).length
 }
 
+/**
+ * Filtro por asesor de "Formularios web" — solo admin/superadmin (los asesores ya ven únicamente
+ * las suyas, filtradas por el servidor). Cuenta sobre la pestaña actual (venta/compra), igual que
+ * `contarEstado`, así que se recalcula solo al cambiar de pestaña.
+ */
+const solAsesorFiltro = ref('todos')
+const solicitudesAsesoresConteo = computed(() => {
+  const mapa = new Map<string, { nombre: string; count: number }>()
+  let sinAsignar = 0
+  for (const s of solicitudesActuales.value) {
+    if (s.asesor_email) {
+      const key = String(s.asesor_email).toLowerCase()
+      if (!mapa.has(key)) mapa.set(key, { nombre: s.asesor_nombre || s.asesor_email, count: 0 })
+      mapa.get(key)!.count++
+    } else {
+      sinAsignar++
+    }
+  }
+  const lista = [...mapa.entries()]
+    .map(([email, v]) => ({ email, nombre: v.nombre, count: v.count }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre))
+  return { lista, sinAsignar }
+})
+
 const solicitudesFiltradas = computed(() => {
   let lista = solicitudesActuales.value
   if (solEstadoFiltro.value !== 'todos') {
     lista = lista.filter(s => (s.estado || 'nuevo') === solEstadoFiltro.value)
+  }
+  if (perfilTC.value?.es_admin && solAsesorFiltro.value !== 'todos') {
+    lista = solAsesorFiltro.value === 'sin_asignar'
+      ? lista.filter(s => !s.asesor_email)
+      : lista.filter(s => String(s.asesor_email || '').toLowerCase() === solAsesorFiltro.value)
   }
   if (solSearch.value) {
     const q = solSearch.value.toLowerCase()
@@ -2201,6 +2255,22 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.sol-filtros-asesor {
+  margin: -8px 0 16px;
+}
+
+.sol-filtros-asesor-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  opacity: .55;
+  margin-right: 2px;
 }
 
 .sol-grid {

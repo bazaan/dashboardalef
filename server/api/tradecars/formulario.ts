@@ -53,6 +53,7 @@
 
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { getMethod } from 'h3'
+import { resolverAsesorParaTelefono } from '../../utils/tradecars-asignacion'
 
 const API_KEY = 'tradecars-web-2026'
 
@@ -154,6 +155,10 @@ export default defineEventHandler(async (event) => {
   const tabla    = tipo === 'venta' ? 'tradecars_solicitudes_venta' : 'tradecars_solicitudes_compra'
   const toolName = tipo === 'venta' ? 'Formulario Web Venta' : 'Formulario Web Compra'
 
+  // Asignación automática: por continuidad de teléfono (tradecars_leads_chatwoot) o round robin
+  // entre los 4 asesores — misma regla que las tarjetas de IG/FB/TikTok/Sin plataforma.
+  const asesor = await resolverAsesorParaTelefono(supabase, celular)
+
   const fila: Record<string, any> = tipo === 'venta'
     ? {
         nombre_completo, celular, correo,
@@ -166,12 +171,16 @@ export default defineEventHandler(async (event) => {
         tiene_deuda: tiene_deuda || null,
         mensaje: mensaje || null,
         estado: 'nuevo',
+        asesor_nombre: asesor?.asesor_nombre ?? null,
+        asesor_email: asesor?.asesor_email ?? null,
         ...meta,
       }
     : {
         nombre_completo, correo, celular,
         mensaje: mensaje || null,
         estado: 'nuevo',
+        asesor_nombre: asesor?.asesor_nombre ?? null,
+        asesor_email: asesor?.asesor_email ?? null,
         ...meta,
       }
 

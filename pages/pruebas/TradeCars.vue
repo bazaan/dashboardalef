@@ -292,6 +292,9 @@
             @notificar="notify" @cliente-creado="fetchClientes" />
 
           <template v-else>
+          <v-alert v-if="solicitudesAsesorSesion" type="info" variant="tonal" density="compact" class="mb-3" icon="mdi-account-tie">
+            Estás viendo solo las solicitudes asignadas a ti ({{ solicitudesAsesorSesion }}).
+          </v-alert>
           <div class="table-tabs">
             <button :class="['tab', { active: solTab === 'venta' }]" @click="solTab = 'venta'; expandedSol = null">
               Quieren VENDER su auto ({{ solicitudesVenta.length }})
@@ -333,6 +336,11 @@
                   {{ s.estado || 'nuevo' }}
                 </v-chip>
               </div>
+
+              <v-chip v-if="s.asesor_nombre" size="x-small" variant="tonal" color="primary"
+                prepend-icon="mdi-account-tie" class="sol-card-asesor">
+                {{ s.asesor_nombre }}
+              </v-chip>
 
               <!-- Resumen (siempre visible) -->
               <div class="sol-card-resumen">
@@ -1271,76 +1279,59 @@ function waLink(s: any) {
   return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
 }
 
+const solicitudesAsesorSesion = ref<string | null>(null)
+
+/**
+ * 29/09/2026: dejó de leerse directo desde Supabase — pasa por el servidor, para que "un asesor
+ * solo ve sus propias solicitudes" sea real (el servidor filtra, no solo la pantalla).
+ */
 async function fetchSolicitudes() {
-  const [c, v] = await Promise.all([
-    client.from('tradecars_solicitudes_compra').select('*').order('created_at', { ascending: false }),
-    client.from('tradecars_solicitudes_venta').select('*').order('created_at', { ascending: false }),
-  ])
-  if (c.error) notify('Error cargando solicitudes de compra: ' + c.error.message, 'error')
-  if (v.error) notify('Error cargando solicitudes de venta: ' + v.error.message, 'error')
-  solicitudesCompra.value = c.data || []
-  solicitudesVenta.value = v.data || []
+  try {
+    const r = await $fetch<any>('/api/tradecars/solicitudes', { cache: 'no-store' })
+    solicitudesCompra.value = r.compras || []
+    solicitudesVenta.value = r.ventas || []
+    solicitudesAsesorSesion.value = r.asesor_sesion ?? null
+  } catch (e: any) {
+    notify('Error cargando solicitudes: ' + (e?.data?.statusMessage || e?.message), 'error')
+  }
 }
 
 async function guardarSolicitud(s: any) {
-  const tabla = solTab.value === 'venta' ? 'tradecars_solicitudes_venta' : 'tradecars_solicitudes_compra'
-  const payload: Record<string, any> = {
-    estado: s.estado || 'nuevo',
-    notas: s.notas || null,
-    atendido_por: currentUser.value.full_name || currentUser.value.email || null,
-    atendido_en: new Date().toISOString(),
+  const tipo = solTab.value === 'venta' ? 'venta' : 'compra'
+  const payload: Record<string, any> = { accion: 'guardar', tipo, id: s.id, estado: s.estado || 'nuevo', notas: s.notas || null }
+  if (tipo === 'venta') payload.precio_ofrecido = s.precio_ofrecido ? Number(s.precio_ofrecido) : null
+  try {
+    await $fetch('/api/tradecars/solicitudes', { method: 'POST', body: payload })
+    notify('Solicitud actualizada')
+    await fetchSolicitudes()
+  } catch (e: any) {
+    notify('Error guardando: ' + (e?.data?.statusMessage || e?.message), 'error')
   }
-  if (solTab.value === 'venta') payload.precio_ofrecido = s.precio_ofrecido ? Number(s.precio_ofrecido) : null
-  const { error } = await (client.from(tabla) as any).update(payload).eq('id', s.id)
-  if (error) { notify('Error guardando: ' + error.message, 'error'); return }
-  notify('Solicitud actualizada')
-  await fetchSolicitudes()
 }
 
 async function eliminarSolicitud(s: any) {
   if (!confirm(`¿Eliminar la solicitud de ${s.nombre_completo}?`)) return
-  const tabla = solTab.value === 'venta' ? 'tradecars_solicitudes_venta' : 'tradecars_solicitudes_compra'
-  const { error } = await client.from(tabla).delete().eq('id', s.id)
-  if (error) { notify('Error eliminando: ' + error.message, 'error'); return }
-  notify('Solicitud eliminada')
-  expandedSol.value = null
-  await fetchSolicitudes()
+  const tipo = solTab.value === 'venta' ? 'venta' : 'compra'
+  try {
+    await $fetch('/api/tradecars/solicitudes', { method: 'POST', body: { accion: 'eliminar', tipo, id: s.id } })
+    notify('Solicitud eliminada')
+    expandedSol.value = null
+    await fetchSolicitudes()
+  } catch (e: any) {
+    notify('Error eliminando: ' + (e?.data?.statusMessage || e?.message), 'error')
+  }
 }
 
 /** Crea un cliente en el CRM a partir de una solicitud web. */
 async function convertirEnCliente(s: any) {
-  const esVenta = solTab.value === 'venta'
-  const payload: Record<string, any> = {
-    tipo: esVenta ? 'vendedor' : 'comprador',
-    nombre_completo: s.nombre_completo,
-    telefono: s.celular || null,
-    correo: s.correo || null,
-    distrito: s.distrito || null,
-    canal: 'web',
-    estado: 'contactado',
-    notas: s.mensaje || null,
+  const tipo = solTab.value === 'venta' ? 'venta' : 'compra'
+  try {
+    await $fetch('/api/tradecars/solicitudes', { method: 'POST', body: { accion: 'crear_cliente', tipo, id: s.id } })
+    notify('Cliente creado desde la solicitud')
+    await Promise.all([fetchSolicitudes(), fetchClientes()])
+  } catch (e: any) {
+    notify('Error creando cliente: ' + (e?.data?.statusMessage || e?.message), 'error')
   }
-  if (esVenta) {
-    payload.vehiculo_marca = s.marca || null
-    payload.vehiculo_modelo = s.modelo || null
-    payload.vehiculo_anio = s.anio || null
-    payload.vehiculo_placa = s.placa || null
-    payload.vehiculo_km = s.kilometraje || null
-    payload.tiene_deuda = s.tiene_deuda === 'si'
-    payload.solicitud_venta_id = s.id
-  } else {
-    payload.solicitud_compra_id = s.id
-  }
-
-  const { data, error } = await (client.from('tradecars_clientes') as any).insert(payload).select('id').single()
-  if (error) { notify('Error creando cliente: ' + error.message, 'error'); return }
-
-  const tabla = esVenta ? 'tradecars_solicitudes_venta' : 'tradecars_solicitudes_compra'
-  await (client.from(tabla) as any)
-    .update({ cliente_id: data?.id, estado: 'contactado' }).eq('id', s.id)
-
-  notify('Cliente creado desde la solicitud')
-  await Promise.all([fetchSolicitudes(), fetchClientes()])
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2253,6 +2244,10 @@ onMounted(async () => {
 .sol-card-fecha {
   font-size: 12px;
   opacity: .6;
+}
+
+.sol-card-asesor {
+  margin-top: 8px;
 }
 
 .sol-card-resumen {

@@ -23,8 +23,10 @@ import {
   resolverPerfilTradeCars, exigirModuloTradeCars, exigirAdminTradeCars,
 } from '../../utils/tradecars'
 import {
-  ErrorHoja, googleConectado, guardarConfigHoja, leerHojaGoogle, restriccionCanalFaltante, TODOS_LOS_CANALES,
+  ErrorHoja, googleConectado, guardarConfigHoja, leerConfigHoja, leerHojaGoogle, restriccionCanalFaltante, TODOS_LOS_CANALES,
 } from '../../utils/tradecars-formularios'
+import { obtenerAsesorDeSesion } from '../../utils/tradecars-asignacion'
+import { asignarPendientesCanal, asignarPendientesSolicitudesWeb } from '../../utils/tradecars-asignacion-backfill'
 import {
   CAMPOS_FORMULARIO, ESTADOS_FORMULARIO, esCanalFormulario, extraerReferenciaHoja, hojaALeads,
 } from '../../../utils/tradecarsFormularios'
@@ -52,6 +54,23 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const accion = String(body?.accion || '')
 
+  /* ══════════ Asignación masiva del backlog (Administrador) — no pide canal, procesa los 4 ══════════ */
+  if (accion === 'asignar_pendientes') {
+    exigirAdminTradeCars(perfil, 'la asignación masiva de asesores')
+
+    const resultadoPorCanal: Record<string, any> = {}
+    for (const c of TODOS_LOS_CANALES) {
+      const { config } = await leerConfigHoja(supabase, c)
+      try {
+        resultadoPorCanal[c] = await asignarPendientesCanal(supabase, c, config)
+      } catch (e: any) {
+        resultadoPorCanal[c] = { ok: false, asignados: 0, total_pendientes: 0, motivo: e?.message || 'error' }
+      }
+    }
+    const web = await asignarPendientesSolicitudesWeb(supabase)
+    return { ok: true, canales: resultadoPorCanal, formularios_web: web }
+  }
+
   const canal = String(body?.canal || '')
   if (!esCanalFormulario(canal)) {
     throw createError({ statusCode: 400, statusMessage: 'Canal desconocido: usa ig, fb, tiktok o sin_plataforma' })
@@ -63,6 +82,20 @@ export default defineEventHandler(async (event) => {
 
     const leadKey = txt(body?.lead_key, 300)
     if (!leadKey) throw createError({ statusCode: 400, statusMessage: 'Falta el lead a guardar' })
+
+    // Un asesor (no admin) solo puede tocar SUS propias tarjetas — se re-verifica en el servidor,
+    // no alcanza con que la pantalla solo le muestre las suyas.
+    if (!perfil.esAdmin) {
+      const miAsesor = await obtenerAsesorDeSesion(supabase, perfil.email)
+      if (miAsesor) {
+        const { data: actual } = await supabase
+          .from('tradecars_formularios_estado')
+          .select('asesor_email').eq('canal', canal).eq('lead_key', leadKey).maybeSingle()
+        if (actual?.asesor_email && actual.asesor_email.toLowerCase() !== miAsesor.asesor_email.toLowerCase()) {
+          throw createError({ statusCode: 403, statusMessage: 'Esta tarjeta está asignada a otro asesor.' })
+        }
+      }
+    }
 
     const fila: Record<string, any> = {
       canal,

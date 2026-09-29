@@ -69,6 +69,9 @@
       <v-alert v-if="resp.truncado" type="info" variant="tonal" density="compact" class="mb-3">
         La hoja tiene {{ resp.total }} leads; se muestran los {{ tarjetas.length }} más recientes.
       </v-alert>
+      <v-alert v-if="resp.asesor_sesion" type="info" variant="tonal" density="compact" class="mb-3" icon="mdi-account-tie">
+        Estás viendo solo las tarjetas asignadas a ti ({{ resp.asesor_sesion }}).
+      </v-alert>
 
       <!-- Distribución por plataforma: útil para ver que la hoja SÍ tiene datos, aunque en este
            canal en particular no aparezca nada todavía (porque la columna PLATAFORMA está vacía). -->
@@ -117,6 +120,11 @@
               {{ s.estado }}
             </v-chip>
           </div>
+
+          <v-chip v-if="s.asesor_nombre" size="x-small" variant="tonal" color="primary"
+            prepend-icon="mdi-account-tie" class="sol-card-asesor">
+            {{ s.asesor_nombre }}
+          </v-chip>
 
           <div class="sol-card-resumen">
             <div v-if="tieneVehiculo(s)" class="sol-veh">
@@ -734,6 +742,7 @@ async function desconectar() {
 .sol-card-ident { flex: 1; min-width: 0; }
 .sol-card-nombre { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sol-card-fecha { font-size: 12px; opacity: .6; }
+.sol-card-asesor { margin-top: 8px; }
 .sol-card-resumen { margin-top: 12px; }
 .sol-veh { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-bottom: 6px; }
 .sol-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; opacity: .8; }

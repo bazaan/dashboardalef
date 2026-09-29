@@ -14,6 +14,7 @@ import { resolverPerfilTradeCars, exigirModuloTradeCars } from '../../utils/trad
 import {
   ErrorHoja, googleConectado, leerConfigHoja, leerTarjetas,
 } from '../../utils/tradecars-formularios'
+import { obtenerAsesorDeSesion } from '../../utils/tradecars-asignacion'
 import { CANALES_FORMULARIO, esCanalFormulario } from '../../../utils/tradecarsFormularios'
 
 const LIMITE_POR_DEFECTO = 1500
@@ -36,6 +37,9 @@ export default defineEventHandler(async (event) => {
 
   const { config, tablaDisponible } = await leerConfigHoja(supabase, canal)
   const conectado = await googleConectado()
+  // Si la sesión es uno de los asesores de tradecars_asesores (no admin/superadmin, no alguien
+  // fuera de esa tabla como el Jefe de Compras), solo ve las tarjetas asignadas a él.
+  const miAsesor = perfil.esAdmin ? null : await obtenerAsesorDeSesion(supabase, perfil.email)
 
   const base = {
     ok: true,
@@ -67,6 +71,8 @@ export default defineEventHandler(async (event) => {
     tabla_estado_disponible: true,
     total_en_hoja: 0,
     distribucion_plataforma: null as Record<string, number> | null,
+    // Si no es null, la sesión es un asesor y las tarjetas ya vienen filtradas a solo las suyas.
+    asesor_sesion: miAsesor?.asesor_nombre ?? null,
     error: null as null | { causa: string; mensaje: string },
   }
 
@@ -76,7 +82,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const r = await leerTarjetas(supabase, canal, config, limite)
+    const r = await leerTarjetas(supabase, canal, config, limite, miAsesor?.asesor_email)
     return { ...base, ...r, actualizado_en: new Date().toISOString() }
   } catch (e: any) {
     if (e instanceof ErrorHoja) return { ...base, error: { causa: e.causa, mensaje: e.message } }

@@ -17,6 +17,7 @@
 
 import { getGoogleAccessToken, hasRefreshToken, type GoogleClientCredentials } from './google-auth'
 import { getGoogleServiceAccountToken, emailDeServiceAccount } from './google-service-account'
+import { resolverAsesorParaTelefono } from './tradecars-asignacion'
 import {
   CANALES_FORMULARIO, canalDePlataforma, extraerReferenciaHoja, hojaALeads,
   type CanalFormulario, type LeadFormulario,
@@ -291,6 +292,8 @@ export interface EstadoTarjeta {
   atendido_por: string | null
   atendido_en: string | null
   resumen: Record<string, any> | null
+  asesor_nombre: string | null
+  asesor_email: string | null
 }
 
 /** Trae el estado guardado de todo un canal. Si la tabla no existe todavía, avisa en `disponible`. */
@@ -301,13 +304,61 @@ export async function leerEstados(supabase: any, canal: CanalFormulario): Promis
     // `.order('id')`: paginar sin un orden estable puede repetir o saltarse filas
     const { data, error } = await supabase
       .from('tradecars_formularios_estado')
-      .select('lead_key, estado, notas, precio_ofrecido, cliente_id, atendido_por, atendido_en, resumen')
+      .select('lead_key, estado, notas, precio_ofrecido, cliente_id, atendido_por, atendido_en, resumen, asesor_nombre, asesor_email')
       .eq('canal', canal).order('id').range(desde, desde + PAGINA - 1)
     if (error) return { estados, disponible: !tablaFaltante(error) }
     for (const f of data || []) estados.set(f.lead_key, f)
     if (!data || data.length < PAGINA) break
   }
   return { estados, disponible: true }
+}
+
+/**
+ * Asigna asesor a los leads del canal que TODAVÍA no tienen fila en tradecars_formularios_estado
+ * (tarjetas genuinamente nuevas) — por continuidad de teléfono o round robin (ver
+ * server/utils/tradecars-asignacion.ts). Crea la fila con `estado:'nuevo'` YA con el asesor puesto,
+ * para que la asignación quede fija desde la primera vez que se ve la tarjeta (no se vuelve a
+ * sortear en la siguiente lectura). Usa `ignoreDuplicates` para que dos lecturas al mismo tiempo
+ * nunca creen dos filas para el mismo lead_key.
+ */
+// Tope de cuántos leads nuevos asigna UNA carga de página (nunca en vivo más que esto — cada
+// asignación es un viaje de ida y vuelta a la base). En operación normal entran unos pocos leads
+// nuevos por vez, así que esto rara vez se topa; si algún día se acumula un backlog grande (ej.
+// la primera vez que corre esta función, o si alguien pega cientos de filas nuevas en la hoja de
+// una sola vez), el resto queda pendiente para la SIGUIENTE carga en vez de colgar la petición.
+// Un backlog grande de una sola vez se resuelve con POST /api/tradecars/formularios
+// { accion:'asignar_pendientes' } (server/utils/tradecars-asignacion-backfill.ts), que sí procesa
+// en lote de verdad.
+const LIMITE_ASIGNACION_EN_VIVO = 25
+
+async function asignarNuevosLeads(
+  supabase: any, canal: CanalFormulario, leads: LeadFormulario[], estados: Map<string, EstadoTarjeta>,
+): Promise<void> {
+  const nuevos = leads.filter(l => !estados.has(l.lead_key)).slice(0, LIMITE_ASIGNACION_EN_VIVO)
+  if (!nuevos.length) return
+
+  const filas: any[] = []
+  for (const l of nuevos) {
+    const asesor = await resolverAsesorParaTelefono(supabase, l.celular)
+    const fila: EstadoTarjeta & { canal: string; resumen: Record<string, any> } = {
+      lead_key: l.lead_key, estado: 'nuevo', notas: null, precio_ofrecido: null, cliente_id: null,
+      atendido_por: null, atendido_en: null,
+      resumen: { fecha: l.fecha, nombre: l.nombre, celular: l.celular, correo: l.correo, marca: l.marca, modelo: l.modelo, placa: l.placa },
+      asesor_nombre: asesor?.asesor_nombre ?? null, asesor_email: asesor?.asesor_email ?? null,
+    }
+    filas.push({ canal, ...fila })
+    // Se refleja en el mapa en memoria ya mismo, para que fusionarEstados() de esta misma
+    // lectura muestre el asesor sin esperar a la siguiente consulta.
+    estados.set(l.lead_key, fila)
+  }
+
+  try {
+    await supabase.from('tradecars_formularios_estado')
+      .upsert(filas, { onConflict: 'canal,lead_key', ignoreDuplicates: true })
+  } catch {
+    // Si falla el guardado, la tarjeta igual muestra el asesor resuelto recién (en memoria) —
+    // en la próxima lectura se vuelve a intentar guardar.
+  }
 }
 
 export interface TarjetaFormulario extends LeadFormulario {
@@ -319,6 +370,8 @@ export interface TarjetaFormulario extends LeadFormulario {
   atendido_en: string | null
   /** La fila ya no está en la hoja (la borraron), pero la tarjeta tiene trabajo hecho y no se pierde. */
   fuera_de_hoja: boolean
+  asesor_nombre: string | null
+  asesor_email: string | null
 }
 
 /** Junta lo que dice la hoja con lo que el equipo ya hizo sobre cada tarjeta. */
@@ -335,6 +388,8 @@ export function fusionarEstados(leads: LeadFormulario[], estados: Map<string, Es
       atendido_por: e?.atendido_por ?? null,
       atendido_en: e?.atendido_en ?? null,
       fuera_de_hoja: false,
+      asesor_nombre: e?.asesor_nombre ?? null,
+      asesor_email: e?.asesor_email ?? null,
     }
   })
 
@@ -353,6 +408,7 @@ export function fusionarEstados(leads: LeadFormulario[], estados: Map<string, Es
       precio_ofrecido: e.precio_ofrecido === null || e.precio_ofrecido === undefined ? null : Number(e.precio_ofrecido),
       cliente_id: e.cliente_id ?? null, atendido_por: e.atendido_por ?? null, atendido_en: e.atendido_en ?? null,
       fuera_de_hoja: true,
+      asesor_nombre: e.asesor_nombre ?? null, asesor_email: e.asesor_email ?? null,
     })
   }
   return tarjetas
@@ -375,6 +431,10 @@ function distribuirPorPlataforma(leads: LeadFormulario[]): Record<CanalFormulari
  */
 export async function leerTarjetas(
   supabase: any, canal: CanalFormulario, config: ConfigHoja, limite: number,
+  /** Si viene, solo se devuelven (y cuentan) las tarjetas de ESE asesor — filtrado ANTES del
+   * recorte por `limite`, para no perder tarjetas propias que hubieran quedado más allá del
+   * límite en la lista sin filtrar. */
+  filtroAsesorEmail?: string | null,
 ) {
   const hoja = await leerHojaGoogle({ sheetId: config.sheet_id as string, pestana: config.pestana, gid: config.gid })
   const r = hojaALeads(hoja.valores, config.mapeo, canal)
@@ -383,7 +443,12 @@ export async function leerTarjetas(
   const delCanal = r.leads.filter(l => (canalDePlataforma(l.plataforma) || 'sin_plataforma') === canal)
 
   const { estados, disponible } = await leerEstados(supabase, canal)
-  const todas = fusionarEstados(delCanal, estados)
+  if (disponible) await asignarNuevosLeads(supabase, canal, delCanal, estados)
+  let todas = fusionarEstados(delCanal, estados)
+  if (filtroAsesorEmail) {
+    const email = filtroAsesorEmail.toLowerCase()
+    todas = todas.filter(t => t.asesor_email && t.asesor_email.toLowerCase() === email)
+  }
   return {
     hoja: { titulo: hoja.titulo_documento, pestana: hoja.pestana },
     tarjetas: todas.slice(0, limite),

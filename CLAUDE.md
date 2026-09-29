@@ -1384,6 +1384,66 @@ conversación nueva se deriva al MISMO asesor** en vez de a uno al azar (continu
   `tradecars_asesores`: Jose Flores, Brado Alvarado, Gino Hurtado, pero sin confirmar el id de
   cada uno todavía).
 
+### Asignar las TARJETAS del dashboard a un asesor (Web + IG + FB + TikTok + Sin plataforma) (29/09/2026) — `sql/tradecars_formularios_asignacion.sql`
+
+Distinto de la sección anterior (esa asigna la CONVERSACIÓN en Chatwoot vía n8n). Esto asigna
+las tarjetas que se ven DENTRO del dashboard, en las 5 pestañas de "Solicitudes - formularios" —
+pedido explícito del cliente, misma regla de continuidad + round robin, para que cada asesor solo
+trabaje lo suyo.
+
+- **Los "asesores" son EXACTAMENTE los de `tradecars_asesores`** (Rodrigo Paredes, Jose Flores,
+  Brado Alvarado, Gino Hurtado) — la misma tabla que ya usa el Funnel, no se creó ninguna nueva.
+  Ya tenía `email` y `orden`, coincidiendo 1:1 con `dashboardlogin`. **Luis Cossa NO está en esta
+  tabla a propósito** (confirmado con `tradecars_colaboradores`: es "Jefe de Compras", role_id=2,
+  no "Asesor de Compras", role_id=3) — por eso queda afuera del round robin sin necesidad de
+  excluirlo a mano en ningún lado.
+- **Regla de asignación** (`server/utils/tradecars-asignacion.ts`, `resolverAsesorParaTelefono()`):
+  1. Buscar el teléfono en `tradecars_leads_chatwoot`. Si ya tuvo un asesor asignado antes (mismo
+     mecanismo que la sección anterior), usar ESE — el nombre se matchea contra `tradecars_asesores.nombre`.
+  2. Si no hay coincidencia, round robin **atómico** vía la función SQL `tc_siguiente_asesor_formulario()`
+     — un `UPDATE` de una sola fila en `app_settings` (clave `tradecars_formularios_rr_index`) serializa
+     las llamadas concurrentes, así dos tarjetas nuevas al mismo tiempo nunca caen en el mismo asesor.
+- **Dónde se guarda el asesor de cada tarjeta**: columnas nuevas `asesor_nombre`/`asesor_email` en
+  `tradecars_formularios_estado` (IG/FB/TikTok/Sin plataforma) y en `tradecars_solicitudes_venta`/`_compra`
+  (Web). Se asigna UNA sola vez, la primera vez que se ve la tarjeta — no se vuelve a sortear después.
+- ⚠️ **"Formularios web" dejó de leerse/escribirse directo desde el navegador.** Antes
+  `tradecars_solicitudes_venta`/`_compra` tenían RLS abierta a `anon` (como el resto de Trade Cars) y
+  `pages/pruebas/TradeCars.vue` llamaba `client.from(...)` directo — eso hacía IMPOSIBLE que la
+  restricción "un asesor solo ve lo suyo" fuera real (cualquiera con la key pública seguía viendo todo).
+  Se sacó esa policy `anon` y se creó `GET/POST /api/tradecars/solicitudes` (server-side,
+  `service_role`, re-verifica el rol y el dueño de cada solicitud) — es el ÚNICO módulo de "Solicitudes
+  - formularios" que pasa 100% por el servidor de ida y vuelta, igual que Histórico Compras/Ventas.
+  El endpoint público de la web (`POST /api/tradecars/formulario`, usa `service_role`) no se vio afectado.
+- **La restricción se aplica en el servidor, no solo en la pantalla**, en los 3 puntos:
+  `GET /api/tradecars/formularios` (filtra las tarjetas de Sheets antes de recortar por `limite` — si
+  se filtrara después de recortar, un asesor podía perder tarjetas propias que hubieran quedado más
+  allá del límite en la lista sin filtrar), `GET/POST /api/tradecars/solicitudes`, y
+  `POST /api/tradecars/formularios { accion:'guardar' }` (re-verifica el dueño antes de dejar editar).
+  Un `admin`/`superadmin` no tiene ninguna de estas restricciones. Alguien que no está en
+  `tradecars_asesores` y tampoco es admin (ej. Luis Cossa, Jefe de Compras) **no se restringe**: ve
+  todo, igual que antes de este cambio — solo se filtra a quien SÍ está en esa tabla.
+- ⚠️ **La asignación EN VIVO tiene un tope de 25 tarjetas nuevas por carga de página**
+  (`LIMITE_ASIGNACION_EN_VIVO` en `tradecars-formularios.ts`). Se descubrió probando: sin este tope,
+  la PRIMERA carga después de correr la migración intentaría asignar los ~7.300 leads que ya había en
+  la hoja, uno por uno (cada uno con su propia consulta a `tradecars_leads_chatwoot`), colgando la
+  petición. Con el tope, cada carga asigna como mucho 25 y el resto sigue pendiente para la siguiente
+  — pero el backlog grande de una sola vez se resuelve aparte, ver el punto siguiente.
+- **Asignación MASIVA del backlog** (`server/utils/tradecars-asignacion-backfill.ts`,
+  `POST /api/tradecars/formularios { accion:'asignar_pendientes' }`, solo Administrador): procesa TODO
+  el backlog de un canal (o de Formularios web) de una sola vez, con **consultas en lote** (los
+  teléfonos se buscan en `tradecars_leads_chatwoot` con `.in(...)` de a 500, no uno por uno; el
+  contador de round robin se lee UNA vez, se avanza en memoria para todo el lote, y se guarda al
+  final con un solo `UPDATE`) — así sí soporta miles de leads sin colgarse. Se corre una vez después
+  de la migración (y se puede repetir después si hiciera falta: es idempotente vía `ignoreDuplicates`
+  en las tarjetas de Sheets, y solo toca solicitudes con `asesor_email IS NULL` en Formularios web).
+- **UI**: chip "Asesor: nombre" en cada tarjeta (`FormulariosSheet.vue` y `TradeCars.vue`) y un aviso
+  "Estás viendo solo las tarjetas/solicitudes asignadas a ti" cuando la sesión es de un asesor filtrado.
+- **Migración: no corrida todavía** — hay que correr `sql/tradecars_formularios_asignacion.sql` una vez
+  en Supabase, y DESPUÉS llamar `POST /api/tradecars/formularios { accion:'asignar_pendientes' }` (una
+  vez, como Administrador) para repartir el backlog existente (~7.300 en la hoja + las solicitudes web
+  que ya había) antes de que nadie abra la pantalla — si alguien la abre ANTES del backfill, el tope de
+  25 en vivo lo protege de colgarse, pero verá el backlog repartirse de a poco en vez de todo junto.
+
 ### Histórico de clientes antiguos importado a `tradecars_leads_chatwoot` (29/09/2026) — `scripts/importar_leads_chatwoot_historico.mjs`
 
 El cliente tenía un `INSERT INTO tradecars_leads_chatwoot (...) VALUES (...), (...), ...;` gigante

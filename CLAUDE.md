@@ -1384,6 +1384,50 @@ conversación nueva se deriva al MISMO asesor** en vez de a uno al azar (continu
   `tradecars_asesores`: Jose Flores, Brado Alvarado, Gino Hurtado, pero sin confirmar el id de
   cada uno todavía).
 
+### Histórico de clientes antiguos importado a `tradecars_leads_chatwoot` (29/09/2026) — `scripts/importar_leads_chatwoot_historico.mjs`
+
+El cliente tenía un `INSERT INTO tradecars_leads_chatwoot (...) VALUES (...), (...), ...;` gigante
+(23.508 filas, generado aparte con los clientes antiguos ya trabajados por los 4 asesores) que el
+editor SQL de Supabase rechazaba por tamaño ("Query is too large to run via the SQL Editor"). Se
+armó un script Node que lo parsea y lo inserta por lotes de 500 con `SUPABASE_SERVICE_KEY` (mismo
+patrón que `scripts/migrar_tradecars_historico.py`, el del histórico del funnel).
+
+```bash
+node scripts/importar_leads_chatwoot_historico.mjs <archivo.txt>              # dry-run
+node scripts/importar_leads_chatwoot_historico.mjs <archivo.txt> --escribir   # inserta de verdad
+```
+
+- **`telefono` es NOT NULL en la tabla** — las filas sin teléfono se descartan solas y el script
+  informa cuántas (2.005 de las 23.306 filas bien formadas del archivo real).
+- ⚠️ **El archivo de origen traía 2 filas genuinamente malformadas** (de 23.508): una con una
+  comilla de apertura faltante (`((PREDICAR)'...` en vez de `('(PREDICAR)'...`, línea 1014) que
+  descuadraba el parseo de TODO lo que venía después — un parser ingenuo que escanea el bloque
+  entero carácter por carácter sin anclarse a la estructura de líneas puede corromperse en
+  cascada por un solo error de escape así. La otra fila (línea 12256) tenía casi todos los campos
+  vacíos, incluido el teléfono — se descartaba igual. El script detecta esto agrupando por
+  **estructura de líneas** (cada fila real empieza con `(` al inicio de una línea; las líneas
+  siguientes sin `(` son continuación de un campo con salto de línea literal adentro, ej. una nota
+  larga) y contando comillas por fila — un conteo impar de comillas en un row-span delata la fila
+  rota sin necesidad de parsear el archivo entero de una.
+- ⚠️ **Primer intento: 19.500 de 21.301 filas fallaron** con `duplicate key value violates unique
+  constraint "idx_tc_leads_chatwoot_telefono"` — la migración `sql/tradecars_leads_chatwoot_asesor.sql`
+  (que cambia la clave única de `telefono` a `conversation_id`, ver la sección de arriba) todavía
+  no se había corrido en producción cuando se intentó el import. Como `supabase-js` rechaza el
+  LOTE completo si una sola fila del lote choca contra un unique constraint, y un archivo con
+  23 mil clientes reales tiene teléfonos repetidos por todos lados (mismo cliente, negociaciones
+  distintas), casi todos los lotes de 500 tenían al menos un choque. Se identificaron las 1.801
+  filas que sí habían entrado (`WHERE conversation_id IS NULL` — es una marca confiable porque
+  NINGÚN otro camino de esta tabla deja esa columna vacía, ya se verificó contra la única fila
+  real de Chatwoot que había en ese momento), se borraron, y se reintentó completo después de
+  correr la migración: **21.301/21.301, sin errores**.
+- **`created_at` sale del propio archivo** (la fecha real de cuando se trabajó ese lead
+  históricamente), no de cuándo corrió el script — por eso las filas quedan con fechas de todo
+  2025 y 2026, no todas "hoy".
+- **No es idempotente a propósito** (no tiene una clave como `import_key` del script de Python):
+  correrlo dos veces duplica todo. Si hace falta repetirlo alguna vez, primero hay que borrar
+  las filas de esa carga (`WHERE conversation_id IS NULL` sigue sirviendo como filtro, mientras
+  no se mezcle con otra fuente que también deje esa columna vacía).
+
 ---
 
 ## Variables de Entorno (`.env`)

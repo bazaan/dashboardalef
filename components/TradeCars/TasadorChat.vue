@@ -1,5 +1,7 @@
 <!--
-  Trade Cars — Módulo: Tasador IA
+  Trade Cars — Módulo: Asistente Trade Cars (antes "Tasador IA", renombrado 29/09/2026
+  por especificación técnica de Alef AI Solutions — el archivo y la ruta siguen igual,
+  solo cambió el nombre visible)
   --------------------------------
   Tres cosas en una pantalla:
 
@@ -29,7 +31,7 @@
 <template>
   <div class="view-container">
     <header class="top-header">
-      <h1>Tasador IA</h1>
+      <h1>Asistente Trade Cars</h1>
       <div style="display:flex; gap:10px; align-items:center;">
         <button v-if="tab === 'chat'" class="btn-primary" :disabled="!mensajes.length" @click="nuevaConversacion">
           <v-icon icon="mdi-broom" size="16" /><span>Nueva conversación</span>

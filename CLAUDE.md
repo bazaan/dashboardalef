@@ -528,7 +528,7 @@ CRM y el dashboard calcula el embudo en vivo.
 | Tabla de Leads | `components/TradeCars/TablaLeadsFunnel.vue` | Detalle con etapa/fecha calculadas, export y link al CRM |
 | Análisis de Conversión | `components/TradeCars/AnalisisConversion.vue` | Motivos de no cita, ventas probables y seguimientos vencidos |
 | Procedencia y Costos | `components/TradeCars/ProcedenciaCostos.vue` | Leads/compras por campaña, marca-modelo y zona + costo por lead e inversión por compra |
-| Tasador IA | `components/TradeCars/TasadorChat.vue` | Chat de texto conectado a ChatGPT para ayudar a tasar autos. Responde primero con las tablas propias de Trade Cars (compras/ventas históricas, negociaciones del funnel, stock, solicitudes de venta web); sólo si no hay dato interno recurre a conocimiento general del mercado, aclarándolo |
+| Asistente Trade Cars (antes "Tasador IA", 29/09/2026) | `components/TradeCars/TasadorChat.vue` | Chat de texto conectado a ChatGPT para ayudar a tasar autos. Responde primero con las tablas propias de Trade Cars (compras/ventas históricas, negociaciones del funnel, stock, solicitudes de venta web); sólo si no hay dato interno recurre a conocimiento general del mercado, aclarándolo |
 
 **La lógica vive en UN solo lugar:** `utils/tradecarsFunnel.ts` (auto-import). Los cuatro
 módulos la comparten, así que el embudo y la tabla nunca pueden contradecirse.
@@ -788,7 +788,7 @@ compara texto sin distinguir mayúsculas pero **sí acentos** ("CONSIGNACIÓN" �
 (el módulo de remarketing usa un valor por defecto en el código si no está). Sin él, esa parte se salta y se
 sigue con las demás fuentes.
 
-### Tasador IA (chat de tasación) — `server/api/tradecars/tasador-chat.post.ts`
+### Asistente Trade Cars (chat de tasación, antes "Tasador IA") — `server/api/tradecars/tasador-chat.post.ts`
 
 Módulo de nav propio ("Tasador"), no un widget flotante como `HealupAgent`. Reutiliza
 `OPENAI_API_KEY` (la misma que Whisper y el OCR de SGS). Diseño clave: **todo el loop de
@@ -1010,6 +1010,65 @@ con instrucción explícita de poner `null` antes que inventar.
 
 ---
 
+### Renombre a "Asistente Trade Cars" + tasaciones manuales (+120k km) y tickets a Alef (29/09/2026)
+
+Implementa la especificación técnica que Alef AI Solutions le mandó a Roberto el 29/09/2026
+(`Especificacion_Tecnica_TradeCars_29-09-2026.txt`), que documenta las dos capas del sistema de
+IA de Trade Cars: **Capa 1** (agentes de WhatsApp en n8n — Agente Principal v6.1 + Agente Tasador
+v6.1, gestionados por Alef, fuera del alcance de este repo) y **Capa 2** (el dashboard interno,
+responsabilidad de Roberto). De esa especificación se implementó lo que sí es código de este
+repo — el renombre y la Función 3. **Migración: correr una vez
+`sql/tradecars_tasaciones_manuales_tickets.sql` en Supabase antes de usar las 3 tools nuevas.**
+
+- **Renombre "Tasador IA" → "Asistente Trade Cars"**, en todo lo visible: título del módulo
+  (`TasadorChat.vue`), el item del menú lateral (`pages/pruebas/TradeCars.vue`), el checklist de
+  permisos por módulo (`TradeCarsConfiguracion.vue`) y las menciones en `HistoricoComprasVentas.vue`
+  / `historico.get.ts`. **No cambiaron**: el archivo `tasador-chat.post.ts` ni ninguna otra ruta o
+  nombre de archivo, el id de módulo `'tasador'` en `tradecars_role_permissions`/`permissions.ts`
+  (seguiría rompiendo los permisos ya sembrados si cambiara), y el texto del `systemPrompt()` que
+  arma `tasador-chat.post.ts` — ese sigue diciendo literalmente "Eres el Tasador IA..." a propósito:
+  la especificación es explícita en que **escribir el prompt del Asistente es tarea de Alef**, que
+  lo entrega actualizado una vez que estos cuatro puntos estén listos (así lo pide el propio
+  documento, Parte 6, paso 7). Las migraciones SQL ya corridas (`tradecars_tasador_correcciones.sql`,
+  `tradecars_stock_import.sql`) tampoco se tocaron — quedan como registro histórico.
+- **Función 3 — tasaciones manuales (+120.000 km) y tickets a Alef**, tres tools nuevas en
+  `tasador-chat.post.ts`, todas restringidas a admin (`ctx.puedeEditar`, mismo criterio que las
+  `proponer_*` de la Función 2) y que **escriben directo, sin propuesta/confirmación** — a
+  diferencia de `proponer_*`, son movimientos administrativos internos, no tocan la configuración
+  con la que se cotiza a clientes reales:
+  - `ver_tasaciones_pendientes` — lee `tradecars_tasaciones_pendientes_manual WHERE atendido=false`.
+  - `marcar_tasacion_atendida` — la marca como atendida con `precio_acordado_usd` y `notas`.
+  - `crear_ticket` — inserta en `tradecars_tickets_cambios_estructurales` y devuelve un número
+    correlativo legible (`TC-0001`, columna `GENERATED` a partir de `id`, por eso esa tabla usa un
+    `BIGINT IDENTITY` simple y no UUID como el resto de tablas nuevas del proyecto).
+- **`tradecars_tasaciones_pendientes_manual` la llena el Agente Tasador de WhatsApp (n8n, capa de
+  Alef), no el dashboard.** La especificación dice que ese agente va a interceptar autos con más de
+  120.000 km y registrarlos ahí en vez de cotizarlos solo — pero ese cambio es del workflow de n8n,
+  fuera de este repo. La tabla existe desde que se corre la migración, pero se queda vacía hasta
+  que Alef actualice ese flujo para escribir en ella; mientras tanto `ver_tasaciones_pendientes`
+  simplemente devuelve "no hay pendientes", que es el comportamiento correcto, no un bug.
+- ⚠️ **Superposición con `solicitar_cambio_a_alef`, avisada y NO resuelta.** Esa tool ya existía
+  desde antes (Nivel 2 del sistema de dos niveles, ver más arriba) y hace básicamente lo mismo que
+  `crear_ticket` — dejar un pedido fuera de alcance para Alef — pero escribe en
+  `tradecars_tasador_cambios` (`estado='pendiente_alef'`, visible en la pestaña Historial del
+  Asistente) en vez de en `tradecars_tickets_cambios_estructurales`. La especificación del
+  29/09/2026 no menciona `solicitar_cambio_a_alef` y pide un mecanismo nuevo y separado, así que se
+  implementó tal cual (no se tocó la tool existente, que la Parte 7 del documento pide no alterar).
+  Quedan **dos lugares distintos** donde puede terminar un pedido fuera de alcance — no se
+  consolidaron a propósito, porque el documento no lo pidió y no era una decisión de este repo para
+  tomar sola. Pendiente de que Trade Cars/Alef confirme si conviene unificarlos.
+- **La carga manual de Excel/CSV/PDF (sección anterior) ya cubre gran parte de lo que la
+  especificación llama "Flujo B" (n8n)**: ambas apuntan a llenar
+  `tradecars_data_precios_vehiculos_nuevos` (hoy vacía) y `tradecars_data_historico_compras_ventas`.
+  Trade Cars puede usar la pestaña **Datos** del módulo hoy mismo para poblar la tabla de precios
+  0km sin esperar a que se construya el Flujo B de n8n. Los "Flujos A y B" en sí (sync automático
+  desde Google Sheets y webhook CSV, ambos en n8n) siguen sin construirse — son responsabilidad de
+  Alef según la propia especificación (Parte 1: "Capa 1... NO son responsabilidad de Roberto"), y
+  además su documento de instrucciones detallado (`Instrucciones_Flujos_Automatizacion_Tasador.txt`)
+  no se compartió en esta sesión.
+
+---
+
 ### Comparativo por asesor — `components/TradeCars/FunnelCompras.vue`
 
 Pedido del cliente el 14/09/2026 para que el embudo se parezca al reporte que ya usaban en
@@ -1080,7 +1139,7 @@ rol real que explícitamente no lo incluye.
 
 El tab **Operaciones → Compras** ya no muestra `tradecars_compras` (quedó casi sin uso, 0
 filas) — ahora es un CRUD completo (ver/editar/añadir/eliminar) sobre
-`tradecars_data_historico_compras_ventas`: la MISMA tabla que usa el Tasador IA como
+`tradecars_data_historico_compras_ventas`: la MISMA tabla que usa el Asistente Trade Cars (antes "Tasador IA") como
 comparables (`buscar_comparables_historicos`). No es una copia — es la tabla real, con las
 ~1.305 filas que ya traía (hoja "VENTAS" del Excel de operaciones de la empresa,
 importada el 04/08/2026 en una sesión anterior). `tradecars_compras` sigue existiendo en la

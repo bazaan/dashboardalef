@@ -177,6 +177,61 @@ const TOOLS = [
     },
   },
 
+  /* ───── Tasaciones manuales (+120.000 km) y tickets a Alef (29/09/2026) ─────
+   * Especificación técnica de Alef AI Solutions del 29/09/2026. Estas 3 tools
+   * escriben DIRECTO (a diferencia de las proponer_*, no piden confirmación
+   * con botón): son movimientos administrativos de bajo riesgo, no tocan la
+   * configuración con la que se cotiza a clientes reales. Solo admin. */
+  {
+    type: 'function',
+    function: {
+      name: 'ver_tasaciones_pendientes',
+      description:
+        'Lista los autos con más de 120.000 km que el Agente Tasador de WhatsApp no pudo cotizar ' +
+        'automáticamente y quedaron pendientes de una tasación manual. Solo para administración.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'marcar_tasacion_atendida',
+      description:
+        'Marca una tasación pendiente manual como atendida, con el precio que se acordó con el ' +
+        'cliente. Escribe directo (no pide confirmación con botón). Consultar antes ' +
+        'ver_tasaciones_pendientes para saber el id. Solo para administración.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', description: 'id de la tasación pendiente (lo devuelve ver_tasaciones_pendientes).' },
+          precio_acordado_usd: { type: 'number', description: 'Precio acordado con el cliente, en USD.' },
+          notas: { type: 'string', description: 'Notas sobre cómo se llegó a ese precio. Opcional.' },
+        },
+        required: ['id', 'precio_acordado_usd'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_ticket',
+      description:
+        'Registra un pedido que supera lo que el Asistente puede hacer por sí solo (cambiar la lógica ' +
+        'de cálculo, los prompts o el flujo de conversación del Tasador, crear un comportamiento nuevo). ' +
+        'Escribe directo (no pide confirmación con botón) y devuelve un número de ticket (ej: TC-0001) ' +
+        'para que lo atienda el equipo técnico de Alef. Solo para administración.',
+      parameters: {
+        type: 'object',
+        properties: {
+          descripcion: { type: 'string', description: 'Qué se pide, con precisión.' },
+          motivo: { type: 'string', description: 'Para qué lo necesitan. Opcional.' },
+          urgencia: { type: 'string', enum: ['baja', 'normal', 'alta'], description: 'Opcional, default normal.' },
+        },
+        required: ['descripcion'],
+      },
+    },
+  },
+
   /* ───── Datos que usa el Tasador para cotizar ───── */
   {
     type: 'function',
@@ -560,6 +615,86 @@ async function ejecutarTool(
       propuesta_registrada: true,
       id: propuesta.id,
       nota: 'La propuesta le aparece al usuario como una tarjeta con un botón de confirmar. TODAVÍA NO se aplicó nada. Confírmale al usuario qué vas a cambiar y pídele que lo confirme con el botón. No digas que ya quedó hecho.',
+    }
+  }
+
+  /* ───── Tasaciones manuales (+120.000 km) y tickets a Alef ─────
+   * Escriben directo (sin propuesta/confirmación) — igual criterio de riesgo
+   * que registrar_correccion_tasacion, pero acá sí restringido a admin porque
+   * son movimientos administrativos internos, no algo que cualquier asesor
+   * necesite tocar en el día a día. */
+  if (nombre === 'ver_tasaciones_pendientes' || nombre === 'marcar_tasacion_atendida' || nombre === 'crear_ticket') {
+    if (!ctx.puedeEditar) {
+      return {
+        rechazado: true,
+        motivo: 'Esta sesión no tiene permisos de administración. Solo un administrador puede usar esta función. Explicarle esto al usuario y no insistir.',
+      }
+    }
+
+    if (nombre === 'ver_tasaciones_pendientes') {
+      const { data, error } = await supabase.from('tradecars_tasaciones_pendientes_manual')
+        .select('id,marca,modelo,anio,kilometraje,placa,nombre_cliente,telefono,motivo,fecha_ingreso')
+        .eq('atendido', false)
+        .order('fecha_ingreso', { ascending: false })
+        .limit(LIMITE_FILAS)
+      if (error) {
+        return { error: `No se pudo leer (¿falta correr sql/tradecars_tasaciones_manuales_tickets.sql?): ${error.message}` }
+      }
+      return {
+        total: data?.length || 0,
+        pendientes: data,
+        nota: data?.length
+          ? 'Autos con más de 120.000 km que el Agente Tasador de WhatsApp no cotizó automáticamente y quedaron para revisión manual.'
+          : 'No hay tasaciones pendientes de revisión manual en este momento.',
+      }
+    }
+
+    if (nombre === 'marcar_tasacion_atendida') {
+      if (args.id == null || args.precio_acordado_usd == null) {
+        return { error: 'Faltan datos: id y precio_acordado_usd son obligatorios.' }
+      }
+      const { data, error } = await supabase.from('tradecars_tasaciones_pendientes_manual')
+        .update({
+          atendido: true,
+          precio_acordado_usd: args.precio_acordado_usd,
+          notas: args.notas ?? null,
+          fecha_atencion: new Date().toISOString(),
+        })
+        .eq('id', args.id)
+        .select('id, marca, modelo')
+        .maybeSingle()
+      // Un UPDATE contra una tabla que no existe devuelve un `error` vacío en supabase-js (sin
+      // `.message` ni `.code`) — mismo gotcha ya documentado para tradecars_leads_chatwoot. No
+      // interpolar error.message a ciegas, o el mensaje sale literalmente "...: undefined".
+      if (error) return { error: `No se pudo guardar (¿falta correr sql/tradecars_tasaciones_manuales_tickets.sql?): ${error.message || 'sin detalle'}` }
+      if (!data) return { error: `No se encontró la tasación pendiente #${args.id}.` }
+      return {
+        actualizado: true,
+        id: data.id,
+        nota: `Tasación de ${data.marca} ${data.modelo} marcada como atendida con precio acordado de $${args.precio_acordado_usd}.`,
+      }
+    }
+
+    // crear_ticket
+    if (!args.descripcion) return { error: 'Falta la descripción del pedido.' }
+    const { data, error } = await supabase.from('tradecars_tickets_cambios_estructurales')
+      .insert({
+        descripcion: args.descripcion,
+        motivo: args.motivo ?? null,
+        urgencia: args.urgencia || 'normal',
+        solicitado_por: ctx.email,
+      })
+      .select('id, numero_ticket')
+      .single()
+    if (error) {
+      // Mismo gotcha que en marcar_tasacion_atendida: un INSERT contra tabla faltante devuelve
+      // error sin .message en supabase-js.
+      return { error: `No se pudo crear el ticket (¿falta correr sql/tradecars_tasaciones_manuales_tickets.sql?): ${error.message || 'sin detalle'}` }
+    }
+    return {
+      ticket_creado: true,
+      numero_ticket: data.numero_ticket,
+      nota: `Quedó registrado como ${data.numero_ticket}. Lo atiende el equipo técnico de Alef AI Solutions.`,
     }
   }
 

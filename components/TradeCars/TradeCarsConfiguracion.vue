@@ -180,7 +180,7 @@ const MODULOS = [
   { id: 'comercial', label: 'Solicitudes, Clientes y Leads' },
   { id: 'operaciones', label: 'Vehículos, Ventas, Compras y Agenda' },
   { id: 'finanzas', label: 'Egresos' },
-  { id: 'tasador', label: 'Tasador IA' },
+  { id: 'tasador', label: 'Asistente Trade Cars' },
   { id: 'configuracion', label: 'Configuración' },
 ]
 

@@ -3,7 +3,7 @@
   --------------------------------------------------------
   Reemplaza el módulo "Compras" (antes mostraba `tradecars_compras`, casi
   vacía) por la tabla REAL de operaciones cerradas: `tradecars_data_historico_
-  compras_ventas`, la misma que usa el Tasador IA como comparables
+  compras_ventas`, la misma que usa el Asistente Trade Cars (antes "Tasador IA") como comparables
   (`buscar_comparables_historicos`). No es una copia — es la misma tabla,
   ahora también visible y editable desde acá.
 
@@ -30,7 +30,7 @@
 
     <div class="content-area">
       <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-        Esta es la misma tabla que usa el <b>Tasador IA</b> para sus comparables — lo que edites
+        Esta es la misma tabla que usa el <b>Asistente Trade Cars</b> para sus comparables — lo que edites
         o agregues acá entra en la próxima tasación. Viene del histórico real de operaciones
         (hoja "VENTAS" del Excel de la empresa), no de datos de prueba.
       </v-alert>

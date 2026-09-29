@@ -845,7 +845,7 @@
         :leads="funnelLeads" :asesores="asesoresNombres" :loading="loadingFunnel"
         @refresh="fetchFunnel" @editar="editarFunnelLead" />
 
-      <!-- ==========  TASADOR IA  ========== -->
+      <!-- ==========  ASISTENTE TRADE CARS (antes "Tasador IA")  ========== -->
       <TradeCarsTasadorChat v-else-if="activeView === 'tasador'" @notificar="notify" />
 
       <!-- ==========  CONFIGURACIÓN: colaboradores, roles y usuarios (14/09/2026)  ========== -->
@@ -1154,7 +1154,7 @@ const FINANZAS_ITEMS_TODOS = [
   { icon: 'mdi-cash-minus', label: 'Egresos', id: 'egresos', modulo: 'finanzas' },
 ]
 const TASADOR_ITEMS_TODOS = [
-  { icon: 'mdi-car-wrench', label: 'Tasador IA', id: 'tasador', modulo: 'tasador' },
+  { icon: 'mdi-car-wrench', label: 'Asistente Trade Cars', id: 'tasador', modulo: 'tasador' },
 ]
 
 const menuItems = computed(() => MENU_ITEMS_TODOS.filter(i => puedeVer(i.modulo)))

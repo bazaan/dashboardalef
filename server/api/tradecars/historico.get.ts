@@ -3,7 +3,7 @@
  *
  * Lista completa de `tradecars_data_historico_compras_ventas` — el histórico
  * real de compras/ventas (hoja "VENTAS" del Excel de operaciones, importado
- * el 04/08/2026). Es la MISMA tabla que usa el Tasador IA para sus
+ * el 04/08/2026). Es la MISMA tabla que usa el Asistente Trade Cars (antes "Tasador IA") para sus
  * comparables (`buscar_comparables_historicos`) — este endpoint no crea una
  * copia, sólo la expone para poder verla y mantenerla desde el módulo
  * "Compras" del dashboard (antes mostraba `tradecars_compras`, casi vacía;

@@ -90,12 +90,21 @@ CREATE TABLE IF NOT EXISTS public.tradecars_tickets_cambios_estructurales (
 
   descripcion    TEXT NOT NULL,
   motivo         TEXT,
-  urgencia       TEXT NOT NULL DEFAULT 'normal' CHECK (urgencia IN ('baja', 'normal', 'alta')),
+  urgencia       TEXT NOT NULL DEFAULT 'normal',
   estado         TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'en_proceso', 'resuelto', 'descartado')),
 
   solicitado_por TEXT,           -- email de la sesión que lo creó
   fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
+
+-- El CHECK de `urgencia` va aparte (no inline) para poder corregirlo sin recrear la tabla: el
+-- prompt v1.0 de Alef (29/09/2026) pide "normal / alta / crítica", distinto de lo que se sembró
+-- en la primera versión de este archivo ("baja/normal/alta"). Re-correr este archivo actualiza
+-- el constraint también en una base donde ya se había corrido la versión vieja.
+ALTER TABLE public.tradecars_tickets_cambios_estructurales DROP CONSTRAINT IF EXISTS tradecars_tickets_cambios_estructurales_urgencia_check;
+ALTER TABLE public.tradecars_tickets_cambios_estructurales
+  ADD CONSTRAINT tradecars_tickets_cambios_estructurales_urgencia_check
+  CHECK (urgencia IN ('normal', 'alta', 'critica'));
 
 CREATE INDEX IF NOT EXISTS idx_tc_tickets_estado
   ON public.tradecars_tickets_cambios_estructurales (estado);

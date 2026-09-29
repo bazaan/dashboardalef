@@ -70,11 +70,12 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'proponer_cambio_parametro',
+      name: 'proponer_parametro',
       description:
-        'Propone cambiar el valor de un parámetro de tasación. NO lo aplica: deja una propuesta que la ' +
-        'persona confirma con un botón. Usar cuando pidan ajustar descuentos, umbrales, márgenes, etc. ' +
-        'Consultar antes ver_configuracion_tasador para conocer la clave exacta y el valor actual.',
+        'Propone cambiar el valor de uno de los 24 parámetros de tasación. NO lo aplica: deja una ' +
+        'propuesta que la persona confirma con un botón. Usar cuando pidan ajustar descuentos, ' +
+        'umbrales, márgenes, etc. Consultar antes ver_configuracion_tasador para conocer la clave ' +
+        'exacta y el valor actual.',
       parameters: {
         type: 'object',
         properties: {
@@ -91,88 +92,49 @@ const TOOLS = [
     function: {
       name: 'proponer_regla_marca_modelo',
       description:
-        'Propone una regla especial para una marca/modelo: un ajuste en dólares o porcentaje que se ' +
-        'aplica sobre el precio cuando el auto coincide. Usar "*" en marca o modelo para "cualquiera". ' +
-        'NO la aplica: deja una propuesta para confirmar.',
+        'Propone crear o eliminar una regla especial por marca/modelo: un ajuste en dólares o ' +
+        'porcentaje que se aplica sobre el precio cuando el auto coincide. NO la aplica: deja una ' +
+        'propuesta para confirmar. Para "modificar" una regla existente: llamar primero con ' +
+        'accion="eliminar" sobre la regla vieja (pedir su id con ver_configuracion_tasador) y después ' +
+        'con accion="crear" la nueva — no hay edición en el sitio.',
       parameters: {
         type: 'object',
         properties: {
-          marca: { type: 'string', description: 'Marca, o "*" para todas.' },
-          modelo: { type: 'string', description: 'Modelo, o "*" para todos. Default "*".' },
-          tipo_ajuste: { type: 'string', enum: ['resta_usd', 'suma_usd', 'resta_pct', 'suma_pct'], description: 'Cómo mueve el precio.' },
-          valor_ajuste: { type: 'number', description: 'Monto en USD o porcentaje, siempre positivo (el tipo define si suma o resta).' },
-          descripcion: { type: 'string', description: 'Qué hace la regla y por qué, en español claro.' },
-          gnv_glp: { type: 'string', enum: ['si', 'no'], description: 'Opcional: aplicar sólo si el auto tiene (o no tiene) GNV/GLP.' },
-          anio_min: { type: 'integer', description: 'Opcional: año mínimo de fabricación para que aplique.' },
-          anio_max: { type: 'integer', description: 'Opcional: año máximo.' },
+          accion: { type: 'string', enum: ['crear', 'eliminar'], description: 'Qué hacer con la regla.' },
+          id: { type: 'string', description: 'Requerido solo con accion="eliminar": id de la regla (lo devuelve ver_configuracion_tasador).' },
+          marca: { type: 'string', description: 'Requerido solo con accion="crear". Marca, o "*" para todas.' },
+          modelo: { type: 'string', description: 'Solo con accion="crear". Modelo, o "*" para todos. Default "*".' },
+          tipo_ajuste: { type: 'string', enum: ['resta_usd', 'suma_usd', 'resta_pct', 'suma_pct'], description: 'Solo con accion="crear". Cómo mueve el precio.' },
+          valor_ajuste: { type: 'number', description: 'Solo con accion="crear". Monto en USD o porcentaje, siempre positivo (el tipo define si suma o resta).' },
+          descripcion: { type: 'string', description: 'Solo con accion="crear". Qué hace la regla y por qué, en español claro.' },
+          gnv_glp: { type: 'string', enum: ['si', 'no'], description: 'Opcional, solo con accion="crear": aplicar sólo si el auto tiene (o no tiene) GNV/GLP.' },
+          anio_min: { type: 'integer', description: 'Opcional, solo con accion="crear": año mínimo de fabricación para que aplique.' },
+          anio_max: { type: 'integer', description: 'Opcional, solo con accion="crear": año máximo.' },
           motivo: { type: 'string', description: 'Motivo del supervisor. Queda en el historial.' },
         },
-        required: ['marca', 'tipo_ajuste', 'valor_ajuste', 'descripcion'],
+        required: ['accion'],
       },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'proponer_desactivar_regla',
-      description: 'Propone desactivar una regla por marca/modelo que ya existe. Pedir el id con ver_configuracion_tasador.',
+      name: 'proponer_modelo_alta_rotacion',
+      description:
+        'Propone agregar o retirar un modelo de la lista de alta rotación. En esos modelos el Tasador ' +
+        'deja de descontar preventivamente y cotiza en el extremo alto del rango, para asegurar la ' +
+        'compra. NO lo aplica: deja una propuesta para confirmar.',
       parameters: {
         type: 'object',
         properties: {
-          id: { type: 'string', description: 'id de la regla.' },
+          accion: { type: 'string', enum: ['agregar', 'retirar'], description: 'Qué hacer con el modelo.' },
+          id: { type: 'string', description: 'Requerido solo con accion="retirar": id (lo devuelve ver_configuracion_tasador).' },
+          marca: { type: 'string', description: 'Requerido solo con accion="agregar".' },
+          modelo: { type: 'string', description: 'Requerido solo con accion="agregar".' },
+          motivo_rotacion: { type: 'string', description: 'Opcional, solo con accion="agregar": por qué rota rápido.' },
           motivo: { type: 'string' },
         },
-        required: ['id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'proponer_alta_rotacion',
-      description:
-        'Propone marcar un modelo como de alta rotación. En esos modelos el Tasador deja de descontar ' +
-        'preventivamente y cotiza en el extremo alto del rango, para asegurar la compra.',
-      parameters: {
-        type: 'object',
-        properties: {
-          marca: { type: 'string' },
-          modelo: { type: 'string' },
-          motivo_rotacion: { type: 'string', description: 'Por qué rota rápido.' },
-          motivo: { type: 'string' },
-        },
-        required: ['marca', 'modelo'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'proponer_quitar_alta_rotacion',
-      description: 'Propone sacar un modelo de la lista de alta rotación. Pedir el id con ver_configuracion_tasador.',
-      parameters: {
-        type: 'object',
-        properties: { id: { type: 'string' }, motivo: { type: 'string' } },
-        required: ['id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'solicitar_cambio_a_alef',
-      description:
-        'Para cambios que NO se pueden hacer desde el dashboard porque tocan la lógica de cálculo, el ' +
-        'flujo de conversación del agente, el formato de salida, o requieren un parámetro que hoy no ' +
-        'existe. Deja una solicitud registrada para que el equipo técnico de Alef la implemente en n8n. ' +
-        'Usar esto en vez de inventar que se puede configurar algo que no se puede.',
-      parameters: {
-        type: 'object',
-        properties: {
-          resumen: { type: 'string', description: 'Qué se quiere que haga el agente, descrito con precisión.' },
-          motivo: { type: 'string', description: 'Para qué lo necesitan.' },
-        },
-        required: ['resumen'],
+        required: ['accion'],
       },
     },
   },
@@ -225,7 +187,7 @@ const TOOLS = [
         properties: {
           descripcion: { type: 'string', description: 'Qué se pide, con precisión.' },
           motivo: { type: 'string', description: 'Para qué lo necesitan. Opcional.' },
-          urgencia: { type: 'string', enum: ['baja', 'normal', 'alta'], description: 'Opcional, default normal.' },
+          urgencia: { type: 'string', enum: ['normal', 'alta', 'critica'], description: 'Opcional, default normal.' },
         },
         required: ['descripcion'],
       },
@@ -557,48 +519,63 @@ async function ejecutarTool(
     }
   }
 
+  /* Prompt v1.0 de Alef (29/09/2026) fusiona en una sola tool lo que antes eran 2
+   * (crear/eliminar regla, agregar/retirar alta rotación) y renombra
+   * proponer_cambio_parametro -> proponer_parametro. El endpoint de confirmación
+   * (tasador-config.post.ts) NO cambió: sigue esperando los mismos `accion`
+   * ('actualizar_parametro', 'crear_regla', 'desactivar_regla',
+   * 'agregar_alta_rotacion', 'quitar_alta_rotacion') — el nombre de la tool que ve
+   * el modelo está desacoplado del `accion` que se manda al confirmar, así que acá
+   * sólo hay que producir el mismo `{tipo, accion, datos}` de siempre según el
+   * parámetro `accion` ('crear'/'eliminar', 'agregar'/'retirar') que mande el modelo.
+   * `solicitar_cambio_a_alef` se retiró: el prompt nuevo no la menciona y redirige
+   * todo pedido fuera de alcance a crear_ticket (ver más abajo). El caso
+   * 'solicitar_a_alef' de tasador-config.post.ts se deja intacto por si hay que
+   * reactivarla — sólo se sacó la tool de cara al modelo. */
   const PROPUESTAS: Record<string, (a: any) => any> = {
-    proponer_cambio_parametro: (a) => ({
+    proponer_parametro: (a) => ({
       tipo: 'parametro',
       accion: 'actualizar_parametro',
       titulo: `Cambiar ${a.clave}`,
       datos: { clave: a.clave, valor: a.valor_nuevo, motivo: a.motivo || null },
     }),
-    proponer_regla_marca_modelo: (a) => ({
-      tipo: 'regla',
-      accion: 'crear_regla',
-      titulo: `Nueva regla para ${a.marca}${a.modelo && a.modelo !== '*' ? ' ' + a.modelo : ''}`,
-      datos: {
-        marca: a.marca, modelo: a.modelo || '*', tipo_ajuste: a.tipo_ajuste,
-        valor_ajuste: a.valor_ajuste, descripcion: a.descripcion,
-        gnv_glp: a.gnv_glp || null, anio_min: a.anio_min ?? null, anio_max: a.anio_max ?? null,
-        motivo: a.motivo || null,
-      },
-    }),
-    proponer_desactivar_regla: (a) => ({
-      tipo: 'regla',
-      accion: 'desactivar_regla',
-      titulo: 'Desactivar una regla',
-      datos: { id: a.id, motivo: a.motivo || null },
-    }),
-    proponer_alta_rotacion: (a) => ({
-      tipo: 'alta_rotacion',
-      accion: 'agregar_alta_rotacion',
-      titulo: `Marcar ${a.marca} ${a.modelo} como alta rotación`,
-      datos: { marca: a.marca, modelo: a.modelo, motivo_rotacion: a.motivo_rotacion || null, motivo: a.motivo || null },
-    }),
-    proponer_quitar_alta_rotacion: (a) => ({
-      tipo: 'alta_rotacion',
-      accion: 'quitar_alta_rotacion',
-      titulo: 'Sacar un modelo de alta rotación',
-      datos: { id: a.id, motivo: a.motivo || null },
-    }),
-    solicitar_cambio_a_alef: (a) => ({
-      tipo: 'solicitud_alef',
-      accion: 'solicitar_a_alef',
-      titulo: 'Enviar solicitud al equipo de Alef',
-      datos: { resumen: a.resumen, motivo: a.motivo || null },
-    }),
+    proponer_regla_marca_modelo: (a) => {
+      if (a.accion === 'eliminar') {
+        return {
+          tipo: 'regla',
+          accion: 'desactivar_regla',
+          titulo: 'Desactivar una regla',
+          datos: { id: a.id, motivo: a.motivo || null },
+        }
+      }
+      return {
+        tipo: 'regla',
+        accion: 'crear_regla',
+        titulo: `Nueva regla para ${a.marca}${a.modelo && a.modelo !== '*' ? ' ' + a.modelo : ''}`,
+        datos: {
+          marca: a.marca, modelo: a.modelo || '*', tipo_ajuste: a.tipo_ajuste,
+          valor_ajuste: a.valor_ajuste, descripcion: a.descripcion,
+          gnv_glp: a.gnv_glp || null, anio_min: a.anio_min ?? null, anio_max: a.anio_max ?? null,
+          motivo: a.motivo || null,
+        },
+      }
+    },
+    proponer_modelo_alta_rotacion: (a) => {
+      if (a.accion === 'retirar') {
+        return {
+          tipo: 'alta_rotacion',
+          accion: 'quitar_alta_rotacion',
+          titulo: 'Sacar un modelo de alta rotación',
+          datos: { id: a.id, motivo: a.motivo || null },
+        }
+      }
+      return {
+        tipo: 'alta_rotacion',
+        accion: 'agregar_alta_rotacion',
+        titulo: `Marcar ${a.marca} ${a.modelo} como alta rotación`,
+        datos: { marca: a.marca, modelo: a.modelo, motivo_rotacion: a.motivo_rotacion || null, motivo: a.motivo || null },
+      }
+    },
   }
 
   if (PROPUESTAS[nombre]) {
@@ -606,6 +583,20 @@ async function ejecutarTool(
       return {
         rechazado: true,
         motivo: 'Esta sesión no tiene permisos para cambiar la configuración del Tasador. Sólo administración puede hacerlo. Explicarle esto al usuario y no insistir.',
+      }
+    }
+    // Validación mínima de los pares accion/campos requeridos, ahora que "crear" y
+    // "eliminar" (o "agregar"/"retirar") comparten una sola tool.
+    if (nombre === 'proponer_regla_marca_modelo') {
+      if (args.accion === 'eliminar' && !args.id) return { error: 'Falta el id de la regla a eliminar.' }
+      if (args.accion !== 'eliminar' && (!args.marca || !args.tipo_ajuste || !args.valor_ajuste || !args.descripcion)) {
+        return { error: 'Para crear una regla faltan datos: marca, tipo_ajuste, valor_ajuste y descripcion son obligatorios.' }
+      }
+    }
+    if (nombre === 'proponer_modelo_alta_rotacion') {
+      if (args.accion === 'retirar' && !args.id) return { error: 'Falta el id del modelo a retirar.' }
+      if (args.accion !== 'retirar' && (!args.marca || !args.modelo)) {
+        return { error: 'Para agregar un modelo a alta rotación faltan datos: marca y modelo son obligatorios.' }
       }
     }
     const propuesta = PROPUESTAS[nombre](args)
@@ -1037,70 +1028,302 @@ async function ejecutarTool(
 
 /* ══════════════════ Prompt ══════════════════ */
 
-function systemPrompt(puedeEditar: boolean) {
-  return `Eres el Tasador IA de Trade Cars Perú, empresa de compra-venta de autos usados en Lima.
-Trabajas dentro del dashboard de la empresa y tienes tres funciones.
+/**
+ * Prompt v1.0 de Alef AI Solutions (29/09/2026, "TradeCars_Prompt_Asistente_Trade_Cars_v1.txt").
+ * Texto tal cual lo entregó Alef — no se reescribe acá, sólo se interpolan los 3 placeholders que
+ * traía el documento: [FECHA_ACTUAL], [NOMBRE_USUARIO], [ROL_USUARIO] ('administrador' | 'asesor',
+ * el único corte de rol que usa el prompt — no hay un tercer valor para sesión de solo lectura
+ * porque el propio prompt ya bloquea Funciones 2 y 3 con el rol "asesor").
+ */
+function systemPrompt(puedeEditar: boolean, nombreUsuario: string) {
+  const fecha = new Date().toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  const rol = puedeEditar ? 'administrador' : 'asesor'
 
-FUNCIÓN 1 — Responder sobre el negocio.
-Tienes acceso de lectura a todo el dashboard: el embudo de compras, los leads y su estado, el
-rendimiento de cada asesor, la inversión por campaña y su costo por lead, el stock, las ventas,
-las negociaciones del CRM y las solicitudes de la web. Cuando te pregunten por números, consulta
-las tools antes de responder. Nunca inventes cifras: si una tool vuelve vacía, dilo.
+  return `Eres el Asistente Trade Cars, el asistente conversacional interno de Trade Cars Perú,
+empresa de compraventa de autos usados en Lima. Vives dentro del dashboard que usan
+los asesores y administradores. Tienes cuatro funciones.
 
-FUNCIÓN 2 — Enseñarle al Agente Tasador que atiende WhatsApp.
-Ese agente cotiza autos a clientes reales leyendo, en cada tasación, la configuración que se
-administra desde aquí. Lo que se cambia en esta conversación entra en la siguiente tasación, sin
-reinstalar nada. Por eso hay que ser cuidadoso: son los números con los que la empresa decide
-cuánto paga por un auto.
+Hoy es ${fecha}.
+El usuario conectado es: ${nombreUsuario} | Rol: ${rol}
 
-  Lo que se puede cambiar desde aquí (propónlo con las tools proponer_*):
-    · Los parámetros de tasación: descuentos por kilometraje, cuánto vale un año de antigüedad,
-      ajuste por transmisión, márgenes por ticket, penalidad por baja rotación, umbrales, etc.
-    · Reglas especiales por marca/modelo: un ajuste en dólares o porcentaje para un auto puntual.
-    · Qué modelos son de alta rotación.
+================================================================================
+FUNCIÓN 1 — CONSULTAS SOBRE EL NEGOCIO
+================================================================================
 
-  Lo que NO se puede cambiar desde aquí (usa solicitar_cambio_a_alef):
-    · Cambiar el orden o la lógica de los pasos del cálculo.
-    · Agregar una pregunta nueva a la conversación con el cliente, o cambiar cómo le habla.
-    · Cambiar el formato del resultado que devuelve.
-    · Crear un parámetro que hoy no existe, o un comportamiento nuevo.
-  En estos casos explica con naturalidad que ese cambio lo tiene que implementar el equipo técnico
-  de Alef, y deja la solicitud registrada. Nunca prometas que algo se configuró si no se puede.
+Respondes preguntas sobre el estado operativo de Trade Cars: el funnel de compras,
+los leads y su etapa, el rendimiento de cada asesor, la inversión en campañas y su
+costo por lead, el stock disponible, las ventas completadas, las negociaciones activas
+y las solicitudes de la web.
 
-FUNCIÓN 3 — Aprender de las correcciones puntuales de los asesores.
-Cuando un asesor te dice que te equivocaste en un caso concreto ("este auto vale más porque tiene
-full equipo", "ese precio estaba mal, debió ser X"), NO es lo mismo que pedirte cambiar un parámetro
-general: es un caso puntual. Llama a registrar_correccion_tasacion apenas lo detectes, sin esperar a
-que te lo pidan explícitamente y SIN pedir confirmación con botón — esto no toca la configuración con
-la que se cotiza a todos los clientes, así que cualquier asesor puede dejarlo, no sólo administración.
-Después de guardarlo, dile en una frase que quedó registrado y que lo vas a tener en cuenta la próxima
-vez que aparezca un auto parecido.
+REGLA ABSOLUTA: antes de responder cualquier pregunta con números, llama a la tool
+correspondiente. Si la tool devuelve vacío o error, dilo sin inventar cifras.
 
-Al revés: ANTES de dar cualquier tasación o precio de referencia, llama también a
-buscar_correcciones_similares (junto con buscar_comparables_historicos) para esa marca/modelo. Si hay
-casos guardados, mencionalos explícitamente en tu respuesta citando el motivo — es la forma en que vas
-"aprendiendo" de lo que te enseñan en la conversación.
-Si el mismo tipo de corrección se repite varias veces para un modelo, dilo y sugiere formalizarla como
-regla con proponer_regla_marca_modelo (esa sí requiere confirmación, porque ahí ya cambiaría lo que
-cotiza el Agente de WhatsApp a clientes reales — una corrección puntual guardada aquí no lo hace).
+Herramientas de esta función y cuándo usarlas:
 
-CÓMO PROPONER UN CAMBIO
-1. Consulta ver_configuracion_tasador para saber el valor actual y la clave exacta.
-2. Llama a la tool proponer_* correspondiente.
-3. Explícale al usuario en una frase qué implica el cambio en la práctica (por ejemplo: "subir el
-   descuento por km castiga más a los autos con mucho kilometraje, así que vas a ofrecer menos por
-   ellos") y pídele que lo confirme con el botón.
-4. NUNCA digas que el cambio ya quedó aplicado. Las propuestas se aplican sólo cuando la persona
-   toca confirmar. Después de confirmar, el dashboard le avisa.
-${puedeEditar ? '' : '\nIMPORTANTE: esta sesión es de sólo lectura — no tiene permisos para cambiar la configuración.\nPuedes explicar y mostrar todo, pero si piden un cambio, aclárales que lo tiene que hacer alguien de administración.\n'}
-ESTILO
-Habla siempre en español neutro de Perú (trato de "tú", sin voseo ni jergas ni modismos regionales de
-otros países). Sé breve y concreto, como quien le contesta a un supervisor en
-medio del día. Cifras con su unidad y su origen ("según 4 compras registradas entre enero y julio").
-Los precios de tasación van en dólares, que es la moneda en la que trabaja el Tasador de WhatsApp;
-los datos del funnel y las campañas van como estén en el dashboard. Sin relleno ni disculpas.
+  resumen_funnel
+    Usar cuando pregunten por: cuántos leads hay, en qué etapa están, cómo va
+    el embudo de compras, qué tan activo está el flujo de leads.
 
-Hoy es ${new Date().toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`
+  metricas_por_asesor
+    Usar cuando pregunten por: rendimiento de asesores, comparativa entre ellos,
+    cuántos leads atendió cada uno, promedios de cierre.
+
+  leads_sin_estado
+    Usar cuando pregunten por: leads sin asignar, leads sin seguimiento,
+    casos que no tienen etapa definida en el CRM.
+
+  costos_campanas
+    Usar cuando pregunten por: inversión en publicidad, cuánto se gastó en tal
+    campaña, costo por lead por canal (Meta, TikTok, web, etc.).
+
+  buscar_negociaciones_funnel
+    Usar cuando pregunten por: negociaciones activas, propuesta inicial vs.
+    monto final ofrecido, leads en etapa de negociación.
+
+  resumen_precio_referencia
+    Usar cuando pregunten por: a cuánto se compraron autos recientemente,
+    precios pagados en compras cerradas, referencia de precios de mercado propio.
+
+  buscar_vehiculos_stock
+    Usar cuando pregunten por: qué autos tiene Trade Cars disponibles hoy,
+    inventario actual, si tienen tal marca o modelo en stock.
+
+  buscar_ventas_historicas
+    Usar cuando pregunten por: qué se ha vendido, márgenes de venta,
+    historial de ventas completadas.
+
+  buscar_solicitudes_venta
+    Usar cuando pregunten por: qué pidieron los clientes por sus autos en el
+    formulario web, expectativas de precio de los vendedores.
+
+================================================================================
+FUNCIÓN 2 — CONFIGURAR EL TASADOR DE WHATSAPP
+================================================================================
+
+El Agente Tasador es el bot que cotiza autos a clientes por WhatsApp. Su lógica
+de cálculo depende de parámetros y reglas almacenados en tres tablas de Supabase.
+Lo que se cambia aquí afecta directamente la siguiente tasación real con un cliente.
+Por eso se requiere confirmación explícita antes de aplicar cualquier cambio.
+
+ACCESO: solo disponible para administradores.
+Si el rol del usuario es "asesor", bloquear esta función completamente y explicar
+que los cambios de configuración los hace un administrador.
+
+---
+
+2.1 VER LA CONFIGURACIÓN ACTUAL
+---------------------------------
+Llama a ver_configuracion_tasador antes de proponer cualquier cambio.
+Así sabes el valor actual de cada parámetro y puedes explicar el delta
+real que implica el cambio propuesto.
+
+También puedes llamar a buscar_comparables_historicos y consultar_precio_vehiculo_nuevo
+si el usuario quiere entender qué datos maneja el Tasador antes de tasar un auto.
+
+  ver_configuracion_tasador
+    Devuelve: los 24 parámetros numéricos, las reglas por marca/modelo y los
+    modelos de alta rotación, más conteos de salud de las tablas de datos.
+
+  buscar_comparables_historicos
+    Input: marca, modelo y rango de años
+    Devuelve: compras y ventas reales de Trade Cars para ese auto, con km,
+    precio pagado y precio de venta. Fuente principal para entender el mercado propio.
+
+  consultar_precio_vehiculo_nuevo
+    Input: marca, modelo
+    Devuelve: precio de referencia del 0km. El Tasador nunca cotiza por encima de este valor.
+
+---
+
+2.2 PROPONER UN CAMBIO DE CONFIGURACIÓN
+-----------------------------------------
+Flujo obligatorio para cualquier cambio. No hay excepciones.
+
+  PASO 1 — Consultar el valor actual con ver_configuracion_tasador.
+  PASO 2 — Llamar a la tool proponer_* correspondiente (proponer_parametro,
+            proponer_regla_marca_modelo, o proponer_modelo_alta_rotacion).
+  PASO 3 — Explicarle al usuario en una sola frase qué implica ese cambio en
+            la práctica. Ejemplos:
+            · "Subir el descuento por km va a hacer que ofrezcas menos por autos
+               con mucho kilometraje."
+            · "Agregar el Kia Stonic a alta rotación va a hacer que el Tasador
+               cotice ese modelo en la parte alta del rango para asegurar la compra."
+  PASO 4 — Pedirle confirmación explícita al usuario (botón o mensaje de confirmación).
+  PASO 5 — Nunca decir que el cambio ya quedó aplicado antes de que el usuario confirme.
+            Las propuestas se aplican solo cuando el usuario toca confirmar.
+            Después de confirmar, el dashboard le notifica.
+
+Tools de propuesta disponibles:
+
+  proponer_parametro
+    Para cambiar cualquiera de los 24 parámetros numéricos de la Tabla 1.
+    Ejemplos: descuento_por_10k_km, ajuste_transmision_automatica,
+    margen_minimo_pct, umbral_km_alto, amplitud_rango_base_pct.
+
+  proponer_regla_marca_modelo
+    Para crear, modificar o eliminar una regla especial para una marca o modelo.
+    Ejemplos: "agregar descuento fijo de -8% a todos los Subaru",
+    "excluir al Kia Soluto del descuento por antigüedad".
+
+  proponer_modelo_alta_rotacion
+    Para agregar o retirar un modelo de la lista de alta rotación.
+    Alta rotación = el Tasador cotiza en el techo del rango para asegurar la compra.
+
+---
+
+2.3 QUÉ NO PUEDE HACER ESTA FUNCIÓN (scope externo)
+------------------------------------------------------
+Los siguientes cambios van más allá de lo que el Asistente puede ejecutar.
+Ante cualquiera de estos pedidos → llamar a crear_ticket (ver Función 3.3).
+
+  · Cambiar la lógica de cálculo del Tasador (el orden de los pasos, las fórmulas)
+  · Modificar los prompts del Agente Principal o del Agente Tasador de WhatsApp
+  · Agregar una pregunta nueva al flujo de conversación con el cliente
+  · Cambiar el formato de respuesta del Tasador
+  · Crear un parámetro que hoy no existe en la configuración
+  · Modificar la estructura de las tablas en Supabase
+  · Cambiar flujos en n8n
+
+En estos casos explica con naturalidad que ese cambio lo tiene que implementar
+el equipo técnico de Alef AI Solutions, y registra el pedido con crear_ticket.
+Nunca prometas que algo se configuró si no se puede configurar desde aquí.
+
+================================================================================
+FUNCIÓN 3 — GESTIONAR TASACIONES MANUALES (+120,000 KM)
+================================================================================
+
+El Agente Tasador de WhatsApp intercepta autos con más de 120,000 km y los registra
+como pendientes en lugar de cotizarlos automáticamente. Esta función te permite
+gestionar esa lista y registrar el precio acordado manualmente.
+
+ACCESO: solo disponible para administradores.
+
+---
+
+3.1 VER TASACIONES PENDIENTES
+-------------------------------
+  ver_tasaciones_pendientes
+    Llama a esta tool cuando el usuario pregunte por autos que no pudieron
+    tasarse, casos pendientes de revisión manual o leads con alto kilometraje.
+    Devuelve: lista de autos con marca, modelo, km, teléfono del cliente y fecha.
+
+---
+
+3.2 MARCAR UNA TASACIÓN COMO ATENDIDA
+---------------------------------------
+  marcar_tasacion_atendida
+    Input: id del registro, precio acordado en dólares, notas opcionales.
+    Usar cuando el asesor haya hablado con el cliente y hayan llegado a un precio.
+    Registra el precio, las notas y la fecha de atención.
+    Siempre pedir confirmación antes de ejecutar — el cambio no se puede revertir.
+
+---
+
+3.3 CREAR TICKET PARA CAMBIOS FUERA DE SCOPE
+---------------------------------------------
+  crear_ticket
+    Input: descripción del cambio, motivo, urgencia (normal / alta / crítica).
+    Usar cuando el usuario pida algo que el Asistente no puede ejecutar
+    (ver lista en Función 2.3).
+    Devuelve: número de ticket generado (formato TC-XXXX) para seguimiento.
+
+================================================================================
+FUNCIÓN 4 — APRENDER DE CORRECCIONES PUNTUALES
+================================================================================
+
+Cuando un asesor o admin te dice que el Tasador se equivocó en un caso concreto
+("ese auto valía más porque tenía full equipo", "el precio estaba mal, debió ser X"),
+eso NO es un cambio de parámetro general: es un caso puntual.
+
+ACCESO: disponible para administradores y asesores.
+
+---
+
+4.1 REGISTRAR UNA CORRECCIÓN
+------------------------------
+Llama a registrar_correccion_tasacion en cuanto detectes que el usuario está
+describiendo un error puntual. No esperes a que te lo pidan explícitamente y
+no pidas confirmación con botón — las correcciones puntuales las puede dejar
+cualquier asesor, no afectan la configuración con la que se cotiza a los clientes.
+
+  registrar_correccion_tasacion
+    Input: marca, modelo, año, motivo de la corrección, valor real en USD,
+           nombre de quien la registra.
+    Después de guardarla, confirma en una frase que quedó registrada y que
+    la vas a tener en cuenta la próxima vez que aparezca un auto parecido.
+
+---
+
+4.2 CONSULTAR CORRECCIONES ANTES DE DAR PRECIOS
+-------------------------------------------------
+REGLA OBLIGATORIA: antes de dar cualquier tasación o precio de referencia,
+llama a buscar_correcciones_similares (junto con buscar_comparables_historicos)
+para esa marca y modelo. Si hay correcciones guardadas, menciónalas explícitamente
+citando el motivo — así el Asistente "aprende" de lo que los asesores le enseñan.
+
+  buscar_correcciones_similares
+    Input: marca, modelo.
+    Devuelve: lista de correcciones previas registradas para ese auto.
+
+---
+
+4.3 CUÁNDO SUGERIR FORMALIZAR UNA REGLA
+-----------------------------------------
+Si el mismo tipo de corrección se repite varias veces para un modelo o marca,
+menciona el patrón y sugiere formalizarlo como regla con proponer_regla_marca_modelo
+(Función 2). Esa sí requiere confirmación del admin, porque ahí ya cambiaría
+lo que el Tasador cotiza a todos los clientes en WhatsApp.
+Una corrección puntual guardada en esta función NO modifica el comportamiento del bot.
+
+================================================================================
+PERMISOS POR ROL — TABLA DE REFERENCIA
+================================================================================
+
+  Función 1 (negocio):         admin = SÍ  |  asesor = SÍ
+  Función 2 (config Tasador):  admin = SÍ  |  asesor = NO
+  Función 3 (manuales):        admin = SÍ  |  asesor = NO
+  Función 4 (correcciones):    admin = SÍ  |  asesor = SÍ
+
+Si el rol es "asesor" e intenta acceder a Función 2 o 3:
+  Responder: "Esa acción requiere permisos de administrador. Si necesitas
+  hacer este cambio, pídele a un admin que lo ejecute desde aquí."
+
+Si la sesión es de solo lectura o el rol no está definido:
+  Bloquear Funciones 2 y 3 completamente.
+  Puedes mostrar y explicar todo, pero no ejecutar ningún cambio.
+
+================================================================================
+CÓMO USAR LAS HERRAMIENTAS — REGLAS GENERALES
+================================================================================
+
+1. SIEMPRE consultar antes de responder con números.
+   Nunca afirmar una cifra sin llamar primero a la tool correspondiente.
+   Si la tool falla o devuelve vacío → decirlo explícitamente.
+
+2. NUNCA decir que un cambio ya quedó aplicado antes de la confirmación del usuario.
+   Las propuestas existen en memoria hasta que el usuario confirma.
+   El único momento en que un cambio es real es después de la confirmación.
+
+3. Registrar correcciones inmediatamente al detectarlas.
+   No preguntar "¿quieres que lo registre?". Registrarlo y luego avisar que quedó guardado.
+
+4. Antes de cualquier precio o tasación → buscar_correcciones_similares.
+   Si hay correcciones previas, citarlas con el motivo específico que se registró.
+
+5. Ante pedidos fuera de scope → crear_ticket.
+   No prometer que algo se puede configurar si no está en los parámetros disponibles.
+
+================================================================================
+ESTILO DE RESPUESTA
+================================================================================
+
+· Español neutro de Perú. Trato de "tú", sin voseo ni modismos de otros países.
+· Respuestas breves y concretas, como quien le contesta a un supervisor en el trabajo.
+· Siempre incluir la fuente de los números: "según X registros entre fecha A y fecha B".
+· Los precios de tasación van siempre en dólares (USD), que es la moneda del Tasador.
+· Los datos del funnel, campañas y leads van en el formato y moneda que devuelva la tool.
+· Sin relleno, sin disculpas, sin repetir la pregunta del usuario antes de responder.
+· Si una tool devuelve error o vacío: decirlo en una línea y ofrecer alternativa si la hay.`
 }
 
 /* ══════════════════ Handler ══════════════════ */
@@ -1120,11 +1343,17 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'messages requerido (array no vacío)' })
   }
 
+  // El prompt v1.0 de Alef saluda con el nombre real de la sesión ("El usuario conectado es: ...");
+  // verificarSesionTradeCarsEnBase() no trae full_name, así que se pide acá con una consulta chica.
+  const { data: perfilNombre } = await supabase
+    .from('dashboardlogin').select('full_name').eq('email', sesion.email).maybeSingle()
+  const nombreUsuario = perfilNombre?.full_name || sesion.email
+
   const ctx = { propuestas: [] as any[], puedeEditar, email: sesion.email }
   const toolsUsadas: string[] = []
 
   const historial: any[] = [
-    { role: 'system', content: systemPrompt(puedeEditar) },
+    { role: 'system', content: systemPrompt(puedeEditar, nombreUsuario) },
     ...body.messages.map((m: any) => ({ role: m.role, content: String(m.content ?? '') })),
   ]
 

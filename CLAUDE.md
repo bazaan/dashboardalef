@@ -862,9 +862,12 @@ y alta rotación. El chat **propone** (tools `proponer_*`) y devuelve las propue
 
 **Nivel 2 — lo implementa Alef:** cambiar la lógica o el orden del cálculo, agregar una
 pregunta al flujo de conversación, cambiar el formato de salida, o crear un parámetro que hoy
-no existe. El chat lo deriva con `solicitar_cambio_a_alef` y queda en
-`tradecars_tasador_cambios` con `estado='pendiente_alef'`, visible en la pestaña Historial.
-Sólo un superadmin de Alef puede cerrarlo (`resolver_solicitud`).
+no existe. **Desde el prompt v1.0 (29/09/2026) el chat lo deriva con `crear_ticket`**, que
+escribe en `tradecars_tickets_cambios_estructurales` (ver la sección de esa fecha más abajo) —
+la tool vieja `solicitar_cambio_a_alef`, que escribía en `tradecars_tasador_cambios` con
+`estado='pendiente_alef'`, se retiró de cara al modelo porque el prompt nuevo no la menciona.
+El endpoint `resolver_solicitud` (sólo superadmin de Alef) sigue existiendo por si hace falta
+cerrar una solicitud vieja que haya quedado pendiente de antes del cambio.
 
 **Reglas que NO son obvias:**
 
@@ -1024,13 +1027,11 @@ repo — el renombre y la Función 3. **Migración: correr una vez
   (`TasadorChat.vue`), el item del menú lateral (`pages/pruebas/TradeCars.vue`), el checklist de
   permisos por módulo (`TradeCarsConfiguracion.vue`) y las menciones en `HistoricoComprasVentas.vue`
   / `historico.get.ts`. **No cambiaron**: el archivo `tasador-chat.post.ts` ni ninguna otra ruta o
-  nombre de archivo, el id de módulo `'tasador'` en `tradecars_role_permissions`/`permissions.ts`
-  (seguiría rompiendo los permisos ya sembrados si cambiara), y el texto del `systemPrompt()` que
-  arma `tasador-chat.post.ts` — ese sigue diciendo literalmente "Eres el Tasador IA..." a propósito:
-  la especificación es explícita en que **escribir el prompt del Asistente es tarea de Alef**, que
-  lo entrega actualizado una vez que estos cuatro puntos estén listos (así lo pide el propio
-  documento, Parte 6, paso 7). Las migraciones SQL ya corridas (`tradecars_tasador_correcciones.sql`,
-  `tradecars_stock_import.sql`) tampoco se tocaron — quedan como registro histórico.
+  nombre de archivo, ni el id de módulo `'tasador'` en `tradecars_role_permissions`/`permissions.ts`
+  (seguiría rompiendo los permisos ya sembrados si cambiara). El texto del `systemPrompt()` sí se
+  reemplazó, pero después — ver "Prompt v1.0 instalado" más abajo, mismo día. Las migraciones SQL
+  ya corridas (`tradecars_tasador_correcciones.sql`, `tradecars_stock_import.sql`) no se tocaron —
+  quedan como registro histórico, igual que sus menciones a "Tasador IA".
 - **Función 3 — tasaciones manuales (+120.000 km) y tickets a Alef**, tres tools nuevas en
   `tasador-chat.post.ts`, todas restringidas a admin (`ctx.puedeEditar`, mismo criterio que las
   `proponer_*` de la Función 2) y que **escriben directo, sin propuesta/confirmación** — a
@@ -1047,16 +1048,13 @@ repo — el renombre y la Función 3. **Migración: correr una vez
   fuera de este repo. La tabla existe desde que se corre la migración, pero se queda vacía hasta
   que Alef actualice ese flujo para escribir en ella; mientras tanto `ver_tasaciones_pendientes`
   simplemente devuelve "no hay pendientes", que es el comportamiento correcto, no un bug.
-- ⚠️ **Superposición con `solicitar_cambio_a_alef`, avisada y NO resuelta.** Esa tool ya existía
-  desde antes (Nivel 2 del sistema de dos niveles, ver más arriba) y hace básicamente lo mismo que
-  `crear_ticket` — dejar un pedido fuera de alcance para Alef — pero escribe en
-  `tradecars_tasador_cambios` (`estado='pendiente_alef'`, visible en la pestaña Historial del
-  Asistente) en vez de en `tradecars_tickets_cambios_estructurales`. La especificación del
-  29/09/2026 no menciona `solicitar_cambio_a_alef` y pide un mecanismo nuevo y separado, así que se
-  implementó tal cual (no se tocó la tool existente, que la Parte 7 del documento pide no alterar).
-  Quedan **dos lugares distintos** donde puede terminar un pedido fuera de alcance — no se
-  consolidaron a propósito, porque el documento no lo pidió y no era una decisión de este repo para
-  tomar sola. Pendiente de que Trade Cars/Alef confirme si conviene unificarlos.
+- ⚠️ **Superposición con `solicitar_cambio_a_alef` — RESUELTA el mismo día.** Cuando se escribió
+  esto todavía no había llegado el prompt de Alef, así que quedaba avisado pero sin resolver que
+  `crear_ticket` y `solicitar_cambio_a_alef` hacían básicamente lo mismo. El prompt v1.0 que Alef
+  mandó horas después confirma la resolución: no menciona `solicitar_cambio_a_alef` en ningún lado
+  y redirige TODO pedido fuera de alcance (tanto de la Función 2.3 como de la 3.3) a `crear_ticket`.
+  Ver "Prompt v1.0 instalado" más abajo — se retiró `solicitar_cambio_a_alef` de las tools que ve
+  el modelo.
 - **La carga manual de Excel/CSV/PDF (sección anterior) ya cubre gran parte de lo que la
   especificación llama "Flujo B" (n8n)**: ambas apuntan a llenar
   `tradecars_data_precios_vehiculos_nuevos` (hoy vacía) y `tradecars_data_historico_compras_ventas`.
@@ -1066,6 +1064,57 @@ repo — el renombre y la Función 3. **Migración: correr una vez
   Alef según la propia especificación (Parte 1: "Capa 1... NO son responsabilidad de Roberto"), y
   además su documento de instrucciones detallado (`Instrucciones_Flujos_Automatizacion_Tasador.txt`)
   no se compartió en esta sesión.
+
+---
+
+### Prompt v1.0 instalado — y las tools se reconciliaron con sus nombres (29/09/2026)
+
+Mismo día que la sección anterior, unas horas después: Alef mandó
+`TradeCars_Prompt_Asistente_Trade_Cars_v1.txt`. Se instaló como el nuevo `systemPrompt()` de
+`server/api/tradecars/tasador-chat.post.ts` — **el texto es literalmente el que mandó Alef,
+palabra por palabra**, sólo se interpolan los 3 placeholders que traía
+(`[FECHA_ACTUAL]`, `[NOMBRE_USUARIO]`, `[ROL_USUARIO]` → `'administrador'` | `'asesor'`, el único
+corte que el prompt necesita — no hay un tercer valor para sesión de sólo lectura porque el
+propio texto ya bloquea Funciones 2 y 3 con el rol `"asesor"`). `[NOMBRE_USUARIO]` sale de una
+consulta chica a `dashboardlogin.full_name` (`verificarSesionTradeCarsEnBase()` no lo trae).
+
+⚠️ **El prompt de Alef usa nombres de tool distintos a los que ya estaban programados — se
+reconciliaron el código a como pide el prompt, no al revés**, porque el confirmar-propuesta
+(`POST /api/tradecars/tasador-config`) lee `propuesta.accion` (`'actualizar_parametro'`,
+`'crear_regla'`, `'desactivar_regla'`, `'agregar_alta_rotacion'`, `'quitar_alta_rotacion'`…), no
+el nombre de la tool que vio el modelo — el nombre de tool y el `accion` de la confirmación
+siempre estuvieron desacoplados, así que renombrar/fusionar tools no tocó ese endpoint ni el
+panel de edición directa (`TasadorChat.vue`, pestañas Parámetros/Reglas, que llama a
+`tasador-config` directo con esos mismos `accion`, sin pasar por el chat):
+
+| Antes (3 tools separadas) | Ahora (prompt v1.0) |
+|---|---|
+| `proponer_cambio_parametro` | `proponer_parametro` (mismo comportamiento, renombrada) |
+| `proponer_regla_marca_modelo` (sólo crear) + `proponer_desactivar_regla` | `proponer_regla_marca_modelo` con `accion: 'crear'\|'eliminar'` |
+| `proponer_alta_rotacion` (sólo agregar) + `proponer_quitar_alta_rotacion` | `proponer_modelo_alta_rotacion` con `accion: 'agregar'\|'retirar'` |
+| `solicitar_cambio_a_alef` | retirada de las tools — ver el aviso resuelto más arriba |
+
+El prompt habla de "crear, modificar o eliminar" una regla, pero `tasador-config.post.ts` no
+tiene una acción de editar en el sitio (nunca la tuvo) — "modificar" queda como dos llamadas:
+`accion:'eliminar'` sobre la regla vieja + `accion:'crear'` la nueva. Está explicado así en la
+`description` de la tool, para que el modelo sepa qué hacer sin que el prompt (que no se
+reescribe) lo diga explícito.
+
+⚠️ **Bug real encontrado probando antes de avisar que estaba listo:** la migración de
+`tradecars_tickets_cambios_estructurales` sembró `urgencia CHECK (IN 'baja','normal','alta')`,
+pero el prompt de Alef pide `urgencia (normal / alta / crítica)` — un ticket con `urgencia:
+'critica'` habría reventado el INSERT contra el CHECK viejo. `sql/tradecars_tasaciones_
+manuales_tickets.sql` se corrigió para sacar el CHECK de adentro del `CREATE TABLE` (que con
+`IF NOT EXISTS` no vuelve a tocar una tabla que ya existe) y ponerlo aparte con
+`DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`, así que **re-correr el archivo arregla también
+una base donde ya se había corrido la versión vieja**. Pendiente: falta que Roberto vuelva a
+correr `sql/tradecars_tasaciones_manuales_tickets.sql` en Supabase para que el CHECK en vivo
+quede corregido (sin eso, `crear_ticket` con `urgencia:'critica'` sigue fallando).
+
+Probado contra producción: `ver_tasaciones_pendientes`, `marcar_tasacion_atendida` y
+`crear_ticket` funcionan (filas de prueba creadas y borradas después) — y se confirmó en vivo
+que `crear_ticket` con `urgencia:'critica'` SÍ falla todavía contra el CHECK viejo, exactamente
+como se esperaba antes de que Roberto vuelva a correr la migración corregida.
 
 ---
 

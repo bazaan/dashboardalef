@@ -1374,11 +1374,17 @@ alguien publique la app. Trade Cars resolvió esto por su cuenta: creó una **cu
   'service_account' | 'oauth'`) — el diálogo "Conectar hoja" (`FormulariosSheet.vue`) muestra "Conectado
   con cuenta de servicio — no requiere renovar" y **oculta el botón "Conectar con Google"** cuando la
   cuenta de servicio está configurada, para no confundir con un paso que ya no hace falta.
-- **Probado**: la firma RS256 del JWT se verificó con un par de llaves de prueba (firma válida, estructura
-  de 3 partes correcta), y una petición real a `oauth2.googleapis.com/token` con una cuenta de servicio
-  inventada devolvió `invalid_grant: account not found` — confirma que Google acepta el FORMATO de la
-  petición; falta la prueba de punta a punta con la clave JSON real, que el cliente pega directo en Netlify
-  (nunca se compartió por chat).
+- **Probado de punta a punta el 30/09/2026 contra producción.** Roberto pegó
+  `TRADECARS_GOOGLE_SERVICE_ACCOUNT_JSON` en Netlify y redesplegó. Verificado con un usuario
+  temporal (patrón de diagnóstico de siempre: crear en `dashboardlogin`, forjar cookie, probar
+  contra `dashboard.alef.company`, borrar el usuario): `GET /api/tradecars/google-status` pasó de
+  `metodo:'oauth'` (`aipartnerstudio@gmail.com`, guardado 28/09, vencía ~05/10) a
+  `metodo:'service_account'` (`leads-alef-tradecars@tradecars-510019.iam.gserviceaccount.com`).
+  Y no fue sólo que el token se generó: `GET /api/tradecars/formularios?canal=` en las 4 pestañas
+  (ig/fb/tiktok/sin_plataforma) leyó la hoja real sin error — 7.386 filas totales, repartidas
+  36 ig / 75 fb / 0 tiktok / 7.275 sin_plataforma. Desde ahora la conexión de Trade Cars con
+  Google **no depende de que nadie la renueve** — antes (con el OAuth de usuario) se caía sola
+  cada 7 días por el modo "Testing" del proyecto.
 - **Si algún día se necesita ESCRITURA en Sheets** (no es el caso hoy: la hoja es de solo lectura) o acceso
   a Calendar con esta misma cuenta, hay que ampliar el `scope` que recibe `getGoogleServiceAccountToken()`
   y volver a compartir el recurso con el email de la cuenta de servicio.

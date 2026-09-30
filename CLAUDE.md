@@ -1603,6 +1603,47 @@ node scripts/importar_leads_chatwoot_historico.mjs <archivo.txt> --escribir   # 
   las filas de esa carga (`WHERE conversation_id IS NULL` sigue sirviendo como filtro, mientras
   no se mezcle con otra fuente que también deje esa columna vacía).
 
+### Bot semanal de precios 0km — n8n + búsqueda web con IA (30/09/2026) — `sql/tradecars_control_sync_precios.sql`
+
+Implementa `Especificacion_Flujo_Precios_Nuevos_v1.txt` (Alef, 30/09/2026). Flujo de n8n
+**`TRADECARS | Precios 0km | Búsqueda web semanal (IA)`** (id `6Vj3C1EelbyDZPqO`, creado por API
+y **desactivado** hasta que Roberto corra el SQL y lo pruebe). Guía completa, con el porqué de
+cada regla: `referencia/n8n/tradecars-precios-0km-guia.md`; JSON: `tradecars-precios-0km-workflow.json`.
+
+- **Decisiones de Roberto** (no del documento): solo 0km (no usados), **solo las marca+modelo del
+  histórico de compras/ventas** (264), **semanal** (domingo 3:00 Lima) y **búsqueda web con IA**
+  (OpenAI Responses API + `web_search`, `gpt-4.1-mini`, credencial `OpenAi account` de n8n) en vez
+  de un scraper por distribuidor. Escribe en `tradecars_data_precios_vehiculos_nuevos` (la que
+  leen el Tasador de WhatsApp y `consultar_precio_vehiculo_nuevo` del Asistente): **no hizo falta
+  tocar código del dashboard**.
+- **El documento de Alef describe mal esa tabla.** Las columnas reales son `precio_nuevo_usd`,
+  `url_fuente`, `fecha_ultimo_precio` (no `precio_usd`/`fuente_url`); ya tenía `precio_anterior_usd`
+  y `requiere_revision`. No existe el parámetro `tipo_cambio_pen_usd` (el flujo usa open.er-api.com).
+- ⚠️ **`fuente` solo acepta `manual`/`wigo`/`autoland`** y es NOT NULL sin default (probado en vivo
+  con una fila ficticia, borrada). Roberto pidió `fuente='web'` y "si el CHECK falla, omitirlo":
+  omitir sirve para **actualizar**, pero **no para insertar**. Hoy el bot solo actualiza las filas
+  existentes (89, todas `manual`); las versiones nuevas quedan en el log como `nuevo_no_insertado`
+  (14 de 16 en la prueba). Para insertar: bloque OPCIONAL del SQL + `fuente_web_permitida: true`.
+- ⚠️ **La tool `consultar_precio_nuevo` del Tasador de WhatsApp (`xVDAuPum7rlSgYPN`) NO filtra
+  `activa` ni `requiere_revision`** aunque su comentario diga que sí: lee todas las filas de la
+  marca+modelo (`eq` exacto, mayúsculas sin tildes) y, entre versiones del mismo año, toma la
+  primera que devuelve la base. Todo lo que el bot escribe llega a cotizaciones reales, por eso:
+  URL obligatoria **entre las páginas que la IA consultó** (`include: web_search_call.action.sources`),
+  sin blogs/noticias, rango US$6k–400k, año ±1, y **cambios > 15 % no se aplican** (quedan como
+  `salto_revision` en el log). Versiones: se ignoran tokens técnicos ("1.4L LX MT" = "LX"), pero
+  "EX SPORT" ≠ "EX". No se tocó ese flujo (el documento lo prohíbe); queda avisado.
+- **El sandbox del Code node de n8n no expone `URL`**: `new URL()` tiraba y toda fuente salía
+  inválida en la 1.ª prueba real. El dominio se saca con regex. Mismo cuidado en cualquier Code node.
+- **Flujo lineal a propósito** (sin ramas que converjan en un Merge): cada escritura es un item del
+  nodo HTTP "Aplicar en Supabase" (método/URL/cuerpo por expresión, `fullResponse` + `neverError`),
+  y el plan va como último item con una lectura inofensiva. Así el log se escribe siempre.
+- **Log**: `tradecars_control_sync_precios` (una fila por corrida; `detalle_json` = cada precio
+  observado con URL y acción → historial semanal). Errores → `❗ Error Handler — Global`.
+- **Costo medido**: US$0,0137/modelo → ~US$3,6 por corrida completa, ~US$15/mes.
+- **Probado**: lógica fuera de n8n + 3 corridas reales en modo simulación (webhook temporal, ya
+  eliminado), incluido un PATCH a `id=0` para validar el camino de escritura (200, 0 filas).
+  **Falta**: correr el SQL y la 1.ª corrida manual (5 modelos, escribe de verdad).
+
 ---
 
 ## Variables de Entorno (`.env`)

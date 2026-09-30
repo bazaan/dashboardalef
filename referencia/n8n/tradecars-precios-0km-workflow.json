@@ -1,0 +1,407 @@
+{
+  "name": "TRADECARS | Precios 0km | Búsqueda web semanal (IA)",
+  "nodes": [
+    {
+      "id": "b1a1c0de-0001-4000-8000-000000000001",
+      "name": "Cada domingo 3:00 AM (Lima)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * 0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b1a1c0de-0002-4000-8000-000000000002",
+      "name": "Ejecutar a mano (prueba)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b1a1c0de-0003-4000-8000-000000000003",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================================\n// CONFIGURACIÓN DEL BOT DE PRECIOS 0KM — es el único nodo que se toca a mano.\n// ============================================================================\n// Ejecución manual (botón \"Execute workflow\") = PRUEBA con los N modelos del\n// histórico que más operaciones tienen. La ejecución semanal automática\n// recorre TODOS los marca+modelo del histórico.\nconst esManual = $execution.mode === 'test' || $execution.mode === 'manual';\n\nreturn [{\n  json: {\n    origen: esManual ? 'manual' : 'cron',\n\n    // Cuántos marca+modelo buscar en una ejecución manual (0 = todos).\n    limite_modelos: esManual ? 5 : 0,\n\n    // true = busca y calcula todo, pero NO escribe en la tabla de precios 0km\n    // (solo deja el log). Útil para revisar qué haría antes de dejarlo solo.\n    simular: false,\n\n    // ── Búsqueda con IA ────────────────────────────────────────────────────\n    modelo_ia: 'gpt-4.1-mini',\n    herramienta_busqueda: {\n      type: 'web_search',\n      user_location: { type: 'approximate', country: 'PE', city: 'Lima', region: 'Lima' },\n    },\n    // Tope de búsquedas web por modelo (cada búsqueda cuesta ~US$0.01).\n    max_busquedas_por_modelo: 3,\n\n    // ── Validación ─────────────────────────────────────────────────────────\n    // Si el precio encontrado difiere más que esto del que ya está en la\n    // tabla, NO se aplica: queda en el log como \"salto_revision\".\n    umbral_cambio_pct: 15,\n    precio_min_usd: 6000,\n    precio_max_usd: 400000,\n    // Solo si la API de tipo de cambio falla (precios publicados en soles).\n    tipo_cambio_respaldo: 3.42,\n\n    // ── Escritura en tradecars_data_precios_vehiculos_nuevos ────────────────\n    // El CHECK de la columna `fuente` hoy solo acepta manual/wigo/autoland.\n    // Con false: al ACTUALIZAR no se manda `fuente` (la fila conserva la\n    // suya) y los modelos NUEVOS no se insertan (quedan en el log como\n    // \"nuevo_no_insertado\"), porque `fuente` es obligatoria.\n    // Poner true SOLO después de permitir 'web' en el CHECK (bloque opcional\n    // de sql/tradecars_control_sync_precios.sql).\n    fuente_web_permitida: false,\n    fuente_valor: 'web',\n    // Filas nuevas: marcadas para que un humano las revise (informativo).\n    nuevo_requiere_revision: true,\n    // false = nunca tocar las filas cargadas a mano (fuente = 'manual').\n    actualizar_filas_manuales: true,\n\n    supabase_url: 'https://qzmgizrvdukyxvpgclvd.supabase.co',\n\n    // ── Costo estimado (solo para el log) ──────────────────────────────────\n    costo_busqueda_usd: 0.01,\n    costo_input_1m_usd: 0.40,\n    costo_output_1m_usd: 1.60,\n\n    inicio: new Date().toISOString(),\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "b1a1c0de-0004-4000-8000-000000000004",
+      "name": "Tipo de cambio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        100
+      ],
+      "parameters": {
+        "url": "https://open.er-api.com/v6/latest/USD",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b1a1c0de-0005-4000-8000-000000000005",
+      "name": "Leer histórico",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        680,
+        100
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "tradecars_data_historico_compras_ventas",
+        "returnAll": true
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "QRe5FlGkzOw84FZ5",
+          "name": "SUPABASE.COM 1"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "b1a1c0de-0006-4000-8000-000000000006",
+      "name": "Leer precios 0km actuales",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        900,
+        100
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "tradecars_data_precios_vehiculos_nuevos",
+        "returnAll": true
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "QRe5FlGkzOw84FZ5",
+          "name": "SUPABASE.COM 1"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "b1a1c0de-0007-4000-8000-000000000007",
+      "name": "Armar búsquedas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================================\n// Arma una búsqueda por cada marca+modelo que aparece en el histórico de\n// compras/ventas (tradecars_data_historico_compras_ventas). SOLO esos: es la\n// regla del pedido. El año del histórico no se usa para buscar — un 0km solo\n// existe del año modelo actual.\n// ============================================================================\nconst cfg = $('Config').first().json;\n\n// Mismo criterio que la tool consultar_precio_nuevo del Tasador de WhatsApp:\n// mayúsculas y sin tildes para guardar; sin nada no alfanumérico para comparar.\nconst norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')\n  .toUpperCase().replace(/\\s+/g, ' ').trim();\nconst clave = s => norm(s).replace(/[^A-Z0-9]/g, '');\n// \"NEW TUCSON\" / \"ALL NEW RIO\" son el mismo modelo que \"TUCSON\" / \"RIO\".\nconst limpiarModelo = s => norm(s).replace(/^(ALL\\s+)?NEW\\s+/, '');\n\n// ── Tipo de cambio (solo se usa si una página publica el precio en soles) ──\nlet tipoCambio = null;\nlet tipoCambioOrigen = 'respaldo_config';\ntry {\n  const pen = Number($('Tipo de cambio').first().json?.rates?.PEN);\n  if (pen > 2.5 && pen < 6) { tipoCambio = pen; tipoCambioOrigen = 'open.er-api.com'; }\n} catch (e) { /* la API falló: se usa el respaldo */ }\nif (!tipoCambio) tipoCambio = cfg.tipo_cambio_respaldo;\n\n// ── Marca+modelo únicos del histórico ──\nconst modelos = new Map();\nfor (const it of $('Leer histórico').all()) {\n  const marca = norm(it.json.marca);\n  const modelo = limpiarModelo(it.json.modelo);\n  if (!marca || !modelo || marca === 'NULL' || modelo === 'NULL') continue;\n  const k = clave(marca) + '|' + clave(modelo);\n  const m = modelos.get(k) || { marca, modelo, operaciones: 0 };\n  m.operaciones++;\n  modelos.set(k, m);\n}\n\n// ── Versiones ya registradas en la tabla 0km (para que la IA reuse el nombre) ──\nconst versionesPorModelo = new Map();\nfor (const it of $('Leer precios 0km actuales').all()) {\n  const r = it.json;\n  if (!r || r.id == null) continue;\n  const k = clave(r.marca) + '|' + clave(r.modelo);\n  if (!versionesPorModelo.has(k)) versionesPorModelo.set(k, new Set());\n  if (r.version) versionesPorModelo.get(k).add(norm(r.version));\n}\n\nlet lista = [...modelos.entries()].sort((a, b) => b[1].operaciones - a[1].operaciones);\nif (cfg.limite_modelos > 0) lista = lista.slice(0, cfg.limite_modelos);\n\nconst anioActual = DateTime.now().setZone('America/Lima').year;\n\nconst instrucciones = `Eres un investigador de precios de autos NUEVOS (0 km) en el Perú. Usa la búsqueda web para encontrar el precio de lista ACTUAL con que se vende en el Perú el modelo que te indiquen.\n\nCómo buscar (hasta 3 búsquedas; detente apenas tengas precios de una fuente válida):\n  a) Primero la web oficial de la marca en el Perú o su distribuidor oficial (Derco, Euromotors, Autoland, Toyota del Perú, Kia Perú, etc.).\n  b) Si ahí no aparece el precio, un catálogo peruano de autos 0 km con precio de lista, como autocosmos.com.pe.\n  c) No uses el operador \"site:\" con dominios que no conozcas con certeza: busca por texto (ej. \"Hyundai Tucson precio Perú 0 km\").\n\nReglas estrictas:\n1. Solo autos NUEVOS vendidos en el PERÚ. Nunca uses precios de autos usados ni de otros países. No uses blogs, noticias, reseñas ni avisos clasificados: solo páginas de catálogo o de cotización con el precio de lista.\n2. Cada precio debe salir de una página que hayas visto en la búsqueda. En \"url_fuente\" pon la URL exacta de esa página. Si no encontraste una página con el precio, NO lo inventes ni lo estimes.\n3. \"precio\" es el precio de lista tal cual lo publica la página, en su moneda (\"USD\" o \"PEN\" en \"moneda\"). No conviertas monedas. Si solo hay un precio promocional, úsalo y marca \"es_promocion\": true.\n4. \"anio_modelo\" es el año modelo que indique la página; si no lo indica, null.\n5. \"version\" es el nombre corto de la versión o acabado como lo usa el concesionario (ej.: \"LX\", \"EX\", \"GLS Full\", \"Limited\"). Si una versión corresponde a una de las \"versiones ya registradas\" que te paso, escribe EXACTAMENTE ese nombre. Si el modelo tiene una sola versión, null.\n6. Máximo 8 versiones, las más representativas.\n7. \"resultado\":\n   - \"encontrado\": encontraste al menos un precio con su página.\n   - \"sin_precio_publicado\": no encontraste el precio (aunque el modelo se venda). Es el valor por defecto cuando no hay precio.\n   - \"no_se_vende_en_peru\": SOLO si encontraste evidencia explícita de que ya no se vende nuevo en el Perú (la web oficial de la marca en el Perú no lo ofrece, o una nota dice que se descontinuó). No encontrar el precio NO es evidencia de eso.\n   Si \"resultado\" no es \"encontrado\", \"versiones\" va vacío.\n8. En \"nota\" explica en una frase de dónde salió el dato o por qué no se encontró.`;\n\nconst esquema = {\n  type: 'object',\n  additionalProperties: false,\n  required: ['resultado', 'versiones', 'nota'],\n  properties: {\n    resultado: { type: 'string', enum: ['encontrado', 'sin_precio_publicado', 'no_se_vende_en_peru'] },\n    nota: { type: ['string', 'null'] },\n    versiones: {\n      type: 'array',\n      items: {\n        type: 'object',\n        additionalProperties: false,\n        required: ['version', 'anio_modelo', 'precio', 'moneda', 'url_fuente', 'es_promocion'],\n        properties: {\n          version: { type: ['string', 'null'] },\n          anio_modelo: { type: ['integer', 'null'] },\n          precio: { type: 'number' },\n          moneda: { type: 'string', enum: ['USD', 'PEN'] },\n          url_fuente: { type: 'string' },\n          es_promocion: { type: 'boolean' },\n        },\n      },\n    },\n  },\n};\n\nreturn lista.map(([k, m]) => {\n  const versiones = [...(versionesPorModelo.get(k) || [])];\n  const input = [\n    `Marca: ${m.marca}`,\n    `Modelo: ${m.modelo}`,\n    `Versiones ya registradas en nuestra base: ${versiones.length ? versiones.join(', ') : 'ninguna'}`,\n    `Año actual: ${anioActual}`,\n  ].join('\\n');\n\n  return {\n    json: {\n      clave: k,\n      marca: m.marca,\n      modelo: m.modelo,\n      operaciones_historico: m.operaciones,\n      versiones_existentes: versiones,\n      tipo_cambio: tipoCambio,\n      tipo_cambio_origen: tipoCambioOrigen,\n      _openai_body: {\n        model: cfg.modelo_ia,\n        instructions: instrucciones,\n        input,\n        tools: [cfg.herramienta_busqueda],\n        max_tool_calls: cfg.max_busquedas_por_modelo,\n        include: ['web_search_call.action.sources'],\n        text: { format: { type: 'json_schema', name: 'precios_0km', strict: true, schema: esquema } },\n      },\n    },\n  };\n});\n"
+      }
+    },
+    {
+      "id": "b1a1c0de-0008-4000-8000-000000000008",
+      "name": "Buscar precio 0km con IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._openai_body) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 4,
+              "batchInterval": 1500
+            }
+          },
+          "timeout": 180000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "byAJ6ieSg6DkIa3a",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b1a1c0de-0009-4000-8000-000000000009",
+      "name": "Validar y decidir",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================================\n// Lee lo que devolvió la IA, valida cada precio y decide qué hacer con él.\n//\n// OJO: la tool consultar_precio_nuevo del Tasador de WhatsApp lee TODAS las\n// filas de una marca+modelo, sin mirar `activa` ni `requiere_revision`. Todo\n// lo que se escriba acá le llega a una cotización real. Por eso un precio solo\n// se escribe si pasa TODAS las validaciones, y un cambio grande nunca se aplica\n// solo: queda en el log para que un humano lo revise.\n//\n// Salida: un item por escritura + un item final \"_plan\" con el detalle\n// completo. Todos pasan por \"Aplicar en Supabase\" (el plan hace una lectura\n// inofensiva), así el flujo es lineal y el log se escribe siempre.\n// ============================================================================\nconst cfg = $('Config').first().json;\nconst busquedas = $('Armar búsquedas').all();\nconst existentes = $('Leer precios 0km actuales').all().map(i => i.json).filter(r => r && r.id != null);\n\nconst norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')\n  .toUpperCase().replace(/\\s+/g, ' ').trim();\nconst clave = s => norm(s).replace(/[^A-Z0-9]/g, '');\n// Versión \"canónica\": sin tokens técnicos (cilindrada, transmisión, tracción,\n// combustible). \"1.4L LX MT\" ≈ \"LX\", pero \"1.4L EX SPORT\" ≠ \"EX\": una palabra\n// de acabado de más (SPORT, FULL, GT…) es otra versión, no la misma.\nconst TECNICO = /^(\\d+[LTV]?|MT|AT|CVT|DCT|IVT|TM|TA|MEC|AUT|AUTO|MANUAL|AUTOMATICO|4X2|4X4|AWD|2WD|4WD|FWD|GSL|GASOLINA|DIESEL|HEV|HIBRIDO|TURBO|L)$/;\nconst canonica = s => norm(s).split(/[^A-Z0-9]+/).filter(t => t && !TECNICO.test(t)).sort().join(' ');\n// Sin `new URL()`: el sandbox del Code node de n8n no expone `URL` (con él,\n// toda URL salía \"inválida\" en la primera prueba real).\nconst host = u => {\n  const m = String(u || '').match(/^https?:\\/\\/([^\\/?#:]+)/i);\n  return m ? m[1].replace(/^www\\./i, '').toLowerCase() : null;\n};\nconst ruta = u => String(u || '').match(/^https?:\\/\\/[^\\/?#]+(\\/[^?#]*)?/i)?.[1] || '/';\n\nconst lima = DateTime.now().setZone('America/Lima');\nconst hoy = lima.toISODate();\nconst anioActual = lima.year;\nconst ahora = new Date().toISOString();\nconst tabla = `${cfg.supabase_url}/rest/v1/tradecars_data_precios_vehiculos_nuevos`;\nconst noop = { metodo: 'GET', url: `${tabla}?select=id&limit=1`, body: null };\n\nfunction mensajeError(e) {\n  if (!e) return 'sin respuesta';\n  if (typeof e === 'string') return e.slice(0, 300);\n  return String(e.message || e.description || JSON.stringify(e)).slice(0, 300);\n}\n\nfunction leerRespuesta(r) {\n  if (!r || r.error) return { error: mensajeError(r?.error) };\n  if (r.status && r.status !== 'completed') {\n    return { error: `respuesta ${r.status}${r.incomplete_details ? ': ' + JSON.stringify(r.incomplete_details) : ''}` };\n  }\n  const salida = Array.isArray(r.output) ? r.output : [];\n  const llamadas = salida.filter(o => o.type === 'web_search_call');\n  // Páginas que la IA realmente consultó: fuentes de cada búsqueda + citas del texto.\n  const fuentes = new Set();\n  for (const c of llamadas) for (const s of (c.action?.sources || [])) { const h = host(s.url); if (h) fuentes.add(h); }\n  let texto = '';\n  for (const o of salida) {\n    if (o.type !== 'message') continue;\n    for (const c of (o.content || [])) {\n      if (c.type !== 'output_text') continue;\n      texto += c.text || '';\n      for (const a of (c.annotations || [])) { const h = host(a.url); if (h) fuentes.add(h); }\n    }\n  }\n  let datos = null;\n  try { datos = JSON.parse(texto); } catch (e) {\n    const m = texto.match(/\\{[\\s\\S]*\\}/);\n    if (m) { try { datos = JSON.parse(m[0]); } catch (e2) { /* sigue null */ } }\n  }\n  const uso = r.usage || null;\n  if (!datos) return { error: 'la IA no devolvió un JSON legible', busquedas_web: llamadas.length, uso };\n  return { datos, fuentes, busquedas_web: llamadas.length, uso };\n}\n\n// Un artículo no es una lista de precios (en la 2.ª prueba real, un precio\n// \"referencial\" de un blog habría pisado el de la tabla).\nconst RUTA_ARTICULO = /\\/(blog|blogs|noticia|noticias|news|articulo|articulos|review|reviews|resena|resenas|comparativa|comparativas|prensa)(\\/|$)/i;\n\nfunction fuenteVerificada(url, fuentes) {\n  const h = host(url);\n  if (!h || !/^https?:\\/\\//i.test(url)) return { ok: false, motivo: 'sin URL de fuente válida' };\n  if (RUTA_ARTICULO.test(ruta(url))) return { ok: false, motivo: 'la página es un artículo/blog, no una lista de precios' };\n  if (fuentes.size > 0) {\n    const ok = [...fuentes].some(f => h === f || h.endsWith('.' + f) || f.endsWith('.' + h));\n    return ok ? { ok: true, como: 'pagina_consultada' } : { ok: false, motivo: `la URL (${h}) no está entre las páginas que la IA consultó` };\n  }\n  // Sin lista de fuentes: solo se acepta un dominio peruano.\n  if (h.endsWith('.pe') || /^\\/pe(\\/|$)/i.test(ruta(url))) return { ok: true, como: 'dominio_peruano' };\n  return { ok: false, motivo: 'no se pudo verificar la fuente' };\n}\n\nconst escrituras = [];\nconst detalle = [];\nlet costo = 0;\n\n$input.all().forEach((it, i) => {\n  const src = (busquedas[it.pairedItem?.item ?? i] || busquedas[i]).json;\n  const reg = {\n    marca: src.marca,\n    modelo: src.modelo,\n    operaciones_historico: src.operaciones_historico,\n    estado: null,\n    versiones: [],\n  };\n  const im = detalle.length;\n  detalle.push(reg);\n\n  const r = leerRespuesta(it.json);\n  reg.busquedas_web = r.busquedas_web || 0;\n  if (r.uso) {\n    costo += ((r.uso.input_tokens || 0) * cfg.costo_input_1m_usd + (r.uso.output_tokens || 0) * cfg.costo_output_1m_usd) / 1e6;\n  }\n  costo += reg.busquedas_web * cfg.costo_busqueda_usd;\n\n  if (r.error) { reg.estado = 'error'; reg.error = r.error; return; }\n  reg.nota = r.datos.nota ?? null;\n\n  const vers = Array.isArray(r.datos.versiones) ? r.datos.versiones.slice(0, 8) : [];\n  const filasDelModelo = existentes.filter(e => clave(e.marca) === clave(src.marca) && clave(e.modelo) === clave(src.modelo));\n  if (r.datos.resultado !== 'encontrado' || vers.length === 0) {\n    reg.estado = r.datos.resultado === 'no_se_vende_en_peru' ? 'no_se_vende_nuevo' : 'sin_precio';\n    // No se marca nada como descontinuado automáticamente: queda para revisión.\n    if (filasDelModelo.length) reg.aviso = `hay ${filasDelModelo.length} fila(s) de este modelo en la tabla 0km; revisar si sigue vigente`;\n    return;\n  }\n  reg.estado = 'ok';\n\n  const vistos = new Set();\n  vers.forEach(v => {\n    const out = {\n      version: v.version ? norm(v.version) : null,\n      anio_modelo: v.anio_modelo ?? null,\n      precio_publicado: v.precio,\n      moneda: v.moneda,\n      url_fuente: v.url_fuente,\n      es_promocion: !!v.es_promocion,\n    };\n    const iv = reg.versiones.length;\n    reg.versiones.push(out);\n    const descartar = motivo => { out.accion = 'descartado'; out.motivo = motivo; };\n\n    const precio = Number(v.precio);\n    if (!(precio > 0)) return descartar('precio inválido');\n    const usd = Math.round(v.moneda === 'PEN' ? precio / src.tipo_cambio : precio);\n    out.precio_usd = usd;\n    if (usd < cfg.precio_min_usd || usd > cfg.precio_max_usd) {\n      return descartar(`precio fuera de rango (US$${cfg.precio_min_usd}–${cfg.precio_max_usd})`);\n    }\n    const fv = fuenteVerificada(v.url_fuente, r.fuentes);\n    if (!fv.ok) return descartar(fv.motivo);\n    out.verificacion = fv.como;\n\n    const anio = out.anio_modelo ?? anioActual;\n    out.anio_modelo = anio;\n    if (anio < anioActual - 1 || anio > anioActual + 1) return descartar('año modelo fuera de rango');\n\n    const kv = clave(out.version) + '|' + anio;\n    if (vistos.has(kv)) return descartar('versión repetida en la misma respuesta');\n    vistos.add(kv);\n\n    // ¿Ya existe esta marca+modelo+versión+año en la tabla?\n    const cands = filasDelModelo.filter(e => Number(e.anio_modelo) === anio);\n    let fila = cands.find(e => clave(e.version) === clave(out.version));\n    if (!fila && out.version && canonica(out.version)) {\n      // \"LX\" registrado ≈ \"1.4L LX MT\" encontrado, solo si hay UN candidato así.\n      const iguales = cands.filter(e => e.version && canonica(e.version) === canonica(out.version));\n      if (iguales.length === 1) fila = iguales[0];\n    }\n\n    if (fila) {\n      out.fila_id = fila.id;\n      out.version_en_tabla = fila.version ?? null;\n      out.precio_actual_usd = Number(fila.precio_nuevo_usd);\n      const delta = out.precio_actual_usd > 0 ? Math.abs(usd - out.precio_actual_usd) / out.precio_actual_usd * 100 : 0;\n      out.delta_pct = Math.round(delta * 10) / 10;\n\n      if (fila.fuente === 'manual' && !cfg.actualizar_filas_manuales) {\n        out.accion = 'omitido'; out.motivo = 'fila cargada a mano (actualizar_filas_manuales = false)'; return;\n      }\n      if (delta > cfg.umbral_cambio_pct) {\n        out.accion = 'salto_revision';\n        out.motivo = `cambia ${out.delta_pct}% (umbral ${cfg.umbral_cambio_pct}%): no se aplicó, revisar a mano`;\n        return;\n      }\n      const body = {\n        precio_nuevo_usd: usd,\n        moneda: 'USD',\n        url_fuente: v.url_fuente,\n        fecha_ultimo_precio: hoy,\n        actualizado_en: ahora,\n        estado_produccion: 'activo',\n      };\n      if (usd !== out.precio_actual_usd) body.precio_anterior_usd = out.precio_actual_usd;\n      if (cfg.fuente_web_permitida) body.fuente = cfg.fuente_valor;\n      out.accion = usd === out.precio_actual_usd ? 'confirmado' : 'actualizado';\n      escrituras.push({ _ref: [im, iv], _http: { metodo: 'PATCH', url: `${tabla}?id=eq.${fila.id}`, body } });\n      return;\n    }\n\n    if (!cfg.fuente_web_permitida) {\n      out.accion = 'nuevo_no_insertado';\n      out.motivo = \"la columna `fuente` no acepta 'web' todavía (bloque opcional de sql/tradecars_control_sync_precios.sql)\";\n      return;\n    }\n    out.accion = 'insertado';\n    escrituras.push({\n      _ref: [im, iv],\n      _http: {\n        metodo: 'POST',\n        url: tabla,\n        body: {\n          marca: norm(src.marca),\n          modelo: norm(src.modelo),\n          version: out.version,\n          anio_modelo: anio,\n          precio_nuevo_usd: usd,\n          moneda: 'USD',\n          fuente: cfg.fuente_valor,\n          url_fuente: v.url_fuente,\n          tier: 1,\n          estado_produccion: 'activo',\n          fecha_ultimo_precio: hoy,\n          requiere_revision: !!cfg.nuevo_requiere_revision,\n          activa: true,\n          creado_por: 'bot_precios_0km_n8n',\n          notas: 'Detectado por la búsqueda web semanal (n8n)',\n        },\n      },\n    });\n  });\n});\n\nconst plan = {\n  _plan: true,\n  _http: noop,\n  simular: !!cfg.simular,\n  tipo_cambio: busquedas[0]?.json.tipo_cambio ?? cfg.tipo_cambio_respaldo,\n  tipo_cambio_origen: busquedas[0]?.json.tipo_cambio_origen ?? 'respaldo_config',\n  costo_estimado_usd: Math.round(costo * 1000) / 1000,\n  detalle,\n};\n\n// En modo simulación no se escribe nada: solo sale el plan.\nif (cfg.simular) return [{ json: plan }];\nreturn [...escrituras.map(e => ({ json: e })), { json: plan }];\n"
+      }
+    },
+    {
+      "id": "b1a1c0de-0010-4000-8000-000000000010",
+      "name": "Aplicar en Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        100
+      ],
+      "parameters": {
+        "method": "={{ $json._http.metodo }}",
+        "url": "={{ $json._http.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": "={{ $json._http.metodo !== \"GET\" }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._http.body || {}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "QRe5FlGkzOw84FZ5",
+          "name": "SUPABASE.COM 1"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b1a1c0de-0011-4000-8000-000000000011",
+      "name": "Resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// ============================================================================\n// Cruza el plan con el resultado real de cada escritura y arma la fila del\n// log (tradecars_control_sync_precios). \"Aplicar en Supabase\" devuelve un\n// item por cada item de \"Validar y decidir\", en el mismo orden.\n// ============================================================================\nconst cfg = $('Config').first().json;\nconst plan = $('Validar y decidir').all();\nconst resultados = $input.all();\n\nconst planItem = plan.find(p => p.json._plan).json;\nconst detalle = planItem.detalle;\n\nplan.forEach((p, i) => {\n  if (p.json._plan) return;\n  const res = resultados[i]?.json || {};\n  const [im, iv] = p.json._ref;\n  const v = detalle[im].versiones[iv];\n  const ok = !res.error && res.statusCode >= 200 && res.statusCode < 300;\n  if (!ok) {\n    v.accion_planeada = v.accion;\n    v.accion = 'error_escritura';\n    v.error = String(res.body?.message || res.error?.message || res.statusMessage || `HTTP ${res.statusCode}`).slice(0, 300);\n  } else if (Array.isArray(res.body) && res.body.length === 0) {\n    // PATCH que no encontró la fila (la borraron entre la lectura y la escritura).\n    v.accion_planeada = v.accion;\n    v.accion = 'error_escritura';\n    v.error = 'la fila ya no existe en la tabla';\n  }\n});\n\nconst cuenta = (pred) => detalle.reduce((n, m) => n + m.versiones.filter(pred).length, 0);\nconst porAccion = a => cuenta(v => v.accion === a);\nconst modelosConPrecio = detalle.filter(m => m.versiones.some(v => v.accion && v.accion !== 'descartado')).length;\nconst fallidos = detalle.filter(m => m.estado === 'error').length;\n\nconst fila = {\n  origen: cfg.origen,\n  simulado: !!planItem.simular,\n  modelo_ia: cfg.modelo_ia,\n  total_modelos: detalle.length,\n  exitosos: modelosConPrecio,\n  fallidos,\n  sin_resultado: detalle.length - modelosConPrecio - fallidos,\n  actualizados: porAccion('actualizado'),\n  confirmados: porAccion('confirmado'),\n  insertados: porAccion('insertado'),\n  nuevos_no_insertados: porAccion('nuevo_no_insertado'),\n  saltos_revision: porAccion('salto_revision'),\n  descartados: porAccion('descartado'),\n  errores_escritura: porAccion('error_escritura'),\n  tipo_cambio_pen_usd: planItem.tipo_cambio,\n  tipo_cambio_origen: planItem.tipo_cambio_origen,\n  costo_estimado_usd: planItem.costo_estimado_usd,\n  duracion_seg: Math.round((Date.now() - new Date(cfg.inicio).getTime()) / 1000),\n  detalle_json: detalle,\n};\n\nreturn [{ json: { fila } }];\n"
+      }
+    },
+    {
+      "id": "b1a1c0de-0012-4000-8000-000000000012",
+      "name": "Guardar log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2220,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/tradecars_control_sync_precios",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.fila) }}",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "QRe5FlGkzOw84FZ5",
+          "name": "SUPABASE.COM 1"
+        }
+      }
+    },
+    {
+      "id": "b1a1c0de-0013-4000-8000-000000000013",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        -260
+      ],
+      "parameters": {
+        "content": "## Bot semanal de precios 0km (Trade Cars)\n\nCada **domingo 3:00 AM (Lima)** busca con IA + búsqueda web el precio de lista\n0km en Perú de cada **marca+modelo del histórico de compras/ventas** y actualiza\n`tradecars_data_precios_vehiculos_nuevos` (la tabla que leen el Tasador de\nWhatsApp y el Asistente Trade Cars del dashboard).\n\n- Ajustes: nodo **Config** (único que se toca a mano).\n- Botón *Execute workflow* = prueba con 5 modelos (se puede cambiar en Config).\n- Cambios de precio > 15% NO se aplican: quedan en el log para revisar.\n- Log de cada ejecución: tabla `tradecars_control_sync_precios`.\n\nGuía: `referencia/n8n/tradecars-precios-0km-guia.md` (repo del dashboard).",
+        "height": 300,
+        "width": 620
+      }
+    }
+  ],
+  "connections": {
+    "Cada domingo 3:00 AM (Lima)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar a mano (prueba)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Tipo de cambio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tipo de cambio": {
+      "main": [
+        [
+          {
+            "node": "Leer histórico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer histórico": {
+      "main": [
+        [
+          {
+            "node": "Leer precios 0km actuales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer precios 0km actuales": {
+      "main": [
+        [
+          {
+            "node": "Armar búsquedas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar búsquedas": {
+      "main": [
+        [
+          {
+            "node": "Buscar precio 0km con IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar precio 0km con IA": {
+      "main": [
+        [
+          {
+            "node": "Validar y decidir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar y decidir": {
+      "main": [
+        [
+          {
+            "node": "Aplicar en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar en Supabase": {
+      "main": [
+        [
+          {
+            "node": "Resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumen": {
+      "main": [
+        [
+          {
+            "node": "Guardar log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Lima",
+    "saveManualExecutions": true,
+    "errorWorkflow": "NRYyNkaBkEJyvmak"
+  }
+}

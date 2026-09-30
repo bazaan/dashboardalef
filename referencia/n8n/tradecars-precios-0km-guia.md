@@ -129,6 +129,13 @@ corrida, ~US$15/mes**. Cada fila del log trae `costo_estimado_usd`.
 
 ## Ver resultados
 
+**En el dashboard:** Trade Cars → **Operaciones → Precios vehículos nuevos**. Ahí están la tabla de
+precios, las corridas del bot (clic en una para ver qué encontró en cada modelo) y los **pendientes de
+revisión** (cambios > 15 % y versiones nuevas) con botones **Aplicar / Descartar** (solo
+administración). Requiere correr una vez `sql/tradecars_precios_0km_revisiones.sql`.
+
+**En Supabase:**
+
 ```sql
 -- Últimas corridas
 SELECT fecha_ejecucion, origen, simulado, total_modelos, exitosos, actualizados, confirmados,

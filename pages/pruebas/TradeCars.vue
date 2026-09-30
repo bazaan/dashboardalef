@@ -673,6 +673,11 @@
            la consulta en resumen_precio_referencia) pero ya no tiene pantalla propia. -->
       <HistoricoComprasVentas v-else-if="activeView === 'compras'" @notificar="notify" />
 
+      <!-- ==========  VISTA: PRECIOS VEHÍCULOS NUEVOS (30/09/2026)  ========== -->
+      <!-- Techo 0km del Tasador (tradecars_data_precios_vehiculos_nuevos) + los hallazgos del bot
+           semanal de n8n que esperan revisión. Ver components/TradeCars/PreciosVehiculosNuevos.vue. -->
+      <PreciosVehiculosNuevos v-else-if="activeView === 'precios_0km'" @notificar="notify" />
+
       <!-- ==========  VISTA: LEADS  ========== -->
       <div v-else-if="activeView === 'leads'" class="view-container">
         <header class="top-header">
@@ -1046,6 +1051,7 @@ import RemarketingPanel from '@/components/RemarketingPanel.vue'
 import TradeCarsConfiguracion from '@/components/TradeCars/TradeCarsConfiguracion.vue'
 import HistoricoComprasVentas from '@/components/TradeCars/HistoricoComprasVentas.vue'
 import HistoricoCompras from '@/components/TradeCars/HistoricoCompras.vue'
+import PreciosVehiculosNuevos from '@/components/TradeCars/PreciosVehiculosNuevos.vue'
 
 const { logActivity } = useActivityLogger()
 
@@ -1148,6 +1154,8 @@ const OPERACIONES_ITEMS_TODOS = [
   { icon: 'mdi-car-multiple', label: 'Vehículos', id: 'vehiculos', modulo: 'operaciones' },
   { icon: 'mdi-car-key', label: 'Compras', id: 'ventas', modulo: 'operaciones' },
   { icon: 'mdi-cash-register', label: 'Ventas', id: 'compras', modulo: 'operaciones' },
+  // 30/09/2026: techo 0km del Tasador + lo que encuentra el bot semanal de n8n (PreciosVehiculosNuevos.vue).
+  { icon: 'mdi-tag-multiple', label: 'Precios vehículos nuevos', id: 'precios_0km', modulo: 'operaciones' },
   { icon: 'mdi-calendar-blank', label: 'Agenda', id: 'calendario', modulo: 'operaciones' },
 ]
 const FINANZAS_ITEMS_TODOS = [

@@ -1642,7 +1642,42 @@ cada regla: `referencia/n8n/tradecars-precios-0km-guia.md`; JSON: `tradecars-pre
 - **Costo medido**: US$0,0137/modelo → ~US$3,6 por corrida completa, ~US$15/mes.
 - **Probado**: lógica fuera de n8n + 3 corridas reales en modo simulación (webhook temporal, ya
   eliminado), incluido un PATCH a `id=0` para validar el camino de escritura (200, 0 filas).
-  **Falta**: correr el SQL y la 1.ª corrida manual (5 modelos, escribe de verdad).
+  Roberto corrió el SQL y las 2 primeras corridas manuales el 30/09 (una simulada, una real): la
+  real actualizó 1 fila (Creta GLS US$26.000 → 22.490, hyundai.pe) y dejó 3 saltos > 15 % y
+  4 versiones nuevas para revisar. **Resultados distintos entre corridas son normales** (la
+  búsqueda web no devuelve siempre las mismas páginas). Ojo: "GLS"/"GL" del Creta los eligió la IA
+  (el prompt le pide reusar los nombres de versión de la tabla); Hyundai Perú los vende como
+  "Comfort Plus"/"Design".
+
+### Pestaña "Precios vehículos nuevos" (30/09/2026) — `sql/tradecars_precios_0km_revisiones.sql`
+
+Menú **Operaciones → Precios vehículos nuevos** (debajo de Vehículos, Compras y Ventas; id de vista
+`precios_0km`). Componente `components/TradeCars/PreciosVehiculosNuevos.vue`, endpoints
+`GET/POST /api/tradecars/precios-0km`, lógica en `server/utils/tradecars-precios0km.ts`. Muestra la
+tabla de precios 0km, las corridas del bot (clic → detalle por modelo/versión con URL y acción) y los
+**pendientes de revisión** (saltos > 15 % y versiones nuevas que el bot no aplica solo) con
+**Aplicar / Descartar**. **Correr una vez el SQL** (crea `tradecars_precios_0km_revisiones`, donde
+queda cada decisión); sin él la pestaña abre, aplicar funciona, pero descartar da 409 con el nombre
+del archivo.
+
+- **Pendiente = el hallazgo MÁS RECIENTE de cada marca+modelo** (mirando las últimas 8 corridas,
+  simuladas incluidas), contra el estado ACTUAL de la tabla: desaparece si la fila ya tiene ese precio,
+  si la versión ya existe, o si hay una decisión para esa clave **a ese mismo precio**. Un descarte
+  vale para ese precio: si otra corrida encuentra otro, vuelve a aparecer. La clave usa la misma
+  normalización que el bot (si cambia en el nodo "Validar y decidir", cambiar acá).
+- **El POST no confía en el navegador**: recibe solo `{ accion, clave, corrida_id }` y vuelve a
+  calcular el hallazgo desde el log (precio, URL, fila). Un precio arbitrario no puede entrar por acá.
+- **Ver** = módulo `operaciones` (`resolverPerfilTradeCars`). **Aplicar/Descartar** = solo
+  admin/superadmin verificado en `dashboardlogin` (`puedeEditarTasador`), igual que la carga manual de
+  precios 0km: es el techo con el que cotiza el Tasador de WhatsApp.
+- **Aplicar una versión nueva** intenta `fuente='web'`; si el CHECK lo rechaza (hoy sí), la inserta
+  como `fuente='manual'`, `tier=2`, `creado_por` = el admin y una nota que dice que la encontró el bot:
+  una fila aprobada por un humano es una carga manual. **Aplicar un salto** guarda `precio_anterior_usd`
+  y no cambia `fuente`. Cada acción queda en `activity_logs`.
+- **Probado** contra el dev server con la base real: pendientes reales (3 saltos + 7 nuevas), datos
+  sintéticos (`ZZZDIAG`, borrados) para aplicar salto / aplicar nueva / reintento → 409 / agente → 403,
+  y revisión visual en escritorio y celular. **No probado**: descartar con la tabla de revisiones creada
+  (el SQL no estaba corrido al probar).
 
 ---
 

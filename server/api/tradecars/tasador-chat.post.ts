@@ -46,7 +46,7 @@ import { verificarSesionTradeCarsEnBase, puedeEditarTasador, leerConfigTasador, 
 import { TC_ETAPAS } from '../../../utils/tradecarsFunnel'
 
 const OPENAI_CHAT_API = 'https://api.openai.com/v1/chat/completions'
-const MODEL = process.env.TRADECARS_TASADOR_MODEL || 'gpt-4o'
+const MODEL = process.env.TRADECARS_TASADOR_MODEL || 'gpt-4.1-mini'
 const MAX_RONDAS_TOOLS = 5
 const LIMITE_FILAS = 15
 

@@ -828,8 +828,8 @@ Historial de la conversación guardado en `localStorage` del navegador (`usePers
 en Supabase: es apoyo de trabajo del asesor. Lo que **sí** se audita en base es cada cambio de
 configuración y cada ejecución del chat (`agent_tool_logs`, `tool_name='Tasador · Chat'`).
 
-**Variable de entorno opcional:** `TRADECARS_TASADOR_MODEL` (default `gpt-4o`, mismo patrón
-que `SGS_OCR_MODEL`).
+**Variable de entorno opcional:** `TRADECARS_TASADOR_MODEL` (default `gpt-4.1-mini` desde el
+30/09/2026 — antes `gpt-4o`, bajado a pedido del cliente; mismo patrón que `SGS_OCR_MODEL`).
 
 ---
 

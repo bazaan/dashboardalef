@@ -229,10 +229,10 @@
                   @click="guardar(s)">
                   <v-icon icon="mdi-content-save" start size="16" /> Guardar
                 </v-btn>
-                <v-btn v-if="s.celular" color="success" variant="tonal" size="small"
-                  :href="waLink(s)" target="_blank" @click.stop>
-                  <v-icon icon="mdi-whatsapp" start size="16" /> WhatsApp
-                </v-btn>
+                <BotonWhatsappPlantilla v-if="s.celular" :canal="props.canal" :ref-tarjeta="s.lead_key"
+                  :nombre="s.nombre" :celular="s.celular" :asesor-nombre="s.asesor_nombre"
+                  :envio="wa.envios[s.lead_key]" :plantilla="wa.plantilla" :plantilla-error="wa.plantilla_error"
+                  :disabled="!puedeGuardar" @enviado="(e: any) => marcarEnvio(s.lead_key, e)" @notificar="notify" />
                 <v-btn v-if="s.correo" variant="tonal" size="small" :href="`mailto:${s.correo}`" @click.stop>
                   <v-icon icon="mdi-email" start size="16" /> Correo
                 </v-btn>
@@ -406,6 +406,7 @@
  * (POST /api/tradecars/formularios), atados al lead por una clave estable, no por el n.º de fila.
  */
 import { ref, computed, reactive, onMounted, onBeforeUnmount } from 'vue'
+import BotonWhatsappPlantilla from '@/components/TradeCars/BotonWhatsappPlantilla.vue'
 import {
   CANALES_FORMULARIO, CAMPOS_FORMULARIO, ETIQUETA_CAMPO, ESTADOS_FORMULARIO,
   type CanalFormulario,
@@ -456,6 +457,7 @@ async function cargar(silencioso = false) {
   try {
     resp.value = await $fetch<any>('/api/tradecars/formularios', { query: { canal: props.canal }, cache: 'no-store' })
     errorRed.value = ''
+    if (!silencioso) cargarWhatsapp()
   } catch (e: any) {
     // En una actualización silenciosa no se tapa lo que ya se ve con un error de red pasajero
     if (!silencioso || !resp.value) errorRed.value = e?.data?.statusMessage || e?.message || 'Error de red'
@@ -550,14 +552,24 @@ function formatFecha(v: any) {
 }
 const tieneVehiculo = (s: any) => !!(s.marca || s.modelo || s.anio || s.placa)
 
-function waLink(s: any) {
-  const tel = String(s.celular || '').replace(/\D/g, '')
-  const num = tel.length === 9 ? `51${tel}` : tel
-  const auto = [s.marca, s.modelo].filter(Boolean).join(' ')
-  const msg = auto
-    ? `Hola ${s.nombre}, te escribimos de Trade Cars Perú por tu ${auto} que deseas vender.`
-    : `Hola ${s.nombre}, te escribimos de Trade Cars Perú por tu consulta.`
-  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
+/* ── WhatsApp: plantilla de Meta por Chatwoot (reemplaza al enlace wa.me, 30/09/2026) ── */
+const wa = ref<{ plantilla: any; plantilla_error: string | null; envios: Record<string, any> }>({
+  plantilla: null, plantilla_error: null, envios: {},
+})
+async function cargarWhatsapp() {
+  try {
+    const r = await $fetch<any>('/api/tradecars/whatsapp-plantilla', { query: { canal: props.canal }, cache: 'no-store' })
+    wa.value = {
+      plantilla: r.plantilla,
+      plantilla_error: r.falta_sql ? `Falta correr ${r.falta_sql} en Supabase` : r.plantilla_error,
+      envios: r.envios || {},
+    }
+  } catch (e: any) {
+    wa.value = { ...wa.value, plantilla_error: e?.data?.statusMessage || e?.message || 'No se pudo cargar la plantilla de WhatsApp' }
+  }
+}
+function marcarEnvio(leadKey: string, envio: any) {
+  if (envio) wa.value.envios = { ...wa.value.envios, [leadKey]: envio }
 }
 
 /* ── Tarjeta abierta y sus cambios (borrador local hasta tocar Guardar) ── */

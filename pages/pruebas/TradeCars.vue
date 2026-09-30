@@ -441,10 +441,11 @@
                     <v-btn color="primary" variant="flat" size="small" @click="guardarSolicitud(s)">
                       <v-icon icon="mdi-content-save" start size="16" /> Guardar
                     </v-btn>
-                    <v-btn v-if="s.celular" color="success" variant="tonal" size="small"
-                      :href="waLink(s)" target="_blank" @click.stop>
-                      <v-icon icon="mdi-whatsapp" start size="16" /> WhatsApp
-                    </v-btn>
+                    <BotonWhatsappPlantilla v-if="s.celular" canal="web" :ref-tarjeta="`${solTab}:${s.id}`"
+                      :nombre="s.nombre_completo" :celular="s.celular" :asesor-nombre="s.asesor_nombre"
+                      :envio="waWeb.envios[`${solTab}:${s.id}`]" :plantilla="waWeb.plantilla"
+                      :plantilla-error="waWeb.plantilla_error"
+                      @enviado="(e: any) => marcarEnvioWeb(`${solTab}:${s.id}`, e)" @notificar="notify" />
                     <v-btn v-if="s.correo" variant="tonal" size="small" :href="`mailto:${s.correo}`" @click.stop>
                       <v-icon icon="mdi-email" start size="16" /> Correo
                     </v-btn>
@@ -1052,6 +1053,7 @@ import TradeCarsConfiguracion from '@/components/TradeCars/TradeCarsConfiguracio
 import HistoricoComprasVentas from '@/components/TradeCars/HistoricoComprasVentas.vue'
 import HistoricoCompras from '@/components/TradeCars/HistoricoCompras.vue'
 import PreciosVehiculosNuevos from '@/components/TradeCars/PreciosVehiculosNuevos.vue'
+import BotonWhatsappPlantilla from '@/components/TradeCars/BotonWhatsappPlantilla.vue'
 
 const { logActivity } = useActivityLogger()
 
@@ -1334,14 +1336,25 @@ const solicitudesRecientes = computed(() => {
 
 function toggleSol(id: string) { expandedSol.value = expandedSol.value === id ? null : id }
 
-function waLink(s: any) {
-  const tel = String(s.celular || '').replace(/\D/g, '')
-  const num = tel.length === 9 ? `51${tel}` : tel
-  const auto = [s.marca, s.modelo].filter(Boolean).join(' ')
-  const msg = solTab.value === 'venta'
-    ? `Hola ${s.nombre_completo}, te escribimos de Trade Cars Perú por tu ${auto || 'vehículo'} que deseas vender.`
-    : `Hola ${s.nombre_completo}, te escribimos de Trade Cars Perú por tu consulta.`
-  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
+/* WhatsApp de las tarjetas web: plantilla de Meta por Chatwoot (reemplaza al enlace wa.me, 30/09/2026).
+   La clave de cada tarjeta es 'venta:<id>' / 'compra:<id>' (ver server/api/tradecars/whatsapp-plantilla.post.ts). */
+const waWeb = ref<{ plantilla: any; plantilla_error: string | null; envios: Record<string, any> }>({
+  plantilla: null, plantilla_error: null, envios: {},
+})
+async function cargarWhatsappWeb() {
+  try {
+    const r = await $fetch<any>('/api/tradecars/whatsapp-plantilla', { query: { canal: 'web' }, cache: 'no-store' })
+    waWeb.value = {
+      plantilla: r.plantilla,
+      plantilla_error: r.falta_sql ? `Falta correr ${r.falta_sql} en Supabase` : r.plantilla_error,
+      envios: r.envios || {},
+    }
+  } catch (e: any) {
+    waWeb.value = { ...waWeb.value, plantilla_error: e?.data?.statusMessage || e?.message || 'No se pudo cargar la plantilla de WhatsApp' }
+  }
+}
+function marcarEnvioWeb(clave: string, envio: any) {
+  if (envio) waWeb.value.envios = { ...waWeb.value.envios, [clave]: envio }
 }
 
 const solicitudesAsesorSesion = ref<string | null>(null)
@@ -1358,6 +1371,7 @@ async function fetchSolicitudes() {
     solicitudesVenta.value = r.ventas || []
     solicitudesAsesorSesion.value = r.asesor_sesion ?? null
     solicitudesSinAsesorAsignado.value = !!r.sin_asesor_asignado
+    cargarWhatsappWeb()
   } catch (e: any) {
     notify('Error cargando solicitudes: ' + (e?.data?.statusMessage || e?.message), 'error')
   }

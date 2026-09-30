@@ -1493,11 +1493,11 @@ conversación nueva se deriva al MISMO asesor** en vez de a uno al azar (continu
   SIEMPRE corre antes de la bifurcación.
 - **Guía**: `referencia/n8n/tradecars-asignacion-asesor-guia.md`. Flujo importable (plantilla,
   sin credenciales ni tokens): `referencia/n8n/tradecars-asignacion-asesor-workflow.json`.
-- **Pendiente del cliente**: el "Round Robin Asesores" sigue con nombres placeholder ("Asesor
-  1".."Asesor 4") sobre los ids reales de Chatwoot (55-58) — el id 55 ya se confirmó en vivo
-  que es Rodrigo Paredes; hay que confirmar y poner los otros 3 nombres (candidatos por
-  `tradecars_asesores`: Jose Flores, Brado Alvarado, Gino Hurtado, pero sin confirmar el id de
-  cada uno todavía).
+- **Ids de Chatwoot confirmados el 30/09/2026** (GET `/accounts/17/agents`, cruzado por correo con
+  `tradecars_asesores`): **55 Rodrigo Paredes, 56 Jose Flores, 57 Brado Alvarado, 58 Gianfranco
+  Alvarez** (Gianfranco reemplazó a Gino Hurtado en `tradecars_asesores`). El "Round Robin Asesores"
+  del flujo sigue con los nombres placeholder ("Asesor 1".."Asesor 4") sobre esos ids — solo falta
+  ponerles el nombre en el nodo (los ids ya están bien).
 
 ### Asignar las TARJETAS del dashboard a un asesor (Web + IG + FB + TikTok + Sin plataforma) (29/09/2026) — `sql/tradecars_formularios_asignacion.sql`
 
@@ -1558,6 +1558,51 @@ trabaje lo suyo.
   vez, como Administrador) para repartir el backlog existente (~7.300 en la hoja + las solicitudes web
   que ya había) antes de que nadie abra la pantalla — si alguien la abre ANTES del backfill, el tope de
   25 en vivo lo protege de colgarse, pero verá el backlog repartirse de a poco en vez de todo junto.
+
+### Botón "WhatsApp" de las tarjetas = plantilla de Meta por Chatwoot (30/09/2026) — `sql/tradecars_whatsapp_envios.sql`
+
+En las 5 pestañas de "Solicitudes - formularios" (Web, IG, FB, TikTok, Sin plataforma) el botón
+"WhatsApp" ya **no abre `wa.me`**: envía la plantilla aprobada **`iniciar_conversacion_2`** desde
+**Trade Cars Perú** (Chatwoot cuenta 17, bandeja 88, WhatsApp Cloud, +51 951 223 188). Componente
+compartido `components/TradeCars/BotonWhatsappPlantilla.vue`; endpoints
+`GET/POST /api/tradecars/whatsapp-plantilla`; lógica de Chatwoot en `server/utils/tradecars-whatsapp.ts`.
+**Correr una vez el SQL**: sin la tabla el botón queda deshabilitado (tooltip con el archivo) y el POST
+devuelve 409 **antes** de tocar Chatwoot, para no enviar sin dejar registro.
+
+- **La plantilla se lee de Chatwoot** (`/inboxes/88` → `message_templates`, caché 10 min), no está
+  escrita en el código: encabezado "TradeCars", cuerpo "🚗 Hola, recibimos tu solicitud para tasar tu
+  vehículo…", botones "Sí, me interesa" / "Ahora no", **sin variables**. Si alguna vez se usa una con
+  variables, el endpoint lo rechaza en vez de mandarla vacía. Nombre/cuenta/bandeja con env opcionales
+  (`TRADECARS_WHATSAPP_PLANTILLA`, `TRADECARS_CHATWOOT_ACCOUNT_ID`, `TRADECARS_WHATSAPP_INBOX_ID`).
+- **Requiere `CHATWOOT_API_TOKEN` en Netlify** (a propósito sin valor por defecto en el código: no se
+  duplicó el token que tiene `remarketing/send.post.ts`). Sin él, el GET devuelve `plantilla_error` y el
+  botón se deshabilita con ese mensaje.
+- **Recorrido en Chatwoot:** busca el contacto por teléfono (E.164, `aE164()`) o lo crea en la bandeja
+  88 → si tiene una conversación abierta/pendiente en esa bandeja la usa (asignándola al asesor de la
+  tarjeta solo si nadie la tiene; **nunca se le quita a otro**) → si no, crea una **ya asignada** al
+  agente con el mismo correo que el asesor de la tarjeta → manda el mensaje con `template_params`
+  (conversación vacía primero y mensaje después, el camino estándar). Asignarla al crearla es lo que
+  hace que el flujo n8n "ASIGNACION ASESOR-TRADECARS" no la toque (solo actúa sobre
+  `conversation_created` **sin** `meta.assignee`). El flujo "Lead desde mensaje (IA)" tampoco reacciona:
+  solo lee mensajes entrantes con texto de formulario.
+- **Meta puede rechazar después** (número sin WhatsApp, tope de marketing por usuario): el endpoint
+  vuelve a leer el estado del mensaje 2 veces (2,5 s) y, si quedó `failed`, lo guarda como `fallido`
+  con el `external_error` y la tarjeta lo muestra en rojo.
+- **Seguridad:** el teléfono, el nombre y el asesor salen de la FUENTE (la solicitud web o la hoja de
+  Google, releída en el servidor; `resumen` solo si la fila ya no está en la hoja), nunca del navegador.
+  Exige `comercial.edit` y un asesor solo envía desde sus tarjetas (mismo control que "Guardar",
+  default-deny). Clave de tarjeta: web `venta:<uuid>` / `compra:<uuid>`; hojas `lead_key`.
+- **Reenvío:** si la tarjeta ya tiene un envío `enviado`, el POST responde 409 con `ya_enviado` y la
+  pantalla pide una segunda confirmación (`reenviar: true`). Ya enviada, la tarjeta muestra "Plantilla
+  enviada el X por Y · entregada/leída · asignada a Z" y el botón pasa a **"Abrir en Chatwoot"**.
+- **`simular: true`** (solo API, sin botón): hace todas las lecturas y devuelve a qué número, contacto,
+  conversación y asesor iría, sin enviar. Útil para diagnosticar sin gastar un envío.
+- Log: `agent_tool_logs` (`tool_name='WhatsApp Plantilla'`, teléfono enmascarado) + `activity_logs`.
+- **Probado** en local contra la base y Chatwoot reales **solo en modo simulación** (Jordy Cabrera →
+  contacto nuevo, conversación nueva asignada a Brado Alvarado = su asesor; una tarjeta de la hoja →
+  teléfono leído de Google Sheets en el servidor), 409 sin tabla, 403 agente, 400 ref/canal inválidos,
+  404 lead inexistente. **No probado:** un envío real (Meta cobra y le llega a un cliente) — el primero
+  lo hace Trade Cars desde una tarjeta.
 
 ### Histórico de clientes antiguos importado a `tradecars_leads_chatwoot` (29/09/2026) — `scripts/importar_leads_chatwoot_historico.mjs`
 

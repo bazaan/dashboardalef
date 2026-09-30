@@ -1676,8 +1676,9 @@ del archivo.
   y no cambia `fuente`. Cada acción queda en `activity_logs`.
 - **Probado** contra el dev server con la base real: pendientes reales (3 saltos + 7 nuevas), datos
   sintéticos (`ZZZDIAG`, borrados) para aplicar salto / aplicar nueva / reintento → 409 / agente → 403,
-  y revisión visual en escritorio y celular. **No probado**: descartar con la tabla de revisiones creada
-  (el SQL no estaba corrido al probar).
+  y revisión visual en escritorio y celular. **Descartar** probado en producción el 30/09 con el SQL ya
+  corrido (datos `ZZZDIAG`, borrados): queda la decisión, desaparece de pendientes sin tocar precios,
+  segundo descarte → 409, otro precio en una corrida nueva → vuelve a aparecer, agente → 403.
 
 ---
 
